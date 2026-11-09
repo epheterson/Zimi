@@ -7,6 +7,52 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Changed
+
+- Home no longer downloads the Moon's 730 KB map until the Almanac is opened (a cold Home is 770 KB instead of 1.5 MB); the NAS deploy no longer carries old built ZIMs and the games' source into the image.
+- Games: leaving any board, dice or tile game under way keeps a picture of its table as the shelf's tile (live tiles were cards and canvas games only), and Stats lists what you have reached in plain facts.
+### Added
+
+- Games: Pig, Shut the Box and Ten Thousand (dice), Color Trail (a color race for small children) and Who Is It (find Zimi's face with yes-or-no questions), in ten languages.
+### Added
+
+- Games: Go Fish, Old Maid, Snap, Oh Hell and Cheat, five family card games against Zimi.
+### Added
+
+- Games: ten more solitaires on the shelf: Yukon, Forty Thieves, Canfield, Scorpion, Aces Up, Accordion, Calculation, Beleaguered Castle, Eight Off and Monte Carlo.
+### Added
+
+- Games: Courtier, a small deduction card game for two to four, and Odd One Out, a party game for three to eight on one phone that plays from pictures in any language.
+
+### Fixed
+
+- Open Reddot, Zimipedia, ZimiTube, PDF and Manage Maps windows show a setting changed in another window or browser at once, not at the next reload.
+- Place autocomplete no longer drops towns for a long word whose first ten letters are common.
+- A second background start no longer takes a starting server's pid file.
+- The portable Linux build can make icons for captured pages (Pillow).
+- Almanac: the 3D view's controls can no longer be pushed up over the picture; the gear shows three icons and short labels, not paragraphs.
+### Highlights
+
+**Zimi**
+
+- `zimi check` checks a ZIM the way openZIM's zimcheck does: its checksum, metadata, icon, redirects and internal links.
+- An app that is open when you change the language is drawn again in the new one.
+- Manage can clear the catalog copies Zimi keeps: the cached catalog and the `.torrent` files of ZIMs you have not installed.
+
+**Games**
+
+- Tri Peaks and Blast open the right encyclopedia article from their About link, and Net no longer links to a page that does not exist.
+
+**Almanac**
+
+- The beach scene has clouds that glow after sunset where the Sun still reaches them, and a helicopter with blinking lights.
+- A magnifier on a planet's tip in the solar system opens the sky aimed at it.
+- Games: a daily played past midnight counts for the day it began; ZimCity's money warning follows this year's taxes, a kept city's buttons act on that city, and a paused city stops redrawing; Canasta fits eleven melds a side on a short wide screen.
+- **Lighter Docker image:** under 1 GB compressed (was about 2.3 GB unpacked, now about 0.7 GB). The browser, SingleFile, video tools and warc2zim are add-ons, added once from the first-run list or Settings > Server > Add-ons (Ask first, Automatically or Never).
+### Added
+
+- Search finds PDF collections' documents (nautilus and zimgit libraries) by their listed title, description and author and by the text inside the PDFs, from an index Zimi reads in the background beside the ZIM (#142).
+- `list_entries` (MCP tool and `/entries`): a source's entries by MIME type or path prefix, paged (#142).
 ### Almanac
 
 - **Every satellite:** a button in the 3D Earth draws all 17,000 active satellites from CelesTrak's data (a snapshot ships; fresher data follows the Satellite data setting), filtered by Starlink, OneWeb, Iridium, GNSS, orbit and owner, with a card for each (owner, launch, altitude, speed) and the visible passes over your place, in the live sky too.
