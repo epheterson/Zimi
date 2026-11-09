@@ -76,6 +76,8 @@ def page(served):
         )
         ctx.add_init_script(
             "try { localStorage.setItem('zimi_almanac_place', %r); sessionStorage.setItem('zimi_almanac_location', %r); } catch (e) {}"
+            # Chromium now has iOS's permission ask, and a headless one answers no: answer yes, as a tap would.
+            "DeviceOrientationEvent.requestPermission = function () { return Promise.resolve('granted'); };"
             % (PLACE, PLACE)
         )
         pg = ctx.new_page()
@@ -235,7 +237,7 @@ def test_charon_hangs_over_pluto_and_saturn_shows_its_rings(page):
     charon = page.evaluate("() => { var o = _ae.stand.fr.objs.filter(function (x) { return x.key === 'charon'; })[0]; return o && { rho: o.rho, z: o.dir[2], dist: o.dist }; }")
     assert charon, "Charon is among the bodies in Pluto's sky"
     assert 0.029 < charon["rho"] < 0.033, "its disc is about 1.8 degrees in radius (606 km at 19,591 km)"
-    assert charon["z"] > 0.9 and abs(charon["dist"] - 19591) < 700, "from a place near the sub-Charon point it is almost overhead"
+    assert charon["z"] > 0.9 and abs(charon["dist"] - (19591 - 1188)) < 700, "from a place near the sub-Charon point it is almost overhead (centre distance less Pluto's radius)"
     _leave(page)
     _stand_anywhere(page, "titan", -10.6, 192.3)
     page.wait_for_function("() => !!_ae.stand.ringTex", timeout=60_000, polling=200)

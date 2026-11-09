@@ -68,6 +68,8 @@ def page(served):
         )
         ctx.add_init_script(
             "try { localStorage.setItem('zimi_almanac_place', %r); sessionStorage.setItem('zimi_almanac_location', %r); } catch (e) {}"
+            # Chromium now has iOS's permission ask, and a headless one answers no: answer yes, as a tap would.
+            "DeviceOrientationEvent.requestPermission = function () { return Promise.resolve('granted'); };"
             % (PLACE, PLACE)
         )
         pg = ctx.new_page()
