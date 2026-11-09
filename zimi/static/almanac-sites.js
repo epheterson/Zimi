@@ -37,10 +37,10 @@ var AS_KEYS = { ArrowUp: 'f', w: 'f', W: 'f', ArrowDown: 'b', s: 'b', S: 'b', Ar
 // Per body: the ground's colour, gravity (m/s^2), how rough it is (relief amplitude, m), craters, and the rover it has.
 var AS_BODY = {
   moon: { albedo: [0.5, 0.48, 0.45], g: AE_BODY_FACTS.moon.gravity, relief: 0.45, craters: 1, ambient: 0.012, fill: 0.04, sky: null, haze: null,
-    rover: { body: 'lrv-body', wheel: 'lrv-wheel', vmax: AE_SITE_FACTS.lrvSpeedMs, jump: 3.0, cam: 11 } },
+    rover: { body: 'lrv-body', wheel: 'lrv-wheel', vmax: AE_SITE_FACTS.lrvSpeedMs, jump: AE_SITE_FACTS.jumpMs.moon, cam: 11 } },
   mars: { albedo: [0.5, 0.27, 0.15], g: AE_BODY_FACTS.mars.gravity, relief: 0.3, craters: 0.5, ambient: 0.07, fill: 0.06, haze: [0.6, 0.42, 0.3],
     sky: { day: [0.78, 0.55, 0.38], high: [0.42, 0.3, 0.24], dusk: [0.25, 0.32, 0.5] },
-    rover: { body: 'perseverance-body', wheel: 'perseverance-wheel', vmax: AE_SITE_FACTS.marsDriveSpeedMs, jump: 4.4, cam: 11 } },
+    rover: { body: 'perseverance-body', wheel: 'perseverance-wheel', vmax: AE_SITE_FACTS.marsDriveSpeedMs, jump: AE_SITE_FACTS.jumpMs.mars, cam: 11 } },
   venus: { albedo: [0.42, 0.33, 0.22], g: AE_BODY_FACTS.venus.gravity, relief: 0.2, craters: 0, ambient: 0.2, fill: 0.12, haze: [0.65, 0.42, 0.18],
     sky: { day: [0.75, 0.5, 0.2], high: [0.6, 0.38, 0.15], dusk: [0.4, 0.22, 0.08] }, rover: null },
   titan: { albedo: [0.3, 0.22, 0.13], g: AE_BODY_FACTS.titan.gravity, relief: 0.2, craters: 0, ambient: 0.08, fill: 0.06, haze: [0.4, 0.24, 0.08],

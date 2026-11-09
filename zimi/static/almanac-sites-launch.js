@@ -8,11 +8,11 @@
 
 // ── Constants ──
 var AS_SATURN = {
-  thrustSeaN: AE_SITE_FACTS.saturnThrustN, thrustVacN: 39.0e6,   // the five F-1 engines of the first stage, at the pad and in a vacuum
+  thrustSeaN: AE_SITE_FACTS.saturnThrustN, thrustVacN: AE_SITE_FACTS.saturnThrustVacN,   // the five F-1 engines of the first stage, at the pad and in a vacuum
   massKg: AE_SITE_FACTS.saturnMassKg, burnKgS: AE_SITE_FACTS.saturnBurnKgS,   // lift-off mass and what the first stage burns each second
   cutoffS: AE_SITE_FACTS.saturnCutoffS,                              // the outboard engines' cut-off
-  dragCd: 0.5, areaM2: 80,                  // across its 10.1 m body
-  tiltStartS: 12, tiltPerS: 1.2, tiltPow: 0.78, tiltMaxDeg: 62,   // the pitch program: degrees from vertical after the tower is clear
+  dragCd: AE_SITE_FACTS.saturnDragCd, areaM2: AE_SITE_FACTS.saturnAreaM2,                  // across its 10.1 m body
+  tiltStartS: AE_SITE_FACTS.saturnTilt.startS, tiltPerS: AE_SITE_FACTS.saturnTilt.perS, tiltPow: AE_SITE_FACTS.saturnTilt.pow, tiltMaxDeg: AE_SITE_FACTS.saturnTilt.maxDeg,   // the pitch program: degrees from vertical after the tower is clear
   scaleHeightM: 7200, rho0: 1.225
 };
 var AS_LAUNCH_COUNT_S = 5;                  // the count, in seconds

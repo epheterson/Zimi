@@ -4105,6 +4105,10 @@ function _aeRefAxesRows() {
   add('site.saturn_burn', _aeT('tb_kn_site_saturn_burn'), AE_SITE_FACTS.saturnBurnKgS, 'kg/s', 'NASA Saturn V flight manual');
   add('site.saturn_cutoff', _aeT('tb_kn_site_saturn_cutoff'), AE_SITE_FACTS.saturnCutoffS, 's', 'NASA Apollo 11 flight report');
   add('site.launch_azimuth', _aeT('tb_kn_site_azimuth'), AE_SITE_FACTS.launchAzimuthDeg, '°', 'NASA Apollo 11 flight report');
+  add('site.saturn_vac', _aeT('tb_kn_site_saturn_vac'), AE_SITE_FACTS.saturnThrustVacN, 'N', 'NASA Saturn V flight manual');
+  add('site.saturn_drag', _aeT('tb_kn_site_saturn_drag'), 'Cd ' + AE_SITE_FACTS.saturnDragCd + ' × ' + AE_SITE_FACTS.saturnAreaM2 + ' m²', '', 'Zimi (10.1 m across)');
+  add('site.saturn_pitch', _aeT('tb_kn_site_saturn_pitch'), AE_SITE_FACTS.saturnTilt.perS + ' · (t − ' + AE_SITE_FACTS.saturnTilt.startS + ' s)^' + AE_SITE_FACTS.saturnTilt.pow + ', ≤ ' + AE_SITE_FACTS.saturnTilt.maxDeg, '°', 'Zimi, fitted to the Apollo 11 flight report');
+  add('site.jump', _aeT('tb_kn_site_jump'), AE_SITE_FACTS.jumpMs.moon + ' (' + _tp('Moon') + ') · ' + AE_SITE_FACTS.jumpMs.mars + ' (' + _tp('Mars') + ')', 'm/s', 'Zimi');
   add('site.tower', _aeT('tb_kn_site_tower'), AE_SITE_FACTS.launchTowerM, 'm', 'NASA Launch Complex 39');
   return rows;
 }
@@ -4236,7 +4240,8 @@ function _aeLmLoad() {
 // ways down once they are in.
 // The numbers the sites' scenes (almanac-sites*.js) run on that a person is shown or can feel, kept here so the reference
 // lists them (_aeRefAxesRows) and the code reads the same ones: a sol, how fast the rovers go, the Saturn V's.
-var AE_SITE_FACTS = { solSeconds: 88775.244, lrvSpeedMs: 3.61, marsDriveSpeedMs: 3.4, saturnMassKg: 2.97e6, saturnThrustN: 34.5e6, saturnBurnKgS: 13300, saturnCutoffS: 161, launchAzimuthDeg: 72, launchTowerM: 122 };
+var AE_SITE_FACTS = { solSeconds: 88775.244, lrvSpeedMs: 3.61, marsDriveSpeedMs: 3.4, saturnMassKg: 2.97e6, saturnThrustN: 34.5e6, saturnBurnKgS: 13300, saturnCutoffS: 161, launchAzimuthDeg: 72, launchTowerM: 122,
+  saturnThrustVacN: 39.0e6, saturnDragCd: 0.5, saturnAreaM2: 80, saturnTilt: { startS: 12, perS: 1.2, pow: 0.78, maxDeg: 62 }, jumpMs: { moon: 3.0, mars: 4.4 } };
 var AE_SITES_JS = ['/static/almanac-sites.js', '/static/almanac-sites-ground.js'];
 var _aeSitesLoading = false;
 function _aeSitesLoad() {
