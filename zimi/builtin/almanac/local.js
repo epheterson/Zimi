@@ -3,6 +3,7 @@
    server answers from its own shipped snapshots:
      /almanac-satellites   the GPS and ISS elements, as of the release (satellites.py get(): the snapshot, never
                            the internet, so it says how old it is)
+     /almanac-launches     every orbital launch, as of the release (launches.py get(): the snapshot, never the internet)
      /almanac-place        the tide stations nearest a place, or named like a query (placedata.py near and search)
    The satellites answer also says whether Almanac HD is in this ZIM (the maxi flavour holds the tile pyramids under
    hd/): {hd: {installed, base}}, the same shape Zimi's server gives, with the tiles' base a path from this page.
@@ -13,6 +14,9 @@
   var Local = {};
   var SATELLITES_FILE = 'data/satellites-snapshot.json';
   var SATELLITES_ALL_FILE = 'data/satellites-all-snapshot.json';   // satcatalog.py's catalogue of every active satellite, asked for with ?all=1
+  var LAUNCHES_FILE = 'data/launches-snapshot.json';
+  var LAUNCHES_URL = '/almanac-launches';
+  var LAUNCHES_STALE_AFTER_S = 7 * 24 * 3600;   // launches.py CACHE_TTL_S
   var TIDES_FILE = 'data/tides-snapshot.json';
   var SATELLITES_URL = '/almanac-satellites';
   var PLACE_URL = '/almanac-place';
@@ -117,6 +121,12 @@
   Local.answer = function (url) {
     var u;
     try { u = new URL(url, root.location.href); } catch (e) { return null; }
+    if (u.pathname === LAUNCHES_URL) {
+      return read(LAUNCHES_FILE).then(function (c) {
+        return json({ source: 'snapshot', gcat: c.gcat, cols: c.cols, veh: c.veh, pads: c.pads, l: c.l,
+          stale: Date.now() / 1000 - Date.parse(c.gcat + 'T12:00:00Z') / 1000 > LAUNCHES_STALE_AFTER_S, refreshing: false, mode: 'never', locked: null, can_change: false });
+      }, function () { return json({ error: 'not here' }, 404); });
+    }
     if (u.pathname === SATELLITES_URL && u.searchParams.get('all')) {
       return read(SATELLITES_ALL_FILE).then(function (c) {
         return json({ source: 'snapshot', fetched: c.fetched, cols: c.cols, sats: c.sats, stale: Date.now() / 1000 - c.fetched_at > STALE_AFTER_S,

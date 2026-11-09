@@ -7360,7 +7360,11 @@ def handle_manage_post(handler, parsed, data):
         # answered with the view's payload so it redraws from the answer.
         from zimi import satellites as _sats
 
-        if data.get("all"):
+        if data.get("launches"):
+            from zimi import launches as _launches
+
+            payload, err = _launches.refresh_now()
+        elif data.get("all"):
             from zimi import satcatalog as _cat
 
             payload, err = _cat.refresh_now()

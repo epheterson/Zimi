@@ -358,6 +358,7 @@ _RATE_LIMITED_API_PATHS = (
     "/openapi.json",
     "/almanac-links",
     "/almanac-satellites",
+    "/almanac-launches",
     "/almanac-hd",
     "/almanac-ages",
     "/almanac-place",
@@ -1256,6 +1257,8 @@ if os.path.isdir(_STATIC_DIR):
             + _static_hash("almanac-look.js")
             + _static_hash("almanac-skyfind.js")
             + _static_hash("almanac-sats.js")
+            + _static_hash("almanac-launches.js")
+            + _static_hash("almanac-launchflight.js")
             + _static_hash("almanac-gamesky.js")
             + _static_hash("fieldguide.html")
             + _static_hash("fieldguide-card.js")
@@ -2978,6 +2981,14 @@ class ZimHandler(BaseHTTPRequestHandler):
                 # Almanac HD's offer, on the answer the view already asks
                 # for when it opens (the first ask, under Automatically).
                 payload["hd"] = _hd.on_almanac_open()
+                return self._json(200, payload)
+
+            elif parsed.path == "/almanac-launches":
+                # Every orbital launch (launches.py): the same setting and rules as the satellites.
+                from zimi import launches as _launches
+
+                payload = _launches.get()
+                payload["can_change"] = bool(_srv.ZIMI_MANAGE and _users._request_is_admin(self))
                 return self._json(200, payload)
 
             elif parsed.path == "/almanac-hd":
