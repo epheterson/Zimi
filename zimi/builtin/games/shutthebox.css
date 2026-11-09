@@ -1,0 +1,18 @@
+/* Shut the Box: the dice above nine wooden flaps in a 3 by 3 box; a shut flap lies flat and dark. */
+.st-table { display: flex; flex-direction: column; align-items: center; gap: var(--sp-3); width: 100%; max-width: 420px; padding: var(--sp-3); background: var(--surface); border: 1px solid var(--line); border-radius: var(--r-sheet); }
+.st-dice { display: flex; gap: var(--sp-3); min-height: 70px; justify-content: center; }
+.st-die { --die-size: 64px; cursor: default; }
+.st-die[hidden] { display: none; }
+.st-die.st-tumble { animation: st-tumble 320ms ease-out; }
+.st-box { display: grid; grid-template-columns: repeat(3, 1fr); gap: var(--sp-2); width: 100%; padding: var(--sp-2); background: #6b4423; border-radius: var(--radius); box-shadow: inset 0 2px 6px rgba(0, 0, 0, 0.45); }
+.st-tile { min-height: 64px; padding: 0; border: 1px solid #a8763f; border-radius: 8px; background: linear-gradient(#d9a566, #c28845); color: #2a1a0a; font: 700 28px/1 var(--font); font-variant-numeric: tabular-nums; box-shadow: 0 3px 0 #8a5a2b; cursor: pointer; touch-action: manipulation; transition: transform 0.14s ease-out; }
+.st-tile:hover { border-color: var(--accent); }
+.st-tile.st-sel { transform: translateY(-3px); outline: 3px solid var(--accent); outline-offset: 1px; box-shadow: 0 6px 0 #8a5a2b; }
+.st-tile.st-shut { background: #3a2713; border-color: #2a1b0c; color: #c9a77a; box-shadow: none; transform: translateY(2px); cursor: default; text-decoration: line-through; text-decoration-thickness: 3px; }
+.st-results { display: flex; gap: var(--sp-3); justify-content: center; margin: 0; font-size: var(--fs-small); color: var(--ink2); min-height: 1.2em; }
+.st-res.st-cur { color: var(--ink); font-weight: 650; }
+.st-actions { width: 100%; max-width: 420px; }
+.st-actions .ar-btn { width: 100%; min-height: 64px; font-size: 18px; font-weight: 650; }
+.st-actions .ar-btn:disabled { color: var(--ink3); }
+@keyframes st-tumble { 0% { transform: translateY(-14px) rotate(-24deg) scale(0.9); } 60% { transform: translateY(2px) rotate(8deg); } 100% { transform: none; } }
+@media (prefers-reduced-motion: reduce) { html:not([data-anim="normal"]):not([data-anim="fast"]) .st-die.st-tumble, html:not([data-anim="normal"]):not([data-anim="fast"]) .st-tile { animation: none; transition: none; } }
