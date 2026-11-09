@@ -72,3 +72,12 @@ button.cr-card[aria-pressed="true"] { transform: translateY(-14px); box-shadow: 
 /* The setup sheet is taller than a phone's screen in landscape (and nearly in portrait): its Start stays in view at the card's foot while the options scroll. */
 #cr-sheet .ar-sheet-card { padding-bottom: 0; }
 #cr-sheet .ar-sheet-actions { position: sticky; bottom: 0; padding: var(--sp-2) 0 20px; background: var(--surface2); }
+
+/* A short, wide phone (landscape): the court on the left, the hand and its buttons beside it, so a card can be played without scrolling past the court. */
+@media (orientation: landscape) and (max-height: 520px) {
+  .cr-main { max-width: 860px; min-height: 0; display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); column-gap: var(--sp-4); align-content: start; align-items: start; }
+  .cr-main > #cr-msg { grid-column: 1 / -1; }
+  .cr-main > .cr-tablearea { grid-column: 1; grid-row: 2 / span 2; }
+  .cr-main > .cr-hand { grid-column: 2; grid-row: 2; align-self: center; }
+  .cr-main > .cr-actions { grid-column: 2; grid-row: 3; align-self: start; }
+}

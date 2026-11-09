@@ -86,6 +86,30 @@ def test_the_status_line_is_centred_on_the_screen(served, browser, name):
     ctx.close()
 
 
+def test_in_landscape_a_courtier_hand_can_be_played_without_scrolling(served, browser):
+    ctx = browser.new_context(
+        viewport=LANDSCAPE, has_touch=True, is_mobile=True, device_scale_factor=2
+    )
+    page = ctx.new_page()
+    page.goto("%s/courtier.html" % served)
+    shell_ready(page)
+    page.wait_for_selector("#cr-sheet:not([hidden]) #cr-go")
+    page.tap("#cr-go")
+    page.wait_for_function(
+        "document.querySelectorAll('#cr-hand button.cr-card').length > 0 || !document.getElementById('cr-play').hidden",
+        timeout=30000,
+    )
+    frames(page, 4)
+    got = page.evaluate(
+        """() => { const r = id => document.querySelector(id).getBoundingClientRect(), play = r('#cr-play'), hand = r('#cr-hand');
+          return { playBottom: play.bottom, handBottom: hand.bottom, vh: innerHeight, scrolled: scrollY }; }"""
+    )
+    assert got["playBottom"] <= got["vh"] and got["handBottom"] <= got["vh"], (
+        "the hand and Play are below the fold: %s" % got
+    )
+    ctx.close()
+
+
 @pytest.mark.parametrize("name,board,n", BOARDS)
 def test_in_landscape_the_board_is_a_board_and_everything_stays_on_screen(
     served, browser, name, board, n
