@@ -6,8 +6,8 @@
 //      the pointer reaches Mars, and still reaches a tip's Fly button by
 //      crossing the tip's text. On a phone its button is a finger's size.
 //   2. The Earth view: a tapped satellite's card stands above the controls
-//      however tall the note under them grows; the first-open hint stays
-//      off the "You" dot; a place's dot sits on the place, whichever side
+//      however tall the note under them grows; nothing is said over the
+//      view on opening, so the "You" dot is clear; a place's dot sits on the place, whichever side
 //      its label hangs, left to right or right to left; a tapped button does
 //      not keep a hover look on a phone.
 //
@@ -126,7 +126,7 @@ function markOffset(page, id, latlon) {
 }
 
 for (const lang of ['', 'he']) {
-  test(`the Earth view on a phone${lang ? ' (' + lang + ')' : ''}: card, hint and the You dot`, async ({ browser }) => {
+  test(`the Earth view on a phone${lang ? ' (' + lang + ')' : ''}: card and the You dot`, async ({ browser }) => {
     test.setTimeout(120000);   // software WebGL: the first open builds the scene and loads the maps
     // "You" is the device's own position, shown when asked for (Show where I am).
     const ctx = await browser.newContext({ viewport: PHONE, hasTouch: true, isMobile: true, serviceWorkers: 'block',
@@ -175,7 +175,9 @@ for (const lang of ['', 'he']) {
     expect(card.y + card.height).toBeLessThanOrEqual(views.y - 4);
     expect(card.y).toBeGreaterThan(0);
 
-    // A tapped button keeps no hover look (it read as pressed).
+    // A tapped button keeps no hover look (it read as pressed). A phone's satellite card takes the clock's place, so it goes first.
+    await page.evaluate(() => { _ae.selected = null; _aeRenderCard(); });
+    await expect(page.locator('#ae-clock')).toBeVisible();
     const idle = await page.locator('#ae-clock .alm-spd-mark[data-stop="5"]').evaluate((b) => getComputedStyle(b).color);
     // (A software-rendered WebGL frame can be slow on a busy machine, and a
     // tap waits for the button to hold still across frames.)
@@ -325,6 +327,9 @@ test.describe('the Earth view', () => {
       expect(look).not.toBe('rgb(138, 138, 148)');   // lit, not the quiet grey
       // The eclipse line stands at the top, clear of the foot.
       await expect(page.locator('#ae-status')).not.toBeEmpty();
+      const status = await page.locator('#ae-status').boundingBox();
+      const foot = await page.locator('.ae-bottom #ae-clock').boundingBox();
+      expect(status.y + status.height).toBeLessThanOrEqual(foot.y);
       await page.locator('#ae-clock .alm-ck-now').click();
       await expect(page.locator('#ae-clock .alm-ck-now')).toBeHidden();
       await ctx.close();

@@ -110,9 +110,7 @@ def _almanac(browser, served, reduced=False, init=None):
     pg.on("pageerror", lambda e: errors.append(str(e)))
     pg.goto(served + "/#almanac", wait_until="load")
     # The 3D view is made ready when the Moon is touched, not behind the page.
-    pg.evaluate(
-        "() => new Promise(r => { const t = setInterval(() => { if (typeof _almMoonPrepare === 'function') { clearInterval(t); _almMoonPrepare(); r(); } }, 50); })"
-    )
+    _prepare_moon(pg)
     pg.wait_for_function(
         "() => typeof _aeReady === 'function' && _aeReady()",
         timeout=60000,
@@ -260,13 +258,19 @@ def test_one_clock_moves_both_views(browser, served):
         ctx.close()
 
 
+def _prepare_moon(pg):
+    """Ask for the 3D view the way touching the Moon does, once the page has the function (bounded: a page whose script
+    failed to load fails here instead of hanging)."""
+    pg.wait_for_function("() => typeof _almMoonPrepare === 'function'", timeout=60_000)
+    pg.evaluate("_almMoonPrepare()")
+
+
 # The Almanac as it stands: everything but its clocks of now (the world
 # clock's seconds and cities), which tick whatever else happens.
 SNAPSHOT = """() => {
   var c = document.getElementById('almanac-content');
   var copy = c.cloneNode(true);
   copy.querySelectorAll('[id^="alm-clock"], #almanac-tz-pills').forEach(function (n) { n.remove(); });
-  var slot = copy.querySelector('#alm-secbar-slot'); if (slot) slot.innerHTML = '';   // the section bar is drawn late, once the panels are
   return { scroll: c.scrollTop, focus: _almFocus ? _almFocus.getTime() : null, html: copy.outerHTML,
            view: document.getElementById('almanac-view').className,
            active: document.activeElement && document.activeElement.className };
@@ -287,7 +291,13 @@ def test_leaving_restores_the_page(browser, served, reduced):
             timeout=60_000,
             polling=POLL_MS,
         )
-        pg.wait_for_timeout(2500)
+        # Settled: the page is the same at two looks in a row (its late parts are in), not after a fixed wait.
+        pg.wait_for_function(
+            "() => { var h = (%s)().html, same = window.__prevSnap === h; window.__prevSnap = h; return same; }"
+            % SNAPSHOT,
+            timeout=30_000,
+            polling=400,
+        )
         before = pg.evaluate(SNAPSHOT)
         r = _rect(pg)
         cx, cy = r["x"] + r["width"] / 2, r["y"] + r["height"] / 2
@@ -353,9 +363,7 @@ def test_one_finger_lifts_and_keeps_turning(browser, served, pointer):
         pg.on("pageerror", lambda e: errors.append(str(e)))
         pg.goto(served + "/#almanac", wait_until="load")
         # The 3D view is made ready when the Moon is touched, not behind the page.
-        pg.evaluate(
-            "() => new Promise(r => { const t = setInterval(() => { if (typeof _almMoonPrepare === 'function') { clearInterval(t); _almMoonPrepare(); r(); } }, 50); })"
-        )
+        _prepare_moon(pg)
         pg.wait_for_function(
             "() => typeof _aeReady === 'function' && _aeReady()",
             timeout=60000,

@@ -153,6 +153,15 @@ def _wait_still(pg, sel):
     )
 
 
+def _assert_back_to(pg, key):
+    """The shell's arrow names where it returns to (its aria-label), which is what a person using a screen reader hears."""
+    pg.wait_for_function(
+        "(k) => document.getElementById('back-btn').getAttribute('aria-label') === t('back_to', { place: t(k) })",
+        arg=key,
+        timeout=10_000,
+    )
+
+
 def _wait_view(pg, target):
     pg.wait_for_function(
         "(t) => _aeIsOpen && _ae.preset === t",
@@ -168,9 +177,7 @@ def test_the_sun_and_the_moon_open_the_3d_view_on_themselves(browser, served):
         _settle(pg, DAY)
         _tap_body(pg, "sun")
         _wait_view(pg, "sun")
-        assert pg.evaluate(
-            "_aeBackLabel()"
-        ) == pg.evaluate("t('almanac')")
+        _assert_back_to(pg, 'almanac')
         # The view keeps the page's clock: it shows the sky's instant.
         assert abs(pg.evaluate("_aeDisplayMs()") - _ms(DAY)) < 60000
         pg.evaluate("_aeClose()")
@@ -282,9 +289,7 @@ def test_the_orrery_sun_opens_the_3d_view_on_the_sun(browser, served):
         )
         pg.touchscreen.tap(sun["x"], sun["y"])
         _wait_view(pg, "sun")
-        assert pg.evaluate(
-            "_aeBackLabel()"
-        ) == pg.evaluate("t('alm_solar_system')")
+        _assert_back_to(pg, 'alm_solar_system')
         assert not errors, errors
     finally:
         ctx.close()

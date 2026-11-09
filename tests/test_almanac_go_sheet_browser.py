@@ -155,6 +155,13 @@ def test_go_to_search_stands_on_the_keyboard_with_its_answers_in_view(
                 b["field"]["bottom"] <= b["vv"] + EDGE_PX
                 and b["field"]["top"] >= b["sheet"]["top"]
             ), b
+            assert pg.is_visible("#ae-go-groups"), b
+            last = pg.evaluate(
+                """() => { var rows = document.querySelectorAll('#ae-go-groups .ae-go-row'), r = rows[rows.length - 1];
+                r.scrollIntoView({ block: 'nearest' }); var a = r.getBoundingClientRect(), s = document.getElementById('ae-go').getBoundingClientRect();
+                return [a.top >= s.top - 1, a.bottom <= s.bottom + 1, a.bottom <= visualViewport.offsetTop + visualViewport.height + 1]; }"""
+            )
+            assert last == [True, True, True], ("the groups' last row cannot be scrolled into the sheet above the keyboard", last)
             # Put away with the field still focused: the foot comes back down (it stayed raised over a gone keyboard).
             pg.evaluate("_aeShowGo(false)")
             assert pg.evaluate("document.querySelector('.ae-bottom').style.bottom") == ""
