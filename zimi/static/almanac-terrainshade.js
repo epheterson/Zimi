@@ -8,7 +8,7 @@
 //
 // Pure maths on arrays (tests/test_almanac_terrain.cjs): no DOM, no WebGL.
 
-var AE_SHADE_LEVELS = [{ half: 6000, n: 192 }, { half: 150000, n: 192 }];   // metres either side of the viewer, cells a side
+var AE_SHADE_LEVELS = [{ half: 1500, n: 192 }, { half: 6000, n: 192 }, { half: 150000, n: 192 }];   // metres either side of the viewer, cells a side
 var AE_SHADE_START_M = 8, AE_SHADE_STEP = 0.12, AE_SHADE_STEP_MIN_M = 6, AE_SHADE_STEP_CELLS = 0.8;     // the march along the Sun: where it starts, the share of the distance a step is, its least
 var AE_SHADE_BIAS_M = 0.5, AE_SHADE_BIAS_PER_M = 0.002;                        // a ray this far under the ground is let through (the grid is not the mesh)
 var AE_SHADE_MIN_SUN_Z = 0.004;                                               // a Sun lower than this (the sine of its height) casts no shadow worth the march

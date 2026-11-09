@@ -4738,7 +4738,7 @@ var AE_STAND_AIRLESS_DAY_MU = [-0.05, 0.12], AE_STAND_AIRLESS_DAY_LIM = 0.5;   /
 var AE_STAND_MARS_TAU = 0.47;                  // the dust in Mars's air, optical depth straight up (red light); Lemmon et al. 2015 find 0.3 to 1 outside storms
 var AE_STAND_HAZE_VIS_KM = { venus: 28, titan: 18 };
 var AE_STAND_CHARON_KM = 19591;                  // Charon's circular orbit about Pluto (and its radius is in almanac-stand.js)
-var AE_STAND_SHADE_GRIDS = '±6000 · ±150000';    // the relief's shadow grids, half-widths in metres (almanac-terrainshade.js)   // how far one sees through the haze at the ground
+var AE_STAND_SHADE_GRIDS = '±1500 · ±6000 · ±150000';    // the relief's shadow grids, half-widths in metres (almanac-terrainshade.js)   // how far one sees through the haze at the ground
 var _aeStandLoading = null;
 function _aeStandable(key) { return AE_STAND_KEYS.indexOf(key) >= 0; }
 function _aeStandReady() {
