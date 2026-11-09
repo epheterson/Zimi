@@ -341,6 +341,7 @@ _RATE_LIMITED_API_PATHS = (
     "/zim-updates",
     "/places",
     "/places/suggest",
+    "/map-for",
     "/tube",
     "/tube/play",
     "/exchange",
@@ -3556,6 +3557,14 @@ class ZimHandler(BaseHTTPRequestHandler):
                 return self._json(
                     200, {"places": places, "elapsed": round(time.time() - t0, 4)}
                 )
+            elif parsed.path == "/map-for":
+                # The maps of a point: the installed ones that hold it, or the ones worth downloading.
+                from zimi import mapchoice
+
+                at = _srv.parse_latlng(f"{param('lat')},{param('lng')}")
+                if not at:
+                    return self._json(400, {"error": "missing ?lat= and ?lng= parameters"})
+                return self._json(200, mapchoice.answer(_srv.list_zims(), at[0], at[1]))
             elif parsed.path == "/map-home":
                 # Where a map opens when nobody has been on it yet.
                 zim = param("zim")
