@@ -35,11 +35,12 @@ var AM_END_HOLD_S = 4;
 var AM_THREE_ADDITIVE = 2;                                  // three's AdditiveBlending
 var AM_THREE_DOUBLE_SIDE = 2;
 var AM_STILL_KMS = [0.004, 0.06];                          // below the first speed (km/s) it points up, above the second along its path
+var AM_KM_RE = 1 / AE_EARTH_RADIUS_KM;                     // one kilometre, in Earth radii
 var AM_IDENTITY = [1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0];
 var AM_CSS_ID = 'am-css';
 
 // Missions in the order of the list. Names are in the interface's languages (alm_ms_<id>).
-var AM_LIST = ['apollo11'];
+var AM_LIST = ['apollo11', 'voyager1', 'voyager2'];
 
 var _amData = null, _amLoading = null;
 
@@ -116,8 +117,9 @@ function _amLegAt(veh, t) {
 }
 // The text of a phase or an event: the interface's own if it has one, else the data's English.
 function _amLabel(item) {
-  var s = typeof _aeT === 'function' && item.k ? _aeT(item.k) : item.k;
-  return !s || s === item.k ? item.en : s;
+  var vars = item.planet && typeof _tp === 'function' ? { planet: _tp(item.planet) } : undefined;
+  var s = typeof _aeT === 'function' && item.k ? _aeT(item.k, vars) : item.k;
+  return s && s !== item.k ? s : item.en;
 }
 
 // ── Where a vehicle is, in the scene ──
@@ -164,7 +166,7 @@ function _amVehicleAt(M, veh, t, sc) {
   if (!raw) return null;
   var pos = raw.pos;
   if (leg.prev) {   // a leg that begins off the end of the last one closes the gap
-    var gone = 1 - _amSmooth(0, 1, (t - leg.s[0][0]) / AM_SEAM_DECAY_S);
+    var gone = 1 - _amSmooth(0, 1, (t - leg.s[0][0]) / (leg.sd || AM_SEAM_DECAY_S));
     if (gone > 0) {
       var a = _amLegRaw(M, leg.prev, leg.prev.s[leg.prev.s.length - 1][0], sc), b = _amLegRaw(M, leg, leg.s[0][0], sc);
       if (a && b) pos = _aeAdd(pos, _aeScale(_aeSub(a.pos, b.pos), gone));
@@ -173,7 +175,14 @@ function _amVehicleAt(M, veh, t, sc) {
   var up = raw.up || _aeSub(pos, leg.ref === 'moon' ? sc.moon : [0, 0, 0]);
   up = _aeLen(up) < 1e-12 ? [0, 0, 1] : _aeNorm(up);
   var fwd = _aeLen(raw.vel) > 1e-12 ? _aeNorm(raw.vel) : up;
-  if (leg.att === 'retro') fwd = _aeScale(fwd, -1);
+  if (leg.att === 'retro') {
+    fwd = _aeScale(fwd, -1);
+    if (leg.turn) fwd = _aeRotateAbout(fwd, up, Math.PI * _amSmooth(leg.turn[0], leg.turn[1], t));   // turning round to point the engine the other way
+  }
+  if (leg.att === 'level') {   // a lander, a rover: standing, facing the way it moves over the ground
+    var hv = _aeSub(raw.vel, _aeScale(up, _aeDot(raw.vel, up)));
+    fwd = _aeLen(hv) > 1e-12 * 0 + 1e-14 ? _aeNorm(hv) : _aeNorm(_aeCross(up, [0, 0, 1]));
+  }
   // On the pad, and for the first seconds, nothing yet says which way it points: up.
   if (raw.km && leg.frame === 'ecef') { var go = _amSmooth(AM_STILL_KMS[0], AM_STILL_KMS[1], _aeLen(raw.km.v)); fwd = _aeNorm(_aeAdd(_aeScale(fwd, go), _aeScale(up, 1 - go))); }
   return { pos: pos, fwd: fwd, up: up, speed: raw.km ? _aeLen(raw.km.v) : 0, vehicle: veh, leg: leg, km: raw.km };
@@ -191,6 +200,30 @@ function _amBasis(st) {
 }
 function _amLocal(b, v) {   // a vehicle-frame vector (metres) into the scene (Earth radii)
   return [(b.x[0] * v[0] + b.y[0] * v[1] + b.z[0] * v[2]) * AM_MRE, (b.x[1] * v[0] + b.y[1] * v[1] + b.z[1] * v[2]) * AM_MRE, (b.x[2] * v[0] + b.y[2] * v[1] + b.z[2] * v[2]) * AM_MRE];
+}
+
+// A part's place in its vehicle's frame at time t: fixed, or along keyframes ({t, at, rx}: eased between).
+function _amPartPose(p, t) {
+  var k = p.anim;
+  if (!k || !k.length) return { at: p.at, rx: p.rx || 0 };
+  if (t <= k[0].t) return { at: k[0].at, rx: k[0].rx || 0 };
+  for (var i = 1; i < k.length; i++) {
+    if (t <= k[i].t) {
+      var u = _amSmooth(k[i - 1].t, k[i].t, t), a = k[i - 1].at, b = k[i].at;
+      return { at: [a[0] + (b[0] - a[0]) * u, a[1] + (b[1] - a[1]) * u, a[2] + (b[2] - a[2]) * u], rx: (k[i - 1].rx || 0) + ((k[i].rx || 0) - (k[i - 1].rx || 0)) * u };
+    }
+  }
+  var e = k[k.length - 1];
+  return { at: e.at, rx: e.rx || 0 };
+}
+// A vector turned about the vehicle's x axis by deg (y toward z), and a basis turned the same way.
+function _amRotX(v, deg) {
+  var c = Math.cos(deg * Math.PI / 180), s = Math.sin(deg * Math.PI / 180);
+  return [v[0], v[1] * c - v[2] * s, v[1] * s + v[2] * c];
+}
+function _amTurnX(b, deg) {
+  var c = Math.cos(deg * Math.PI / 180), s = Math.sin(deg * Math.PI / 180);
+  return { x: b.x, y: _aeAdd(_aeScale(b.y, c), _aeScale(b.z, s)), z: _aeSub(_aeScale(b.z, c), _aeScale(b.y, s)) };
 }
 
 // ── Loading ──
@@ -256,11 +289,13 @@ function _amNowS() { var s = _amState(); return s ? (_aeDisplayMs() - s.zeroMs) 
 function _aeMissionOpen(id) {
   if (!_ae || !_ae.gl) return;
   if (_ae.site) _aeSiteLeave(true);
+  if (typeof _aeTracksLoad === 'function') _aeTracksLoad();   // a probe's flight is drawn from its table
   _amLoad(function () {
     var m = _amData.missions[id];
     if (!m) return;
     if (_ae.mission) _amStop(true);
     m.models.forEach(function (k) { _aeCraftLoad(k); });
+    m.vehicles.forEach(function (v) { v.legs.forEach(function (l) { if (l.frame === 'probe' && AE_CRAFT_MODEL[l.key]) _aeCraftLoad(AE_CRAFT_MODEL[l.key]); }); });   // a probe's own model, drawn by the view itself
     var s = _ae.mission = {
       id: id, zeroMs: m.zeroMs, parts: {}, flames: {}, dot: null, speedIdx: 1, userCam: false, phaseIdx: -1,
       camAz: 0, camEl: 0.3, camDist: 100, camSet: false, shot: null, back: { ms: _aeDisplayMs(), rate: typeof _almRate === 'number' ? _almRate : 1, live: !_aeFocusSet() },
@@ -345,14 +380,18 @@ function _aeMissionDraw() {
       var live = st && (p.from == null || t >= p.from) && (p.to == null || t < p.to);
       if (!live) { if (I) I.root.visible = false; return; }
       if (!I) { I = _amPartMesh(S, p.m); if (!I) return; s.parts[key] = I; }
-      var b = _amBasis(st), at = [p.at[0] + I.data.mid[0] * I.data.metres, p.at[1] + I.data.mid[1] * I.data.metres, p.at[2] + I.data.mid[2] * I.data.metres];
+      var b = _amBasis(st), pa = _amPartPose(p, t), rot = pa.rx;
+      var mid = [I.data.mid[0] * I.data.metres, I.data.mid[1] * I.data.metres, I.data.mid[2] * I.data.metres];
+      if (rot) mid = _amRotX(mid, rot);
+      var at = [pa.at[0] + mid[0], pa.at[1] + mid[1], pa.at[2] + mid[2]];
       var o = _amLocal(b, at), pos = _aeAdd(st.pos, o);
+      var bp = rot ? _amTurnX(b, rot) : b;
       var span = Math.max(I.data.span * I.data.metres, 1) * AM_MRE, dist = _aeLen(_aeSub(pos, [cam.position.x, cam.position.y, cam.position.z]));
       var px = span / Math.max(dist, 1e-12) * _ae.h / 2 / Math.tan(_aeRad(cam.fov) / 2);
       var sh = _amSmooth(AM_MODEL_PX[0], AM_MODEL_PX[1], px);
       show = Math.max(show, sh);
       I.root.position.set(pos[0], pos[1], pos[2]);
-      var M = new S.THREE.Matrix4().makeBasis(new S.THREE.Vector3(b.x[0], b.x[1], b.x[2]), new S.THREE.Vector3(b.y[0], b.y[1], b.y[2]), new S.THREE.Vector3(b.z[0], b.z[1], b.z[2]));
+      var M = new S.THREE.Matrix4().makeBasis(new S.THREE.Vector3(bp.x[0], bp.x[1], bp.x[2]), new S.THREE.Vector3(bp.y[0], bp.y[1], bp.y[2]), new S.THREE.Vector3(bp.z[0], bp.z[1], bp.z[2]));
       I.root.quaternion.setFromRotationMatrix(M);
       I.root.visible = sh > 0;
       if (sh > 0) _aeCraftLight(I, pos, v.ref === 'moon' ? null : _aeNorm(_aeScale(pos, -1)), sh);
@@ -362,9 +401,9 @@ function _aeMissionDraw() {
       if (!on) { if (F) F.visible = false; return; }
       if (!F) F = s.flames[key] = _amFlameMesh(S);
       var b = _amBasis(st), vac = 1 + (f.vac || 0) * _amSmooth(0, 1, (st.km ? _aeLen(st.pos) - 1 : 1) * 6378 / (f.vacAlt || 120)), len = f.len * vac * (0.88 + 0.24 * Math.random());
-      var pos = _aeAdd(st.pos, _amLocal(b, f.at));
+      var pos = _aeAdd(st.pos, _amLocal(b, f.at)), bf = f.rx ? _amTurnX(b, f.rx) : b;
       F.position.set(pos[0], pos[1], pos[2]);
-      var Mf = new S.THREE.Matrix4().makeBasis(new S.THREE.Vector3(b.x[0], b.x[1], b.x[2]), new S.THREE.Vector3(b.y[0], b.y[1], b.y[2]), new S.THREE.Vector3(b.z[0], b.z[1], b.z[2]));
+      var Mf = new S.THREE.Matrix4().makeBasis(new S.THREE.Vector3(bf.x[0], bf.x[1], bf.x[2]), new S.THREE.Vector3(bf.y[0], bf.y[1], bf.y[2]), new S.THREE.Vector3(bf.z[0], bf.z[1], bf.z[2]));
       F.quaternion.setFromRotationMatrix(Mf);
       F.scale.set(f.r * AM_MRE, len * AM_MRE, f.r * AM_MRE);
       F.visible = true;
@@ -402,6 +441,7 @@ function _amCamera(m, s, st, ph, dt, sc) {
     s.cam.dist *= Math.pow(s.shot.dist / s.cam.dist, k);
   } else if (!s.userCam) { s.cam.az = s.shot.az; s.cam.el = s.shot.el; s.cam.dist = s.shot.dist; }
   var b = _amBasis(st), c = s.cam, ch = Math.cos(c.el);
+  if (shot.body) { _amBodyShot(s, st, shot, c); return; }
   // The shot turns about the vehicle's axis (az 0: from its up side, 90: from its right) and leans toward its tail by el.
   var off = [Math.sin(c.az) * ch * c.dist, -Math.sin(c.el) * c.dist, Math.cos(c.az) * ch * c.dist];
   var pos = _aeAdd(st.pos, _amLocal(b, off));
@@ -410,6 +450,19 @@ function _amCamera(m, s, st, ph, dt, sc) {
   up = _aeSub(up, _aeScale(look, _aeDot(up, look)));
   up = _aeLen(up) < 1e-9 ? b.z : _aeNorm(up);
   s.pose = { pos: pos, up: up, look: look, tp: focus, fov: AM_FOV_DEG, nearRe: Math.max(0.2 * AM_MRE, c.dist * AM_MRE * AM_NEAR_PER_FOCUS) };
+}
+// A shot of a probe against a body it is passing (shot.body: a planet's key; shot.d: metres, shot.mix: how far toward the body the
+// camera looks): from beyond the probe, the body behind it, turned about the line between them by az and lifted by el.
+function _amBodyShot(s, st, shot, c) {
+  var bp = _aeBodyPos(shot.body);
+  if (!bp) return;
+  var away = _aeNorm(_aeSub(st.pos, bp)), side = _aeCross(away, st.up);
+  side = _aeLen(side) < 1e-9 ? _aeCross(away, [0, 0, 1]) : _aeNorm(side);
+  var upv = _aeCross(side, away), d = c.dist * AM_MRE;
+  var off = _aeAdd(_aeAdd(_aeScale(away, Math.cos(c.el) * Math.cos(c.az) * d), _aeScale(side, Math.cos(c.el) * Math.sin(c.az) * d)), _aeScale(upv, Math.sin(c.el) * d));
+  var pos = _aeAdd(st.pos, off), focus = _aeAdd(st.pos, _aeScale(_aeSub(bp, st.pos), shot.mix == null ? 0.5 : shot.mix));
+  var look = _aeNorm(_aeSub(focus, pos));
+  s.pose = { pos: pos, up: upv, look: look, tp: focus, fov: AM_FOV_DEG, nearRe: Math.max(1e-9, d * AM_NEAR_PER_FOCUS) };
 }
 function _aeAngleDeltaRad(a, b) { return ((b - a + 3 * Math.PI) % (2 * Math.PI)) - Math.PI; }
 // The view's camera description in place of the orbit camera's (almanac-earth.js _aePlaceCamera).
@@ -582,28 +635,55 @@ function _amHudTick(m, s, st, t, now) {
   if (now - s.lastText < AM_TEXT_MS) return;
   s.lastText = now;
   var met = _aeById('am-met'); if (met) met.textContent = _amMet(t);
-  var set = function (id, txt) { var e = _aeById(id); if (e && e.lastChild && e.lastChild.textContent !== txt) e.lastChild.textContent = txt; };
-  if (st && st.km) {
-    var ph = m.phases[Math.max(0, s.phaseIdx)], ref = ph.ref || 'earth', alt, rng;
-    var p = st.km.p, sc = _ae.scene;
-    if (ref === 'moon') { var mp = _amTable(m.ref.moon, t); alt = _aeLen(_aeSub(p, mp.p)) - AE_MOON_RADIUS_KM; }
-    else alt = st.leg.frame === 'ecef' ? _aeLen(p) - _amEarthR(p) : _aeLen(p) - AE_EARTH_RADIUS_KM;
-    var speedRef = st.speed;
-    if (ref === 'moon' && st.leg.frame === 'eci') { var mv = _amTable(m.ref.moon, t).v; speedRef = _aeLen(_aeSub(st.km.v, mv)); }
-    var moon = _amTable(m.ref.moon, t).p;
-    rng = ref === 'moon' ? _aeLen(p) : _aeLen(_aeSub(p, moon));
-    if (st.leg.frame === 'mcmf') rng = _aeLen(_aeSub(_aeLen(p) > 0 ? p : p, [0, 0, 0])) * 0 + _amEarthDistKm(m, t, sc);
-    set('am-alt', _aeLenText(Math.max(0, alt), alt < 100 ? 1 : 0));
-    set('am-speed', _aeSpeedText(speedRef, speedRef < 1 ? 3 : 2));
-    set('am-range', _aeFarText(ref === 'moon' ? _amEarthDistKm(m, t, sc) : rng));
+  _amPaintProgress(m, t);
+  var rd = _amReadings(m, st, t, m.phases[Math.max(0, s.phaseIdx)]);
+  var set = function (id, txt) {
+    var e = _aeById(id);
+    if (!e) return;
+    e.hidden = txt === null;
+    if (txt !== null && e.lastChild && e.lastChild.textContent !== txt) e.lastChild.textContent = txt;
+  };
+  set('am-alt', rd.alt === null ? null : rd.altAu ? _aeAuText(rd.alt) : _aeLenText(Math.max(0, rd.alt), rd.alt < 100 ? 1 : 0));
+  set('am-speed', rd.speed === null ? null : _aeSpeedText(rd.speed, rd.speed < 1 ? 3 : 2));
+  set('am-range', rd.far === null ? null : _aeFarText(rd.far));
+}
+// The three figures of the picture: how high over the body the phase reads against, how fast, how far from home.
+var AM_AU_KM = 149597870.7, AM_AU_DAY_KMS = AM_AU_KM / 86400;
+function _amReadings(m, st, t, ph) {
+  var out = { alt: null, speed: null, far: null, altAu: false };
+  if (!st) return out;
+  if (st.leg.frame === 'probe') {   // a probe on its own table: its distance from the Sun, its speed, and how far the Earth is
+    var tr = _aeTracks && _aeTracks.tracks[st.leg.key], jd = _ae.scene.jd;
+    if (!tr) return out;
+    var h = _aeTrackAt(tr, jd), e = _ephBodyJ2000('Earth', jd), h2 = _aeTrackAt(tr, jd + 0.01), h1 = _aeTrackAt(tr, jd - 0.01);
+    if (!h) return out;
+    out.alt = _aeLen(h); out.altAu = true;
+    out.speed = h1 && h2 ? _aeLen(_aeSub(h2, h1)) / 0.02 * AM_AU_DAY_KMS : null;
+    out.far = _aeLen(_aeSub(h, e)) * AM_AU_KM;
+    return out;
   }
+  var km = st.km, p = km.p, ref = ph.ref || 'earth', fr = st.leg.frame, moon = _amTable(m.ref.moon, t);
+  if (fr === 'ecef') { out.alt = _aeLen(p) - _amEarthR(p); out.speed = _aeLen(km.v); out.far = _aeLen(moon.p); }
+  else if (fr === 'eci') {
+    var rel = ref === 'moon' ? _aeSub(p, moon.p) : p;
+    out.alt = _aeLen(rel) - (ref === 'moon' ? AE_MOON_RADIUS_KM : AE_EARTH_RADIUS_KM);
+    out.speed = _aeLen(ref === 'moon' ? _aeSub(km.v, moon.v) : km.v);
+    out.far = ref === 'moon' ? _aeLen(moon.p) : _aeLen(_aeSub(p, moon.p));
+  } else if (fr === 'mcmf') { out.alt = _aeLen(p) - AE_MOON_RADIUS_KM; out.speed = _aeLen(km.v); out.far = _aeLen(moon.p); }
+  else {   // a planet's: its radius from the view's own table
+    var b = _aePlanetBody(st.leg.body);
+    out.alt = _aeLen(p) - (b ? b.km : 0); out.speed = _aeLen(km.v);
+  }
+  if (ph.far === false) out.far = null;
+  if (ph.alt === false) out.alt = null;
+  return out;
 }
 function _amEarthR(p) { return AE_EARTH_RADIUS_KM * (1 - AE_EARTH_FLATTENING * Math.pow(p[2] / (_aeLen(p) || 1), 2)); }
 function _amEarthDistKm(m, t, sc) { return _aeLen(_amTable(m.ref.moon, t).p); }
 function _amPaintPhase(m, pi) {
   var ph = m.phases[pi];
   var n = _aeById('am-phase-name'); if (n) n.textContent = _amLabel(ph);
-  var sub = _aeById('am-phase-sub'); if (sub) sub.textContent = ph.sub ? _amLabel({ k: ph.sub, en: ph.subEn }) : '';
+  var sub = _aeById('am-phase-sub'); if (sub) sub.textContent = ph.dist ? _aeFmtDate(m.zeroMs + ph.at * 1000) + ' \u00b7 ' + _aeFarText(ph.dist) : '';
   var segs = document.querySelectorAll('#am-track .am-seg');
   for (var i = 0; i < segs.length; i++) segs[i].dataset.on = i === pi ? '1' : '0';
   var t0 = ph.t, t1 = _amPhaseEnd(m, pi), ev = _aeById('am-ev');

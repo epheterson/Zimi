@@ -4273,7 +4273,7 @@ var AE_SITE_FACTS = { solSeconds: 88775.244, marsSolDays: 1.0274912517, msdEpoch
 var AE_SITES_JS = ['/static/almanac-sites.js', '/static/almanac-sites-ground.js'];
 // Missions flown end to end (almanac-missions.js): fetched the first time one is asked for, never with the view. The
 // ids are in the order of the Go to list; their names are alm_ms_<id>.
-var AE_MISSIONS_JS = '/static/almanac-missions.js', AE_MISSION_IDS = ['apollo11'], AE_GO_MS = 'ms:', _aeMissionsLoading = false;
+var AE_MISSIONS_JS = '/static/almanac-missions.js', AE_MISSION_IDS = ['apollo11', 'voyager1', 'voyager2'], AE_GO_MS = 'ms:', _aeMissionsLoading = false;
 function _aeMissionStart(id) {
   if (typeof _aeMissionOpen === 'function') { _aeMissionOpen(id); return; }
   if (_aeMissionsLoading) return;
