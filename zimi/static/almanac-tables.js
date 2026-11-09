@@ -1967,7 +1967,7 @@ var TB_CONST_ROWS = {
       ['launch_mean_radius', AE_LAUNCH_REF.meanRadiusKm, 4, 'km', 'IUGG'],
       ['launch_checkout', AE_LAUNCH_REF.checkoutDays, 0, 'd', 'Zimi (assumed)'],
       ['launch_raise_days', AE_LAUNCH_REF.raiseTotalDays, 0, 'd', 'McDowell et al. 2020, Astrophysical Journal Letters 892 L6'],
-      ['launch_spread', AE_LAUNCH_REF.spreadKm, 1, 'km', 'Zimi (fitted)'],
+      ['launch_spread', AE_LAUNCH_REF.spreadKm, 1, 'km', 'Fitted to a news report of 6 May 2021 and Langbroek, SatTrackCam'],
       ['launch_release', AE_LAUNCH_REF.releaseGapDeg, 3, '°', 'Zimi'],
       ['launch_shells', Object.keys(AE_LAUNCH_REF.starlinkShells).filter(function (k) { return k !== 'other'; }).map(function (k) { return k + '° ' + AE_LAUNCH_REF.starlinkShells[k]; }).join(', '), 0, 'km', 'SpaceX regulatory filings']
     ];

@@ -177,7 +177,7 @@ const flight = S._lfAscent(SLC40);
     const c = (first[0] * last[0] + first[1] * last[1] + first[2] * last[2]) / Math.hypot.apply(null, first) / Math.hypot.apply(null, last);
     return Math.acos(Math.min(1, c)) * D;
   };
-  check(spread(hours(0.1)) < 1 && spread(hours(72)) > 8 && spread(hours(72)) < 30, 'the string is a point at release and some tens of degrees long after three days (' + spread(hours(72)).toFixed(0) + ' deg)');
+  check(spread(hours(0.1)) < 1 && spread(hours(72)) > 1 && spread(hours(72)) < 6, 'the string is a point at release and a few degrees long after three days (' + spread(hours(72)).toFixed(0) + ' deg)');
   // The plane of the batch is the inclination asked for.
   const p1 = dep.at(hours(5), 30), p2 = dep.at(hours(5.4), 30);
   const nrm = [p1[1] * p2[2] - p1[2] * p2[1], p1[2] * p2[0] - p1[0] * p2[2], p1[0] * p2[1] - p1[1] * p2[0]];

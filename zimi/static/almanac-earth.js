@@ -469,7 +469,7 @@ var AE_LAUNCH_REF = {
   typicalBurnS: { typical: 540, shuttle: 510, saturn: 700 },   // seconds from lift-off to the end of the last burn, for a vehicle with no profile of its own
   falcon: { maxQS: 72, mecoS: 151, sepS: 155, sesS: 162, fairingS: 167, entryBurnS: [409, 429], landBurnS: 22, landS: 527, secoS: 526 },   // Falcon 9 Starlink events, seconds from lift-off (SpaceX's timeline for Starlink 4-9, printed by Spaceflight Now, 2022-03-03)
   checkoutDays: 2, raiseTotalDays: 45,  // a Starlink batch is checked out for this long (assumed), and reaches its shell this many days after release (McDowell et al. 2020, ApJL 892 L6)
-  spreadKm: 2.5,                        // the half-range of the batch's differences in height: the string's length after a few days (fitted, not published)
+  spreadKm: 0.5,                        // the half-range of the batch's differences in height, which sets the string's length (a few degrees after 2 days). Fitted: KCRA's two-minute pass (not much more than one satellite's own) bounds it near 1 km; Langbroek's tight day-1 train and release speeds of tens of cm/s (da = 2 dv / n) put it near half a km
   releaseGapDeg: 0.005,                 // the step between neighbours at release (about half a kilometre)
   starlinkShells: { 53: 550, 43: 530, 70: 570, 97: 560, other: 550 },   // km, by inclination (SpaceX's regulatory filings)
   j2: 1.08262668e-3, earthRateRadS: 7.2921150e-5, meanRadiusKm: 6371.0088    // the Earth's bulge (Earth Gravitational Model 1996), its turning against the stars (IERS), the sphere the ascent and the look angles are laid on (IUGG)
