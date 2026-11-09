@@ -13,9 +13,7 @@
 // Shares almanac-earth.js's global scope (AE_EARTH_RADIUS_KM, AE_GM_EARTH, MS_PER_DAY).
 
 var LF_D2R = Math.PI / 180;
-var LF_EARTH_RATE_RAD_S = 7.2921150e-5;      // the Earth's turning relative to the stars (IERS)
-var LF_J2 = 1.08262668e-3;                   // the Earth's bulge (EGM96/WGS84)
-var LF_MEAN_RADIUS_KM = 6371.0088;           // the sphere the ascent track and the look angles are laid on
+var LF_EARTH_RATE_RAD_S = AE_LAUNCH_REF.earthRateRadS, LF_J2 = AE_LAUNCH_REF.j2, LF_MEAN_RADIUS_KM = AE_LAUNCH_REF.meanRadiusKm;
 var LF_SOUTH_SITE = /^Vandenberg$/;          // range safety lets nothing fly north from here
 var LF_NORTH_SITE = /^Plesetsk$/;            // and the polar launches from here fly north
 var LF_STEP_S = 1;                           // the ascent is sampled every second

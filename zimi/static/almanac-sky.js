@@ -2174,6 +2174,7 @@ function _skyPaintActors(ctx, s, ts) {
     }
   }
   if (typeof _aeSatsAllSky === 'function') _aeSatsAllSky(ctx, s);   // the all-satellites layer's passes and the GPS overhead (almanac-sats.js)
+  if (typeof _alSkyPaint === 'function') _alSkyPaint(ctx, s);   // a launch's rocket and the satellites it left (almanac-launches.js)
 }
 // Spawning: each timer adds one and sets the next; nothing while unseen.
 function _skySpawnPlane() { _skySpawn('plane'); }

@@ -470,8 +470,8 @@ var AE_LAUNCH_REF = {
   checkoutDays: 2, raiseKmPerDay: 4,    // a Starlink batch is checked out for this long, then raised this fast to its shell
   spreadKm: 2.5,                        // the half-range of the batch's differences in height: the string's length after a few days
   releaseGapDeg: 0.005,                 // the step between neighbours at release (about half a kilometre)
-  starlinkShells: { 53: 550, 43: 530, 70: 570, 97: 560, other: 550 },   // km, by inclination (SpaceX's FCC filings)
-  exactAgeDays: 7                       // today's elements propagated back to a date within this many days are drawn as they were; older dates are reconstructed
+  starlinkShells: { 53: 550, 43: 530, 70: 570, 97: 560, other: 550 },   // km, by inclination (SpaceX's regulatory filings)
+  j2: 1.08262668e-3, earthRateRadS: 7.2921150e-5, meanRadiusKm: 6371.0088    // the Earth's bulge (Earth Gravitational Model 1996), its turning against the stars (IERS), the sphere the ascent and the look angles are laid on (IUGG)
 };
 var AE_LOCATE_TIMEOUT_MS = 15000;
 var AE_GPS_COLOR = [0.55, 0.85, 1.0];
@@ -5981,6 +5981,7 @@ function _aeUpdate(ms) {
   _aeUpdateMoonPath(ms);
   _aeUpdateSats(ms, sc);
   if (typeof _asFrame === 'function') _asFrame(ms, sc);   // every active satellite (almanac-sats.js)
+  if (typeof _alFrame === 'function') _alFrame(ms, sc);   // a launch's ascent and the satellites it left (almanac-launches.js)
   // The planets and probes before the camera: a probe framed from tens of metres moves hundreds in a frame (Voyager
   // 17 km/s), so the camera is placed on where it is now, not where it was (their sizes on screen use the last frame's
   // camera, which is near enough).
