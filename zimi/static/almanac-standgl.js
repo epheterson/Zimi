@@ -142,7 +142,7 @@ var AE_ST_STARS_VERT = [
   '  float vis = d <= 0.0 ? 0.0 : f * f * (3.0 - 2.0 * f) * min(1.0, 0.12 * pow(10.0, 0.2 * d));',
   '  vCol = aColor; vA = vis;',
   '  gl_PointSize = max(1.0, (1.1 + 0.35 * clamp(d, 0.0, 6.0)) * uDpr * uStarScale);',
-  '  gl_Position = projectionMatrix * vec4(mat3(viewMatrix) * l * 10.0, 1.0);',
+  '  gl_Position = vis <= 0.0 ? vec4(2.0, 2.0, 2.0, 1.0) : projectionMatrix * vec4(mat3(viewMatrix) * l * 10.0, 1.0);',   // a star too faint to show is clipped, not drawn and discarded
   '}'
 ].join('\n');
 var AE_ST_STARS_FRAG = [
@@ -271,6 +271,7 @@ var AE_ST_GROUND_FRAG = [
   // Stones in three sizes, each a rounded lump of its own shape that is darker or paler than the ground: returns the height
   // (metres) and the brightness they change the ground by.
   'vec2 rocks(vec3 p, float foot) {',
+  '  if (uRock < 0.02) return vec2(0.0);',   // ground with next to no stones (the Earth's) skips the search
   '  float h = 0.0, shade = 0.0;',
   '  for (int k = 0; k < 3; k++) {',
   '    float s = k == 0 ? 0.13 : (k == 1 ? 0.5 : 1.9), w = 1.0 - smoothstep(0.3, 1.0, 2.5 * foot / s);',
