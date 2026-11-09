@@ -114,6 +114,19 @@ def test_the_shelf_writes_the_servers_day_into_every_daily_whatever_the_zone(
     )
 
 
+# The tableau solitaires after Klondike: each deals from the day's seed like Klondike and FreeCell.
+VARIANT_DAILIES = (
+    "yukon",
+    "fortythieves",
+    "canfield",
+    "scorpion",
+    "acesup",
+    "accordion",
+    "calculation",
+    "beleaguered",
+    "eightoff",
+    "montecarlo",
+)
 SUDOKU = "() => document.getElementById('su-board').innerText"
 CARDS = """() => Array.from(document.querySelectorAll('.zc-card[data-id]')).map(e => {
   const r = e.getBoundingClientRect();
@@ -141,6 +154,16 @@ TATHAM = """() => { const cw = Module.cwrap; const p = cw('get_save_file','numbe
             "document.querySelectorAll('.zc-card[data-id]').length === 104",
             CARDS,
         ),
+    ]
+    + [
+        (
+            name + ".html",
+            "document.querySelectorAll('.zc-card[data-id]').length >= 20",
+            CARDS,
+        )
+        for name in VARIANT_DAILIES
+    ]
+    + [
         (
             "puzzles/loopy.html",
             "typeof command === 'function' && document.getElementById('puzzle').style.display !== 'none'",
