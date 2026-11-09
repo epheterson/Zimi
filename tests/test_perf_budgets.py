@@ -166,6 +166,9 @@ class Counter:
     def kb(self):
         return sum(self.by.values()) / KB
 
+    def top(self, n=8):
+        return sorted(((u, round(b / KB)) for u, b in self.by.items()), key=lambda r: -r[1])[:n]
+
     def lazy_seen(self):
         return sorted(u for u in self.by if u.startswith(LAZY_PREFIXES))
 
@@ -200,18 +203,15 @@ def phone(served):
             2500
         )  # manage.js comes once Home is quiet: it is part of the cost
         pg.counter = counter
-        pg.home = (counter.requests, counter.kb, counter.lazy_seen())
+        pg.home = (counter.requests, counter.kb, counter.lazy_seen(), counter.top())
         yield pg
         br.close()
 
 
 def test_a_cold_home_stays_under_its_request_and_byte_budget(phone):
-    requests, kb, lazy = phone.home
-    assert requests <= HOME_MAX_REQUESTS, "%d requests, budget %d" % (
-        requests,
-        HOME_MAX_REQUESTS,
-    )
-    assert kb <= HOME_MAX_KB, "%.0f KB, budget %d" % (kb, HOME_MAX_KB)
+    requests, kb, lazy, top = phone.home
+    assert requests <= HOME_MAX_REQUESTS, "%d requests, budget %d: %s" % (requests, HOME_MAX_REQUESTS, top)
+    assert kb <= HOME_MAX_KB, "%.0f KB, budget %d: %s" % (kb, HOME_MAX_KB, top)
     assert lazy == [], "fetched on Home though they belong to the 3D view: %s" % lazy
 
 
