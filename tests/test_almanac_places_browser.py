@@ -200,7 +200,7 @@ def test_go_to_a_town_flies_over_it_and_its_card_previews_its_article(library):
             assert "France" in rows[0] and "Texas" in rows[1], rows
             # The groups give way while something is typed.
             assert pg.evaluate("document.getElementById('ae-go-groups').hidden")
-            pg.click("#ae-go-found .ae-go-row:nth-child(1)")
+            pg.click("#ae-go-found .ae-go-item:nth-child(1) .ae-go-row")
             _landed(pg)
             assert _camera_off_deg(pg, *PARIS) < MAX_OFF_DEG
             assert pg.evaluate("_ae.target") == "earth"
@@ -228,7 +228,7 @@ def test_go_to_a_town_flies_over_it_and_its_card_previews_its_article(library):
                 "() => document.querySelectorAll('#ae-go-found .ae-go-row').length >= 2",
                 timeout=30_000,
             )
-            pg.click("#ae-go-found .ae-go-row:nth-child(2)")
+            pg.click("#ae-go-found .ae-go-item:nth-child(2) .ae-go-row")
             _landed(pg)
             assert _camera_off_deg(pg, *TEXAS) < MAX_OFF_DEG
             pg.wait_for_function(

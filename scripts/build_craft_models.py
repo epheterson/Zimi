@@ -6,30 +6,25 @@ Every model is from NASA 3D Resources (github.com/nasa/NASA-3D-Resources; its RE
 without copyright"), each page's credit line recorded in CRAFT below and in zimi/static/earth/SOURCES.txt. --src is a
 folder holding the downloaded files under their own names (else they are fetched). Build-time needs: numpy, DracoPy
 (the files are Draco-compressed), fast-simplification and Pillow (a textured part takes its texture's mean colour, so a
-logo printed on a texture never reaches the model).
+logo printed on a texture never reaches the stock model; the Almanac HD craft keep their textures,
+scripts/build_craft_hd.py).
 
-The ISS keeps its own format (iss-v1.bin, "ZISS": five shading classes chosen by material, the main arrays turning
-about the truss; see _iss below). Every other craft is "ZCRF": its materials' colours as a small palette, each part
-simplified on its own share of the triangles so panels keep their edges, scaled to metres from one known size, with
-the direction that points (the high-gain antenna's boresight, Parker's heat shield, Webb's sunshield) found from the
-geometry and stored, so the view turns that axis toward the Earth or the Sun.
-
-ZCRF, little-endian: 4 bytes "ZCRF", uint32 version 1, float32 metres per unit, float32 the box (min xyz, max xyz,
-in units), float32 the pointing axis (xyz, unit), float32 a second axis across it (xyz, unit: the craft's long
-dimension, held in the ecliptic), uint32 palette entries, per entry float32 r, g, b, specular strength, sharpness,
-uint32 vertices, uint32 triangles, then per vertex int16 x, y, z quantized to the box, uint8 palette entry, uint8 pad,
-then uint16 (or uint32 past 65,535 vertices) indices, the triangles of each entry together.
+Every craft is "ZCR2" (scripts/craftmesh.py has the layout): its materials as a palette of up to 12 (colour, roughness,
+metalness: gold foil, silver blanket, solar cell, aluminium, paint), each palette entry's part simplified on its own
+share of the triangles so panels keep their edges, then given smooth normals with creases (a cylinder reads round, a
+box stays a box), scaled to metres from one known size, with the direction that points (the high-gain antenna's
+boresight, Parker's heat shield, Webb's sunshield) found from the geometry and stored, so the view turns that axis
+toward the Earth or the Sun. The ISS has five classes by material, its main arrays turning about the truss (see _iss).
 """
 
 import argparse
-import io
-import json
 import os
-import struct
 import urllib.parse
 import urllib.request
 
 import numpy as np
+
+import craftmesh as cm
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 EARTH = os.path.join(ROOT, "zimi", "static", "earth")
@@ -48,155 +43,83 @@ CRAFT = {
     "voyager": (
         "Voyager Probe (A)/Voyager Probe (A).glb",
         "NASA/Christopher R. Meaney",
-        12000,
+        10000,
         ("part", "VoyagerDish", 3.66),
         ("part", "VoyagerDish"),
     ),
     "pioneer": (
         "Pioneer 10/Pioneer 10.glb",
         "NASA/JPL/Eyes on the Solar System",
-        12000,
+        7000,
         ("part", "dish_AO", 2.74),
         ("part", "dish_AO"),
     ),
     "juno": (
-        "Juno (B)/Juno (B).glb",
-        "NASA 3D Resources (no individual credit listed)",
-        12000,
-        ("span", 20.1),
-        ("part", "JUNO-solar-face"),  # its spin axis: the arrays' normal, toward the dish
+        "Juno (A)/Juno (A).glb",
+        "NASA/JPL-Caltech",
+        10000,
+        ("part", "solar_panels", 20.1),  # the arrays' reach across their spin axis
+        ("part", "foil_ant"),  # the high-gain dish, on the spin axis
     ),
     "parker": (
         "Parker Solar Probe/Parker Solar Probe.glb",
         "NASA/Matthew J. Garcia",
-        12000,
+        8000,
         ("part", "black matte", 2.3),  # the heat shield's face
         ("part", "black matte"),
     ),
     "webb": (
-        "James Webb Space Telescope (B)/James Webb Space Telescope (B).glb",
+        "James Webb Space Telescope (A)/James Webb Space Telescope (A).glb",
         "NASA/Christopher R. Meaney",
         14000,
-        ("span", 21.2),
-        ("part", "JWST-FoilLayer1"),
+        ("part", "shld_silv1", 21.2),  # the sunshield's long side
+        ("part", "shld_silv1"),
     ),
     "galileo": (
         "Galileo/Galileo.glb",
         "NASA/JPL/Solar System Simulator",
-        10000,
+        8000,
         ("part", "ribs:gold_mesh", 4.8),
         ("part", "ribs:gold_mesh"),
     ),
     "cassini": (
-        "Cassini-Huygens (B)/Cassini-Huygens (B).glb",
+        "Cassini-Huygens (A)/Cassini-Huygens (A).glb",
         "NASA/JPL/Solar System Simulator",
-        12000,
-        ("span", 6.8),
-        ("long",),
+        10000,
+        ("part", "dish_AO", 4.0),  # the high-gain antenna's diameter
+        ("part", "dish_AO"),
     ),
 }
-MAX_PALETTE = 8
+MAX_PALETTE = 12  # the viewer's AE_CRAFT_PAL
 # Where a source colour misleads (Galileo's "bus:black" is blue in the file; Parker's heat shield is drawn black but
-# its sunward face is white alumina), the real one: craft key -> {material substring: rgb}.
+# its sunward face is white alumina), the real one (linear): craft key -> {material substring: rgb}.
 RECOLOUR = {
-    "galileo": {"bus:black": (0.09, 0.09, 0.1)},
-    "parker": {"black matte": (0.9, 0.9, 0.88)},
+    "galileo": {"bus:black": (0.01, 0.01, 0.012)},
+    "parker": {"black matte": (0.7, 0.7, 0.66)},
 }
-SHINY = ("gold", "silver", "foil", "solar", "mirror", "bronze", "krinkle")
-LOOK_SHINY, LOOK_MATTE = (1.1, 60.0), (0.2, 16.0)
-
-
-def _mat4(n):
-    if "matrix" in n:
-        return np.array(n["matrix"], dtype=np.float64).reshape(4, 4).T
-    x, y, z, w = n.get("rotation", [0, 0, 0, 1])
-    r = np.array(
-        [
-            [1 - 2 * (y * y + z * z), 2 * (x * y - z * w), 2 * (x * z + y * w)],
-            [2 * (x * y + z * w), 1 - 2 * (x * x + z * z), 2 * (y * z - x * w)],
-            [2 * (x * z - y * w), 2 * (y * z + x * w), 1 - 2 * (x * x + y * y)],
-        ]
-    )
-    m = np.eye(4)
-    m[:3, :3] = r * np.array(n.get("scale", [1, 1, 1]))
-    m[:3, 3] = n.get("translation", [0, 0, 0])
-    return m
-
-
-def _glb(glb):
-    (cl,) = struct.unpack("<I", glb[12:16])
-    j = json.loads(glb[20 : 20 + cl])
-    off = 20 + cl
-    (bl,) = struct.unpack("<I", glb[off : off + 4])
-    return j, glb[off + 8 : off + 8 + bl]
-
-
-def parts(glb):
-    """[(material index, vertices in the scene's frame, triangles)] for every Draco primitive."""
-    import DracoPy
-
-    j, blob = _glb(glb)
-    out = []
-
-    def walk(i, m):
-        n = j["nodes"][i]
-        m = m @ _mat4(n)
-        for p in j["meshes"][n["mesh"]]["primitives"] if "mesh" in n else []:
-            bv = j["bufferViews"][
-                p["extensions"]["KHR_draco_mesh_compression"]["bufferView"]
-            ]
-            o = bv.get("byteOffset", 0)
-            d = DracoPy.decode(blob[o : o + bv["byteLength"]])
-            v = np.asarray(d.points, dtype=np.float64)
-            v = (np.c_[v, np.ones(len(v))] @ m.T)[:, :3]
-            out.append((p.get("material", 0), v, np.asarray(d.faces).reshape(-1, 3)))
-        for c in n.get("children", []):
-            walk(c, m)
-
-    for r in j["scenes"][0]["nodes"]:
-        walk(r, np.eye(4))
-    return j, blob, out
-
-
-def _texture_mean(j, blob, tex):
-    """A texture's mean colour (linear-ish 0..1), or white when it cannot be read."""
-    from PIL import Image
-
-    t = j["textures"][tex["index"]]
-    src = (t.get("extensions", {}).get("EXT_texture_webp") or {}).get(
-        "source", t.get("source")
-    )
-    try:
-        bv = j["bufferViews"][j["images"][src]["bufferView"]]
-        o = bv.get("byteOffset", 0)
-        im = (
-            Image.open(io.BytesIO(blob[o : o + bv["byteLength"]]))
-            .convert("RGB")
-            .resize((32, 32))
-        )
-        return np.asarray(im, dtype=np.float64).reshape(-1, 3).mean(0) / 255.0
-    except Exception:
-        return np.ones(3)
+# Parts that stay whole (their triangles are what the craft is known by: Webb's gold mirror segments): key -> material substrings.
+KEEP_WHOLE = {"webb": ("mirror_blinn", "omnimirror")}
+SIMPLIFY_PASSES = (4, 8, 12)  # fast_simplification's aggressiveness (its default is 7): gentler first keeps rims and edges
+WELD_STEPS = 1e5  # vertices closer than the model's span over this are one
 
 
 def material_looks(j, blob, recolour=None):
-    """Per material: (rgb, specular strength, sharpness), the texture (if any) folded into its colour."""
+    """Per material: (rgb linear, roughness, metalness) by its name and colour, a texture folded into its mean."""
     out = []
     for m in j.get("materials", []):
         pbr = m.get("pbrMetallicRoughness", {})
         rgb = np.array(pbr.get("baseColorFactor", [1, 1, 1, 1])[:3], dtype=np.float64)
         if "baseColorTexture" in pbr:
-            rgb = rgb * _texture_mean(j, blob, pbr["baseColorTexture"])
-        name = m.get("name", "").lower()
+            rgb = rgb * cm.texture_mean(j, blob, pbr["baseColorTexture"])
+        name = m.get("name", "")
         for sub, real in (recolour or {}).items():
-            if sub.lower() in name:
+            if sub.lower() in name.lower():
                 rgb = np.array(real, dtype=np.float64)
-        look = (
-            LOOK_SHINY
-            if any(s in name for s in SHINY) or pbr.get("metallicFactor", 0) > 0.5
-            else LOOK_MATTE
+        out.append(
+            cm.look_of(
+                name, rgb, pbr.get("roughnessFactor"), pbr.get("metallicFactor", 0.0)
+            )
         )
-        out.append((rgb, look[0], look[1]))
     return out
 
 
@@ -209,9 +132,11 @@ def palette(looks, weights):
         return (np.array([looks[i][0] for i in g]) * w[:, None]).sum(0) / w.sum()
 
     def close(a, b):
+        la, lb = looks[a[0]], looks[b[0]]
         return (
-            looks[a[0]][1] == looks[b[0]][1]
-            and np.linalg.norm(mean(a) - mean(b)) < 0.08
+            abs(la[1] - lb[1]) < 0.12
+            and abs(la[2] - lb[2]) < 0.25
+            and np.linalg.norm(mean(a) - mean(b)) < 0.06
         )
 
     merged = True
@@ -236,7 +161,8 @@ def palette(looks, weights):
     for k, g in enumerate(groups):
         for i in g:
             entry_of[i] = k
-        entries.append((mean(g), looks[g[0]][1], looks[g[0]][2]))
+        heavy = max(g, key=lambda i: weights[i])
+        entries.append((mean(g), looks[heavy][1], looks[heavy][2], 0, -1, -1, -1))
     return entry_of, entries
 
 
@@ -264,17 +190,58 @@ def aim_axis(rule, v_all, by_mat, names):
     return a if np.dot(c - rest.mean(0), a) >= 0 else -a
 
 
-def craft(glb, tris, size, aim, recolour=None):
+def clustered(v, f, want, steps=14):
+    """Vertex clustering to about `want` triangles: points on a grid merged to their mean, the cell found by bisection.
+    Coarser than the quadric but it has no boundary to keep, so a sheet of loose layers (Webb's sunshield) comes down."""
+    lo, hi = v.min(0), v.max(0)
+    a, b = np.ptp(v, 0).max() / 4000.0, np.ptp(v, 0).max() / 4.0
+    best = (v, f)
+    for _ in range(steps):
+        cell = np.sqrt(a * b)
+        key = np.floor((v - lo) / cell).astype(np.int64)
+        _, inv = np.unique(key, axis=0, return_inverse=True)
+        inv = inv.reshape(-1)
+        n = inv.max() + 1
+        sums = np.zeros((n, 3))
+        np.add.at(sums, inv, v)
+        v2 = sums / np.bincount(inv, minlength=n)[:, None]
+        f2 = inv[f]
+        f2 = f2[(f2[:, 0] != f2[:, 1]) & (f2[:, 1] != f2[:, 2]) & (f2[:, 0] != f2[:, 2])]
+        if len(f2) > want:
+            a = cell
+        else:
+            b = cell
+            best = (v2, f2)
+    return best
+
+
+def simplified(v, f, want, nd):
+    """A part welded and quadric-simplified to about `want` triangles: gently first (it keeps rims and edges), then
+    harder for what that leaves above the budget (a sheet with a boundary, or a part of many loose pieces, does not
+    collapse in one go), and clustered if it still will not."""
     import fast_simplification
 
-    j, blob, ps = parts(glb)
+    v, f = cm.weld(v, f, nd)
+    for agg in SIMPLIFY_PASSES:
+        if len(f) <= want * 1.1:
+            break
+        v, f = fast_simplification.simplify(
+            v.astype(np.float32), f.astype(np.int32), target_reduction=1 - want / len(f), agg=agg
+        )
+    if len(f) > want * 1.5:
+        v, f = clustered(np.asarray(v, dtype=np.float64), np.asarray(f), want)
+    return np.asarray(v, dtype=np.float64), np.asarray(f, dtype=np.int64)
+
+
+def craft(glb, tris, size, aim, recolour=None, keep=()):
+    j, blob, ps = cm.read_parts(glb)
     names = [m.get("name", "") for m in j.get("materials", [])]
     looks = material_looks(j, blob, recolour)
     by_mat, faces_of = {}, {}
-    for mi, v, f in ps:
-        vs, fs = by_mat.setdefault(mi, []), faces_of.setdefault(mi, [])
-        fs.append(f + sum(len(a) for a in vs))
-        vs.append(v)
+    for p in ps:
+        vs, fs = by_mat.setdefault(p["mat"], []), faces_of.setdefault(p["mat"], [])
+        fs.append(p["faces"] + sum(len(a) for a in vs))
+        vs.append(p["pos"])
     by_mat = {k: np.vstack(v) for k, v in by_mat.items()}
     faces_of = {k: np.vstack(f) for k, f in faces_of.items()}
     v_all = np.vstack(list(by_mat.values()))
@@ -294,51 +261,51 @@ def craft(glb, tris, size, aim, recolour=None):
         p = pts - np.outer(pts @ a, a)
         units = max(np.ptp(p @ across), np.ptp(p @ np.cross(a, across)))
     metres = size[-1] / units
+    nd = max(3, int(round(np.log10(WELD_STEPS / max(np.ptp(v_all, 0))))))
     weights = {i: len(f) for i, f in faces_of.items()}
     entry_of, entries = palette(looks, [weights.get(i, 0) for i in range(len(looks))])
-    total = sum(weights.values())
-    verts, faces, cls = [], [], []
+    whole = {i for i in by_mat if any(w.lower() in names[i].lower() for w in keep)}
+    whole_tris = sum(weights[i] for i in whole)
+    total = max(sum(weights.values()) - whole_tris, 1)
+    pool = max(tris - whole_tris, tris // 4)
+    verts, faces, norms, cls = [], [], [], []
+    kept = []
     for k in range(len(entries)):
         mats = [i for i in by_mat if entry_of.get(i, 0) == k]
         if not mats:
             continue
-        vs, fs = [], []
-        for i in mats:
-            fs.append(faces_of[i] + sum(len(x) for x in vs))
-            vs.append(by_mat[i])
-        v = np.vstack(vs).astype(np.float32)
-        f = np.vstack(fs).astype(np.int32)
-        v, inv = np.unique(v.round(5), axis=0, return_inverse=True)
-        f = inv.reshape(-1)[f]
-        f = f[(f[:, 0] != f[:, 1]) & (f[:, 1] != f[:, 2]) & (f[:, 0] != f[:, 2])]
-        want = max(48, int(tris * len(f) / max(total, 1)))
-        if len(f) > want:
-            v, f = fast_simplification.simplify(
-                v, f, target_reduction=1 - want / len(f)
-            )
-        faces.append(f + sum(len(x) for x in verts))
-        verts.append(v)
-        cls.append(np.full(len(v), k, dtype=np.uint8))
-    v = np.vstack(verts).astype(np.float64)
-    f = np.vstack(faces)
-    c = np.concatenate(cls)
+        parts = []
+        for group, whole_group in (([i for i in mats if i not in whole], False), ([i for i in mats if i in whole], True)):
+            if not group:
+                continue
+            vs, fs = [], []
+            for i in group:
+                fs.append(faces_of[i] + sum(len(x) for x in vs))
+                vs.append(by_mat[i])
+            v, f = np.vstack(vs), np.vstack(fs)
+            if whole_group:
+                v, f = cm.weld(v, f, nd)
+            else:
+                v, f = simplified(v, f, max(48, int(pool * len(f) / total)), nd)
+            parts.append(cm.creased(v, f))
+        for v, f, n in parts:
+            faces.append(f + sum(len(x) for x in verts))
+            verts.append(v)
+            norms.append(n)
+            cls.append(np.full(len(v), len(kept), dtype=np.uint8))
+        kept.append(entries[k])
+    v, f, n, c = (
+        np.vstack(verts),
+        np.vstack(faces),
+        np.vstack(norms),
+        np.concatenate(cls),
+    )
     lo, hi = v.min(0), v.max(0)
-    q = np.round((v - lo) / np.maximum(hi - lo, 1e-9) * 65534 - 32767).astype(np.int16)
-    head = b"ZCRF" + struct.pack(
-        "<If6f3f3fI", 1, metres, *lo, *hi, *a, *across, len(entries)
-    )
-    for rgb, spec, sharp in entries:
-        head += struct.pack("<5f", *np.clip(rgb, 0, 1), spec, sharp)
-    head += struct.pack("<II", len(v), len(f))
-    per = np.zeros(len(v), dtype=[("p", "<i2", 3), ("c", "u1"), ("pad", "u1")])
-    per["p"] = q
-    per["c"] = c
-    idx = f.astype("<u2" if len(v) <= 65535 else "<u4")
     print(
-        "  %d triangles, %d palette entries, %.2f m across"
-        % (len(f), len(entries), max(hi - lo) * metres)
+        "  %d triangles, %d vertices, %d palette entries, %.2f m across"
+        % (len(f), len(v), len(kept), max(hi - lo) * metres)
     )
-    return head + per.tobytes() + idx.tobytes()
+    return cm.pack(metres, lo, hi, a, across, kept, v, n, c, f)
 
 
 # ── The ISS ──
@@ -354,57 +321,82 @@ ISS_CLASS_OF = {
     "anisotropic1SG.001": TRUSS,
 }
 ISS_SHARE = {STRUCTURE: 0.5, TRUSS: 0.3, ARRAY: 0.08, RADIATOR: 0.06, ARRAY_FIXED: 0.06}
+# (rgb linear, roughness, metalness): module shell, truss, cell side of the arrays, radiator panels, fixed arrays.
+ISS_LOOK = [
+    ((0.62, 0.61, 0.58), 0.5, 0.15),
+    ((0.42, 0.42, 0.41), 0.4, 0.7),
+    (cm.SOLAR_BLUE, 0.2, 0.4),
+    ((0.8, 0.8, 0.82), 0.55, 0.0),
+    (cm.SOLAR_BLUE, 0.2, 0.4),
+]
 ISS_STRAY_Y = (
     40.0  # seven small cylinders parked far off the station in the source file
 )
 
 
-def _iss(glb, tris=36000):
-    import fast_simplification
-
-    j, _blob, ps = parts(glb)
+def _iss(glb, tris=26000):
+    j, _blob, ps = cm.read_parts(glb)
     by = {}
-    for mi, v, f in ps:
-        if v[:, 1].min() > ISS_STRAY_Y:
+    for p in ps:
+        if p["pos"][:, 1].min() > ISS_STRAY_Y:
             continue
-        k = ISS_CLASS_OF.get(j["materials"][mi]["name"], STRUCTURE)
+        k = ISS_CLASS_OF.get(j["materials"][p["mat"]]["name"], STRUCTURE)
         vs, fs = by.setdefault(k, ([], []))
-        fs.append(f + sum(len(a) for a in vs))
-        vs.append(v)
-    verts, faces, cls = [], [], []
+        fs.append(p["faces"] + sum(len(a) for a in vs))
+        vs.append(p["pos"])
+    span = max(np.ptp(np.vstack([x for k in by for x in by[k][0]]), 0))
+    nd = max(3, int(round(np.log10(WELD_STEPS / span))))
+    verts, faces, norms, cls = [], [], [], []
     for k in sorted(by):
-        v = np.vstack(by[k][0]).astype(np.float32)
-        f = np.vstack(by[k][1]).astype(np.int32)
-        v, inv = np.unique(v.round(4), axis=0, return_inverse=True)
-        f = inv.reshape(-1)[f]
-        f = f[(f[:, 0] != f[:, 1]) & (f[:, 1] != f[:, 2]) & (f[:, 0] != f[:, 2])]
-        want = max(64, int(tris * ISS_SHARE[k]))
-        if len(f) > want:
-            v, f = fast_simplification.simplify(
-                v, f, target_reduction=1 - want / len(f)
-            )
+        v, f = simplified(
+            np.vstack(by[k][0]),
+            np.vstack(by[k][1]),
+            max(64, int(tris * ISS_SHARE[k])),
+            nd,
+        )
+        v, f, n = cm.creased(v, f)
         faces.append(f + sum(len(a) for a in verts))
         verts.append(v)
+        norms.append(n)
         cls.append(np.full(len(v), k, dtype=np.uint8))
-    v = np.vstack(verts).astype(np.float64)
-    f = np.vstack(faces)
-    c = np.concatenate(cls)
+    v, f, n, c = (
+        np.vstack(verts),
+        np.vstack(faces),
+        np.vstack(norms),
+        np.concatenate(cls),
+    )
     lo, hi = v.min(0), v.max(0)
-    q = np.round((v - lo) / (hi - lo) * 65534 - 32767).astype(np.int16)
     arr = v[c == ARRAY]
     axis = (
         (arr[:, 0].min() + arr[:, 0].max()) / 2,
         (arr[:, 1].min() + arr[:, 1].max()) / 2,
     )
     metres = ISS_SPAN_M / (hi[2] - lo[2])
-    head = b"ZISS" + struct.pack(
-        "<If6f2fII", 1, metres, *lo, *hi, *axis, len(v), len(f)
+    entries = [
+        (rgb, rough, metal, cm.MAT_DOUBLE_SIDED, -1, -1, -1)
+        for rgb, rough, metal in ISS_LOOK
+    ]
+    print("  %d triangles, %d vertices" % (len(f), len(v)))
+    return cm.pack(
+        metres,
+        lo,
+        hi,
+        (0, 0, 0),
+        (0, 0, 0),
+        entries,
+        v,
+        n,
+        c,
+        f,
+        turn=axis,
+        turn_class=ARRAY,
     )
-    per = np.zeros(len(v), dtype=[("p", "<i2", 3), ("c", "u1"), ("pad", "u1")])
-    per["p"] = q
-    per["c"] = c
-    idx = f.astype("<u2" if len(v) <= 65535 else "<u4")
-    return head + per.tobytes() + idx.tobytes()
+
+
+_glb, _mat4 = (
+    cm.split_glb,
+    cm._mat4,
+)  # the site models' builder (build_site_models.py) reads glTF through these
 
 
 def _fetch(url, src, name):
@@ -424,18 +416,23 @@ def main():
     ap.add_argument(
         "--src", help="a folder with the downloaded files under their own names"
     )
+    ap.add_argument(
+        "--out", default=EARTH, help="where the files go (default: the static folder)"
+    )
     a = ap.parse_args()
     keys = a.only.split(",") if a.only else ["iss", *CRAFT]
     for key in keys:
         print(key)
         if key == "iss":
-            data = _iss(_fetch(ISS_URL, a.src, "ISS_B.glb"))
-            out = os.path.join(EARTH, "iss-v1.bin")
+            data = _iss(
+                _fetch(ISS_URL, a.src, "International Space Station (ISS) (B).glb")
+            )
+            out = os.path.join(a.out, "iss-v1.bin")
         else:
             path, _credit, tris, size, aim = CRAFT[key]
             glb = _fetch(REPO + urllib.parse.quote(path), a.src, os.path.basename(path))
-            data = craft(glb, tris, size, aim, RECOLOUR.get(key))
-            out = os.path.join(EARTH, "craft-%s-v1.bin" % key)
+            data = craft(glb, tris, size, aim, RECOLOUR.get(key), KEEP_WHOLE.get(key, ()))
+            out = os.path.join(a.out, "craft-%s-v1.bin" % key)
         with open(out, "wb") as fh:
             fh.write(data)
         print("  %s: %d bytes" % (os.path.relpath(out, ROOT), len(data)))

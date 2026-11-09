@@ -1329,7 +1329,7 @@ def test_every_probe_model_is_small_and_knows_where_it_points():
         raw = open(os.path.join(earth, "craft-%s-v1.bin" % model), "rb").read()
         assert len(gzip.compress(raw, 9)) < 400_000, model
         head = struct.unpack("<4sIf6f3f3fI", raw[:64])
-        assert head[0] == b"ZCRF" and 1 <= head[15] <= 8, (model, head[0], head[15])
+        assert head[0] == b"ZCR2" and 1 <= head[15] <= 12, (model, head[0], head[15])
         aim, across = head[9:12], head[12:15]
         assert (
             abs(math.hypot(*aim) - 1) < 1e-3 and abs(math.hypot(*across) - 1) < 1e-3
