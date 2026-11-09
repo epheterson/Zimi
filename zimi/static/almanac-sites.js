@@ -17,6 +17,7 @@ var AS_PATCH_NEAR_RINGS_M = 150;                           // inside this the re
 var AS_RECENTRE_M = 14;                                    // the patch follows what is looked at once it is this far off its middle
 var AS_GROUND_ON_ALT_M = 30000;                            // below this altitude the patch stands in for the body's own sphere
 var AS_NEAR_M = 0.05;                                      // the nearest thing drawn on the ground
+var AS_NEAR_PER_FOCUS = 0.012, AS_NEAR_MAX_M = 25;         // the near plane stands off this share of the way to what is looked at (depth precision), at most this far
 var AS_FOV_DEG = 62;
 var AS_DROP_MS = 2400;                                     // from the flight's end, down to the ground
 var AS_MIN_SUN_Z = 0.03;                                   // the Sun's sine over the horizon below which a visit starts at the landing instead
@@ -35,16 +36,16 @@ var AS_CLOCK_RATES = [1, 300, 3600, 21600];
 var AS_KEYS = { ArrowUp: 'f', w: 'f', W: 'f', ArrowDown: 'b', s: 'b', S: 'b', ArrowLeft: 'l', a: 'l', A: 'l', ArrowRight: 'r', d: 'r', D: 'r' };
 // Per body: the ground's colour, gravity (m/s^2), how rough it is (relief amplitude, m), craters, and the rover it has.
 var AS_BODY = {
-  moon: { albedo: [0.5, 0.48, 0.45], g: 1.62, relief: 0.45, craters: 1, ambient: 0.012, fill: 0.04, sky: null, haze: null,
-    rover: { body: 'lrv-body', wheel: 'lrv-wheel', vmax: 4.2, jump: 3.0, cam: 11 } },
-  mars: { albedo: [0.5, 0.27, 0.15], g: 3.71, relief: 0.3, craters: 0.5, ambient: 0.07, fill: 0.06, haze: [0.6, 0.42, 0.3],
+  moon: { albedo: [0.5, 0.48, 0.45], g: AE_BODY_FACTS.moon.gravity, relief: 0.45, craters: 1, ambient: 0.012, fill: 0.04, sky: null, haze: null,
+    rover: { body: 'lrv-body', wheel: 'lrv-wheel', vmax: AE_SITE_FACTS.lrvSpeedMs, jump: 3.0, cam: 11 } },
+  mars: { albedo: [0.5, 0.27, 0.15], g: AE_BODY_FACTS.mars.gravity, relief: 0.3, craters: 0.5, ambient: 0.07, fill: 0.06, haze: [0.6, 0.42, 0.3],
     sky: { day: [0.78, 0.55, 0.38], high: [0.42, 0.3, 0.24], dusk: [0.25, 0.32, 0.5] },
-    rover: { body: 'perseverance-body', wheel: 'perseverance-wheel', vmax: 3.4, jump: 4.4, cam: 11 } },
-  venus: { albedo: [0.42, 0.33, 0.22], g: 8.87, relief: 0.2, craters: 0, ambient: 0.2, fill: 0.12, haze: [0.65, 0.42, 0.18],
+    rover: { body: 'perseverance-body', wheel: 'perseverance-wheel', vmax: AE_SITE_FACTS.marsDriveSpeedMs, jump: 4.4, cam: 11 } },
+  venus: { albedo: [0.42, 0.33, 0.22], g: AE_BODY_FACTS.venus.gravity, relief: 0.2, craters: 0, ambient: 0.2, fill: 0.12, haze: [0.65, 0.42, 0.18],
     sky: { day: [0.75, 0.5, 0.2], high: [0.6, 0.38, 0.15], dusk: [0.4, 0.22, 0.08] }, rover: null },
-  titan: { albedo: [0.3, 0.22, 0.13], g: 1.35, relief: 0.2, craters: 0, ambient: 0.08, fill: 0.06, haze: [0.4, 0.24, 0.08],
+  titan: { albedo: [0.3, 0.22, 0.13], g: AE_BODY_FACTS.titan.gravity, relief: 0.2, craters: 0, ambient: 0.08, fill: 0.06, haze: [0.4, 0.24, 0.08],
     sky: { day: [0.5, 0.3, 0.1], high: [0.3, 0.18, 0.06], dusk: [0.15, 0.09, 0.03] }, rover: null },
-  earth: { albedo: [0.2, 0.25, 0.12], g: 9.81, relief: 0.12, craters: 0, ambient: 0.22, fill: 0.1, haze: [0.62, 0.74, 0.9],
+  earth: { albedo: [0.2, 0.25, 0.12], g: AE_BODY_FACTS.earth.gravity, relief: 0.12, craters: 0, ambient: 0.22, fill: 0.1, haze: [0.62, 0.74, 0.9],
     sky: { day: [0.62, 0.76, 0.95], high: [0.16, 0.38, 0.82], dusk: [0.9, 0.5, 0.3] }, rover: null }
 };
 
@@ -60,7 +61,7 @@ function _asLoad() {
 _asLoad();
 
 // The rover's own file, fetched at the first Drive.
-var AS_DRIVE_JS = '/static/almanac-sites-drive.js', AS_LAUNCH_JS = '/static/almanac-sites-launch.js', _asLoadingScripts = {};
+var AS_DRIVE_JS = '/static/almanac-sites-drive.js', AS_LAUNCH_JS = '/static/almanac-sites-launch.js', AS_TRAIL_JS = '/static/almanac-sites-trail.js', _asLoadingScripts = {};
 function _asLoadScript(src, then) {
   if (_asLoadingScripts[src]) return;
   _asLoadingScripts[src] = true;
@@ -128,10 +129,17 @@ function _asNewState(def, body, row, drive) {
   var st = { def: def, body: body, row: row, lat: pad ? pad.lat : row[1], lon: pad ? pad.lon : row[2], drive: !!drive, info: info, phase: 'fly', siteParts: [], keepOut: [], radiusM: b ? b.r * AE_EARTH_RADIUS_KM * 1000 : 1737400,
     camera: { az: 3.5, el: 0.32, dist: 16 }, look: { yaw: 0, pitch: 0, touched: 0 }, input: { sx: 0, sy: 0, keys: {}, jump: false }, last: 0, t0: 0, from: null, fr: null, rate: 0 };
   st.terrain = _asTerrainFn(st);
-  var span = 0;
-  (def ? def.parts : []).forEach(function (pd) { var md = _asData.models[pd.m] || _asData.models[(_asData.rovers[pd.m] || {}).body]; if (md) span = Math.max(span, Math.hypot(pd.x || 0, pd.y || 0) + Math.max.apply(null, md.size) / 2); });
-  st.span = Math.max(span, 6);
+  // What the visit looks at: the middle of its parts, and a distance that holds them all.
+  var lo = [Infinity, Infinity], hi = [-Infinity, -Infinity];
+  (def ? def.parts : []).forEach(function (pd) {
+    var md = _asData.models[pd.m] || _asData.models[(_asData.rovers[pd.m] || {}).body], r = md ? Math.max.apply(null, md.size) / 2 : 1;
+    lo = [Math.min(lo[0], (pd.x || 0) - r), Math.min(lo[1], (pd.y || 0) - r)]; hi = [Math.max(hi[0], (pd.x || 0) + r), Math.max(hi[1], (pd.y || 0) + r)];
+  });
+  st.focusXY = lo[0] === Infinity ? [0, 0] : [(lo[0] + hi[0]) / 2, (lo[1] + hi[1]) / 2];
+  st.span = Math.max(6, lo[0] === Infinity ? 0 : Math.hypot(hi[0] - lo[0], hi[1] - lo[1]) / 2);
   st.camera.dist = Math.max(10, st.span * 1.8);
+  if (def && def.flat) { st.flatFrom = def.flat[0]; st.flatTo = def.flat[1]; }
+  if (def && def.view) { st.camera.dist = def.view.dist; st.camera.el = def.view.el; st.focusZ = def.view.focus; st.distMax = def.view.dist * 4; }
   return st;
 }
 // Come to the site: the existing flight over it, then the drop to the ground. `drive`: and a rover to drive.
@@ -159,6 +167,7 @@ function _asDispose(st) {
   var S = _ae && _ae.gl;
   if (!S || !st.group) return;
   if (st.launch) _asLaunchReset(st);
+  if (st.trail) _asTrailStop(st);
   S.scene.remove(st.group);
   if (st.dome) S.scene.remove(st.dome);
   st.group.traverse(function (o) { if (o.geometry && o.geometry !== undefined) { /* shared model geometry stays with its model */ } });
@@ -184,7 +193,7 @@ function _asCameraLocal(st, dt) {
     c.az += _aeAngleDeltaRad(c.az, back) * (1 - Math.exp(-AS_CAM_FOLLOW.az * dt));
     az = c.az; el = _aeClamp(AS_CHASE_EL + st.look.pitch, AS_ORBIT_EL[0], AS_ORBIT_EL[1]);
     focus = st.focus;
-  } else focus = [0, 0, AS_ORBIT_FOCUS_Z_M];
+  } else focus = st.followPos ? [st.followPos[0], st.followPos[1], st.followPos[2] + AS_ORBIT_FOCUS_Z_M] : [st.focusXY[0], st.focusXY[1], st.focusZ || AS_ORBIT_FOCUS_Z_M];
   // az is measured from north, counterclockwise through west like heading: the offset is behind that bearing.
   var ch = Math.cos(el), pos = [focus[0] - Math.sin(az) * ch * dist, focus[1] + Math.cos(az) * ch * dist, focus[2] + Math.sin(el) * dist];
   // Over the ground there, never under it.
@@ -210,7 +219,10 @@ function _asPose(st, dt) {
   up = _aeSub(up, _aeScale(look, _aeDot(up, look)));
   up = _aeLen(up) < 1e-6 ? fr.e : _aeNorm(up);
   var alt = _aeLen(_aeSub(world, fr.center)) - fr.r;
-  return { pos: world, up: up, look: look, tp: _aeAdd(world, look), altRe: alt, fov: loc.fov };
+  // The near plane stands off in proportion to what is looked at: a lander's feet from a few metres, a launch from half a kilometre.
+  var camHeight = loc.pos[2] - _asGroundAt(st, loc.pos[0], loc.pos[1], true);
+  var nearM = _aeClamp(_aeLen(_aeSub(focusW, world)) / AS_MRE * AS_NEAR_PER_FOCUS, AS_NEAR_M, Math.max(AS_NEAR_M, Math.min(AS_NEAR_MAX_M, camHeight * 0.8)));
+  return { pos: world, up: up, look: look, tp: _aeAdd(world, look), altRe: alt, fov: loc.fov, nearRe: nearM * AS_MRE };
 }
 
 // ── The frame hook before the camera: the visit's state of play ──
@@ -242,9 +254,10 @@ function _aeSiteStep(sc) {
   if (st.drive && typeof _asRoverBuild === 'function') _asRoverBuild(st);
   if (st.rover) _asRoverStep(st, dt);
   // The ground follows what is looked at.
-  var mx = st.rover ? st.rover.x : 0, my = st.rover ? st.rover.y : 0;
+  var mx = st.rover ? st.rover.x : st.followPos ? st.followPos[0] : 0, my = st.rover ? st.rover.y : st.followPos ? st.followPos[1] : 0;
   if (Math.hypot(mx - st.cx, my - st.cy) > AS_RECENTRE_M || st.cx === 1e9) _asRebuildGround(st, mx, my);
   if (st.launch) _asLaunchStep(st, dt);
+  if (st.trail) _asTrailStep(st, dt);
   st.pose = _asPose(st, dt);
   _asHudTick(st, sc);
 }
@@ -272,7 +285,7 @@ function _aeSiteLight(sc) {
   st.shadowSun = [fr.sunLocal[0] * k, fr.sunLocal[1] * k, ss];
   st.parts.forEach(function (p) {
     p.su.sun.value.set(st.shadowSun[0], st.shadowSun[1], st.shadowSun[2]);
-    p.shadow.visible = lit > 0.02 && down;
+    p.shadow.visible = lit > 0.02 && down && !p.opts.noShadow;
     p.holder.visible = down;
   });
   if (st.skyUni) {
@@ -293,7 +306,8 @@ function _aeSiteLight(sc) {
     toView(sunW, I.uni.sunView.value);
     I.uni.lit.value = lit;
     I.uni.fill.value = st.info.fill * (0.5 + 0.5 * lit);
-    I.uni.earthLight.value = 0;
+    I.uni.earthLight.value = st.info.ambient > 0.05 ? st.info.ambient * 1.4 : 0;   // an atmosphere's light from above
+    toView(fr.u, I.uni.nadirView.value);
     I.uni.fade.value = _aeFadeU.value;
   });
   if (st.dust) { st.dust.uni.lit.value = lit; st.dust.uni.pxPerRad.value = _ae.h / 2 / Math.tan(_aeRad(cam.fov) / 2); }
@@ -316,7 +330,7 @@ function _asHideBody(st, S) {
 function _aeSiteNear(near) {
   var st = _ae.site;
   if (!st || !st.pose) return near;
-  return Math.max(AS_NEAR_M * AS_MRE, Math.min(near, st.pose.altRe * 0.05));
+  return Math.max(st.pose.nearRe, Math.min(near, st.pose.altRe * 0.05));
 }
 
 // ── Interface: the pointer surface, the buttons, the caption ──
@@ -341,6 +355,7 @@ var AS_CSS = [
   '.as-count{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;font-size:120px;font-weight:700;color:rgba(255,255,255,.85);text-shadow:0 2px 18px rgba(0,0,0,.6);pointer-events:none;font-variant-numeric:tabular-nums}'
 ].join('');
 var AS_LAUNCH_SVG = '<svg viewBox="0 0 24 24" width="26" height="26" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3c3 2.5 4 6 4 9l-2 3h-4l-2-3c0-3 1-6.5 4-9z"/><circle cx="12" cy="9" r="1.4"/><path d="M10 15l-2 3.5M14 15l2 3.5M12 17v4"/></svg>';
+var AS_ROUTE_SVG = '<svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="6" cy="18" r="2"/><circle cx="18" cy="6" r="2"/><path d="M8 18h6a3 3 0 0 0 0-6h-4a3 3 0 0 1 0-6h6"/></svg>';
 var AS_EXIT_SVG = '<svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"/></svg>';
 var AS_LANDING_SVG = '<svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3v6M9 6l3-3 3 3"/><path d="M7 14h10l2 7H5z"/></svg>';
 var AS_CLOCK_SVG = '<svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" aria-hidden="true"><circle cx="12" cy="12" r="8.5"/><path d="M12 7v5l3 2"/></svg>';
@@ -357,10 +372,10 @@ function _asHud(on) {
     if (!document.getElementById('as-css')) { var css = document.createElement('style'); css.id = 'as-css'; css.textContent = AS_CSS; document.head.appendChild(css); }
     hud = document.createElement('div');
     hud.className = 'as-hud'; hud.id = 'as-hud';
-    var leaveL = _almEsc(_aeT('alm_site_leave')), landL = _almEsc(_aeT('alm_site_landing')), rateL = _almEsc(_aeT('alm_site_pace')), jumpL = _almEsc(_aeT('alm_site_jump'));
+    var routeL = _almEsc(_aeT('alm_site_trail')), leaveL = _almEsc(_aeT('alm_site_leave')), landL = _almEsc(_aeT('alm_site_landing')), rateL = _almEsc(_aeT('alm_site_pace')), jumpL = _almEsc(_aeT('alm_site_jump'));
     hud.innerHTML = '<div class="as-layer" id="as-layer"></div><div class="as-rest" id="as-rest" hidden></div><div class="as-stick" id="as-stick" hidden><i></i></div>' +
       '<div class="as-bar"><button type="button" class="ae-btn ae-round" id="as-exit" aria-label="' + leaveL + '" title="' + leaveL + '">' + AS_EXIT_SVG + '</button>' +
-      '<div class="as-bar-end"><button type="button" class="ae-btn ae-round" id="as-landing" aria-label="' + landL + '" title="' + landL + '">' + AS_LANDING_SVG + '</button>' +
+      '<div class="as-bar-end"><button type="button" class="ae-btn ae-round" id="as-route" aria-label="' + routeL + '" title="' + routeL + '" hidden>' + AS_ROUTE_SVG + '</button><button type="button" class="ae-btn ae-round" id="as-landing" aria-label="' + landL + '" title="' + landL + '">' + AS_LANDING_SVG + '</button>' +
       '<button type="button" class="ae-btn ae-round as-rate" id="as-rate" aria-label="' + rateL + '" title="' + rateL + '">' + AS_CLOCK_SVG + '</button></div></div>' +
       '<div class="as-cap" id="as-cap"></div><div class="as-count" id="as-count" aria-hidden="true"></div>' +
       '<button type="button" class="ae-btn ae-round as-launch" id="as-launch" aria-label="' + _almEsc(_aeT('alm_site_launch')) + '" title="' + _almEsc(_aeT('alm_site_launch')) + '" hidden>' + AS_LAUNCH_SVG + '</button>' +
@@ -373,6 +388,7 @@ function _asHud(on) {
   _aeById('as-jump').hidden = !(_ae.site && _ae.site.drive);
   _aeById('as-landing').hidden = !(_ae.site && _ae.site.def && _ae.site.def.ms);
   _aeById('as-launch').hidden = !(_ae.site && _ae.site.def && _ae.site.def.launch);
+  _aeById('as-route').hidden = !(_ae.site && _ae.site.def && _ae.site.def.trail);
   _asKeys(true);
   _asCaption(_ae.site);
 }
@@ -407,6 +423,13 @@ function _asBindHud(hud) {
     var cur = typeof _almRate === 'number' ? _almRate : 1, i = 0;
     for (var k = 0; k < AS_CLOCK_RATES.length; k++) if (Math.abs(AS_CLOCK_RATES[k] - cur) < 1e-6) i = k + 1;
     if (typeof _almClockSetRate === 'function') _almClockSetRate(AS_CLOCK_RATES[i % AS_CLOCK_RATES.length]);
+  };
+  _aeById('as-route').onclick = function () {
+    var st = _ae.site;
+    if (!st || !st.def.trail) return;
+    if (st.trail) { _asTrailStop(st); return; }
+    var go = function () { _asTraversesLoad(function () { _asTrailStart(st); }); };
+    if (typeof _asTrailStart !== 'function') _asLoadScript(AS_TRAIL_JS, go); else go();
   };
   _aeById('as-launch').onclick = function () {
     var st = _ae.site;
@@ -446,7 +469,7 @@ function _asBindHud(hud) {
       stickEl.firstElementChild.style.transform = 'translate(' + (ox * k) + 'px,' + (oy * k) + 'px)';
     } else if (pinch && Object.keys(ptrs).length >= 2) {
       var ids = Object.keys(ptrs), a = ptrs[ids[0]], b = ptrs[ids[1]], span = Math.hypot(a.x - b.x, a.y - b.y);
-      if (span > 0 && pinch.span > 0) st.camera.dist = _aeClamp(st.camera.dist * pinch.span / span, AS_ORBIT_DIST_M[0], AS_ORBIT_DIST_M[1]);
+      if (span > 0 && pinch.span > 0) st.camera.dist = _aeClamp(st.camera.dist * pinch.span / span, AS_ORBIT_DIST_M[0], st.distMax || AS_ORBIT_DIST_M[1]);
       pinch.span = span;
     } else if (st.drive) {
       st.look.yaw -= dx * 0.006; st.look.pitch = _aeClamp(st.look.pitch + dy * 0.004, -0.25, 1.0); st.look.touched = performance.now();
@@ -468,7 +491,7 @@ function _asBindHud(hud) {
     var st = _ae.site;
     if (!st) return;
     e.preventDefault();
-    st.camera.dist = _aeClamp(st.camera.dist * Math.exp(e.deltaY * 0.0012), AS_ORBIT_DIST_M[0], AS_ORBIT_DIST_M[1]);
+    st.camera.dist = _aeClamp(st.camera.dist * Math.exp(e.deltaY * 0.0012), AS_ORBIT_DIST_M[0], st.distMax || AS_ORBIT_DIST_M[1]);
     _aeKick();
   }, { passive: false });
 }
@@ -499,7 +522,7 @@ function _aeSiteCardHtml(lm) {
   if (!def && !drive) return '';
   var when = def && def.ms ? '<p class="ae-lm-line"><span>' + _almEsc(_aeT(def.launch ? 'alm_site_launched' : 'alm_site_landed', { date: _aeFmtWhen(def.ms) })) + '</span></p>' : '';
   var vis = _almEsc(_aeT('alm_site_visit')), dr = _almEsc(_aeT('alm_site_drive'));
-  return when + '<p class="ae-lm-line as-go"><button type="button" class="ae-btn ae-round" id="as-visit" aria-label="' + vis + '" title="' + vis + '">' + AS_VISIT_SVG + '</button>' +
+  return when + '<p class="ae-lm-line as-go" style="justify-content:flex-start;gap:10px"><button type="button" class="ae-btn ae-round" id="as-visit" aria-label="' + vis + '" title="' + vis + '">' + AS_VISIT_SVG + '</button>' +
     (drive ? '<button type="button" class="ae-btn ae-round" id="as-drive" aria-label="' + dr + '" title="' + dr + '">' + AS_DRIVE_SVG + '</button>' : '') + '</p>';
 }
 function _aeSiteCardBind(card, lm) {

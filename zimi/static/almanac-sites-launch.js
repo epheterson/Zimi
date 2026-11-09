@@ -8,9 +8,9 @@
 
 // ── Constants ──
 var AS_SATURN = {
-  thrustSeaN: 34.5e6, thrustVacN: 39.0e6,   // the five F-1 engines of the first stage, at the pad and in a vacuum
-  massKg: 2.97e6, burnKgS: 13300,           // lift-off mass and what the first stage burns each second
-  cutoffS: 161,                              // the outboard engines' cut-off
+  thrustSeaN: AE_SITE_FACTS.saturnThrustN, thrustVacN: 39.0e6,   // the five F-1 engines of the first stage, at the pad and in a vacuum
+  massKg: AE_SITE_FACTS.saturnMassKg, burnKgS: AE_SITE_FACTS.saturnBurnKgS,   // lift-off mass and what the first stage burns each second
+  cutoffS: AE_SITE_FACTS.saturnCutoffS,                              // the outboard engines' cut-off
   dragCd: 0.5, areaM2: 80,                  // across its 10.1 m body
   tiltStartS: 12, tiltPerS: 1.2, tiltPow: 0.78, tiltMaxDeg: 62,   // the pitch program: degrees from vertical after the tower is clear
   scaleHeightM: 7200, rho0: 1.225
@@ -19,6 +19,7 @@ var AS_LAUNCH_COUNT_S = 5;                  // the count, in seconds
 var AS_LAUNCH_IGNITION_S = 1.6;             // the engines light this long before lift-off
 var AS_LAUNCH_STEP_S = 0.05;
 var AS_LAUNCH_MAX_S = 175;
+var AS_LAUNCH_EYE_M = 6;                    // the watcher's eye over the ground
 var AS_LAUNCH_WATCH_M = 900;                // the nearest the watcher stands to the pad
 var AS_LAUNCH_VIEW_DEG = [58, 16];          // the camera's field of view, wide at the pad and drawn in as the rocket climbs
 var AS_LAUNCH_ZOOM_S = 55;
@@ -27,7 +28,7 @@ var AS_LAUNCH_SHAKE = { s: 9, deg: 0.22 };  // the ground's tremor in the camera
 var AS_FLAME_MAX = 360, AS_SMOKE_MAX = 520;
 var AS_FLAME_LIFE_S = [0.25, 0.55];
 var AS_SMOKE_LIFE_S = [30, 46];
-var AS_LAUNCH_AZIMUTH_FALLBACK = 72;
+var AS_LAUNCH_AZIMUTH_FALLBACK = AE_SITE_FACTS.launchAzimuthDeg;
 
 var AS_PUFF_VERT = [
   'attribute float size; attribute float life;',
@@ -58,7 +59,7 @@ var AS_SMOKE_FRAG = [
   '  vec2 q = gl_PointCoord - 0.5; float r = dot(q, q) * 4.0;',
   '  if (r > 1.0) discard;',
   '  vec3 col = vec3(0.92, 0.9, 0.88) * (0.25 + 0.75 * lit + ambient);',
-  '  gl_FragColor = vec4(sqrt(min(col, vec3(1.0))), fade * (1.0 - r) * (1.0 - r) * min(1.0, vLife * 1.6) * 0.5);',
+  '  gl_FragColor = vec4(sqrt(min(col, vec3(1.0))), fade * (1.0 - r) * (1.0 - r) * min(1.0, vLife * 1.6) * 0.4);',
   '}'
 ].join('\n');
 
@@ -141,7 +142,7 @@ function _asLaunchStart(st) {
   var L = st.def.launch, was = st.launch;
   if (was) { _asLaunchReset(st); }
   var cur = _asCameraLocal(st, 0).pos, bearing = Math.atan2(cur[1], cur[0]), dist = Math.max(AS_LAUNCH_WATCH_M, Math.hypot(cur[0], cur[1]));
-  var vx = dist * Math.cos(bearing), vy = dist * Math.sin(bearing), vz = _asGroundAt(st, vx, vy, false) + 3;
+  var vx = dist * Math.cos(bearing), vy = dist * Math.sin(bearing), vz = _asGroundAt(st, vx, vy, false) + AS_LAUNCH_EYE_M;
   st.launch = { phase: 'count', t: -AS_LAUNCH_COUNT_S, rows: _asLaunchFlight(L.azimuth || AS_LAUNCH_AZIMUTH_FALLBACK, L.z || 0), rocket: rocket, padZ: L.z || 0, az: _aeRad(L.azimuth || AS_LAUNCH_AZIMUTH_FALLBACK),
     view: [vx, vy, vz], focus: [0, 0, 60], flame: _asPuffs(st, AS_FLAME_MAX, AS_FLAME_FRAG, true), smoke: _asPuffs(st, AS_SMOKE_MAX, AS_SMOKE_FRAG, false), fov: AS_LAUNCH_VIEW_DEG[0], acc: { flame: 0, smoke: 0 }, shake: 0, last: 0 };
   st.camOverride = _asLaunchCamera;
@@ -206,7 +207,7 @@ function _asLaunchPlume(st, l, s, on, sd, flying) {
     var low = alt < 120, life2 = AS_SMOKE_LIFE_S[0] + Math.random() * (AS_SMOKE_LIFE_S[1] - AS_SMOKE_LIFE_S[0]);
     if (low) {
       var a = Math.random() * 6.2832, sp = 25 + Math.random() * 45;
-      _asPuffEmit(l.smoke, (Math.random() - 0.5) * 12, (Math.random() - 0.5) * 12, l.padZ + 2 + Math.random() * 8, Math.cos(a) * sp, Math.sin(a) * sp, 2 + Math.random() * 4, 22 + Math.random() * 14, 7 + Math.random() * 4, life2);
+      _asPuffEmit(l.smoke, (Math.random() - 0.5) * 12, (Math.random() - 0.5) * 12, l.padZ + 2 + Math.random() * 8, Math.cos(a) * sp, Math.sin(a) * sp, 2 + Math.random() * 4, 18 + Math.random() * 12, 3 + Math.random() * 2.5, life2 * 0.5);
     } else {
       _asPuffEmit(l.smoke, base[0] + (Math.random() - 0.5) * 6, base[1] + (Math.random() - 0.5) * 6, base[2], (Math.random() - 0.5) * 6, (Math.random() - 0.5) * 6, (Math.random() - 0.5) * 3, 16 + 8 * (1 - thin), 2.2 + 1.5 * thin, life2);
     }
@@ -222,4 +223,12 @@ function _asLaunchCount(st, l) {
 function _asLaunchHud(st) {
   var b = _aeById('as-launch'), l = st.launch;
   if (b) b.hidden = !!l && l.phase !== 'done';
+}
+
+// For the tests: the launch run on a fixed step (a software renderer draws a frame a second).
+function _aeSiteLaunchAdvance(seconds) {
+  var st = _ae && _ae.site;
+  if (!st || !st.launch) return;
+  for (var t = 0; t < seconds; t += 1 / 30) { _asLaunchStep(st, 1 / 30); _asLaunchCamera(st, 1 / 30); }
+  _ae.dirty = true; _aeKick();
 }

@@ -37,7 +37,7 @@ function _asCraters(x, y, density) {
 function _asGroundAt(st, x, y, far) {
   var r2 = x * x + y * y, info = st.info;
   var h = -r2 / (2 * st.radiusM);
-  var fade = _smoothstep(AS_FLAT_FROM_M, AS_FLAT_TO_M, Math.sqrt(r2));
+  var fade = _smoothstep(st.flatFrom || AS_FLAT_FROM_M, st.flatTo || AS_FLAT_TO_M, Math.sqrt(r2));
   if (fade > 0) {
     var rel = (_asValueNoise(x / 31, y / 31, 3) - 0.5) * 2.2 + (_asValueNoise(x / 9.7, y / 9.7, 5) - 0.5) * 0.7;
     if (!far) rel += (_asValueNoise(x / 3.1, y / 3.1, 7) - 0.5) * 0.18 + _asCraters(x, y, info.craters) * 1.0;
@@ -305,6 +305,7 @@ function _asModelReady(st, m) {
   S.scene.remove(I.root);
   I.root.visible = true;
   I.uni.fill.value = 0.1;
+  I.root.children.forEach(function (c) { if (c.material) c.material.side = AE_THREE_DOUBLE_SIDE; });   // the written models are not wound one way
   st.models[m] = I;
   I.data = d;
   return I;
@@ -392,7 +393,7 @@ function _asPlaceSiteParts(st) {
   defs.forEach(function (pd, n) {
     if (st.siteParts[n]) return;
     var asm = _asData.rovers && _asData.rovers[pd.m];
-    var got = asm ? _asRoverPartsAdd(st, _asRoverModels(asm), pd.x || 0, pd.y || 0, pd.h || 0) : _asPartAdd(st, pd.m, pd.x || 0, pd.y || 0, pd.h || 0);
+    var got = asm ? _asRoverPartsAdd(st, _asRoverModels(asm), pd.x || 0, pd.y || 0, pd.h || 0) : _asPartAdd(st, pd.m, pd.x || 0, pd.y || 0, pd.h || 0, pd);
     if (!got) { ok = false; return; }
     st.siteParts[n] = got;
   });
