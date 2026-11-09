@@ -7455,7 +7455,10 @@ function _almSelectDay(jdn) {
   // there, never running through the hours between: a near day ran through the night and a far one did not (Eric
   // 2026-11-08: "be consistent").
   var g = _jdnToGregorian(jdn), from = _almFocusInstant(), tz = _almClockTz(), P = _almTzParts(from, tz);
-  var to = _almClampInstant(_almInstantFromTz(g.year, g.month, g.day, P.h, P.mi, tz).date);
+  // The seconds go with it: dropped, each pick would land up to a minute behind the clock, and today picked again would
+  // no longer be within a minute of now, so the clock would not come back to live.
+  var secs = ((from.getTime() % ALM_MINUTE_MS) + ALM_MINUTE_MS) % ALM_MINUTE_MS;
+  var to = _almClampInstant(new Date(_almInstantFromTz(g.year, g.month, g.day, P.h, P.mi, tz).date.getTime() + secs));
   var cal = _jdnToCalendar(_almSystem, jdn);
   _almYear = cal.year;
   _almMonth = cal.month;
