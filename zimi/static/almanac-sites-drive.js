@@ -143,7 +143,13 @@ function _asSpeedShow(st) {
   if (!el || now - (st.speedAt || 0) < AS_SPEED_SHOW_MS) return;
   st.speedAt = now;
   var mi = _aeImperial(), r = st.rover, az = ((-_aeDeg(r.hdg) % 360) + 360) % 360;
-  el.textContent = _orrNum(Math.abs(r.v) * (mi ? AS_MPH_PER_MS : AS_KMH_PER_MS), mi ? 'mile-per-hour' : 'kilometer-per-hour', 1) + '  ' + Math.round(az) + '°  ' + _aeStHeightText(r.odo || 0);
+  el.textContent = _orrNum(Math.abs(r.v) * (mi ? AS_MPH_PER_MS : AS_KMH_PER_MS), mi ? 'mile-per-hour' : 'kilometer-per-hour', 0) + '  ·  ' + _asCompassPoint(az) + '  ·  ' + _aeStHeightText(r.odo || 0);
+}
+// The eight points of the compass, from the app's own cardinal letters (NE = N then E).
+var AS_POINT_KEYS = ['n', 'ne', 'e', 'se', 's', 'sw', 'w', 'nw'];
+function _asCompassPoint(az) {
+  var k = AS_POINT_KEYS[Math.round(az / 45) % 8];
+  return k.split('').map(function (c) { return _aeT('alm_dir_' + c); }).join('');
 }
 // Tracks: a dark mark every AS_TRACK_STEP_M under the wheels on each side, the oldest forgotten past AS_TRACK_MAX.
 function _asTrackInit(st) {

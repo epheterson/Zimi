@@ -301,7 +301,7 @@ function _aeStandGroundMesh(st, pend, U, mat) {
     uMap: { value: pend.tex || null }, uMapped: { value: pend.tex ? 1 : 0 }, uGrey: { value: AE_STAND_GREY_MAP[st.key] ? 1 : 0 },
     uBase: { value: AE_STAND_BASE[st.key] || [0.5, 0.5, 0.5] }, uGain: { value: AE_STAND_TINT[st.key] || [1, 1, 1] },
     uAmbient: { value: [0, 0, 0] }, uSkyHor: { value: [0, 0, 0] }, uSkyZen: { value: [0, 0, 0] }, uE2: { value: [0, 0, 0] }, uDir2: { value: [0, 0, 1] },
-    uLommel: { value: a ? 0 : 1 }, uRough: { value: AE_STAND_ROUGH[st.key] || (st.b.fbm.amp > 100 ? 1.3 : 1) }, uRock: { value: AE_STAND_ROCK[st.key] || 0.25 },
+    uLommel: { value: a ? 0 : 1 }, uRough: { value: AE_STAND_ROUGH[st.key] || (st.b.fbm.amp > 100 ? 1.3 : 1) }, uRock: { value: AE_STAND_ROCK[st.key] || 0.25 }, uDetail: { value: st.key === 'earth' ? 1 : 0 },
     uDiffuse: { value: d ? 1 : 0 }, uVis: { value: d ? d.vis : 1 }, uDirect: { value: 1 }, uDiffSky: { value: [0, 0, 0] }
   }, U);
   var ground = st.groundMesh = new THREE.Mesh(g, mat(AE_ST_GROUND_VERT, AE_ST_GROUND_FRAG, gu, {}));
@@ -317,6 +317,8 @@ var AE_STAND_SKY_SCALE = 0.5;              // the sky is drawn at this share of 
 var AE_STAND_DPR_STEPS = [1.5, 1.25, 1, 0.75];   // the pixel ratios the ground view steps down through if frames run long
 var AE_STAND_SLOW_MS = [20, 250], AE_STAND_SLOW_RUN = 3;   // a frame this slow (not an idle gap) three times running drops a step
 var _aeStandDprCap = AE_STAND_DPR_MAX;     // for the rest of the session: it goes down, never back up
+var AE_STAND_STATION_MIN_LIM = 3;           // the station is marked once the sky is dark enough for stars of this magnitude
+var AE_STAND_PROBE_MARKS = false;          // deep-space probes are pinpoints nobody could see: not marked (the station's pass is, near Earth)
 var AE_STAND_SLICE_MS = 8;                 // a slice of building between breaths of the page
 var AE_STAND_SHADE_LOD = 1.5;              // the shadow grids hold wavelengths down to this many cells
 var AE_STAND_SHADE_MOVE = 0.0044, AE_STAND_SHADE_EVERY_MS = 300, AE_STAND_SHADE_SLICE_MS = 5;   // the Sun has moved a quarter degree; not again sooner than this; the work a frame
@@ -702,6 +704,8 @@ function _aeStandCraftMarks(st, fr, view) {
   var host = st.craftHost || (st.craftHost = (function () { var h = document.createElement('div'); h.className = 'ae-stand-crafts'; _ae.el.appendChild(h); return h; })());
   var cam = st.camera, V = _ae.gl.THREE.Vector3, shown = 0, W = _ae.w, H = _ae.h, placed = [];
   (fr.crafts || []).forEach(function (c) {
+    if (c.key !== 'iss' && !AE_STAND_PROBE_MARKS) return;
+    if (c.key === 'iss' && st.photo && st.photo.lim < AE_STAND_STATION_MIN_LIM) return;   // by day the station is not a thing to see
     var p = new V(view.pos[0] + c.dir[0] * AE_STAND_CRAFT_RANGE, view.pos[1] + c.dir[1] * AE_STAND_CRAFT_RANGE, view.pos[2] + c.dir[2] * AE_STAND_CRAFT_RANGE).project(cam);
     var x = (p.x + 1) / 2 * W, y = (1 - p.y) / 2 * H;
     var on = p.z > -1 && p.z < 1 && Math.abs(p.x) < 1 && y > AE_STAND_CRAFT_TOP_PX && y < H - AE_STAND_CRAFT_BOTTOM_PX && (c.dir[2] > -0.02 || st.altKm > 1);

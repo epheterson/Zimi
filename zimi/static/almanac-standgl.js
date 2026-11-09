@@ -9,7 +9,8 @@
 
 var AE_ST_PI = '3.14159265';
 var AE_ST_SUN_DISC_GAIN = 6e4;     // the Sun's disc against the sky's glow: stays a distinct disc where thick dust dims and blues it (Mars at sunset)
-var AE_ST_ROCK_FADE_M = [14, 90];  // stones thin out with distance into plain ground (a pixel of them at range is noise, not stone)
+var AE_ST_BACKSCATTER = 0.07, AE_ST_SURGE = 0.9, AE_ST_SURGE_WIDTH = 0.14;   // the share of the Sun a regolith shadow keeps; the opposition surge round the antisolar point (Apollo's heiligenschein)
+var AE_ST_ROCK_FADE_M = [8, 45];  // stones thin out with distance into plain ground (a pixel of them at range is noise, not stone)
 var AE_ST_STEPS_SKY = 9, AE_ST_STEPS_GROUND = 5, AE_ST_STEPS_SUN = 4;   // the air's march: nine steps cost half of fourteen on a phone and look the same
 var AE_ST_GAMMA = '2.2';
 
@@ -257,7 +258,7 @@ var AE_ST_GROUND_FRAG = [
   'uniform vec3 uCam; uniform float uK, uPixAng, uTime;',
   'uniform sampler2D uMap; uniform float uMapped, uGrey; uniform vec3 uBase, uGain;',
   'uniform vec3 uAmbient, uSkyHor, uSkyZen, uE2, uDir2;',
-  'uniform float uLommel, uRough, uRock, uDiffuse, uVis, uDirect; uniform vec3 uDiffSky;',
+  'uniform float uLommel, uRough, uRock, uDetail, uDiffuse, uVis, uDirect; uniform vec3 uDiffSky;',
   'varying vec3 vP, vN, vDir; varying float vH, vSea, vShade;',
   // Rock, fractal bumps and mottling at the scales a pixel can show, all fixed to the ground (the camera never moves on it).
   'float fine(vec3 p, float foot) {',
@@ -284,7 +285,7 @@ var AE_ST_GROUND_FRAG = [
   '      pos.x *= lump; float dd = length(pos.xy) / max(rad, 1e-4);',
   '      if (present > 0.5 && dd < best) { best = dd; rr = rad * s; tone = hash31(id + 13.7); }',
   '    }',
-  '    if (best < 1.0) { float dome = 1.0 - best * best; h += rr * 0.9 * dome * w; shade += (tone - 0.5) * 0.9 * w * (1.0 - best * best); }',
+  '    if (best < 1.0) { float dome = 1.0 - best * best; h += rr * 0.9 * dome * w; shade += (tone - 0.5) * 0.55 * w * (1.0 - best * best); }',
   '  }',
   '  return vec2(h, shade);',
   '}',
@@ -299,7 +300,15 @@ var AE_ST_GROUND_FRAG = [
   '  float mott = 0.0, wm = 1.0;',
   '  for (int i = 0; i < 4; i++) { float s = 0.4 * pow(4.0, float(i)); wm = 1.0 - smoothstep(0.3, 1.0, 3.0 * foot / s); if (wm > 0.0) mott += vnoise(vP / s + 31.0 * float(i)) * 0.18 * wm; }',
   '  alb *= (1.0 + mott);',
-  '  vec2 rk = (vSea > 0.5 || dist > ' + AE_ST_ROCK_FADE_M[1].toFixed(1) + ') ? vec2(0.0) : rocks(vP, foot) * (1.0 - smoothstep(' + AE_ST_ROCK_FADE_M[0].toFixed(1) + ', ' + AE_ST_ROCK_FADE_M[1].toFixed(1) + ', dist)); float hb = vSea > 0.5 ? 0.0 : fine(vP, foot) + rk.x; alb *= clamp(1.0 + 0.5 * rk.y, 0.35, 1.8);',
+  // Living ground (the Earth's): grain at the scales a pixel shows, from blades to tufts to patches, its hue following the land's own class
+  // (grass leans green, dry ground and sand lighter, rock and snow keep their tone).
+  '  if (uDetail > 0.5 && vSea < 0.5) {',
+  '    float gr = 0.0, grass = smoothstep(0.0, 0.07, map.g - max(map.r, map.b));',
+  '    for (int i = 0; i < 4; i++) { float s = 0.04 * pow(5.0, float(i)), wg = 1.0 - smoothstep(0.3, 1.0, 2.5 * foot / s); if (wg > 0.0) gr += (vnoise(vP / s + 17.0 * float(i)) - 0.5) * wg * (i == 0 ? 0.9 : 0.6); }',
+  '    alb *= 1.0 + gr * 0.9;',
+  '    alb.g *= 1.0 + 0.3 * gr * grass; alb.r *= 1.0 - 0.18 * gr * grass;',
+  '  }',
+  '  vec2 rk = (vSea > 0.5 || dist > ' + AE_ST_ROCK_FADE_M[1].toFixed(1) + ') ? vec2(0.0) : rocks(vP, foot) * (1.0 - smoothstep(' + AE_ST_ROCK_FADE_M[0].toFixed(1) + ', ' + AE_ST_ROCK_FADE_M[1].toFixed(1) + ', dist)); float hb = vSea > 0.5 ? 0.0 : fine(vP, foot) + rk.x; alb *= clamp(1.0 + 0.5 * rk.y, 0.5, 1.35);',
   '  vec3 dpx = dFdx(vP), dpy = dFdy(vP); float hx = dFdx(hb), hy = dFdy(hb);',
   '  vec3 r1 = cross(dpy, N), r2 = cross(N, dpx); float det = dot(dpx, r1);',
   '  vec3 gr = sign(det) * (hx * r1 + hy * r2) * smoothstep(0.03, 0.3, dot(N, V)), Nb = abs(det) * N + gr; if (dot(Nb, Nb) > 0.0) N = normalize(Nb);',
@@ -313,10 +322,11 @@ var AE_ST_GROUND_FRAG = [
   '    vec3 deep = vec3(0.02, 0.06, 0.09) * (sT * max(dot(upF, uSunDir), 0.0) / PI * 0.4 + uAmbient);',
   '    L = mix(deep, sky, F) + sT * pow(max(dot(R, uSunDir), 0.0), 1400.0) * 10.0;',
   '  } else {',
-  '    vec3 sT = sunTrans(pk) * uSunE * vShade;',
+  '    float vis = uLommel > 0.5 ? max(vShade, ' + AE_ST_BACKSCATTER.toFixed(2) + ') : vShade;',   // a shadow on regolith is lit by the ground around it
+  '    vec3 sT = sunTrans(pk) * uSunE * vis;',
   '    float ndl = dot(N, uSunDir), mu0 = max(ndl, 0.0), mu = max(dot(N, V), 0.03);',
   '    float lam = uLommel > 0.5 ? 2.0 * mu0 / (mu0 + mu) : mu0;',
-  '    float surge = uLommel > 0.5 ? 1.0 + 0.55 * exp(-acos(clamp(dot(uSunDir, V), -1.0, 1.0)) / 0.1) : 1.0;',
+  '    float surge = uLommel > 0.5 ? 1.0 + ' + AE_ST_SURGE.toFixed(2) + ' * exp(-acos(clamp(dot(uSunDir, V), -1.0, 1.0)) / ' + AE_ST_SURGE_WIDTH.toFixed(2) + ') : 1.0;',
   '    L = alb * (sT * lam * surge / PI + uAmbient * (0.55 + 0.45 * dot(N, upF)) + uE2 * max(dot(N, uDir2), 0.0) / PI);',
   '  }',
   '  if (uDiffuse > 0.5) { float T = exp(-dist * 0.001 / uVis); L = L * T + uDiffSky * (1.0 - T); }',
