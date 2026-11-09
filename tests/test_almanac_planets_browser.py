@@ -222,9 +222,10 @@ def test_the_planets_where_the_sky_has_them_and_a_flight_to_saturn(served):
             # text on a gradient, and the foot's own box also holds whatever a slow machine has not yet folded away).
             foot, under = pg.evaluate(
                 """() => { var o = _ae.el.getBoundingClientRect().top, rows = Array.from(document.querySelectorAll('.ae-bottom > *')).filter(c => !c.hidden && c.getBoundingClientRect().height > 0 && getComputedStyle(c).pointerEvents !== 'none');
-                return [Math.min.apply(null, rows.map(c => c.getBoundingClientRect().top - o)), Array.from(document.querySelector('.ae-bottom').children).map(c => [c.id || c.className, Math.round(c.getBoundingClientRect().height), c.hidden])]; }"""
+                return [Math.min.apply(null, rows.map(c => c.getBoundingClientRect().top - o)), rows.map(c => [c.id || c.className, Math.round(c.getBoundingClientRect().top - o), Math.round(c.getBoundingClientRect().height)]).concat([['view', Math.round(_ae.h), innerHeight]])]; }"""
             )
-            assert all(m["box"][1] < foot for m in marks), (foot, under, marks)
+            low = [(m["body"], round(m["box"][1])) for m in marks if m["box"][1] >= foot]
+            assert not low, "foot top %s, rows %s, under it %s" % (round(foot), under, low)
             # The planets only are named out here: no probe, moon or dwarf planet name, no crowd counts.
             planets = {
                 "mercury",

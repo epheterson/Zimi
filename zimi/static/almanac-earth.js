@@ -5147,6 +5147,7 @@ function _aeAngleDeltaRad(a, b) { return ((b - a + 3 * Math.PI) % (2 * Math.PI) 
 function _aeCraftViewDist(span) { return Math.max(span * AE_CRAFT_VIEW_SPANS, _aeFitDist(span * AE_CRAFT_FIT_R)); }
 // `waitModel`: the span is a guess, the model (loading) will correct it (_aeRefitCraftFlight).
 function _aeFlyToCraft(name, pp, span, waitModel) {
+  if (name === '__proto__' || name === 'constructor' || name === 'prototype') return;   // a name from a link is never a way into Object
   var target = Object.prototype.hasOwnProperty.call(AE_TARGETS, name) ? AE_TARGETS[name] : null;
   if (!target) return;
   target.min = span * 0.9;

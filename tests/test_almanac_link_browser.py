@@ -20,6 +20,7 @@ GL_ARGS = [
 ]
 READY_MS = 180_000
 WRITE_WAIT_MS = 1200  # ALM_LINK_MS twice over, for a slow machine
+WRITE_WAIT_TIMEOUT_MS = 20_000  # a shared CI runner under swiftshader can be ten times slower than that
 
 
 @pytest.fixture(scope="module")
@@ -82,7 +83,7 @@ def _hash_after_writes(pg, must_have):
     pg.wait_for_function(
         "(m) => m.every(function (k) { return location.hash.indexOf(k) >= 0; })",
         arg=must_have,
-        timeout=WRITE_WAIT_MS * 3,
+        timeout=WRITE_WAIT_TIMEOUT_MS,
     )
     pg.wait_for_timeout(WRITE_WAIT_MS)
     return pg.evaluate("() => location.hash")
