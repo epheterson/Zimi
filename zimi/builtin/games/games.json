@@ -2459,5 +2459,56 @@
   "length": "15 min",
   "kind": "cards",
   "computer": true
+ },
+ {
+  "qid": "Q1099522",
+  "wiki": "Race game",
+  "path": "walls.html",
+  "title": "Walls",
+  "blurb": "Race to the far side, building walls",
+  "why": "A pawn race where walls can slow the other runner, but never shut them in.",
+  "origin": {
+   "year": null,
+   "era": "1990s"
+  },
+  "region": "Worldwide/Modern",
+  "players": "2",
+  "length": "10 min",
+  "kind": "board",
+  "computer": true
+ },
+ {
+  "qid": "Q573573",
+  "wiki": "Abstract strategy game",
+  "path": "fourfold.html",
+  "title": "Fourfold",
+  "blurb": "Hand over the piece that cannot win",
+  "why": "Every piece has four traits, and the other player chooses the piece you must place.",
+  "origin": {
+   "year": null,
+   "era": "1990s"
+  },
+  "region": "Worldwide/Modern",
+  "players": "2",
+  "length": "10 min",
+  "kind": "board",
+  "computer": true
+ },
+ {
+  "qid": "Q1144819",
+  "wiki": "Polyomino",
+  "path": "polyominoes.html",
+  "title": "Polyominoes",
+  "blurb": "Fit every shape in, touching only at corners",
+  "why": "Every shape that can be built from up to five squares. Fit more of them in than the other player.",
+  "origin": {
+   "year": null,
+   "era": "1950s"
+  },
+  "region": "Americas",
+  "players": "2",
+  "length": "20 min",
+  "kind": "board",
+  "computer": true
  }
 ]

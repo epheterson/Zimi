@@ -1,0 +1,38 @@
+/* Walls: a wooden board of nine by nine squares with grooves between them, walls laid in the grooves, a white pawn and a black one.
+   Sizes come from one number, --hs (the board's width): the gap --g between squares, the square --u. */
+:root { --wl-wood: #c9a46a; --wl-groove: #6b4a24; --wl-sq: #ecd9b0; --wl-sq-goal0: #f6efd8; --wl-sq-goal1: #cdb98d; --wl-wall: #3d2a14; --wl-wall-hi: #7a5530; --wl-p0: #f6f3ea; --wl-p0-lo: #b9b3a2; --wl-p1: #1e2430; --wl-p1-hi: #4a5568; }
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) { --wl-wood: #7b6038; --wl-groove: #2a1c0c; --wl-sq: #a89a7e; --wl-sq-goal0: #bdb095; --wl-sq-goal1: #8e8168; --wl-wall: #b58a4a; --wl-wall-hi: #e0b878; --wl-p0: #e4e0d4; --wl-p1: #0b0d12; } }
+:root[data-theme="dark"] { --wl-wood: #7b6038; --wl-groove: #2a1c0c; --wl-sq: #a89a7e; --wl-sq-goal0: #bdb095; --wl-sq-goal1: #8e8168; --wl-wall: #b58a4a; --wl-wall-hi: #e0b878; --wl-p0: #e4e0d4; --wl-p1: #0b0d12; }
+
+.wl-wrap { --hs: min(100vw - 24px, 100svh - 250px, 560px); --g: calc(var(--hs) * 0.021); --u: calc(var(--hs) * 0.0878); --step: calc(var(--u) + var(--g)); position: relative; width: var(--hs); height: var(--hs); }
+.wl-board { position: absolute; inset: 0; box-sizing: border-box; padding: var(--g); display: grid; grid-template-columns: repeat(9, var(--u)); grid-template-rows: repeat(9, var(--u)); gap: var(--g); background: var(--wl-groove); border-radius: 6px; box-shadow: 0 0 0 3px var(--sq-edge), 0 6px 18px rgba(0, 0, 0, 0.22); user-select: none; -webkit-user-select: none; touch-action: manipulation; }
+.wl-board button { position: relative; display: grid; place-items: center; min-width: 0; min-height: 0; padding: 0; border: 0; border-radius: 3px; background: var(--wl-sq); cursor: pointer; }
+.wl-board button.goal0 { background: var(--wl-sq-goal0); box-shadow: inset 0 2px 0 var(--wl-p0-lo); }
+.wl-board button.goal1 { background: var(--wl-sq-goal1); box-shadow: inset 0 -2px 0 var(--wl-p1); }
+.wl-board button:focus-visible { outline: 3px solid var(--accent); outline-offset: -2px; z-index: 3; }
+.wl-board button.last::before, .wl-board button.tip::before { content: ""; position: absolute; inset: 0; border-radius: inherit; background: var(--last); pointer-events: none; }
+.wl-board button.tip::before { background: var(--sel); }
+.wl-board button.hint::after { content: ""; position: absolute; width: 30%; height: 30%; border-radius: 50%; background: var(--hint); pointer-events: none; }
+.wl-board.is-walling > button { cursor: default; }
+
+.wl-pc { position: relative; z-index: 1; width: 76%; height: 76%; border-radius: 50%; pointer-events: none; box-shadow: 0 2px 3px rgba(0, 0, 0, 0.5), inset 0 -2px 3px rgba(0, 0, 0, 0.22), inset 0 2px 2px rgba(255, 255, 255, 0.25); }
+.wl-pc.p0 { background: radial-gradient(circle at 35% 30%, #ffffff, var(--wl-p0) 62%, var(--wl-p0-lo)); }
+.wl-pc.p1 { background: radial-gradient(circle at 35% 30%, var(--wl-p1-hi), var(--wl-p1) 68%); }
+.wl-pc::before { content: ""; position: absolute; inset: 24%; border-radius: 50%; border: 1.5px solid rgba(70, 48, 24, 0.5); }
+.wl-pc.p1::before { border-color: rgba(246, 243, 234, 0.45); }
+
+/* A wall lies in the groove between two squares, two squares long. */
+.wl-wall { position: absolute; background: linear-gradient(var(--wl-wall-hi), var(--wl-wall)); border-radius: 2px; box-shadow: 0 1px 2px rgba(0, 0, 0, 0.5); pointer-events: none; z-index: 2; }
+.wl-wall.flat { left: calc(var(--g) + var(--c) * var(--step)); top: calc(var(--g) + var(--r) * var(--step) + var(--u)); width: calc(var(--u) * 2 + var(--g)); height: var(--g); }
+.wl-wall.upright { left: calc(var(--g) + var(--c) * var(--step) + var(--u)); top: calc(var(--g) + var(--r) * var(--step)); width: var(--g); height: calc(var(--u) * 2 + var(--g)); }
+.wl-wall.last { box-shadow: 0 0 0 2px var(--accent), 0 1px 2px rgba(0, 0, 0, 0.5); }
+.wl-wall.prev, .wl-wall.tip { background: var(--accent); box-shadow: 0 0 0 2px var(--accent-glow), 0 0 0 3px var(--accent); opacity: 0.95; }
+.wl-wall.tip { background: repeating-linear-gradient(45deg, var(--accent) 0 4px, var(--wl-wall) 4px 8px); }
+
+/* The points where four squares meet: a dot each, a square-sized target, only while a wall is being chosen. */
+.wl-junc { position: absolute; inset: 0; pointer-events: none; z-index: 4; }
+.wl-junc button { position: absolute; left: calc(var(--g) + var(--c) * var(--step) + (var(--u) + var(--g)) / 2); top: calc(var(--g) + var(--r) * var(--step) + (var(--u) + var(--g)) / 2); width: var(--u); height: var(--u); padding: 0; border: 0; background: transparent; pointer-events: auto; cursor: pointer; display: grid; place-items: center; }
+.wl-junc button::before { content: ""; width: calc(var(--g) * 1.5); height: calc(var(--g) * 1.5); border-radius: 50%; background: transparent; box-shadow: 0 0 0 1px var(--accent); opacity: 0.7; }
+.wl-junc button[aria-disabled="true"]::before { background: transparent; box-shadow: 0 0 0 1px var(--ink3); opacity: 0.5; }
+.wl-junc button.aim::before { background: var(--accent); width: calc(var(--g) * 2.4); height: calc(var(--g) * 2.4); }
+.wl-junc button:focus-visible { outline: 3px solid var(--accent); outline-offset: -3px; border-radius: 50%; }
