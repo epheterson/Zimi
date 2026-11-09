@@ -2680,5 +2680,39 @@
   "length": "20 min",
   "kind": "board",
   "computer": true
+ },
+ {
+  "qid": "Q142714",
+  "wiki": "Card game",
+  "path": "courtier.html",
+  "title": "Courtier",
+  "blurb": "Outwit the court with a single card",
+  "why": "Hold one card, draw one, play one. A small game of hidden cards, deduction and a little nerve.",
+  "origin": {
+   "year": null,
+   "era": "2000s"
+  },
+  "region": "Worldwide/Modern",
+  "players": "2 to 4",
+  "length": "10 min",
+  "kind": "cards",
+  "computer": true
+ },
+ {
+  "qid": "Q85801811",
+  "wiki": "Social deduction game",
+  "path": "oddone.html",
+  "title": "Odd One Out",
+  "blurb": "Spot who has not seen the picture",
+  "why": "Everyone sees the same picture except one person. Say a word about it, then find the odd one out.",
+  "origin": {
+   "year": null,
+   "era": "2000s"
+  },
+  "region": "Worldwide/Modern",
+  "players": "3 to 8",
+  "length": "10 min",
+  "kind": "kids",
+  "computer": false
  }
 ]

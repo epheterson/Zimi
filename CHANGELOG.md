@@ -19,6 +19,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 ### Added
 
 - Games: ten more solitaires on the shelf: Yukon, Forty Thieves, Canfield, Scorpion, Aces Up, Accordion, Calculation, Beleaguered Castle, Eight Off and Monte Carlo.
+### Added
+
+- Games: Courtier, a small deduction card game for two to four, and Odd One Out, a party game for three to eight on one phone that plays from pictures in any language.
 
 ### Fixed
 

@@ -527,7 +527,7 @@ const same = (a, b) => JSON.stringify(a) === JSON.stringify(b);
 
 // ── Memory ──────────────────────────────────────────────────────────────────
 {
-  const M = load(['playkit.js', 'memory.js']).MemoryEngine;
+  const M = load(['playkit.js', 'pictures.js', 'memory.js']).MemoryEngine;
   check(Object.keys(M.SETS).length >= 2 && Object.keys(M.SETS).every(k => M.SETS[k].pics.length >= 10 && M.SETS[k].pics.every(p => /^[A-Z][a-z]+$/.test(p[0]) && p[1].startsWith('<'))), 'memory: two picture sets, ten named pictures each');
   check(Object.keys(M.SETS).every(k => new Set(M.SETS[k].pics.map(p => p[0])).size === M.SETS[k].pics.length && new Set(M.SETS[k].pics.map(p => p[1])).size === M.SETS[k].pics.length), 'memory: every picture is different');
   let g = M.createGame(8, 3);

@@ -162,7 +162,7 @@ const TILES = {
 };
 // The non-card tiles that were redrawn (scripts/games_tile_art.js): each one's art is scoped so its gradient ids stay its own on the shared page.
 const TILE_ART = require('./games_tile_art.js');
-const TILE_BASE = { whereintheworld: '#8f6538', wikirace: '#161d2b', telephone: '#bd9c68', bluff: '#8f6538', firstlines: '#8f6538', quizzical: '#161d2b', higherlower: '#161d2b', minesweeper: '#161d2b', paddles: '#121620', fleet: '#123d63', mahjong4: '#17382a', droppin: '#8f6538', lander: '#05070f', babel: '#f6d398', sudoku: '#8f6538', snake: '#0f2417', fiveletters: '#161d2b', t2048: '#bcc5d3', bricks: '#121824', memory: '#141b29' };
+const TILE_BASE = { courtier: '#2a2140', oddone: '#161c2c', whereintheworld: '#8f6538', wikirace: '#161d2b', telephone: '#bd9c68', bluff: '#8f6538', firstlines: '#8f6538', quizzical: '#161d2b', higherlower: '#161d2b', minesweeper: '#161d2b', paddles: '#121620', fleet: '#123d63', mahjong4: '#17382a', droppin: '#8f6538', lander: '#05070f', babel: '#f6d398', sudoku: '#8f6538', snake: '#0f2417', fiveletters: '#161d2b', t2048: '#bcc5d3', bricks: '#121824', memory: '#141b29' };
 // An id may not start with a digit, so 2048's art is keyed t2048 and goes on the 2048 tile.
 const TILE_GAME = { t2048: '2048' };
 Object.keys(TILE_ART.ART).forEach((name) => { TILES[TILE_GAME[name] || name] = () => tile(TILE_BASE[name], TILE_ART.scoped(name, TILE_ART.ART[name]())); });
