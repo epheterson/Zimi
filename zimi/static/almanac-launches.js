@@ -19,6 +19,7 @@ var AL_DEP_ORBIT_DAYS = 4;                   // GCAT's catalogued orbit is the d
 var AL_WINDOW_HOURS = 72, AL_WINDOW_STEP_S = 30, AL_WINDOWS_SHOWN = 3;
 var AL_TRAIL_S = 12, AL_TRAIL_STEP_S = 2;    // the rocket's trail in the sky: this far back, a point this often
 // ── In the 3D view ──
+var AL_FLY_TILT_RAD = 0.22;                  // the view looks this far south of the pad, so the pad sits above the sheet
 var AL_FLY_DIST = 1.28;                      // Earth radii from the centre when the view comes to a pad: the ascent fits
 var AL_TRACK_COLOR = 0xffc978, AL_TRACK_ALPHA = 0.8, AL_BOOSTER_COLOR = 0x9be7ff, AL_BOOSTER_ALPHA = 0.6;
 var AL_ROCKET_COLOR = [1, 0.8, 0.5], AL_PLUME_COLOR = [0.7, 0.9, 1], AL_BOOSTER_POINT = [0.8, 0.95, 1];
@@ -118,7 +119,7 @@ function _alOrbitText(L) {
 
 // ── The sheet ──
 var AL_CSS = [
-  '.al-sheet{position:absolute;left:50%;transform:translateX(-50%);bottom:calc(150px + env(safe-area-inset-bottom));width:min(440px,calc(100% - 32px));max-height:56vh;overflow-y:auto;overscroll-behavior:contain;box-sizing:border-box;background:rgba(18,18,20,.985);border:1px solid var(--border);border-radius:12px;padding:10px 12px;font-size:13px;color:var(--text2);pointer-events:auto}',
+  '.al-sheet{position:absolute;left:50%;transform:translateX(-50%);bottom:calc(150px + env(safe-area-inset-bottom));width:min(440px,calc(100% - 32px));max-height:46vh;overflow-y:auto;overscroll-behavior:contain;box-sizing:border-box;background:rgba(18,18,20,.985);border:1px solid var(--border);border-radius:12px;padding:10px 12px;font-size:13px;color:var(--text2);pointer-events:auto}',
   '.al-sheet[hidden]{display:none}',
   '.al-sheet h3{margin:0 56px 8px 0;font-size:14px;font-weight:600;color:var(--text)}',
   '.al-x,.al-back{position:absolute;top:6px;background:none;border:0;color:var(--text2);font-size:20px;cursor:pointer;line-height:1;padding:4px 6px}',
@@ -140,10 +141,10 @@ var AL_CSS = [
   '.al-sight{margin:0 0 8px;padding:8px 10px;border-radius:9px;background:rgba(255,255,255,.06);color:var(--text)}',
   '.al-sight.no{color:var(--text2)}',
   '.al-acts{display:flex;gap:6px;flex-wrap:wrap;margin:0 0 8px}',
-  '.al-acts .ae-btn{display:inline-flex;align-items:center;gap:6px;font-size:12.5px;padding:6px 10px;min-height:32px}',
+  '.al-acts .ae-round{width:38px;height:38px;padding:0;display:inline-flex;align-items:center;justify-content:center}',
   '.al-src{display:flex;gap:6px;align-items:center;margin:0 0 6px}',
   '.al-src .ae-btn{font-size:12px;padding:4px 10px;min-height:28px}',
-  '.al-win{display:grid;grid-template-columns:auto 1fr auto;gap:2px 10px;padding:3px 0;font-variant-numeric:tabular-nums}',
+  '.al-win{display:grid;grid-template-columns:auto 1fr auto;gap:2px 10px;width:100%;text-align:start;font:inherit;color:inherit;background:none;border:0;border-top:1px solid var(--border);padding:6px 0;cursor:pointer;font-variant-numeric:tabular-nums}',
   '.al-win b{color:var(--text);font-weight:600}',
   '.al-st{display:grid;gap:6px;margin:6px 0}',
   '.al-st input{font:inherit;color:var(--text);background:var(--surface,rgba(255,255,255,.06));border:1px solid var(--border);border-radius:8px;padding:6px 8px;min-width:0}',
@@ -298,13 +299,15 @@ function _alLaunchHtml() {
     _alFact('path', _alProfileText() + ' · ' + _orrNum(f.az, null, 0) + '°') + '</ul>' +
     '<p class="al-sight' + (sight.no ? ' no' : '') + '">' + _almEsc(sight.text) + '</p>' +
     '<div class="al-acts">' +
-      '<button type="button" class="ae-btn" id="al-pad">' + _alSvg('pad') + _almEsc(_aeT('alm_launch_pad')) + '</button>' +
-      '<button type="button" class="ae-btn" id="al-here">' + _alSvg('eye') + _almEsc(_aeT('alm_launch_from_here')) + '</button>' +
-      '<button type="button" class="ae-btn" id="al-frompad">' + _alSvg('stand') + _almEsc(_aeT('alm_launch_from_pad')) + '</button>' +
-      (typeof _aeStandAt === 'function' ? '<button type="button" class="ae-btn" id="al-ground">' + _alSvg('stand') + _almEsc(_aeT('alm_launch_on_ground')) + '</button>' : '') +
+      _alAct('al-pad', 'pad', 'alm_launch_pad') + _alAct('al-here', 'eye', 'alm_launch_from_here') + _alAct('al-frompad', 'stand', 'alm_launch_from_pad') +
+      (typeof _aeStandAt === 'function' ? _alAct('al-ground', 'stand', 'alm_launch_on_ground') : '') +
     '</div>';
   if (_al.dep) html += _alBatchHtml();
   return html;
+}
+function _alAct(id, icon, key) {
+  var t = _almEsc(_aeT(key));
+  return '<button type="button" class="ae-btn ae-round" id="' + id + '" aria-label="' + t + '" title="' + t + '">' + _alSvg(icon, 18) + '</button>';
 }
 function _alBatchHtml() {
   var L = _al.cur, dep = _al.dep, src = _al.depSource;
@@ -320,14 +323,14 @@ function _alBatchHtml() {
 function _alWindowsHtml() {
   var dep = _al.dep, place = _alPlace();
   if (!dep || !place || _al.depSource !== AL_SRC.recon) return '';
-  var from = Math.max(_aeDisplayMs(), dep.sepMs);
+  var from = dep.sepMs;
   if (!_al.windows || _al.windows.from !== from) {
     _al.windows = { from: from, list: _lfBatchWindows(dep, from, from + AL_WINDOW_HOURS * 3600000, place.lat, place.lon, AE_SATS_REF.passMinEl, AL_WINDOW_STEP_S * 1000) };
   }
   var list = _al.windows.list.slice(0, AL_WINDOWS_SHOWN);
   if (!list.length) return '<p class="al-note">' + _almEsc(_aeT('alm_launch_no_windows')) + '</p>';
   return '<div class="al-wins">' + list.map(function (w) {
-    return '<button type="button" class="as-pass al-win" data-ms="' + w.start + '"><b>' + _almEsc(_alFmt(w.start, AL_DAY_OPTS) + ' ' + _alTimeText(w.start)) + '</b>' +
+    return '<button type="button" class="al-win" data-ms="' + w.start + '"><b>' + _almEsc(_alFmt(w.start, AL_DAY_OPTS) + ' ' + _alTimeText(w.start)) + '</b>' +
       '<span>' + _almEsc(_aeT('alm_launch_n_sats', { n: w.count })) + '</span><span>' + _alArrow(w.azStart) + ' — ' + _alArrow(w.azEnd) + ' · ' + Math.round(w.peakEl) + '°</span></button>';
   }).join('') + '</div>';
 }
@@ -356,7 +359,9 @@ function _alGoPad() {
   _aeGoTo(L.ms);
   var sc = _aeSceneAt(L.ms);
   _ae.place = null; _ae.lm = null; _ae.selected = null; _ae.arrived = null;
-  _aeFlyTo('earth', AL_FLY_DIST, _aeAzElOf(_aeFixedToScene(_aeGeodeticToFixed(L.lat, L.lon), sc.gast)));
+  var azel = _aeAzElOf(_aeFixedToScene(_aeGeodeticToFixed(L.lat, L.lon), sc.gast));
+  azel.el = Math.max(-AE_MAX_ELEVATION, azel.el - AL_FLY_TILT_RAD);
+  _aeFlyTo('earth', AL_FLY_DIST, azel);
   _alKick();
 }
 // "From here" and "From the pad": the place and the moment into the live sky. The pad is a place the page borrows (never

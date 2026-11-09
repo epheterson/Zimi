@@ -146,11 +146,17 @@ def test_a_launch_opens_at_its_pad_and_says_what_la_could_see(browser, served):
         pg.wait_for_timeout(2500)
         assert pg.evaluate("_al.rocket.geometry.drawRange.count") >= 2
         _shot(pg, "launch-ascent.png")
+        pg.evaluate("_al.sheetEl.hidden = true")
+        pg.wait_for_timeout(600)
+        _shot(pg, "launch-ascent-clear.png")
+        pg.evaluate("_al.sheetEl.hidden = false")
         # The batch, once let go: 53 points.
         pg.evaluate("_aeGoTo(%d)" % (LIFTOFF_MS + 40 * 60_000))
         pg.wait_for_timeout(2500)
         assert pg.evaluate("_al.dots.geometry.drawRange.count") == 53
         _shot(pg, "launch-batch.png")
+        pg.evaluate("_aeGoTo(%d)" % (LIFTOFF_MS - 2_000))
+        pg.wait_for_timeout(1200)
         # "From here": the sky, at the place, at the rise.
         pg.click("#al-here")
         pg.wait_for_function(
@@ -159,6 +165,10 @@ def test_a_launch_opens_at_its_pad_and_says_what_la_could_see(browser, served):
             polling=250,
         )
         pg.wait_for_timeout(1500)
+        pg.evaluate("_almScrubSettle(new Date(%d))" % (LIFTOFF_MS + 75_000))
+        pg.wait_for_timeout(2500)
+        pg.evaluate("_skyState.canvas.scrollIntoView({ block: 'center' })")
+        pg.wait_for_timeout(800)
         _shot(pg, "launch-sky.png")
         assert not [
             e for e in errors if "launch" in e.lower() or "_al" in e or "_lf" in e

@@ -6625,7 +6625,7 @@ function _aeNoteParts() {
     // The data's date is in the gear (with Get fresh data); the line under the controls says only that it may be out
     // of date.
     if (anyShown) dated = _aeT('alm_earth_sat_data_from', { date: _aeFmtDate(newest) });
-    else if (aboutSats) parts.push(_aeT('alm_earth_no_sat_data'));
+    else if (aboutSats) parts.push(_aeT('alm_earth_no_sat_data', { date: _aeFmtDate(newest) }));
     stale = aboutSats && anyShown && !!(_ae.satMeta && _ae.satMeta.stale);
     if (stale) parts.push(_aeT('alm_earth_data_stale'));
     if (aboutSats && issOrbit) parts.push(_aeT('alm_earth_iss_orbit_only', { date: _aeFmtDate(issOrbit.epochMs) }));
