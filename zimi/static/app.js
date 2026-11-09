@@ -3368,7 +3368,12 @@ function bcClick(e) {
   if (e.target.closest && e.target.closest('#logo')) return; // the logo's own handler navigates
   if (_anchorNativeClick(e)) return; // bc-icon is a real link (#49) — new-tab gestures stay native
   e.preventDefault();
-  if (_almanacOpen) return; // the Almanac breadcrumb is identity only — no nav into the ZIM behind it
+  if (_almanacOpen) {
+    // Over the Almanac, its icon is the way back to it: the 3D view closes, as its back arrow does (Eric 2026-11-08).
+    // On the Almanac itself it is identity only, no nav into the ZIM behind it.
+    if (typeof _aeIsOpen !== 'undefined' && _aeIsOpen && e.target.closest && e.target.closest('#bc-icon')) goBack();
+    return;
+  }
   // An app's icon is the way to its front page, from anywhere inside it.
   if (_isAppPage()) { _appEntryHome(); return; }
   // In ZimiGames the icon is the way to every game: the shelf, from any game (a Discover card or a link lands mid-shelf).

@@ -277,3 +277,19 @@ def test_a_link_to_the_station_or_a_probe_comes_back_there(browser, served, view
         assert not errors, errors
     finally:
         ctx.close()
+
+
+def test_the_almanac_s_icon_in_the_header_closes_the_3d_view(browser, served):
+    """Over the Almanac, a tap on its icon in Zimi's header does what the back arrow does: the 3D view closes, the Almanac
+    stays."""
+    errors = []
+    ctx, pg = _open(browser, served, errors=errors)
+    try:
+        pg.wait_for_function("() => typeof openAlmanacEarth === 'function'", timeout=120_000)
+        pg.evaluate("() => openAlmanacEarth({ from: 'sky' })")
+        _view_ready(pg)
+        pg.click("#bc-icon")
+        pg.wait_for_function("() => !_aeIsOpen && _almanacOpen", timeout=10_000)
+        assert not errors, errors
+    finally:
+        ctx.close()
