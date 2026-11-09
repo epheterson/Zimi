@@ -469,6 +469,11 @@ function setView(v) {
   renderViews();
   if (_q) renderResults();
 }
+// Another window changed the view or the language: this one shows it.
+var prefsWatched = {};
+prefsWatched[VIEW_KEY] = function(v) { var next = v === 'list' ? 'list' : 'cards'; if (next !== _view) { _view = next; renderViews(); if (_q) renderResults(); } };
+prefsWatched[LANG_KEY] = function(v) { if (v && v !== _lang && _langs.some(function(l) { return l.code === v; })) setLang(v); };
+prefWatch(prefsWatched);
 
 // One page, as a card or (in a search's list) a row. it: {zim, path, title,
 // blurb, thumb, kick, role, by, cls}. A quote leads with its words and names
