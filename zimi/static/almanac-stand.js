@@ -18,7 +18,7 @@ var AE_STAND_FRAME_MS = 1500;              // the sky is worked out again when t
 var AE_STAND_HUD_MS = 400;
 var AE_STAND_SUN_FACE_DEG = -6;            // the view faces the Sun when it is above this
 var AE_STAND_GROUND_AMBIENT_SHARE = 0.8;   // the ground takes this much of the sky's light at its brightest
-var AE_STAND_NEAR_SUN_SHARE = 0.2;        // the exposure is set by the brightest sky short of the Sun's own glare: this much of the sky a little over it
+var AE_STAND_NEAR_SUN_SHARE = 0.35;       // the exposure is set by the brightest sky short of the Sun's own glare: this much of the sky a little over it
 var AE_STAND_NEAR_SUN_ABOVE_DEG = 8, AE_STAND_NEAR_SUN_MIN_DEG = 6;
 var AE_STAND_AMBIENT_GAIN = 1.6;
 var AE_STAND_BOUNCE = 0.03;                // an airless ground in shadow, over the Sun-lit ground's radiance (alb x this): light from the terrain round it             // the sky's light on the ground, over its light overhead (it comes from the whole dome and the ground)
