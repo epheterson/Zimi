@@ -179,13 +179,17 @@ def _shot(pg, name):
 
 
 # Stands the camera over a place at a distance from the Earth's middle, drawn once.
-GO_LOW = """([lat, lon, dist]) => {
-  _aePlacePick({ name: 'Spot', label: 'Spot', lat: lat, lon: lon, kind: 'town' });
-  _ae.fly = null;
-  _ae.dist = dist;
-  _ae.dirty = true;
-  _aeKick();
-}"""
+PICK = "([lat, lon]) => _aePlacePick({ name: 'Spot', label: 'Spot', lat: lat, lon: lon, kind: 'town' })"
+SET_DIST = "d => { _ae.dist = d; _ae.dirty = true; _aeKick(); }"
+
+
+def _go_low(pg, lat, lon, dist):
+    """Fly over the place (the camera must have arrived, or it looks at where it was), then to the distance."""
+    pg.evaluate(PICK, [lat, lon])
+    pg.wait_for_function("() => !_ae.fly", timeout=60_000, polling=200)
+    pg.evaluate(SET_DIST, dist)
+
+
 # Open Paris's place card with the link stand-in recording what is opened.
 STAND_IN = "() => { window.__opened = null; AlmanacLinks.openHit = function (h, o) { window.__opened = { hit: h, opts: o }; }; }"
 
@@ -274,13 +278,13 @@ def test_low_over_a_map_its_roads_and_names_are_on_the_globe_and_far_out_they_ar
         br = pw.chromium.launch(args=GL_ARGS)
         try:
             ctx, pg, errors = _open(br, maplib)
-            pg.evaluate(GO_LOW, [PARIS[0], PARIS[1], 1.12])
+            _go_low(pg, PARIS[0], PARIS[1], 1.12)
             _settled(pg)
             pg.wait_for_timeout(1500)
             assert pg.evaluate("AlmanacMaps._map().name") == MAP
             _shot(pg, "paris-1.12.png")
             # Nearer: over the map the camera may come down to its own limit.
-            pg.evaluate(GO_LOW, [PARIS[0], PARIS[1], 1.01])
+            _go_low(pg, PARIS[0], PARIS[1], 1.01)
             pg.wait_for_function("() => _ae.dist < 1.05", timeout=30_000)
             pg.wait_for_timeout(3000)
             _shot(pg, "paris-1.01.png")
@@ -292,7 +296,7 @@ def test_low_over_a_map_its_roads_and_names_are_on_the_globe_and_far_out_they_ar
             )
             assert cost < 2.0, cost
             # Far out: nothing of the map is drawn, nothing is asked for.
-            pg.evaluate(GO_LOW, [PARIS[0], PARIS[1], 6])
+            _go_low(pg, PARIS[0], PARIS[1], 6)
             pg.wait_for_timeout(1500)
             assert pg.evaluate(
                 "Object.values(AlmanacMaps._tiles()).every(t => !t.mesh || !t.mesh.visible || t.mat.opacity === 0)"
@@ -313,7 +317,7 @@ def test_low_over_ground_no_installed_map_holds_a_quiet_chip_offers_the_map_to_g
         br = pw.chromium.launch(args=GL_ARGS)
         try:
             ctx, pg, errors = _open(br, maplib)
-            pg.evaluate(GO_LOW, [TOKYO[0], TOKYO[1], 1.1])
+            _go_low(pg, TOKYO[0], TOKYO[1], 1.1)
             pg.wait_for_selector(
                 "#ae-maps-chip:not([hidden]) .ae-maps-act", timeout=120_000
             )
