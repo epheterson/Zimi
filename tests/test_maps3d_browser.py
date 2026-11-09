@@ -293,7 +293,12 @@ def test_low_over_a_map_its_roads_and_names_are_on_the_globe_and_far_out_they_ar
             pg.wait_for_timeout(3000)
             _shot(pg, "paris-1.01.png")
             low = pg.evaluate("_aeMapsMin()")
-            assert low < 1.05, low
+            assert low < 1.05, (
+                low,
+                pg.evaluate(
+                    "() => JSON.stringify([AlmanacMaps._state(), _ae.target, _ae.spin, _ae.dist, !!_ae.fly])"
+                ),
+            )
             # The frame's cost with the map on.
             cost = pg.evaluate(
                 "() => { var S = _ae.gl, t0 = performance.now(); for (var i = 0; i < 60; i++) AlmanacMaps.frame(S); return (performance.now() - t0) / 60; }"

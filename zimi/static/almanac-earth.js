@@ -77,13 +77,6 @@ function _aeGeodeticToFixed(latDeg, lonDeg) {
   var N = 1 / Math.sqrt(1 - AE_EARTH_E2 * Math.sin(la) * Math.sin(la));
   return [N * Math.cos(la) * Math.cos(lo), N * Math.cos(la) * Math.sin(lo), N * (1 - AE_EARTH_E2) * Math.sin(la)];
 }
-// Where a latitude and longitude stand on the drawn globe: the maps are laid on the flattened sphere by latitude, so
-// the point is the map's own (a sphere's, then flattened as the Earth's mesh is). A pin or an aim at a place uses this,
-// not the geodetic point, or it lands up to 11 km off the ground (and the map's roads) it is meant for.
-function _aeGlobePoint(latDeg, lonDeg) {
-  var p = _aeEqVec(_aeRad(lonDeg), _aeRad(latDeg), 1);
-  return [p[0], p[1], p[2] * (1 - AE_EARTH_FLATTENING)];
-}
 // Geodetic latitude/longitude (degrees) of a point on the ellipsoid surface.
 function _aeFixedToGeodetic(p) {
   var lon = _aeDeg(Math.atan2(p[1], p[0]));
@@ -1013,7 +1006,7 @@ function _aePlacePick(p) {
   _ae.lm = null; _ae.selected = null; _ae.arrived = null;
   if (_ae.spin) _aeLeaveSpin();
   _ae.preset = 'earth';
-  _aeFlyTo('earth', AE_PLACE_DIST, _aeAzElOf(_aeFixedToScene(_aeGlobePoint(p.lat, p.lon), sc.gast)));
+  _aeFlyTo('earth', AE_PLACE_DIST, _aeAzElOf(_aeFixedToScene(_aeGeodeticToFixed(p.lat, p.lon), sc.gast)));
   _aeMarkViews();
   _aeRenderCard();
   _aePlaceArticle(_ae.place);
@@ -1349,6 +1342,20 @@ var AE_SPHERE_VERT = [
 var AE_ECL_LINES = 4;        // lines at every quarter of the Sun covered
 var AE_ECL_EDGE = 0.004;     // covered share from which the shadow's edge is drawn
 var AE_ECL_LINE_W = 0.08;    // a line's half-width, in quarters
+// The Earth's mesh is the flattened sphere; its picture's rows are geodetic latitude, so each vertex looks the row up by
+// the geodetic latitude of its point (atan2 of the pole's height over the flattened ring, no pole singularity).
+var AE_EARTH_VERT = [
+  'varying vec2 vUv; varying vec3 vWorld; varying vec3 vNormal;',
+  'void main() {',
+  '  float lat = atan(position.z, ' + _aeGlslNum(1 - AE_EARTH_FLATTENING) + ' * length(position.xy));',
+  '  vUv = vec2(uv.x, 0.5 + lat / 3.14159265);',
+  '  vec4 w = modelMatrix * vec4(position, 1.0);',
+  '  vWorld = w.xyz;',
+  '  vNormal = normalize(mat3(modelMatrix) * normal);',
+  '  gl_Position = projectionMatrix * viewMatrix * w;',
+  '}'
+].join('\n');
+
 var AE_EARTH_FRAG = [
   'precision highp float;',
   'uniform sampler2D dayMap; uniform sampler2D nightMap;',
@@ -1926,7 +1933,7 @@ function _aeBuildGl(THREE, canvas) {
     dim: { value: 1 }
   };
   var earth = new THREE.Mesh(earthGeo, new THREE.ShaderMaterial({
-    uniforms: earthUni, vertexShader: AE_SPHERE_VERT, fragmentShader: AE_EARTH_FRAG
+    uniforms: earthUni, vertexShader: AE_EARTH_VERT, fragmentShader: AE_EARTH_FRAG
   }));
   earth.scale.set(1, 1, 1 - AE_EARTH_FLATTENING);
   scene.add(earth);
@@ -2076,7 +2083,18 @@ var AE_HD_TILE_REACH = 0.75;     // a tile's angular radius, as a share of its s
 // approach (AE_MIN_DIST_MOON), so it keeps it: the Blue Marble and LRO mosaics, not the view, are the limit.
 var AE_HD_MIN_ALT_KM = 400;
 // A place on a body (latitude, longitude in degrees) as a unit vector in the body's own frame.
-function _aeLatLonVec(lat, lon) { return _aeEqVec(_aeRad(lon), _aeRad(lat), 1); }
+// The point of a body's drawn sphere (squashed along its pole by `flat`) at a latitude and longitude. A map's rows follow
+// the geodetic latitude, so with a flattening the sphere's own (reduced) latitude is the one whose tan is (1 - f) tan(lat):
+// then a texture, tile, pin or road at (lat, lon) lands on the true ellipsoid point.
+function _aeLatLonVec(lat, lon, flat) {
+  var la = _aeRad(lat), k = flat ? 1 - flat : 1;
+  return _aeEqVec(_aeRad(lon), Math.atan2(k * Math.sin(la), Math.cos(la)), 1);
+}
+// The inverse, for a point of the drawn sphere (unit, local): its geodetic latitude and longitude in degrees.
+function _aeSphereLatLon(x, y, z, flat) {
+  var k = flat ? 1 - flat : 1;
+  return { lat: _aeDeg(Math.atan2(z, k * Math.hypot(x, y))), lon: _aeDeg(Math.atan2(y, x)) };
+}
 
 // Each body's tiled layers: the sampler each fills in the body's own shader, and the layer's folder in the ZIM.
 function _aeHdBodies(S) {
@@ -2161,12 +2179,12 @@ function _aeHdBox(z, x, y) {
   return [x * w, 1 - (y + 1) * h, w, h];
 }
 // One tile's patch of sphere, with the whole map's uv (the shader picks the tile's part), and a skirt round its edges.
-function _aeHdGeometry(THREE, z, x, y, radius) {
+function _aeHdGeometry(THREE, z, x, y, radius, flat) {
   var span = _aeHdSpan(z), n = Math.max(AE_HD_MIN_SEG, Math.ceil(span / AE_HD_SEG_DEG));
   var lon0 = -180 + x * span, lat0 = 90 - y * span;
   var pos = [], nor = [], uv = [], idx = [];
   var vert = function (lat, lon, r) {
-    var p = _aeLatLonVec(lat, lon);
+    var p = _aeLatLonVec(lat, lon, flat);
     pos.push(p[0] * r, p[1] * r, p[2] * r);
     nor.push(p[0], p[1], p[2]);
     uv.push((lon + 180) / 360, (lat + 90) / 180);
@@ -2328,7 +2346,7 @@ function _aeHdMesh(S, b, n) {
     uniforms[m.uni] = { value: ln.tex[m.layer] };
     uniforms['uBox_' + m.uni] = { value: _aeHdBox(ln.z, ln.x, ln.y) };
   });
-  n.mesh = new S.THREE.Mesh(_aeHdGeometry(S.THREE, n.z, n.x, n.y, b.radius),
+  n.mesh = new S.THREE.Mesh(_aeHdGeometry(S.THREE, n.z, n.x, n.y, b.radius, b.key === 'earth' ? AE_EARTH_FLATTENING : 0),
     new S.THREE.ShaderMaterial({ uniforms: uniforms, vertexShader: AE_SPHERE_VERT, fragmentShader: b.frag }));
   n.mesh.visible = false;
   b.parent.add(n.mesh);
@@ -4311,7 +4329,7 @@ function _aeLmBodies() {
   return out;
 }
 function _aeLmDir(b, lat, lon) {
-  var v = _aeLatLonVec(lat, lon), e = b.m;
+  var v = _aeLatLonVec(lat, lon, b.key === 'earth' ? AE_EARTH_FLATTENING : 0), e = b.m;
   return [e[0] * v[0] + e[4] * v[1] + e[8] * v[2], e[1] * v[0] + e[5] * v[1] + e[9] * v[2], e[2] * v[0] + e[6] * v[1] + e[10] * v[2]];
 }
 // With Landmarks off only the place chosen is named. Landmarks on names everything, landing sites first.
@@ -6114,10 +6132,10 @@ function _aeUpdateLabels() {
   // You: only where the device says it is, once the person asked
   // (_aeLocateMe). A guess, from the time zone or a city picked for the
   // Almanac, drew "You" far from anyone (Eric).
-  var you = _ae.you ? _aeFixedToScene(_aeGlobePoint(_ae.you.lat, _ae.you.lon), sc.gast) : null;
+  var you = _ae.you ? _aeFixedToScene(_aeGeodeticToFixed(_ae.you.lat, _ae.you.lon), sc.gast) : null;
   _aePlaceLabel('ae-lbl-you', you, !!you && _aeFacing(you) && _ae.target === 'earth');
   // The place picked in Go to: its name at its spot.
-  var pl = _ae.place ? _aeFixedToScene(_aeGlobePoint(_ae.place.lat, _ae.place.lon), sc.gast) : null;
+  var pl = _ae.place ? _aeFixedToScene(_aeGeodeticToFixed(_ae.place.lat, _ae.place.lon), sc.gast) : null;
   if (pl) _aeSetText(_aeById('ae-lbl-place-text'), _ae.place.name);
   _aePlaceLabel('ae-lbl-place', pl, !!pl && _aeFacing(pl) && _ae.target === 'earth');
   var ecl = _ae.eclipse;
@@ -7313,7 +7331,7 @@ function _aeEnter() {
   var ms = _aeDisplayMs();
   _ae.scene = _aeSceneAt(ms);
   var loc = (typeof _getLocation === 'function') ? _getLocation() : { lat: 0, lon: 0 };
-  var here = _aeFixedToScene(_aeGlobePoint(_aeClamp(loc.lat, -_aeDeg(AE_START_MAX_LAT), _aeDeg(AE_START_MAX_LAT)), loc.lon), _ae.scene.gast);
+  var here = _aeFixedToScene(_aeGeodeticToFixed(_aeClamp(loc.lat, -_aeDeg(AE_START_MAX_LAT), _aeDeg(AE_START_MAX_LAT)), loc.lon), _ae.scene.gast);
   var azel = _aeAzElOf(here);
   _ae.target = 'earth';
   _ae.az = azel.az; _ae.el_ = azel.el;
@@ -7373,7 +7391,7 @@ function _aeLocateMe() {
     btn.setAttribute('aria-pressed', 'true');
     var sc = _ae.scene || _aeSceneAt(_aeDisplayMs());
     _ae.preset = 'earth';
-    _aeFlyTo('earth', _aeFitDist(AE_FIT_EARTH), _aeAzElOf(_aeFixedToScene(_aeGlobePoint(lat, lon), sc.gast)));
+    _aeFlyTo('earth', _aeFitDist(AE_FIT_EARTH), _aeAzElOf(_aeFixedToScene(_aeGeodeticToFixed(lat, lon), sc.gast)));
   }, fail, { timeout: AE_LOCATE_TIMEOUT_MS, maximumAge: 60000 });
 }
 

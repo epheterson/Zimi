@@ -86,8 +86,8 @@ var AlmanacMaps = (function () {
     var b = p.dot(d), c = p.lengthSq() - 1, disc = b * b - c, hit;
     if (disc >= 0 && -b - Math.sqrt(disc) > 0) hit = p.clone().addScaledVector(d, -b - Math.sqrt(disc));
     else hit = p.clone().normalize();
-    var r = hit.length();
-    return { lat: Math.asin(clamp(hit.z / r, -1, 1)) * 180 / Math.PI, lon: Math.atan2(hit.y, hit.x) * 180 / Math.PI, h: Math.max(1e-6, p.distanceTo(hit)) };
+    var at = _aeSphereLatLon(hit.x, hit.y, hit.z, AE_EARTH_FLATTENING);
+    return { lat: at.lat, lon: at.lon, h: Math.max(1e-6, p.distanceTo(hit)) };
   }
 
   // ── slippy tiles ──
@@ -119,7 +119,7 @@ var AlmanacMaps = (function () {
     for (var i = 0; i <= seg; i++) {
       var lat = latOfY((y + i / seg) / n);
       for (var j = 0; j <= seg; j++) {
-        var v = _aeLatLonVec(lat, lon0 + span * j / seg);
+        var v = _aeLatLonVec(lat, lon0 + span * j / seg, AE_EARTH_FLATTENING);
         pos.push(v[0] * r, v[1] * r, v[2] * r);
         uv.push(j / seg, 1 - i / seg);
       }
@@ -515,5 +515,5 @@ var AlmanacMaps = (function () {
     if (group) { setOpacity(0); }
     if (chip) chip.hidden = true;
   }
-  return { frame: frame, release: release, covers: function () { return !!map && opacity > 0; }, _tiles: function () { return tiles; }, _map: function () { return map; } };
+  return { frame: frame, release: release, covers: function () { return !!map && opacity > 0; }, _tiles: function () { return tiles; }, _map: function () { return map; }, _state: function () { return { map: map && map.name, opacity: opacity, centre: centre, none: none }; } };
 })();
