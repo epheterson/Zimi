@@ -46,6 +46,9 @@ SCRIPTS = (
 LAZY = (
     "almanac-look.js",
     "almanac-skyfind.js",
+    "almanac-sites.js",
+    "almanac-sites-ground.js",
+    "almanac-sites-drive.js",
     "almanac-tides.js",
     "almanac-tides.css",
     "almanac-reference.css",
