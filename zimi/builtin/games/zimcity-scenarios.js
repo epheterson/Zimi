@@ -12,6 +12,7 @@
 import { GameMap } from './zimcity/engine/gameMap.js';
 import { TileUtils } from './zimcity/engine/tileUtils.js';
 import * as TV from './zimcity/engine/tileValues.js';
+import { TICKS_PER_YEAR } from './zimcity-away.js';
 
 export var W = 120, H = 100, FILE_BYTES = 27120, MAP_AT = 3120;
 
@@ -78,13 +79,19 @@ export function runTicks(sim, n) {
     sim._updateTime();
   }
 }
-// Live `ticks` ticks out of sight and put the money and the date back: the city comes to the player measured (power reaches
-// its zones, the census and the traffic map are filled) instead of an unmeasured file, and has grown by nothing the
-// player can see.
-export function warmUp(sim, ticks) {
-  var funds = sim.budget.totalFunds, time = sim._cityTime;
+// Live `ticks` ticks out of sight and put the money, the date and the budget (the year's taxes, the funding shares, a
+// budget waiting to be set) back: the city comes to the player measured (power reaches its zones, the census and the
+// traffic map are filled) instead of an unmeasured file, and has grown by nothing the player can see. `keepTiles` also
+// puts every tile back as it was: a city already kept only needs its unsaved maps rebuilt, not another half year of growth.
+export function warmUp(sim, ticks, keepTiles) {
+  var b = sim.budget, map = sim._map, kept = {}, tiles = [];
+  Object.keys(b).forEach(function (k) { if (typeof b[k] === 'number' || typeof b[k] === 'boolean') kept[k] = b[k]; });
+  if (keepTiles) for (var y = 0; y < map.height; y++) for (var x = 0; x < map.width; x++) tiles.push(map.getTileValue(x, y));
+  var time = sim._cityTime;
   runTicks(sim, ticks);
-  sim.budget.setFunds(funds); sim._cityTime = time; sim._updateTime();
+  Object.assign(b, kept); b.setFunds(kept.totalFunds);
+  if (keepTiles) for (var i = 0; i < tiles.length; i++) map.setTileValue(i % map.width, Math.floor(i / map.width), tiles[i]);
+  sim._cityTime = time; sim._updateTime();
 }
 
 // Hamburg's firebombing: this share of the city's buildings (houses, shops, factories, hospitals and churches) go to
@@ -94,7 +101,11 @@ export function bomb(sim, share) {
   for (var y = 0; y < map.height; y++) for (var x = 0; x < map.width; x++) {
     var v = map.getTileValue(x, y);
     if (!map.getTile(x, y).isZone() || v < TV.RESBASE || v >= TV.PORTBASE || Math.random() >= share) continue;
-    for (var dy = -1; dy <= 1; dy++) for (var dx = -1; dx <= 1; dx++) if (map.testBounds(x + dx, y + dy)) map.setTo(x + dx, y + dy, TileUtils.randomRubble());
+    for (var dy = -1; dy <= 1; dy++) for (var dx = -1; dx <= 1; dx++) {
+      if (!map.testBounds(x + dx, y + dy)) continue;
+      var nv = map.getTileValue(x + dx, y + dy);
+      if (nv >= TV.RESBASE && nv < TV.PORTBASE) map.setTo(x + dx, y + dy, TileUtils.randomRubble());   // the building's own tiles; a road or a line through the footprint stands
+    }
   }
 }
 
@@ -133,7 +144,8 @@ export function reading(sim, sc) {
   return { kind: g[0], target: g[1], now: Math.round(now) };
 }
 // The time left to the judging, as {n, unit}: whole years, and months once less than a year is left.
-export var TICKS_PER_YEAR = 48, TICKS_PER_MONTH = 4;
+export { TICKS_PER_YEAR };   // the one clock (zimcity-away.js)
+export var TICKS_PER_MONTH = 4;
 export function timeLeft(ticks) {
   return ticks > TICKS_PER_YEAR ? { n: Math.ceil(ticks / TICKS_PER_YEAR), unit: 'years' } : { n: Math.max(1, Math.ceil(ticks / TICKS_PER_MONTH)), unit: 'months' };
 }

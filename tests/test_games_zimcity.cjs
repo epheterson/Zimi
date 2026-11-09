@@ -190,6 +190,13 @@ function seeded(seed, fn) {
     check(c.sim.budget.totalFunds === c.warmed[0] && c.sim._cityTime === c.warmed[1], 'the warm-up leaves the money and the date as they were');
     check(c.warmed[2] > 0.9 && unpowered(c.map) < 0.1, 'and the zones that all flashed "no power" are on the grid (' + c.warmed[2].toFixed(2) + ' off before, ' + unpowered(c.map).toFixed(2) + ' after)');
   }
+  { // a warm-up on a restore (keepTiles) rebuilds the maps and grows nothing; the budget comes back whole either way
+    const c = bernCity(1, false), tiles = () => { const a = []; for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) a.push(c.map.getTileValue(x, y)); return a.join(','); };
+    const before = tiles(), tax = c.sim.budget.taxFund;
+    seeded(1, () => Scen.warmUp(c.sim, bern.warm, true));
+    check(tiles() === before, 'a restore\'s warm-up leaves every tile as it was');
+    check(c.sim.budget.taxFund === tax && Scen.reading(c.sim, bern).now > bern.goal[1], 'and the year\'s taxes stand while the traffic is measured');
+  }
   const judged = (c, lever) => {
     if (lever) {
       const t = c.sim.blockMaps.trafficDensityMap, cells = [];

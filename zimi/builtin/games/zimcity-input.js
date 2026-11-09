@@ -2,7 +2,7 @@
 
    One finger with no tool held pans; one finger with a tool lays a stroke (drawn tools along the drag, zones in a row, a
    single building where the finger lifts: once the finger moves, that building's ghost rides just above it so the finger
-   never hides it, and letting go off the map puts nothing down); two fingers pan and pinch and drop any stroke under way. A long press with no tool held inspects
+   never hides it; letting go off the map puts nothing down, for any stroke); two fingers pan and pinch and drop any stroke under way. A long press with no tool held inspects
    the tile. A wheel zooms about the pointer. The keys move a cursor tile; Enter builds there and I inspects it.
    Everything goes out through the handlers: this file never changes the city. */
 
@@ -170,7 +170,9 @@ export function Input(view, h) {
       e.preventDefault();
       cursor.x = Math.max(0, Math.min(view.city.map.width - 1, cursor.x + step[0]));
       cursor.y = Math.max(0, Math.min(view.city.map.height - 1, cursor.y + step[1]));
+      var cx = view.cam.x, cy = view.cam.y;
       view.reveal(cursor.x, cursor.y);
+      if ((view.cam.x !== cx || view.cam.y !== cy) && h.panned) h.panned();   // the map moved for the cursor: a followed citizen's camera lets go
       h.cursor(cursor.x, cursor.y);
       h.moved();
     } else if (k === 'Escape') {

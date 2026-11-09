@@ -201,7 +201,10 @@ export function citiesSheet(s) {
   list.forEach(function (k, i) {
     var row = el('div', 'gs-row cy-kept'), what = el('span', 'cy-kept-what'), name = el('input', 'cy-kept-name');
     name.type = 'text'; name.maxLength = 24; name.value = k.name || ''; name.setAttribute('aria-label', s.T('city.k.name'));
-    name.addEventListener('change', function () { name.value = c.rename(i, name.value) || name.value; });
+    name.addEventListener('change', function () {
+      var r = c.rename(i, name.value);
+      if (r === false) { name.value = k.name || ''; keep.textContent = s.T('city.k.failed'); } else name.value = r || name.value;
+    });
     name.addEventListener('keydown', function (e) { if (e.key === 'Enter') name.blur(); });
     what.appendChild(name);
     what.appendChild(el('small', '', s.dateOf(k.month, k.year) + ' \u00b7 ' + s.T('city.k.line', { people: s.T('city.people', { n: k.people }), money: s.money(k.funds) })));

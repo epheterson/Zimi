@@ -478,7 +478,7 @@ function openFile(path, sc, title) {
     view.cam.s = 1; centreOnCity();
     say(sc ? T('city.scl.' + sc.id) : title);
     Shell.saveNow();
-  }).catch(function () { say(T('city.sc.failed'), true); });
+  }).catch(function () { if (mine === openSeq) say(T('city.sc.failed'), true); });   // a request another city has passed says nothing
 }
 // A city loaded from a file opens over its middle of things: the box holding its zones.
 function centreOnCity() {
@@ -691,7 +691,7 @@ function unpack(k) {
   if (!back) return false;
   disasters = !!k.disasters; layer = k.layer || 'off'; view.layer = layer;
   var sc = k.scenario && scenarioOf(k.scenario.id);
-  if (sc && sc.warm) Scen.warmUp(back.sim, sc.warm);   // traffic is not kept
+  if (sc && sc.warm) Scen.warmUp(back.sim, sc.warm, true);   // traffic is not kept; the city is
   if (typeof k.people === 'number') back.sim.evaluation.cityPop = k.people;   // the count is kept: a city just opened reads its people, not 0 until the year's evaluation
   var bk = k.budget;   // what the engine does not save: the year's taxes, and a budget still waiting to be set
   if (bk) { back.sim.budget.taxFund = +bk.taxFund || 0; back.sim.budget.cashFlow = +bk.cashFlow || 0; back.sim.budget.awaitingValues = !!bk.waiting; }
@@ -784,21 +784,28 @@ function card(l) {
 }
 var cities = {
   list: kept, max: KEPT_MAX,
-  keep: function () { var l = kept(); if (l.length >= KEPT_MAX) return false; l.unshift(card()); return putKept(l); },
+  keep: function () {
+    var l = kept(), was = city.name;
+    if (l.length >= KEPT_MAX) return false;
+    l.unshift(card());
+    if (putKept(l)) return true;
+    city.name = was;   // not kept: the city does not carry a number the list never held
+    return false;
+  },
   remove: function (i) { var l = kept(); l.splice(i, 1); putKept(l); },
   // The player's name for a kept city (an empty one keeps the old); the city it holds carries it when opened.
   rename: function (i, name) {
     var l = kept(), k = l[i], n = String(name || '').trim().slice(0, KEPT_NAME_MAX);
     if (!k || !n) return k ? k.name : '';
-    k.name = k.data.name = n; putKept(l);
-    return n;
+    k.name = k.data.name = n;
+    return putKept(l) ? n : false;   // false: the new name could not be kept
   },
   // Opening a kept city puts the one in progress in its place (when anything has been built), so nothing is lost.
   open: function (i) {
-    var l = kept(), want = l[i];
+    var l = kept(), want = l[i], was = city.name;
     if (!want) return;
     if (city.built) l[i] = card(l.filter(function (k, j) { return j !== i; })); else l.splice(i, 1);
-    if (!putKept(l)) { say(T('city.k.failed'), true); return; }   // the city in progress could not be put in the list: it stays
+    if (!putKept(l)) { city.name = was; say(T('city.k.failed'), true); return; }   // the city in progress could not be put in the list: it stays
     unpack(want.data);
     Shell.saveNow();
   }

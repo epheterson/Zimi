@@ -26,8 +26,8 @@ export function survey(map) {
       if (!t.isZone()) continue;
       if (v === TV.POWERPLANT || v === TV.NUCLEAR || v === SOLAR || v === WIND) s.plants++;
       var z = ZONES[kindOf(v)];
-      if (!z || (z === 'res' && v >= TV.HOSPITALBASE)) continue;   // a hospital or a church is not a home
-      s[z]++;
+      if (!z) continue;
+      if (!(z === 'res' && v >= TV.HOSPITALBASE)) s[z]++;   // a hospital or a church is not a home, but it too wants power and a road
       if (!t.isPowered()) s.unpowered++;
       if (!hasRoadBeside(map, x, y)) s.roadless++;
     }

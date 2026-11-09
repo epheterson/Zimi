@@ -88,7 +88,7 @@ function fits(city, name, p) {
 }
 function besideRoad(map, p, size) {
   var x0 = p[0] - 1, y0 = p[1] - 1;
-  for (var i = -1; i <= size; i++) {
+  for (var i = 0; i < size; i++) {
     if ([[x0 + i, y0 - 1], [x0 + i, y0 + size], [x0 - 1, y0 + i], [x0 + size, y0 + i]].some(function (q) { return map.testBounds(q[0], q[1]) && isRoad(map.getTileValue(q[0], q[1])); })) return true;
   }
   return false;
