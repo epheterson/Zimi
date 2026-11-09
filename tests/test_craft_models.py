@@ -15,7 +15,7 @@ np = pytest.importorskip("numpy")
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 EARTH = os.path.join(ROOT, "zimi", "static", "earth")
-sys.path.insert(0, os.path.join(ROOT, "scripts"))
+sys.path.append(os.path.join(ROOT, "scripts"))
 import craftmesh as cm  # noqa: E402
 
 STOCK = ["iss", "voyager", "pioneer", "juno", "parker", "webb", "galileo", "cassini"]
