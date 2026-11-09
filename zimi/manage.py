@@ -5919,6 +5919,12 @@ def handle_manage_get(handler, parsed, params):
 
         return handler._json(200, _sats.setting())
 
+    elif parsed.path == "/manage/addons":
+        # Add-ons (addons.py): what can be added, what is there, the install under way, the setting.
+        from zimi import addons as _addons
+
+        return handler._json(200, _addons.status())
+
     elif parsed.path == "/manage/voices":
         # "Voices for Dictionary": the setting and every pinned Piper voice.
         from zimi import voices as _voices
@@ -7354,6 +7360,36 @@ def handle_manage_post(handler, parsed, data):
         if err:
             return handler._json(500, {"error": "Could not save the setting"})
         return handler._json(200, _hd.status())
+
+    elif parsed.path == "/manage/addons":
+        # {"mode": "ask"|"auto"|"never"} saves the setting (ZIMI_ADDONS or ZIMI_OFFLINE wins); {"install": key}
+        # starts one in the background; {"cancel": true} stops it; {"remove": key} takes one away.
+        from zimi import addons as _addons
+
+        if data.get("install"):
+            ok, err = _addons.install(str(data["install"]), activity_actor(handler))
+            if err == "unknown":
+                return handler._json(404, {"error": "No such add-on"})
+            if err in ("never", "unsupported", "busy"):
+                return handler._json(409, {"error": "Cannot add it here" if err != "busy" else "Another add-on is installing"})
+            return handler._json(200, _addons.status())
+        if data.get("cancel"):
+            _addons.cancel()
+            return handler._json(200, _addons.status())
+        if data.get("remove"):
+            if not _addons.remove(str(data["remove"])):
+                return handler._json(409, {"error": "Nothing to remove"})
+            return handler._json(200, _addons.status())
+        _mode, err = _addons.POLICY.set(data.get("mode"))
+        if err == "invalid":
+            return handler._json(400, {"error": "mode is ask, auto or never"})
+        if err == outbound.LOCKED_OFFLINE:
+            return handler._json(403, {"error": "Zimi is offline (ZIMI_OFFLINE)"})
+        if err == outbound.LOCKED_ENV:
+            return handler._json(403, {"error": "Add-ons are controlled by the %s env var" % _addons.ENV})
+        if err:
+            return handler._json(500, {"error": "Could not save the setting"})
+        return handler._json(200, _addons.status())
 
     elif parsed.path == "/manage/satellites/refresh":
         # The Earth view's "Get fresh data": one CelesTrak fetch, waited for,

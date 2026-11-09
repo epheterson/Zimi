@@ -133,6 +133,8 @@ SOURCES = {
     "satellites": ("satellites",),
     "almanachd": ("almanac_hd",),
     "voices": ("voices",),
+    # Add-ons: the browser, SingleFile, video and warc2zim, fetched once into the data folder.
+    "addons": ("addons",),
     "streetzim": ("streetzim",),
     "sso": ("sso",),
     # Captures: the page, site, video or subreddit someone named, and the
@@ -163,7 +165,7 @@ def inventory():
     ``hosts`` are names nobody translates. ``control`` says where the switch
     is: a setting in Server settings, "offline" when only ZIMI_OFFLINE turns
     it off, or "" when the person's own action is the control."""
-    from zimi import almanachd, library, manage, nomadapi, p2p, p2p_discovery, satellites, sso, voices
+    from zimi import addons, almanachd, library, manage, nomadapi, p2p, p2p_discovery, satellites, sso, voices
     from zimi import server as _srv
 
     offline = _offline()
@@ -227,6 +229,12 @@ def inventory():
             "hosts": ["github.com"],
             "state": _mode_state(almanachd.POLICY.mode()[0]),
             "control": "",
+        },
+        {
+            "id": "addons",
+            "hosts": ["storage.googleapis.com", "nodejs.org", "johnvansickle.com", "github.com", "pypi.org", "files.pythonhosted.org", "registry.npmjs.org"],
+            "state": _mode_state(addons.POLICY.mode()[0]) if addons.supported() else STATE_OFF,
+            "control": "addons",
         },
         {
             "id": "streetzim",
