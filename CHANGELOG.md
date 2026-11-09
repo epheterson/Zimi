@@ -10,6 +10,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 ### Highlights
 
 - **Stand where they landed:** in the Almanac's 3D view the Apollo, Luna, Chang'e, Viking, Mars rover, Venera and Huygens sites are models on their real ground with the Sun's real shadows; drive the Moon buggy (with a speed readout and a bounce on landing) or a Mars rover, watch a Saturn V leave its pad, and replay Curiosity's and Perseverance's whole journeys on the timeline.
+### Almanac
+
+- **Every world, sharp:** the Moon, Mars, Mercury, Venus, Earth by night and every moon and dwarf planet with a NASA mosaic draw from Almanac HD tile by tile as you near them, and the camera comes as close as their pixels allow, within a memory cap that is smaller on a phone.
+- **More worlds to visit:** Vesta, Phobos, Charon, Triton and Saturn's Mimas, Enceladus, Tethys, Dione, Rhea and Iapetus, each in its real orbit.
+- **The Sun close up:** prominences and flares (illustrative, labelled so), loops over sunspot groups and a finer boiling surface.
 
 ## [1.15.4]
 
