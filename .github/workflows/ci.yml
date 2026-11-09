@@ -205,12 +205,7 @@ jobs:
       # 1.15.3 Almanac broke there and nowhere else). Pinned by checksum;
       # required here, so a missing binary fails instead of skipping.
       - name: Install kiwix-serve
-        run: |
-          curl -fsSL --retry 3 -o kiwix-tools.tgz https://download.kiwix.org/release/kiwix-tools/kiwix-tools_linux-x86_64-3.8.2.tar.gz
-          echo "b0ae98dd344aa0469a15ab42feff6d5aafb79541a82fb4e2647c74b073123815  kiwix-tools.tgz" | sha256sum -c -
-          tar xzf kiwix-tools.tgz
-          echo "KIWIX_SERVE=$PWD/kiwix-tools_linux-x86_64-3.8.2/kiwix-serve" >> "$GITHUB_ENV"
-          echo "ZIMI_REQUIRE_KIWIX_SERVE=1" >> "$GITHUB_ENV"
+        run: ci/install_kiwix_serve.sh
 
       # --shard i/N: the browser modules, balanced by size, each in exactly one
       # shard (tests/conftest.py); tests/test_ci_contract.py checks the shards
