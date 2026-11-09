@@ -25,6 +25,7 @@ suggest cache to whatever data dir the last test left behind).
 """
 
 import inspect
+import json
 import os
 import re
 import shutil
@@ -164,8 +165,21 @@ def shard_of(modules, count):
     return out
 
 
+#: module name -> seconds it took in a measured run (scripts/shard_weights.py writes it from CI's junit files).
+SHARD_WEIGHTS = Path(__file__).with_name("shard_weights.json")
+
+
+def weigh(sizes, measured):
+    """Each module's weight for the split: its measured seconds, or, for a module nobody has timed yet, its size at
+    the measured modules' median seconds per byte (a new module lands near where its size says until the
+    next measurement). With nothing measured, size alone."""
+    rates = sorted(measured[n] / sizes[n] for n in sizes if n in measured and sizes[n])
+    rate = rates[len(rates) // 2] if rates else 1
+    return {n: measured.get(n, sizes[n] * rate) for n in sizes}
+
+
 class _Shard:
-    """--shard I/N, applied after -m has chosen the tests."""
+    """--shard I/N, applied after -m has chosen the tests. The split is balanced by measured duration."""
 
     def __init__(self, index, count):
         self.index, self.count = index, count
@@ -173,7 +187,11 @@ class _Shard:
     @pytest.hookimpl(trylast=True)
     def pytest_collection_modifyitems(self, config, items):
         sizes = {item.path.name: item.path.stat().st_size for item in items}
-        mine = {n for n, k in shard_of(sizes, self.count).items() if k == self.index}
+        try:
+            measured = json.loads(SHARD_WEIGHTS.read_text(encoding="utf-8"))
+        except (OSError, ValueError):
+            measured = {}
+        mine = {n for n, k in shard_of(weigh(sizes, measured), self.count).items() if k == self.index}
         dropped = [item for item in items if item.path.name not in mine]
         config.hook.pytest_deselected(items=dropped)
         items[:] = [item for item in items if item.path.name in mine]

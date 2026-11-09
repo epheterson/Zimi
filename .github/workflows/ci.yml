@@ -224,11 +224,22 @@ jobs:
       - name: Build Zimi's own ZIMs from the source
         run: python -m zimi.ownzims
 
-      # --shard i/N: the browser modules, balanced by size, each in exactly one
+      # --shard i/N: the browser modules, balanced by measured time, each in exactly one
       # shard (tests/conftest.py); tests/test_ci_contract.py checks the shards
       # add up to the whole.
       - name: Run the browser tests (shard ${{ matrix.shard }} of 4)
-        run: python -m pytest tests/ -m browser --shard ${{ matrix.shard }}/4 -n auto --dist loadgroup -q
+        run: python -m pytest tests/ -m browser --shard ${{ matrix.shard }}/4 -n auto --dist loadgroup -q --durations=25 --junitxml=junit-shard-${{ matrix.shard }}.xml
+
+      # The timing report: the shards are dealt by the seconds in tests/shard_weights.json. Download these
+      # when one shard runs much longer than its siblings and run scripts/shard_weights.py on them.
+      - name: Upload the shard's timings
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: junit-shard-${{ matrix.shard }}
+          path: junit-shard-${{ matrix.shard }}.xml
+          retention-days: 14
+          if-no-files-found: ignore
 
   test:
     if: always() && (github.event_name != 'pull_request' || !github.event.pull_request.draft)
