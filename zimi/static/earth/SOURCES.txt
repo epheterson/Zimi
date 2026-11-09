@@ -184,25 +184,93 @@ iss-v1.bin (scripts/build_craft_models.py)
   The International Space Station: NASA 3D Resources' "International Space
   Station (ISS) (B)", credit NASA/Michael D. Carbajal; the collection's terms:
   "These assets are free and without copyright". No textures (no logo).
-  Simplified from 174,000 triangles to 31,000 and quantized, 331 KB.
+  Simplified from 174,000 triangles to 26,000, given smooth normals with
+  creases and a physical material per class (cell, truss, shell, radiator),
+  and quantized (ZCR2), about 500 KB.
 
 craft-<model>-v1.bin (scripts/build_craft_models.py)
   The probes close up, from NASA 3D Resources (github.com/nasa/NASA-3D-Resources;
   "These assets are free and without copyright"), each page's Source credit:
   voyager: "Voyager Probe (A)", NASA/Christopher R. Meaney
   pioneer: "Pioneer 10", NASA/JPL/Eyes on the Solar System
-  juno: "Juno (B)" (no individual credit listed)
+  juno: "Juno (A)", NASA/JPL-Caltech
   parker: "Parker Solar Probe", NASA/Matthew J. Garcia
-  webb: "James Webb Space Telescope (B)", NASA/Christopher R. Meaney
+  webb: "James Webb Space Telescope (A)", NASA/Christopher R. Meaney
   galileo: "Galileo", NASA/JPL/Solar System Simulator
-  cassini: "Cassini-Huygens (B)", NASA/JPL/Solar System Simulator
-  Each material's colour (a texture's mean colour, so no printed logo carries
-  over) as a palette of up to eight, simplified to 10,000-31,000 triangles and
-  quantized; 50-200 KB gzipped each. New Horizons and Europa Clipper have no
-  model there and stay a point.
+  cassini: "Cassini-Huygens (A)", NASA/JPL/Solar System Simulator
+  Each material as a palette entry of up to twelve (colour, roughness,
+  metalness: gold foil, silver blanket, solar cell, aluminium, paint; a
+  texture's mean colour, so no printed logo carries over), simplified to
+  7,000-14,000 triangles, given smooth normals with creases and quantized
+  (ZCR2). New Horizons and Europa Clipper have no model there and stay a point.
+
+hd/craft/ in the Almanac HD ZIM (scripts/build_craft_hd.py)
+  The same craft from the same NASA files with no triangle taken out (up to
+  260,000; Webb's 494,000 become 443,000), their textures (WebP, at most 2048
+  px) and one mesh to a material, and the station at all 172,000 triangles.
+  Stock and HD come from one file each, so the pointing and the size are shared:
+  iss: "International Space Station (ISS) (B)", NASA/Michael D. Carbajal
+  voyager: "Voyager Probe (A)", NASA/Christopher R. Meaney
+  pioneer: "Pioneer 10", NASA/JPL/Eyes on the Solar System
+  juno: "Juno (A)", NASA/JPL-Caltech
+  parker: "Parker Solar Probe", NASA/Matthew J. Garcia
+  webb: "James Webb Space Telescope (A)", NASA/Christopher R. Meaney
+  galileo: "Galileo", NASA/JPL/Solar System Simulator
+  cassini: "Cassini-Huygens (A)", NASA/JPL/Solar System Simulator
+  All NASA 3D Resources: "free and without copyright".
 
   - The Apollo 11, 12, 15, 16 and 17 sites, past the global map: LRO Narrow
     Angle Camera mosaics (NASA/GSFC/Arizona State University, public domain)
     through NASA Moon Trek's tile service, to about 0.65 m a pixel.
   - Mercury, Venus, Mars, Jupiter and Saturn at 8192 px: Solar System Scope's
     8k maps, CC BY 4.0, credited on the view while drawn.
+
+Map overlay on the 3D Earth (almanac-maps.js)
+  - Roads and place names read at run time from the installed Kiwix/StreetZim
+    map ZIM's vector tiles (OpenMapTiles schema). Map data (c) OpenStreetMap
+    contributors, ODbL; credited on the view while drawn. Nothing is shipped.
+craft-site-<model>-v1.bin, sites-v1.json (scripts/build_site_models.py)
+  The landers, rovers, flags and the Saturn V the 3D view stands on the Moon and
+  the planets (almanac-sites.js), in the ZCRF format of the probes above.
+  From NASA 3D Resources ("These assets are free and without copyright"):
+  lm: "Apollo Lunar Module" (descent stage only: it is what stayed), no credit listed
+  perseverance-body, perseverance-wheel: "Mars 2020 Perseverance Rover", NASA/JPL-Caltech;
+    also the Curiosity site's rover (the same family; the wheels split off to turn)
+  ingenuity: "Ingenuity Mars Helicopter", NASA/JPL-Caltech
+  mer: "Mars Exploration Rover - Opportunity (MER-B)" for Spirit and Opportunity, NASA/JPL-Caltech
+  insight: "InSight Cruise Lander (arm deployed)", NASA/JPL-Caltech
+  saturn5: "Saturn V", no credit listed
+  Written for Zimi from the craft's published dimensions (boxes, cylinders, spheres;
+  no third-party geometry): the Lunar Roving Vehicle, Lunokhod, the Chang'e lander,
+  Yutu, Zhurong, Viking, Pathfinder, Sojourner, Phoenix, Huygens, Venera,
+  Surveyor, the US and Chinese flags, Launch Complex 39A and its tower.
+  sites-v1.json: where each model stands at a landing the landmarks file names,
+  the landing's instant (NASA mission pages, NSSDC, CNSA) and the rovers' wheels.
+  The Saturn V's flight (almanac-sites-launch.js) is computed from thrust, mass and
+  burn rate (NASA Saturn V flight manual, SA-506); the pitch program is fitted to
+  the Apollo 11 flight report's altitude, range and speed at first-stage cut-off.
+
+traverses-v1.json (scripts/build_traverses.py)
+  Curiosity's and Perseverance's drives, a point per sol where the route turns:
+  NASA/JPL's MMGIS waypoint files (mars.nasa.gov/mmgis-maps/MSL, /M20), public
+  domain, credit "NASA/JPL-Caltech/MSL and Mars 2020 teams". 45 KB.
+
+terrain-<body>-v1.bin (scripts/build_terrain.py)
+  The heights Stand here (almanac-stand.js) walks on, 256 x 128 metres above the
+  body's mean radius, int16, about 64 KB each. Public domain:
+  earth: NOAA NCEI, ETOPO 2022 (60 arc-second surface), a U.S. Government work.
+  moon: NASA SVS CGI Moon Kit, LOLA elevation at 16 pixels a degree.
+  mars: USGS Astrogeology, MOLA DEM mosaic (463 m), NASA/MGS.
+  venus: USGS Astrogeology, Magellan topography (4641 m), NASA/JPL.
+  mercury: USGS Astrogeology, MESSENGER DEM (665 m), NASA/JHUAPL/CIW.
+  Titan, Pluto and the big moons have no global height map in the public domain
+  at a usable resolution: they stand on a sphere with generated detail. The
+  craters, hills and rock beneath what the maps hold are generated for every
+  body (seeded by the place, so the same spot is always the same ground) and the
+  view says so in the Almanac's Constants. The Almanac HD release adds the
+  same heights to 11 pixels a degree (terrain/<body>/ tiles).
+
+land-v1.bin (scripts/build_landmask.py)
+  Where the Earth's coasts are, for Stand here: Natural Earth 1:10 million land
+  polygons (ne_10m_land, public domain, naturalearthdata.com), rasterised to
+  8192 x 4096 and stored as runs (214 KB). The Great Lakes read as land.

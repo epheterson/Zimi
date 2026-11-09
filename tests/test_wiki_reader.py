@@ -186,9 +186,7 @@ def test_an_article_from_zimipedia_reads_in_its_reader_on_a_phone(served):
             fr.locator(".zw-bar .zb-aa").click()
             pg.wait_for_timeout(300)
             rows = _q(pg, "d.querySelectorAll('.zw-set-sheet .zb-set').length")
-            assert (
-                rows == 3
-            ), "theme, font, size (no layout: that is a book's)"
+            assert rows == 3, "theme, font, size (no layout: that is a book's)"
             fr.locator('.zw-set-sheet [data-size="3"]').click()  # Large
             pg.wait_for_timeout(300)
             assert (
@@ -418,6 +416,33 @@ def test_one_topic_every_wiki_a_strip_after_the_lead(served):
             pg.wait_for_timeout(300)
             assert pg.evaluate("() => currentArticle.zim") == "osm-test"
             assert "map=12.00/48.85670/2.35080" in pg.evaluate("() => location.hash")
+        finally:
+            br.close()
+
+
+def test_the_strip_offers_the_map_to_get_where_a_place_has_none_installed(served):
+    from playwright.sync_api import sync_playwright
+
+    with sync_playwright() as pw:
+        br = pw.chromium.launch()
+        pg = br.new_page(viewport={"width": 390, "height": 844})
+        try:
+            _boot(pg, served)
+            _from_zimipedia(pg, "wikipedia", "Paris")
+            pg.wait_for_function(
+                "() => !!document.getElementById('reader-frame').contentDocument.querySelector('.zw-strip .zw-map')",
+                timeout=20000,
+            )
+            line = _q(pg, "d.querySelector('.zw-strip .zw-map').textContent")
+            assert "France" in line or "Europe" in line, line
+            # What is on offer is not a map of somewhere else.
+            assert "Japan" not in line and "Asia" not in line, line
+            pg.frame_locator("#reader-frame").locator(".zw-strip .zw-map").click()
+            pg.wait_for_selector("#mh-sheet .mh-row", timeout=20000)
+            rows = pg.evaluate(
+                "() => Array.from(document.querySelectorAll('#mh-sheet .mh-row .mh-name')).map(r => r.textContent)"
+            )
+            assert rows and any("France" in r or "Europe" in r for r in rows), rows
         finally:
             br.close()
 
@@ -660,7 +685,10 @@ def test_the_wikis_lead_the_row_and_the_language_is_one_chip_at_its_end(served):
             fr.locator('#lang-menu [lang="he"]').click()
             # Zimi's language follows (Eric, 2026-10-02), and the page opens
             # again in it.
-            pg.wait_for_function("() => _currentLang === 'he' && document.documentElement.dir === 'rtl'", timeout=10000)
+            pg.wait_for_function(
+                "() => _currentLang === 'he' && document.documentElement.dir === 'rtl'",
+                timeout=10000,
+            )
             pg.wait_for_function(
                 "() => { var d = document.getElementById('reader-frame').contentDocument; return d && d.readyState === 'complete' && d.getElementById('lang-btn') && d.getElementById('lang-btn').textContent === 'HE'; }",
                 timeout=20000,
@@ -1025,13 +1053,39 @@ def test_only_discovers_word_of_the_day_is_said_ahead(monkeypatch):
     from zimi import voices
 
     said = []
-    monkeypatch.setattr(voices, "say_ahead", lambda text, lang: said.append((text, lang)) or True)
-    monkeypatch.setattr(srv, "_zim_list_cache", [
-        {"name": "wiktionary_fr_all", "project": "wiktionary", "language": "fra", "entries": 9000000},
-        {"name": "wiktionary_en_all", "project": "wiktionary", "language": "eng", "entries": 8000000},
-        {"name": "wiktionary_en_simple_all", "project": "wiktionary", "language": "eng", "entries": 50000},
-        {"name": "wikipedia_en_all", "project": "wikipedia", "language": "eng", "entries": 7000000},
-    ])
+    monkeypatch.setattr(
+        voices, "say_ahead", lambda text, lang: said.append((text, lang)) or True
+    )
+    monkeypatch.setattr(
+        srv,
+        "_zim_list_cache",
+        [
+            {
+                "name": "wiktionary_fr_all",
+                "project": "wiktionary",
+                "language": "fra",
+                "entries": 9000000,
+            },
+            {
+                "name": "wiktionary_en_all",
+                "project": "wiktionary",
+                "language": "eng",
+                "entries": 8000000,
+            },
+            {
+                "name": "wiktionary_en_simple_all",
+                "project": "wiktionary",
+                "language": "eng",
+                "entries": 50000,
+            },
+            {
+                "name": "wikipedia_en_all",
+                "project": "wikipedia",
+                "language": "eng",
+                "entries": 7000000,
+            },
+        ],
+    )
     monkeypatch.setattr(wiki, "daily_card", lambda name, day: {"title": name})
     monkeypatch.setattr(wiki, "_day_of", lambda name, day: None)
     monkeypatch.setattr(wiki, "words", lambda name, day: [])

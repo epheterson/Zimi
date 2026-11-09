@@ -32,6 +32,9 @@ zimi/static/earth/SOURCES.txt):
                from the Sun of the moment.
   moon/albedo  NASA SVS CGI Moon Kit, LRO Wide Angle Camera colour mosaic,
                16k (lroc_color_poles_16k.tif), greyscale.
+  terrain/<body>  The heights Stand here walks on (almanac-stand.js): the Earth (NOAA ETOPO 2022), Moon (LOLA), Mars
+               (MOLA), Venus (Magellan) and Mercury (MESSENGER), as 16-bit heights in red and green, lossless, down to
+               level 3. scripts/build_terrain.py reads the sources, pins them and writes the tiles.
 
 Reproducible: every source is fetched into the cache and checked against the
 pins below (one SHA-256 over a layer's source tiles in order, one per file).
@@ -52,6 +55,9 @@ import urllib.request
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, ROOT)
+
+sys.path.insert(0, os.path.join(ROOT, "scripts"))
+import build_terrain  # noqa: E402  (the terrain layers: heights for Stand here)
 
 TILE = 512
 WEBP_Q = 80
@@ -96,6 +102,8 @@ LAYERS = {
         for k, f in (("mercury", "mercury"), ("venus", "venus_surface"), ("jupiter", "jupiter"), ("saturn", "saturn"))
     },
     "planets/mars": {"file": "https://upload.wikimedia.org/wikipedia/commons/1/1f/Mars_Viking_MDIM21_ClrMosaic_1km.jpg", "max": 3, "mode": "RGB"},
+    # Heights for Stand here, 256 px tiles of 16-bit heights; the sources and their pins are build_terrain.py's.
+    **{"terrain/%s" % k: {"terrain": k, "max": build_terrain.TERRAIN_MAX, "mode": "RGB"} for k in build_terrain.SOURCES},
     "moon/relief": {
         "file": "https://svs.gsfc.nasa.gov/vis/a000000/a004700/a004720/ldem_64_uint.tif",
         "max": 4,
@@ -337,6 +345,8 @@ def normals_map(dem_path, out_path, width):
 def build_layer(layer, cache, out, update, max_level=None, procs=None):
     spec = LAYERS[layer]
     top = spec["max"] if max_level is None else min(max_level, spec["max"])
+    if "terrain" in spec:
+        return build_terrain.terrain_tiles(spec["terrain"], cache, out, update, top)
     if "gibs" in spec:
         folder = gibs_sources(layer, cache, update)
         kind, src = "gibs", (folder, spec["src_level"], spec["ext"])
@@ -378,6 +388,7 @@ INDEX = """<!doctype html><html lang="en"><head><meta charset="utf-8"><title>Alm
 <li>Moon: NASA Scientific Visualization Studio, CGI Moon Kit, from the Lunar Reconnaissance Orbiter Camera, and its elevation from the Lunar Orbiter Laser Altimeter. Public domain.</li>
 <li>The Apollo landing sites: LRO Narrow Angle Camera mosaics (NASA/GSFC/Arizona State University), through NASA Moon Trek. Public domain.</li>
 <li>Mars: Viking MDIM 2.1 colour mosaic, NASA/JPL/USGS. Public domain.</li>
+<li>Heights for standing on the ground: Earth, NOAA NCEI ETOPO 2022; Moon, LOLA (NASA SVS); Mars, MOLA (USGS Astrogeology); Venus, Magellan (USGS); Mercury, MESSENGER (USGS). Public domain.</li>
 <li>Mercury, Venus, Jupiter, Saturn: Solar System Scope (INOVE), CC BY 4.0, https://www.solarsystemscope.com/textures/.</li>
 </ul></body></html>
 """

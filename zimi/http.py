@@ -341,6 +341,7 @@ _RATE_LIMITED_API_PATHS = (
     "/zim-updates",
     "/places",
     "/places/suggest",
+    "/map-for",
     "/tube",
     "/tube/play",
     "/exchange",
@@ -1253,8 +1254,23 @@ if os.path.isdir(_STATIC_DIR):
             + _static_hash("wiki-reader.js")
             + _static_hash("books.html")
             + _static_hash("dictionary.html")
+            + _static_hash("mapflow.js")
+            + _static_hash("almanac-maps.js")
             + _static_hash("almanac-look.js")
             + _static_hash("almanac-skyfind.js")
+            + _static_hash("almanac-terrain.js")
+            + _static_hash("almanac-terrainshade.js")
+            + _static_hash("almanac-standlook.js")
+            + _static_hash("almanac-standhost.js")
+            + _static_hash("almanac-standgl.js")
+            + _static_hash("almanac-stand.js")
+            + _static_hash("almanac-sites.js")
+            + _static_hash("almanac-sites-ground.js")
+            + _static_hash("almanac-sites-drive.js")
+            + _static_hash("almanac-sites-launch.js")
+            + _static_hash("almanac-sites-trail.js")
+            + _static_hash("almanac-missions.js")
+            + _static_hash("almanac-missions-plan.js")
             + _static_hash("almanac-sats.js")
             + _static_hash("almanac-gamesky.js")
             + _static_hash("fieldguide.html")
@@ -1280,7 +1296,7 @@ _OFFLINE_SHELL_FILE = re.compile(
     r"/static/((?:app\.(?:js|css)|almanac[\w-]*\.(?:js|css)|zone-places\.js"
     r"|world-map\.svg|tz-borders\.json|fieldguide[\w-]*\.(?:html|json|js)|highlights\.js|find\.js|readaloud\.js|manage\.js"
     r"|keepstore\.js|keepworker\.js|zimreader\.js|fzstd\.js|rosetta/manifest\.json"
-    r"|earth/(?:moon-v1\.webp|stars-v1\.bin|stars-names-v1\.json|constellations-v1\.json|milkyway-v1\.webp"
+    r"|earth/(?:landmarks-v1\.json|sites-v1\.json|traverses-v1\.json|moon-v1\.webp|stars-v1\.bin|stars-names-v1\.json|constellations-v1\.json|milkyway-v1\.webp"
     r"|satellite-[\d.]+\.min\.js|three-r\d+\.min\.js|earth-(?:day|night)-v1\.webp))"
     r"(?:\?v=[0-9a-z]+)?)"
 )
@@ -1319,6 +1335,11 @@ def _offline_urls():
         for src in sources
         for m in _OFFLINE_SHELL_FILE.finditer(src)
     }
+    # The landing sites' models are asked for by a name built at run time (craft-site-<model>-v1.bin), so no page
+    # spells them: every one is kept with the Almanac, for a visit with no network.
+    earth = os.path.join(_STATIC_DIR, "earth")
+    if os.path.isdir(earth):
+        found |= {"/static/earth/" + n for n in os.listdir(earth) if n.startswith("craft-site-") and n.endswith(".bin")}
     versioned = {u.split("?")[0] for u in found if "?" in u}
     found = {u for u in found if "?" in u or u not in versioned}
     if _srv.fieldguide_enabled():
@@ -3563,6 +3584,14 @@ class ZimHandler(BaseHTTPRequestHandler):
                 return self._json(
                     200, {"places": places, "elapsed": round(time.time() - t0, 4)}
                 )
+            elif parsed.path == "/map-for":
+                # The maps of a point: the installed ones that hold it, or the ones worth downloading.
+                from zimi import mapchoice
+
+                at = _srv.parse_latlng(f"{param('lat')},{param('lng')}")
+                if not at:
+                    return self._json(400, {"error": "missing ?lat= and ?lng= parameters"})
+                return self._json(200, mapchoice.answer(_srv.list_zims(), at[0], at[1]))
             elif parsed.path == "/map-home":
                 # Where a map opens when nobody has been on it yet.
                 zim = param("zim")

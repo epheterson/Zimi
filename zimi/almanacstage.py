@@ -46,6 +46,19 @@ SCRIPTS = (
 LAZY = (
     "almanac-look.js",
     "almanac-skyfind.js",
+    "almanac-terrain.js",
+    "almanac-terrainshade.js",
+    "almanac-standlook.js",
+    "almanac-standhost.js",
+    "almanac-standgl.js",
+    "almanac-stand.js",
+    "almanac-sites.js",
+    "almanac-sites-ground.js",
+    "almanac-sites-drive.js",
+    "almanac-sites-launch.js",
+    "almanac-sites-trail.js",
+    "almanac-missions.js",
+    "almanac-missions-plan.js",
     "almanac-sats.js",
     "almanac-tides.js",
     "almanac-tides.css",
@@ -121,6 +134,7 @@ SHELL_SEEDS = (
 GUARDED = frozenset(
     (
         "_MAPS_SVG",
+        "_mapHere",
         "_armTapRelay",
         "_chromeReset",
         "_getPrefLanguages",
