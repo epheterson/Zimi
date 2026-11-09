@@ -34,6 +34,7 @@ var AS_GPS_KEY = 'zimi_ae_sats_gps', AS_ON = '1';   // the layer's own choice is
 // ── Drawing ──
 var AS_POINT_PX = 2.6, AS_POINT_GEO_PX = 3.4, AS_POINT_SELECTED_PX = 9;
 var AS_AGE_FRESH_DAYS = AE_SATS_REF.ageFreshDays, AS_AGE_GONE_DAYS = AE_SATS_REF.ageGoneDays;   // element age: fully drawn up to the first, gone by the second
+var AS_LEO_GONE_DAYS = AE_SATS_REF.leoGoneDays;       // a low-orbit satellite is gone by this age of its elements
 var AS_ALPHA_FLOOR = 0.12;
 var AS_RESAMPLE_MS = 1000;                            // a fresh sample of every satellite this often (display time)
 var AS_EXTRAP_MAX_S = 30;                             // the shader's carry past a sample never exceeds this
@@ -481,9 +482,9 @@ function _asAlphas(ms) {
   var d = _as.data, al = _as.cloud.geometry.attributes.aAlpha.array, ok = _as.ok, n = d.n;
   var t = (ms - AS_EPOCH_ORIGIN_MS) / MS_PER_DAY;
   for (var i = 0; i < n; i++) {
-    var age = Math.abs(t - d.epoch[i]);
-    al[i] = !ok[i] || age >= AS_AGE_GONE_DAYS ? 0
-      : age <= AS_AGE_FRESH_DAYS ? 1 : Math.max(AS_ALPHA_FLOOR, 1 - (age - AS_AGE_FRESH_DAYS) / (AS_AGE_GONE_DAYS - AS_AGE_FRESH_DAYS));
+    var age = Math.abs(t - d.epoch[i]), gone = d.orbit[i] === 0 ? AS_LEO_GONE_DAYS : AS_AGE_GONE_DAYS;   // drag and manoeuvres age a low orbit's elements sooner
+    al[i] = !ok[i] || age >= gone ? 0
+      : age <= AS_AGE_FRESH_DAYS ? 1 : Math.max(AS_ALPHA_FLOOR, 1 - (age - AS_AGE_FRESH_DAYS) / (gone - AS_AGE_FRESH_DAYS));
   }
   _as.cloud.geometry.attributes.aAlpha.needsUpdate = true;
   _as.alphaAt = ms;

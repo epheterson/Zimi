@@ -453,7 +453,8 @@ var AE_SATS_REF = {
   passMax: 16, loneStarlinks: 3,        // the list is cut to the most noticeable: single Starlinks to the brightest few, the rest by brightness and height
   minRcsM2: 1,                          // a satellite whose radar cross-section is below this is not offered as a pass
   trainGapS: 150, trainRaanDeg: 3,      // Starlinks this close in time and orbital plane (RAAN) are one train
-  gpsMinEl: 5                           // a GPS satellite is "overhead" above this elevation
+  gpsMinEl: 5,                          // a GPS satellite is "overhead" above this elevation
+  leoGoneDays: 14                       // a low-orbit satellite's elements run back to a date older than this are not drawn (drag and manoeuvres), well before the 45 days
 };
 // Launches (almanac-launches.js, loaded on the button's first press): a rocket rising.
 var AE_LAUNCH_SVG = '<svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 2.5c3 2.6 4.3 6 4.3 9.6l-1.6 3.4H9.3l-1.6-3.4C7.7 8.5 9 5.1 12 2.5z"/><circle cx="12" cy="9.4" r="1.6"/><path d="M8.3 14.2l-2.6 2.6M15.7 14.2l2.6 2.6M10.3 18.5v3M13.7 18.5v3"/></svg>';
@@ -463,12 +464,12 @@ var AE_LAUNCH_REF = {
   minElDeg: 1,                          // a rocket is seen above this height over the horizon
   darkSunAlt: -3,                       // and the sky is dark enough to see an exhaust once the Sun is below this (start of civil twilight)
   plumeMinKm: 40,                       // a burning engine spreads into a lit cloud above this height
-  coastS: 7,                            // seconds from the end of the first stage's burn to the second stage's light
+  coastS: 11,                           // seconds from the end of the first stage's burn to the second stage's light (Falcon 9: 2:31 to 2:42)
   insertionKm: [160, 400],              // the height the burn ends at is the orbit's perigee, held between these
   typicalBurnS: { typical: 540, shuttle: 510, saturn: 700 },   // seconds from lift-off to the end of the last burn, for a vehicle with no profile of its own
-  falcon: { maxQS: 72, mecoS: 150, fairingS: 205, entryBurnS: [380, 405], landBurnS: 20, landS: 510 },   // Falcon 9 events, seconds from lift-off (SpaceX launch webcasts)
-  checkoutDays: 2, raiseKmPerDay: 4,    // a Starlink batch is checked out for this long, then raised this fast to its shell
-  spreadKm: 2.5,                        // the half-range of the batch's differences in height: the string's length after a few days
+  falcon: { maxQS: 72, mecoS: 151, sepS: 155, sesS: 162, fairingS: 167, entryBurnS: [409, 429], landBurnS: 22, landS: 527, secoS: 526 },   // Falcon 9 Starlink events, seconds from lift-off (SpaceX's timeline for Starlink 4-9, printed by Spaceflight Now, 2022-03-03)
+  checkoutDays: 2, raiseTotalDays: 45,  // a Starlink batch is checked out for this long (assumed), and reaches its shell this many days after release (McDowell et al. 2020, ApJL 892 L6)
+  spreadKm: 2.5,                        // the half-range of the batch's differences in height: the string's length after a few days (fitted, not published)
   releaseGapDeg: 0.005,                 // the step between neighbours at release (about half a kilometre)
   starlinkShells: { 53: 550, 43: 530, 70: 570, 97: 560, other: 550 },   // km, by inclination (SpaceX's regulatory filings)
   j2: 1.08262668e-3, earthRateRadS: 7.2921150e-5, meanRadiusKm: 6371.0088    // the Earth's bulge (Earth Gravitational Model 1996), its turning against the stars (IERS), the sphere the ascent and the look angles are laid on (IUGG)
@@ -6625,7 +6626,7 @@ function _aeNoteParts() {
     // The data's date is in the gear (with Get fresh data); the line under the controls says only that it may be out
     // of date.
     if (anyShown) dated = _aeT('alm_earth_sat_data_from', { date: _aeFmtDate(newest) });
-    else if (aboutSats) parts.push(_aeT('alm_earth_no_sat_data', { date: _aeFmtDate(newest) }));
+    else if (aboutSats) parts.push(typeof _alBatchDrawn === 'function' && _alBatchDrawn() ? _aeT('alm_launch_hidden_today') : _aeT('alm_earth_no_sat_data', { date: _aeFmtDate(newest) }));
     stale = aboutSats && anyShown && !!(_ae.satMeta && _ae.satMeta.stale);
     if (stale) parts.push(_aeT('alm_earth_data_stale'));
     if (aboutSats && issOrbit) parts.push(_aeT('alm_earth_iss_orbit_only', { date: _aeFmtDate(issOrbit.epochMs) }));

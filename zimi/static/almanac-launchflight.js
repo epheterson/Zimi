@@ -29,11 +29,11 @@ var LF_FAMILIES = [
 // webcasts print these two every second; rounded here to the nearest few percent.
 var LF_FALCON_KNOTS = [
   [0, 0, 0], [10, 0.25, 0.05], [30, 2.2, 0.2], [60, 8, 0.4], [72, 12.5, 0.52], [100, 26, 0.95], [120, 38, 1.3],
-  [150, 68, 2.1], [160, 76, 2.1], [180, 96, 2.4], [240, 130, 3.4], [300, 160, 4.2], [360, 185, 5.0], [420, 210, 5.8],
-  [480, 240, 6.6], [525, 270, 7.35]
+  [151, 68, 2.1], [160, 76, 2.1], [180, 96, 2.4], [240, 130, 3.4], [300, 160, 4.2], [360, 185, 5.0], [420, 210, 5.8],
+  [480, 240, 6.6], [526, 270, 7.35]
 ];
 // The first stage's way back to a drone ship: seconds, height (km) and ground range (km) from the pad.
-var LF_FALCON_BOOSTER_KNOTS = [[160, 76, null], [235, 140, 260], [380, 70, 490], [405, 40, 520], [480, 6, 580], [510, 0, 610]];
+var LF_FALCON_BOOSTER_KNOTS = [[155, 76, null], [235, 140, 260], [409, 70, 490], [429, 40, 520], [505, 3, 590], [527, 0, 610]];
 
 function _lfFamily(name) {
   for (var i = 0; i < LF_FAMILIES.length; i++) if (LF_FAMILIES[i][0].test(name || '')) return LF_FAMILIES[i][1];
@@ -121,7 +121,8 @@ function _lfAscent(L) {
   }
   var events = [{ t: 0, key: 'liftoff' }, { t: ref.falcon.maxQS * stretch, key: 'maxq' }, { t: firstEnd, key: 'meco' },
     { t: firstEnd + ref.coastS, key: 'stage2' }];
-  if (family === 'falcon') events.push({ t: ref.falcon.fairingS, key: 'fairing' });
+  if (family === 'falcon') events.push({ t: ref.falcon.sepS, key: 'sep' }, { t: ref.falcon.fairingS, key: 'fairing' });
+  events.sort(function (a, b) { return a.t - b.t; });
   events.push({ t: tEnd, key: 'seco' });
   events = events.filter(function (e) { return e.t <= stop; });
   var out = { family: family, az: az.az, azInertial: az.inertial, reach: az.reach, guessed: guessed, endKm: endKm, tEnd: tEnd, stop: stop,
@@ -131,7 +132,7 @@ function _lfAscent(L) {
 }
 // The Falcon first stage after it lets go: up to its highest point, the entry burn, the landing, on a drone ship.
 function _lfBooster(L, az, pts) {
-  var ref = AE_LAUNCH_REF, k = LF_FALCON_BOOSTER_KNOTS, from = pts[Math.min(pts.length - 1, ref.falcon.mecoS + ref.coastS)];
+  var ref = AE_LAUNCH_REF, k = LF_FALCON_BOOSTER_KNOTS, from = pts[Math.min(pts.length - 1, ref.falcon.sepS)];
   var ts = [], hs = [], rs = [];
   k.forEach(function (row, i) { ts.push(row[0]); hs.push(row[1]); rs.push(i === 0 ? from.range : row[2]); });
   var height = _lfMonotone(ts, hs), range = _lfMonotone(ts, rs), out = [];
@@ -248,7 +249,7 @@ function _lfDeploy(L, flight, ms0, sepMin) {
   var node0 = lonI - Math.atan2(Math.cos(inc) * Math.sin(u), Math.cos(u));
   var starlink = /^Starlink/i.test(L.mission || ''), shellKm = starlink ? _lfShellKm(L.inc) : null;
   var raiseFrom = tsep + ref.checkoutDays * MS_PER_DAY;
-  var raiseMs = shellKm == null ? 0 : (shellKm - L.depKm) / ref.raiseKmPerDay * MS_PER_DAY;
+  var raiseMs = shellKm == null ? 0 : (ref.raiseTotalDays - ref.checkoutDays) * MS_PER_DAY;
   function heightAt(ms) {
     if (shellKm == null || ms <= raiseFrom) return L.depKm;
     return ms >= raiseFrom + raiseMs ? shellKm : L.depKm + (shellKm - L.depKm) * (ms - raiseFrom) / raiseMs;
@@ -319,4 +320,26 @@ function _lfBatchWindows(dep, fromMs, toMs, obsLat, obsLon, minEl, stepMs) {
     }
   }
   return out;
+}
+
+// ── There and then ──
+// The shape of a moment worth standing in, so a curated list can sit beside the launches (nothing lists them yet):
+//   { id, family, title, place: {name, lat, lon, kind}, instant (ms, UTC), look: {az, el, spanDeg}, see (what the sight is,
+//     a key the words are looked up by), source: {name, url, licence} }
+// `family` names who made it ('launch' here); `id` is "<family>:<key>" and stable; `look` is where to face at `instant`.
+var LF_THEN_LOOK_SPAN_DEG = 60;   // the width of sky a "look" asks for
+// A launch seen from a place (name, lat, lon) as a moment, or null when the place could not see it. L: the launch;
+// seen: _lfObserve's answer for that place.
+function _lfThen(L, place, seen) {
+  if (!seen || !seen.seen) return null;
+  return {
+    id: 'launch:' + L.tag + ':' + place.lat.toFixed(2) + ',' + place.lon.toFixed(2),
+    family: 'launch',
+    title: L.name + (L.mission ? ' · ' + L.mission : ''),
+    place: { name: place.name || '', lat: place.lat, lon: place.lon, kind: place.kind || 'place' },
+    instant: Math.round(L.ms + seen.first.t * 1000),
+    look: { az: seen.first.az, el: seen.first.el, spanDeg: LF_THEN_LOOK_SPAN_DEG },
+    see: seen.sight,
+    source: { name: 'GCAT (McDowell)', url: 'https://planet4589.org/space/gcat', licence: 'CC BY 4.0' }
+  };
 }
