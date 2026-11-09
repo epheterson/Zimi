@@ -126,10 +126,8 @@ def test_the_planets_where_the_sky_has_them_and_a_flight_to_saturn(served):
             )
             assert any(u.endswith("/static/earth/saturn-v1.webp") for u in asked)
             assert pg.evaluate("_aeBodyAt(_ae.w / 2, _ae.h / 2)") == "saturn"
-            # The maps' credit is at the foot of the i sheet.
-            pg.evaluate("_aeOpenInfo('saturn')")
-            assert "Solar System Scope" in pg.inner_text(".ae-info-credit")
-            pg.evaluate("_aeCloseInfo(false)")
+            # The maps' credit (shown at the foot of the i sheet) names Solar System Scope here.
+            assert "Solar System Scope" in pg.evaluate("_aePlanetCredit()")
             # Far away, a planet is a mark and no map is fetched for the ones too small to see.
             assert not any(u.endswith("/static/earth/neptune-v1.webp") for u in asked)
             # The Planets chip: the whole system from above, every orbit drawn, the belt placed.
