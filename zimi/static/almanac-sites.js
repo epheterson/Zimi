@@ -134,6 +134,9 @@ function _asNewState(def, body, row, drive) {
   var st = { def: def, body: body, row: row, lat: pad ? pad.lat : row[1], lon: pad ? pad.lon : row[2], drive: !!drive, info: info, phase: 'fly', siteParts: [], keepOut: [], radiusM: b ? b.r * AE_EARTH_RADIUS_KM * 1000 : 1737400,
     camera: { az: 3.5, el: 0.32, dist: 16 }, look: { yaw: 0, pitch: 0, touched: 0 }, input: { sx: 0, sy: 0, keys: {}, jump: false }, last: 0, t0: 0, from: null, fr: null, rate: 0 };
   st.terrain = _asTerrainFn(st);
+  // A site whose rover is its own (Curiosity drives as Curiosity) gives the drive that rover's meshes.
+  var own = def && def.rover && _asData.rovers[def.rover];
+  if (own && info.rover) st.info = Object.assign({}, info, { rover: Object.assign({}, info.rover, { body: own.body, wheel: own.wheel }) });
   // What the visit looks at: its biggest part (the lander), and a distance that holds the rest too.
   var size = function (pd) { var md = _asData.models[pd.m] || _asData.models[(_asData.rovers[pd.m] || {}).body]; return md ? Math.max.apply(null, md.size) : 1; };
   var parts = def ? def.parts : [], main = parts.slice().sort(function (a, b) { return size(b) - size(a); })[0];

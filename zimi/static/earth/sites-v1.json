@@ -25,7 +25,9 @@
   "surveyor": {"size":[3.125,2.765,2.98]},
   "zhurong": {"size":[2.5,1.9,1.943]},
   "pad39a": {"size":[55.0,36.0,133.8]},
-  "pad-slab": {"size":[150.0,120.0,0.3]}
+  "pad-slab": {"size":[150.0,120.0,0.3]},
+  "curiosity-body": {"size":[2.346,3.947,2.226]},
+  "curiosity-wheel": {"size":[0.395,0.485,0.485],"radius":0.243,"at":[[1.119,0.785,0.257],[-1.12,0.782,0.254],[1.25,-0.399,0.257],[-1.25,-0.4,0.257],[-1.12,-1.474,0.257],[1.12,-1.476,0.257]]}
  },
 "sites": [
   {"name":"Apollo 11","body":"moon","ms":-14182980000,"parts":[{"m":"lm","x":0,"y":0,"h":0},{"m":"flag","x":14,"y":6,"h":20}]},
@@ -50,7 +52,7 @@
   {"name":"Mars Pathfinder","body":"mars","ms":868035360000,"parts":[{"m":"pathfinder","x":0,"y":0,"h":0},{"m":"sojourner","x":3.5,"y":2.2,"h":40}]},
   {"name":"Spirit","body":"mars","ms":1073190900000,"parts":[{"m":"mer","x":0,"y":0,"h":20}]},
   {"name":"Opportunity","body":"mars","ms":1075007100000,"parts":[{"m":"mer","x":0,"y":0,"h":250}]},
-  {"name":"Curiosity","body":"mars","ms":1344230220000,"parts":[{"m":"perseverance","x":0,"y":0,"h":30}],"trail":"msl"},
+  {"name":"Curiosity","body":"mars","ms":1344230220000,"parts":[{"m":"curiosity","x":0,"y":0,"h":30}],"trail":"msl","rover":"curiosity"},
   {"name":"Perseverance","body":"mars","ms":1613681700000,"parts":[{"m":"perseverance","x":0,"y":0,"h":340},{"m":"ingenuity","x":12,"y":5,"h":0}],"trail":"m20"},
   {"name":"Zhurong","body":"mars","ms":1621034280000,"parts":[{"m":"change-lander","x":0,"y":0,"h":0},{"m":"zhurong","x":13,"y":8,"h":60}]},
   {"name":"InSight","body":"mars","ms":1543261920000,"parts":[{"m":"insight","x":0,"y":0,"h":0}]},
@@ -65,7 +67,8 @@
 "rovers": {
   "lrv": {"body":"lrv-body","wheel":"lrv-wheel"},
   "lunokhod": {"body":"lunokhod-body","wheel":"lunokhod-wheel"},
-  "perseverance": {"body":"perseverance-body","wheel":"perseverance-wheel"}
+  "perseverance": {"body":"perseverance-body","wheel":"perseverance-wheel"},
+  "curiosity": {"body":"curiosity-body","wheel":"curiosity-wheel"}
  },
 "credits": "Models: NASA 3D Resources (public domain) for the Lunar Module, Perseverance, Ingenuity, the Mars Exploration Rover, InSight and the Saturn V; the others written for Zimi from the craft's published dimensions."
 }

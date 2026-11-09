@@ -60,6 +60,8 @@ NASA = {
         "InSight Cruise Lander/InSight Cruise Lander (arm deployed).glb",
         "NASA/JPL-Caltech",
     ),
+    # NASA publishes this one as a Blender file only: scripts/blend_to_glb.py makes the GLB (named in --src as curiosity.glb).
+    "curiosity": ("Curiosity Rover (MSL)/curiosity.glb", "NASA/JPL-Caltech"),
     "saturn5": (
         "Saturn V/Saturn V.glb",
         "NASA 3D Resources (no individual credit listed)",
@@ -168,10 +170,15 @@ def nasa_model(glb, tris, forward, keep=None, recolour=None, scale=1.0, min_diag
     its shape instead of being eaten with the rest of its colour). `keep(path, v)` filters parts; parts under
     `min_diag` metres across (screws, connectors) are dropped. Returns (vertices, faces, class per vertex, palette
     entries) in the view's frame."""
-    import fast_simplification
-
     j, blob, ps = parts_named(glb)
     ps = [p for p in ps if keep is None or keep(p[1], p[2])]
+    return nasa_model_parts(j, blob, ps, tris, forward, recolour, scale, min_diag)
+
+
+def nasa_model_parts(j, blob, ps, tris, forward, recolour=None, scale=1.0, min_diag=0.0):
+    """nasa_model for parts already read and chosen."""
+    import fast_simplification
+
     looks = bcm.material_looks(j, blob, recolour)
     weights = {}
     for mi, _p, _v, f in ps:
@@ -252,6 +259,34 @@ def _perseverance(glb):
     return out
 
 
+def _curiosity(glb):
+    """Curiosity: the body (without Blender's helper cubes) and one wheel, the six wheels at their hubs, as the
+    Perseverance pair is built; the file's wheels are six separate meshes named wheel_NN_L/R."""
+    import fast_simplification
+
+    j, blob, ps = parts_named(glb)
+    helper = lambda mi, p, v: j["materials"][mi]["name"] in ("pivot", "shadow2") or len(v) <= 8
+    wheel = lambda p: "/wheel_" in p
+    real = [(mi, p, v, f) for mi, p, v, f in ps if not helper(mi, p, v)]
+    whole = _to_view(np.vstack([v for _m, _p, v, _f in real]), "+z")
+    origin = np.array([(whole[:, 0].min() + whole[:, 0].max()) / 2, (whole[:, 1].min() + whole[:, 1].max()) / 2, whole[:, 2].min()])
+    pick = lambda w: [(mi, p, v, f) for mi, p, v, f in real if wheel(p) == w]
+    v, f, c, e = nasa_model_parts(j, blob, pick(False), 9000, "+z", min_diag=0.04)
+    out = {"curiosity-body": write_zcrf("curiosity-body", v, f, c, e, origin)}
+    ws = pick(True)
+    hubs = [_to_view(vv.mean(0)[None], "+z")[0] - origin for _m, _p, vv, _f in ws]
+    mi, p, vv, ff = ws[0]
+    wv, fw = _clean(_to_view(vv - vv.mean(0), "+z"), ff)
+    wv, fw = fast_simplification.simplify(wv, fw, target_reduction=1 - min(1.0, 900 / len(fw)))
+    looks = bcm.material_looks(j, blob)
+    rgb = looks[mi]
+    wheel_meta = write_zcrf("curiosity-wheel", wv, fw, np.zeros(len(wv), np.uint8), [(rgb[0], rgb[1], rgb[2])], None)
+    wheel_meta["radius"] = round(float((wv[:, 2].max() - wv[:, 2].min()) / 2), 3)
+    wheel_meta["at"] = [[round(float(x), 3), round(float(y), 3), round(float(z), 3)] for x, y, z in sorted(hubs, key=lambda h: (-h[1], h[0]))]
+    out["curiosity-wheel"] = wheel_meta
+    return out
+
+
 def build_nasa(key, src, only):
     meta = {}
     path, credit = NASA[key]
@@ -264,6 +299,8 @@ def build_nasa(key, src, only):
         meta["lm"] = write_zcrf("lm", v, f, c, e, "auto")
     elif key == "perseverance":
         meta.update(_perseverance(glb))
+    elif key == "curiosity":
+        meta.update(_curiosity(glb))
     elif key == "ingenuity":
         v, f, c, e = nasa_model(glb, 3500, "+z")
         meta["ingenuity"] = write_zcrf("ingenuity", v, f, c, e, "auto")
