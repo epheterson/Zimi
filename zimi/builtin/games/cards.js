@@ -953,6 +953,8 @@
       if (up && !e._face) { e.firstChild.innerHTML = (o.face || faceMarkup)(id, false); e._face = true; }
       if (!up && !hidden && e._back !== currentBack) { e.lastChild.innerHTML = backMarkup(currentBack); e._back = currentBack; }
     }
+    // A card (or its slot) may be drawn smaller than the table's card, by a width in px (Canasta's melds on a crowded table).
+    function sizeTo(e, cw) { if (cw) e.style.setProperty('--cw', cw + 'px'); else e.style.removeProperty('--cw'); }
     function put(e, x, y) {
       var t = 'translate(' + x + 'px,' + y + 'px)';
       e.style.transform = t; e.style.setProperty('--zc-t', t);
@@ -1009,6 +1011,7 @@
         var e = slotEl(s);
         e.style.transform = 'translate(' + s.x + 'px,' + s.y + 'px)';
         e.style.width = s.w + 'px'; e.style.height = s.h + 'px';
+        sizeTo(e, s.cw);
         e.setAttribute('aria-label', s.label);
         if (s.mark) e.setAttribute('data-mark', s.mark); else e.removeAttribute('data-mark');
         e.toggleAttribute('data-goal', !!s.goal);
@@ -1025,6 +1028,7 @@
         (byPile[c.pile] = byPile[c.pile] || []).push(c.id);
         dress(e, c.id, c.up, c.hidden);
         e._mark = !!c.mark;
+        sizeTo(e, c.cw);
         e.classList.toggle('zc-sel', e._mark);
         e.classList.toggle('zc-dim', !!c.dim);
         e.classList.toggle('zc-glow', !!c.glow);
