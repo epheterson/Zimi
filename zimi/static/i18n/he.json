@@ -3783,8 +3783,14 @@
   "tb_kn_launch_earth_rate": "סיבוב כדור הארץ ביחס לכוכבים",
   "tb_kn_launch_mean_radius": "רדיוס הכדור שעליו מונחים העלייה וזוויות המבט",
   "tb_kn_launch_checkout": "קבוצת Starlink נבדקת לפני העלאה במשך",
-  "tb_kn_launch_raise": "ואז מועלה לשכבתו בקצב",
   "tb_kn_launch_spread": "חצי טווח הפרשי הגובה בקבוצה (אורך הרכבת)",
   "tb_kn_launch_release": "מרווח בין שכנים בשחרור",
-  "tb_kn_launch_shells": "שכבות Starlink לפי נטייה, גובה"
+  "tb_kn_launch_shells": "שכבות Starlink לפי נטייה, גובה",
+  "alm_launch_hint": "משגר: מאיפה יצאה. עין: השמיים שלכם אז. דמות: השמיים במשגר.",
+  "alm_launch_hidden_today": "הלוויינים של היום מוסתרים לתאריך זה; מוצגים אלה של השיגור הזה, משוחזרים.",
+  "tb_kn_launch_raise_days": "קבוצת Starlink מגיעה לשכבתה כך וכך ימים לאחר השחרור",
+  "tb_kn_launch_falcon_sep": "פלקון 9: הפרדת הדרגות ב-",
+  "tb_kn_launch_falcon_ses": "פלקון 9: הדרגה השנייה נדלקת ב-",
+  "tb_kn_launch_falcon_seco": "פלקון 9: הבעירה הראשונה של הדרגה השנייה מסתיימת ב-",
+  "tb_kn_sat_leo_gone": "לוויין במסלול נמוך לא מצויר אם האלמנטים שלו ישנים מ-"
 }

@@ -3783,8 +3783,14 @@
   "tb_kn_launch_earth_rate": "地球相对恒星的自转",
   "tb_kn_launch_mean_radius": "用于上升轨迹与视角的球体半径",
   "tb_kn_launch_checkout": "Starlink 一批卫星在抬升前检查",
-  "tb_kn_launch_raise": "随后以此速度抬升到目标轨道层",
   "tb_kn_launch_spread": "一批卫星高度差的半幅（决定“列车”长度）",
   "tb_kn_launch_release": "释放时相邻卫星的间隔",
-  "tb_kn_launch_shells": "Starlink 轨道层（倾角，高度）"
+  "tb_kn_launch_shells": "Starlink 轨道层（倾角，高度）",
+  "alm_launch_hint": "发射台：起飞处。眼睛：当时你那里的天空。人形：发射台的天空。",
+  "alm_launch_hidden_today": "今日的卫星在此日期不显示；显示的是本次发射重建的卫星。",
+  "tb_kn_launch_raise_days": "Starlink 一批卫星在释放后这么多天到达目标轨道层",
+  "tb_kn_launch_falcon_sep": "猎鹰9号：级间分离时刻",
+  "tb_kn_launch_falcon_ses": "猎鹰9号：二级点火时刻",
+  "tb_kn_launch_falcon_seco": "猎鹰9号：二级首次关机时刻",
+  "tb_kn_sat_leo_gone": "近地轨道卫星的轨道根数超过此天数则不绘制"
 }

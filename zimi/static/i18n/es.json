@@ -3783,8 +3783,14 @@
   "tb_kn_launch_earth_rate": "El giro de la Tierra respecto a las estrellas",
   "tb_kn_launch_mean_radius": "Radio de la esfera sobre la que se trazan el ascenso y los ángulos de visión",
   "tb_kn_launch_checkout": "Un lote de Starlink se comprueba antes de subir, durante",
-  "tb_kn_launch_raise": "Luego sube a su capa a",
   "tb_kn_launch_spread": "Semirrango de las diferencias de altura de un lote (largo del tren)",
   "tb_kn_launch_release": "Paso entre vecinos al soltarse",
-  "tb_kn_launch_shells": "Capas de Starlink por inclinación, altura"
+  "tb_kn_launch_shells": "Capas de Starlink por inclinación, altura",
+  "alm_launch_hint": "Plataforma: de dónde salió. Ojo: tu cielo entonces. Figura: el cielo en la plataforma.",
+  "alm_launch_hidden_today": "Los satélites de hoy se ocultan para esta fecha; se muestran los de este lanzamiento, reconstruidos.",
+  "tb_kn_launch_raise_days": "Un lote de Starlink llega a su capa tantos días después de soltarse",
+  "tb_kn_launch_falcon_sep": "Falcon 9: separación de etapas a los",
+  "tb_kn_launch_falcon_ses": "Falcon 9: la segunda etapa se enciende a los",
+  "tb_kn_launch_falcon_seco": "Falcon 9: el primer encendido de la segunda etapa termina a los",
+  "tb_kn_sat_leo_gone": "Un satélite de órbita baja no se dibuja si sus elementos son más antiguos que"
 }

@@ -3783,8 +3783,14 @@
   "tb_kn_launch_earth_rate": "The Earth’s turning against the stars",
   "tb_kn_launch_mean_radius": "Radius of the sphere the ascent and look angles are laid on",
   "tb_kn_launch_checkout": "A Starlink batch is checked out before raising, for",
-  "tb_kn_launch_raise": "Then raised to its shell at",
   "tb_kn_launch_spread": "Half-range of a batch’s differences in height (the string’s length)",
   "tb_kn_launch_release": "Step between neighbours at release",
-  "tb_kn_launch_shells": "Starlink shells by inclination, height"
+  "tb_kn_launch_shells": "Starlink shells by inclination, height",
+  "alm_launch_hint": "Pad: where it left. Eye: your sky then. Figure: the sky at the pad.",
+  "alm_launch_hidden_today": "Today’s satellites are hidden for this date; showing this launch’s, reconstructed.",
+  "tb_kn_launch_raise_days": "A Starlink batch reaches its shell this many days after release",
+  "tb_kn_launch_falcon_sep": "Falcon 9: first and second stage separate at",
+  "tb_kn_launch_falcon_ses": "Falcon 9: the second stage lights at",
+  "tb_kn_launch_falcon_seco": "Falcon 9: the second stage’s first burn ends at",
+  "tb_kn_sat_leo_gone": "A low-orbit satellite is not drawn when its elements are older than"
 }

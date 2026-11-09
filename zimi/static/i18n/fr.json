@@ -3783,8 +3783,14 @@
   "tb_kn_launch_earth_rate": "La rotation de la Terre par rapport aux étoiles",
   "tb_kn_launch_mean_radius": "Rayon de la sphère sur laquelle sont posés l’ascension et les angles de vue",
   "tb_kn_launch_checkout": "Un lot Starlink est vérifié avant la montée, pendant",
-  "tb_kn_launch_raise": "Puis montée à sa couche à",
   "tb_kn_launch_spread": "Demi-étendue des écarts d’altitude d’un lot (longueur du chapelet)",
   "tb_kn_launch_release": "Écart entre voisins au largage",
-  "tb_kn_launch_shells": "Couches Starlink par inclinaison, altitude"
+  "tb_kn_launch_shells": "Couches Starlink par inclinaison, altitude",
+  "alm_launch_hint": "Pas de tir : d’où elle est partie. Œil : votre ciel à ce moment. Silhouette : le ciel au pas de tir.",
+  "alm_launch_hidden_today": "Les satellites d’aujourd’hui sont masqués pour cette date ; ceux de ce lancement sont reconstitués.",
+  "tb_kn_launch_raise_days": "Un lot Starlink atteint sa couche autant de jours après le largage",
+  "tb_kn_launch_falcon_sep": "Falcon 9 : séparation des étages à",
+  "tb_kn_launch_falcon_ses": "Falcon 9 : le second étage s’allume à",
+  "tb_kn_launch_falcon_seco": "Falcon 9 : la première combustion du second étage s’achève à",
+  "tb_kn_sat_leo_gone": "Un satellite en orbite basse n’est pas dessiné si ses éléments ont plus de"
 }

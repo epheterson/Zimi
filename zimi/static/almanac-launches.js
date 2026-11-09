@@ -17,6 +17,8 @@ var AL_DEP_DEFAULT_KM = 300, AL_DEP_MIN_KM = 200, AL_DEP_MAX_KM = 2000;
 var AL_DEP_ORBIT_DAYS = 4;                   // GCAT's catalogued orbit is the deployment's if it is dated within this many days of lift-off
 // ── Seen from a place ──
 var AL_WINDOW_HOURS = 72, AL_WINDOW_STEP_S = 30, AL_WINDOWS_SHOWN = 3;
+var AL_PEARL_PX = 1.1, AL_PEARL_ALPHA = 0.9;   // a released satellite in the sky: this radius (CSS px), this opaque
+var AL_HINT_KEY = 'zimi_al_hint';            // set once a launch's buttons have been used: the legend goes
 var AL_TRAIL_S = 12, AL_TRAIL_STEP_S = 2;    // the rocket's trail in the sky: this far back, a point this often
 // ── In the 3D view ──
 var AL_FLY_TILT_RAD = 0.3;                   // the view looks this far south of the ascent's middle, so the ascent sits above the sheet
@@ -31,6 +33,7 @@ var AL_SKY_RESCUE_MS = 400;                  // after the view closes, the page 
 var AL_SRC = { recon: 'recon', exact: 'exact' };
 var AL_SPACETRACK_URL = '/manage/spacetrack', AL_SPACETRACK_FETCH_URL = '/manage/spacetrack/fetch';
 var AL_SEL_NONE = -1;
+var AL_SETTLE_MS = 400;
 
 var _al = {
   state: 'idle', data: null, rows: null, years: [], sites: [], vehs: [],
@@ -196,12 +199,16 @@ function _alCloseSheet() {
   _alClear();
   if (typeof _aeMarkToggles === 'function') _aeMarkToggles();
 }
+// The sheet stands on the view's bottom stack (its chips, the clock, its notes): above the highest of them, so the date shows.
 function _alPlaceSheet() {
-  var el = _al.sheetEl, views = _aeById('ae-views');
-  if (!el || !views || !el.parentNode) return;
-  var hb = el.parentNode.getBoundingClientRect(), vb = views.getBoundingClientRect();
-  el.style.bottom = Math.max(8, hb.bottom - vb.top + 6) + 'px';
-  el.style.maxHeight = Math.max(140, vb.top - hb.top - 64) + 'px';
+  var el = _al.sheetEl, stack = el && el.parentNode && el.parentNode.querySelector('.ae-bottom');
+  if (!stack) return;
+  if (window.innerWidth > window.innerHeight) { el.style.bottom = ''; el.style.maxHeight = ''; return; }   // landscape: the stylesheet's place
+  var hb = el.parentNode.getBoundingClientRect(), top = Infinity;
+  Array.prototype.forEach.call(stack.children, function (c) { var r = c.getBoundingClientRect(); if (!c.hidden && r.height > 0) top = Math.min(top, r.top); });
+  if (!isFinite(top)) return;
+  el.style.bottom = Math.max(8, hb.bottom - top + 6) + 'px';
+  el.style.maxHeight = Math.max(140, top - hb.top - 64) + 'px';
 }
 function _alRender() {
   var el = _al.sheetEl;
@@ -213,6 +220,7 @@ function _alRender() {
   else html += _alListHtml();
   el.innerHTML = html;
   _alPlaceSheet();
+  setTimeout(_alPlaceSheet, AL_SETTLE_MS);   // the view's stack settles after a flight and a clock jump
   _aeById('al-x').onclick = _alCloseSheet;
   if (_al.state !== 'ready') return;
   if (_al.view === 'launch' && _al.cur) _alBindLaunch(); else _alBindList();
@@ -303,10 +311,14 @@ function _alLaunchHtml() {
     '<div class="al-acts">' +
       _alAct('al-pad', 'pad', 'alm_launch_pad') + _alAct('al-here', 'eye', 'alm_launch_from_here') + _alAct('al-frompad', 'stand', 'alm_launch_from_pad') +
       (typeof _aeStandAt === 'function' ? _alAct('al-ground', 'stand', 'alm_launch_on_ground') : '') +
-    '</div>';
+    '</div>' + (_alHintSeen() ? '' : '<p class="al-note">' + _almEsc(_aeT('alm_launch_hint')) + '</p>');
   if (_al.dep) html += _alBatchHtml();
   return html;
 }
+function _alHintSeen() { try { return localStorage.getItem(AL_HINT_KEY) === '1'; } catch (e) { return false; } }
+function _alHintDone() { try { localStorage.setItem(AL_HINT_KEY, '1'); } catch (e) {} }
+// Whether a launch's reconstructed or exact satellites are what the view is drawing: the footer then says so.
+function _alBatchDrawn() { return !!(_al.sheet && _al.dep && _al.cur); }
 function _alAct(id, icon, key) {
   var t = _almEsc(_aeT(key));
   return '<button type="button" class="ae-btn ae-round" id="' + id + '" aria-label="' + t + '" title="' + t + '">' + _alSvg(icon, 18) + '</button>';
@@ -338,9 +350,9 @@ function _alWindowsHtml() {
 }
 function _alBindLaunch() {
   _aeById('al-back').onclick = _alBack;
-  _aeById('al-pad').onclick = function () { _alGoPad(); };
-  _aeById('al-here').onclick = function () { _alStandThen('here'); };
-  _aeById('al-frompad').onclick = function () { _alStandThen('pad'); };
+  _aeById('al-pad').onclick = function () { _alHintDone(); _alGoPad(); };
+  _aeById('al-here').onclick = function () { _alHintDone(); _alStandThen('here'); };
+  _aeById('al-frompad').onclick = function () { _alHintDone(); _alStandThen('pad'); };
   var g = _aeById('al-ground');
   if (g) g.onclick = function () { _aeGoTo(_al.cur.ms); _aeStandAt('earth', _al.cur.lat, _al.cur.lon); };
   var r = _aeById('al-recon'), x = _aeById('al-exact');
@@ -555,7 +567,8 @@ function _alSkyPaint(ctx, s) {
         if (v.el < 0 || !v.lit) continue;
         var x = _skyX(s, v.az);
         if (!_skyInView(s, x, 4)) continue;
-        _skyLight(ctx, x, _skyY(s, v.el), 1.5 * dpr, [255, 236, 190], 0.9);
+        ctx.fillStyle = 'rgba(255,240,205,' + AL_PEARL_ALPHA + ')';   // a pinpoint, no halo: a string of pearls
+        ctx.beginPath(); ctx.arc(x, _skyY(s, v.el), AL_PEARL_PX * dpr, 0, 6.2832); ctx.fill();
         if (!seen++) s.bodies.push({ type: 'sat', name: _aeT('alm_launch_recon'), x: x / dpr, y: _skyY(s, v.el) / dpr, r: 4, alt: v.el, az: v.az, km: dep.heightKm(ms) });
       }
     }

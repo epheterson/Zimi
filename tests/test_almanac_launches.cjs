@@ -77,7 +77,7 @@ const flight = S._lfAscent(SLC40);
 {
   const at = (t) => flight.points[t];
   check(flight.family === 'falcon', 'Falcon 9 flies its own profile');
-  check(flight.points.length === 526 && at(0).h === 0 && near(at(0).lat, 28.562, 1e-9), 'the track starts at the pad, T+0 to T+525 each second');
+  check(flight.points.length === 527 && at(0).h === 0 && near(at(0).lat, 28.562, 1e-9), 'the track starts at the pad, T+0 to T+526 each second');
   check(near(at(72).h, 12.5, 0.6) && near(at(72).v, 0.52, 0.05), 'max-Q at T+1:12: ' + at(72).h.toFixed(1) + ' km, ' + (at(72).v * 1000).toFixed(0) + ' m/s');
   check(near(at(150).h, 68, 2) && near(at(150).v, 2.1, 0.1), 'MECO at T+2:30: ' + at(150).h.toFixed(0) + ' km, ' + at(150).v.toFixed(2) + ' km/s');
   const end = at(525);
@@ -88,12 +88,12 @@ const flight = S._lfAscent(SLC40);
   check(end.lat > 28.562 && end.lon > -80.577, 'it flies north-east');
   const mono = flight.points.every((p, i) => i === 0 || (p.range >= flight.points[i - 1].range && p.v >= flight.points[i - 1].v - 0.05));
   check(mono, 'range grows and speed never falls by more than the coast');
-  check(flight.events.map((e) => e.key).join() === 'liftoff,maxq,meco,stage2,fairing,seco', 'events: ' + flight.events.map((e) => e.key + '@' + e.t).join(' '));
+  check(flight.events.map((e) => e.key).join() === 'liftoff,maxq,meco,sep,stage2,fairing,seco', 'events: ' + flight.events.map((e) => e.key + '@' + e.t).join(' '));
   const b = flight.booster, landing = b[b.length - 1];
   check(b && landing.h === 0 && near(S._lfGroundKm(28.562, -80.577, landing.lat, landing.lon), 610, 15), 'the booster lands on a ship about 610 km away');
   check(b.some((p) => p.burn === 3) && b.some((p) => p.burn === 4) && Math.max.apply(null, b.map((p) => p.h)) > 130, 'with an entry burn, a landing burn and an apogee near 140 km');
   const failed = S._lfAscent(Object.assign({}, SLC40, { ok: false }));
-  check(failed.stop === 150 && !failed.insertion && !failed.booster, 'a failed launch is drawn to the end of its first stage and no further');
+  check(failed.stop === 151 && !failed.insertion && !failed.booster, 'a failed launch is drawn to the end of its first stage and no further');
   const unknown = S._lfAscent({ name: 'Mystery', lat: 10, lon: 20, siteName: 'X', incDeg: null, perigeeKm: null, ok: true });
   check(unknown.guessed && near(unknown.az, 90, 3) && unknown.family === 'typical', 'no orbit known: due east, said so');
   const shuttle = S._lfAscent({ name: 'Space Shuttle', lat: 28.6, lon: -80.6, siteName: 'Kennedy', incDeg: 51.6, perigeeKm: 160, ok: true });
@@ -186,6 +186,57 @@ const flight = S._lfAscent(SLC40);
   // Seen from the Cape's own latitude band a few hours later the pass has a height and a bearing.
   const seen = S._lfSeenFrom(dep.at(hours(2), 30), hours(2), 28.5, -80.6);
   check(typeof seen.el === 'number' && seen.range > 0 && typeof seen.lit === 'boolean', 'a position can be seen from a place');
+}
+
+
+// ── 5. Against documented reality ──────────────────────────────────────────
+{
+  // SpaceX's timeline for Starlink 4-9 (Spaceflight Now, 2022-03-03): max-Q 1:12, MECO 2:31, stage separation 2:35, second
+  // stage ignition 2:42, fairing 2:47, entry burn 6:49 to 7:09, landing burn 8:25, SECO 8:46, landing 8:47.
+  const at = Object.fromEntries(flight.events.map((e) => [e.key, e.t]));
+  check(at.maxq === 72 && at.meco === 151 && at.sep === 155 && at.stage2 === 162 && at.fairing === 167 && at.seco === 526, 'the Falcon 9 events are the ones SpaceX printed for Starlink 4-9');
+  const b = flight.booster;
+  check(b[0].t === 155 && b[b.length - 1].t === 527 && b.find((p) => p.burn === 3).t === 409 && b.filter((p) => p.burn === 3).pop().t === 429 && b.find((p) => p.burn === 4).t === 505, 'and the booster: entry burn 6:49 to 7:09, landing burn 8:25, landing 8:47');
+  // The first Starlink train of 2021 (launch 25, 4 May 19:01 UTC), as reported: KCRA, Sacramento, 7 May 2021: from Grass Valley
+  // "soon after 9 p.m." on Thursday 6 May, "a line of lights moving across the sky in a northeasterly direction", for "maybe
+  // two minutes". Tolerance: the pass starts between 9:00 and 9:30 pm PDT and ends in the north-east to east.
+  const GCAT_L25 = { mission: 'Starlink V1.0-L25', inc: 53.05, n: 60, depKm: 268.5 };   // GCAT's first orbit for the batch: 261 x 276 km
+  const t0 = Date.UTC(2021, 4, 4, 19, 1);
+  const f25 = S._lfAscent({ name: 'Falcon 9', lat: 28.608, lon: -80.604, siteName: 'Kennedy', incDeg: 53.05, perigeeKm: 261, ok: true });
+  const d25 = S._lfDeploy(GCAT_L25, f25, t0, 63);
+  const gv = S._lfBatchWindows(d25, Date.UTC(2021, 4, 7, 2, 0), Date.UTC(2021, 4, 7, 8, 0), 39.22, -121.06, 5, 10000);
+  const pdt = (ms) => new Date(ms - 7 * 3600000).toISOString().slice(11, 16);
+  check(gv.length === 1 && pdt(gv[0].start) >= '21:00' && pdt(gv[0].start) <= '21:30' && gv[0].azEnd > 45 && gv[0].azEnd < 90 && gv[0].count > 30,
+    'launch 25 from Grass Valley on 6 May: ' + (gv[0] ? pdt(gv[0].start) + ' pm PDT, to ' + gv[0].azEnd.toFixed(0) + ' deg, ' + gv[0].count + ' satellites' : 'nothing'));
+  // Starlink raises itself to its shell about 45 days after release (McDowell et al. 2020, ApJL 892 L6).
+  check(Math.abs((d25.raiseDoneMs - d25.sepMs) / 86400000 - 45) < 0.01, 'the batch reaches its shell 45 days after release');
+  // The Long March 5B core stage (2021-035B, NORAD 48275), from a TLE of 8 May 2021 20:34 UTC (karhukoti.com's copy of the
+  // Space-Track set, 16.44 rev/day, B* 1.9e-4): for a place at 37.0 N, 121.5 W it was not up and lit over 5 degrees in the
+  // evening of 7 May (to 10 pm PDT), and was at dawn on 8 May (about 04:32 PDT, in the east).
+  const lib = S.SatelliteJS;
+  const rec = lib.json2satrec({ OBJECT_NAME: 'CZ-5B R/B', NORAD_CAT_ID: 48275, EPOCH: '2021-05-08T20:34:12.100Z', MEAN_MOTION: 16.44362448, ECCENTRICITY: 0.0029099, INCLINATION: 41.4573, RA_OF_ASC_NODE: 159.7603, ARG_OF_PERICENTER: 247.8635, MEAN_ANOMALY: 292.7779, BSTAR: 1.9011e-4, MEAN_MOTION_DOT: 0.10495065, MEAN_MOTION_DDOT: 0.80719e-5 });
+  const epoch = Date.parse('2021-05-08T20:34:12.1Z');
+  const seeLit = (a, c) => {
+    const out = [];
+    for (let ms = a; ms < c; ms += 30000) {
+      const pv = lib.sgp4(rec, (ms - epoch) / 60000), w = S._lfWatcher(ms, 37.0, -121.5), v = S._lfSeenBy(w, [pv.position.x, pv.position.y, pv.position.z]);
+      if (v.el > 5 && v.lit && w.sunAlt < -6) out.push(ms);
+    }
+    return out;
+  };
+  check(seeLit(Date.UTC(2021, 4, 8, 2, 0), Date.UTC(2021, 4, 8, 5, 0)).length === 0, 'the Long March 5B stage was not seen on the evening of 7 May');
+  const dawn = seeLit(Date.UTC(2021, 4, 8, 10, 0), Date.UTC(2021, 4, 8, 14, 0));
+  check(dawn.length >= 3 && pdt(dawn[0]) >= '04:30' && pdt(dawn[0]) <= '04:35', 'but at dawn on 8 May: ' + (dawn.length ? pdt(dawn[0]) + ' PDT' : 'never'));
+}
+
+// ── 6. A moment to stand in ────────────────────────────────────────────────
+{
+  const L = { tag: '2022-141', name: 'Falcon 9', mission: 'Starlink Group 4-31', ms: Date.UTC(2022, 9, 28, 1, 14), lat: 34.632, lon: -120.611, siteName: 'Vandenberg', incDeg: 53.2, perigeeKm: 230, ok: true };
+  const f = S._lfAscent(L), seen = S._lfObserve(f, L, L.ms, 34.05, -118.24);
+  const m = S._lfThen(L, { name: 'Los Angeles', lat: 34.05, lon: -118.24 }, seen);
+  check(m && m.id === 'launch:2022-141:34.05,-118.24' && m.family === 'launch' && m.place.name === 'Los Angeles' && m.instant > L.ms && m.look.az > 250 && m.look.az < 300 && m.see === 'jellyfish' && m.source.licence === 'CC BY 4.0',
+    'a launch seen from Los Angeles is a moment: ' + (m ? m.id + ' at +' + (m.instant - L.ms) / 1000 + ' s, face ' + m.look.az.toFixed(0) : 'none'));
+  check(S._lfThen(L, { lat: 28, lon: -80 }, { seen: false }) === null, 'and one that could not be seen is not');
 }
 
 if (failures) { console.error(failures + ' failed'); process.exit(1); }
