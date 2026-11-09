@@ -2,6 +2,7 @@
 .tt-sides { display: grid; grid-template-columns: 1fr 1fr; gap: var(--sp-3); width: 100%; max-width: 420px; }
 .tt-side { display: flex; flex-direction: column; gap: var(--sp-1); min-width: 0; padding: var(--sp-2) var(--sp-3); border: 2px solid var(--line); border-radius: var(--radius); background: var(--surface); text-align: center; }
 .tt-side.tt-turn { border-color: var(--accent); background: var(--accent-glow); }
+.tt-side.tt-turn small { color: var(--ink); }
 .tt-side small { font-size: var(--fs-small); color: var(--ink2); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .tt-side b { font: 650 var(--fs-display)/1.1 var(--font); font-variant-numeric: tabular-nums; }
 .tt-meter { position: relative; display: block; height: 8px; border-radius: 4px; background: var(--cell); border: 1px solid var(--line); overflow: hidden; }

@@ -2,6 +2,7 @@
 .pg-table { display: grid; grid-template-columns: 1fr auto 1fr; gap: var(--sp-3); align-items: stretch; width: 100%; max-width: 420px; padding: var(--sp-3); background: var(--surface); border: 1px solid var(--line); border-radius: var(--r-sheet); }
 .pg-side { display: flex; flex-direction: column; justify-content: center; gap: var(--sp-1); min-width: 0; padding: var(--sp-2); border: 2px solid transparent; border-radius: var(--radius); text-align: center; }
 .pg-side.pg-turn { border-color: var(--accent); background: var(--accent-glow); }
+.pg-side.pg-turn small { color: var(--ink); }
 .pg-side small { font-size: var(--fs-small); color: var(--ink2); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .pg-side b { font: 650 var(--fs-display)/1.1 var(--font); font-variant-numeric: tabular-nums; }
 .pg-meter { position: relative; display: block; height: 10px; border-radius: 5px; background: var(--cell); border: 1px solid var(--line); overflow: hidden; }
