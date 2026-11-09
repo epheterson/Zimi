@@ -22,6 +22,9 @@ OUT = os.path.join(
     "tests",
     "shard_weights.json",
 )
+#: Modules whose browser is WebKit, which CI does not install: they are collected there and skip at once, so they
+#: weigh nothing in a CI shard however long they take on a Mac.
+SKIPPED_IN_CI = ("test_games_final_fixes.py", "test_games_start_banner_browser.py")
 _DURATION = re.compile(r"^\s*([\d.]+)s (?:call|setup|teardown)\s+tests/([\w]+\.py)::")
 
 
@@ -55,6 +58,7 @@ def main(argv):
         print(__doc__)
         return 2
     weights = {name: round(sec, 1) for name, sec in sorted(total.items()) if sec >= 0.1}
+    weights.update({name: 1.0 for name in SKIPPED_IN_CI})
     with open(OUT, "w", encoding="utf-8") as f:
         json.dump(weights, f, indent=0, sort_keys=True)
         f.write("\n")
