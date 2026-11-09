@@ -22,7 +22,8 @@ A launch row is ``COLUMNS`` in order. Times are whole minutes since 1970 (UTC).
 country); ``veh`` indexes ``veh``. ``ok`` is 1 for a launch that reached orbit.
 The last four columns describe the deployment of a batch (four payloads or more):
 the first payload's separation in minutes after liftoff, and the orbit GCAT
-recorded ``odays`` days after liftoff (perigee and apogee, km).
+recorded ``odays`` days after liftoff (perigee and apogee, km). ``tag`` is the launch's
+designator ("2021-038"), which Space-Track names its objects by.
 """
 
 import calendar
@@ -80,11 +81,13 @@ COLUMNS = [
     "odays",
     "operi",
     "oapo",
+    "tag",
 ]
 MAX_NAMED_PAYLOADS = 3  # payload names kept per launch; the count is always kept
 MAX_NAME_LEN = 28
 MIN_BATCH = 4  # a launch with this many payloads has a deployment worth reconstructing
 MIN_LAUNCHES = 5000  # fewer than this out of a parse is a wrong answer, not a catalogue
+ORBITAL_CODES = ("O", "D")  # GCAT launch codes: orbital, and deep space (the Moon and beyond, from an orbit round the Earth)
 
 MONTHS = {m: i for i, m in enumerate(calendar.month_abbr) if m}
 PIECE_RE = re.compile(r"^(\d{4}-[A-Z]?\d{2,3})[A-Z]+$")
@@ -198,7 +201,7 @@ def build(src, today=None):
     first = _first_payloads(src["satcat"])
     veh, veh_ix, pads, pad_ix, out = [], {}, [], {}, []
     for r in _rows(src["launch"]):
-        if not r[26].startswith("O"):
+        if r[26][:1] not in ORBITAL_CODES:
             continue
         t = _minutes(r[2])
         if t is None:
@@ -233,6 +236,7 @@ def build(src, today=None):
                 names.get(r[0], []) if n <= 6 else [],
             ]
             + list(dep)
+            + [r[0]]
         )
     out.sort(key=lambda x: x[0])
     stamp = (today or datetime.date.today()).isoformat()
