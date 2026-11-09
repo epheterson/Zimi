@@ -221,7 +221,7 @@
       var iWon = r.winners.indexOf(me) >= 0, tied = r.winners.length > 1;
       if (iWon && !tied && !hot) session.win(mine);
       else if (tied) session.lose('draw', [TX('gofish.tied', { names: r.winners.map(name).join(' · ') })].concat(lines), mine);
-      else session.lose(hot ? { name: name(r.winners[0]) } : '', [TX('gofish.won', { name: name(r.winners[0]), n: r.most })].concat(lines), mine);
+      else session.lose(hot ? { name: name(r.winners[0]) } : '', [TX('gofish.won', { name: name(r.winners[0]), books: Z.plural(r.most, 'book') })].concat(lines), mine);
     }
     function askNow(target) {
       var st = session.state, rank = view.pending;
