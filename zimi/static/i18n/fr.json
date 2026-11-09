@@ -3717,5 +3717,6 @@
   "tb_kn_site_saturn_vac": "Poussée du premier étage de Saturn V dans le vide",
   "tb_kn_site_saturn_drag": "Traînée de Saturn V (coefficient × surface)",
   "tb_kn_site_saturn_pitch": "Inclinaison de Saturn V depuis la verticale",
-  "tb_kn_site_jump": "Vitesse de saut du rover"
+  "tb_kn_site_jump": "Vitesse de saut du rover",
+  "alm_probe_replay": "Rejouer son vol depuis le lancement"
 }

@@ -3717,5 +3717,6 @@
   "tb_kn_site_saturn_vac": "Empuxo do primeiro estágio do Saturno V no vácuo",
   "tb_kn_site_saturn_drag": "Arrasto do Saturno V (coeficiente × área)",
   "tb_kn_site_saturn_pitch": "Inclinação do Saturno V a partir da vertical",
-  "tb_kn_site_jump": "Velocidade de salto do rover"
+  "tb_kn_site_jump": "Velocidade de salto do rover",
+  "alm_probe_replay": "Reproduzir o voo desde o lançamento"
 }

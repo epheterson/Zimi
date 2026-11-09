@@ -3717,5 +3717,6 @@
   "tb_kn_site_saturn_vac": "Schub der ersten Stufe der Saturn V im Vakuum",
   "tb_kn_site_saturn_drag": "Luftwiderstand der Saturn V (Beiwert × Fläche)",
   "tb_kn_site_saturn_pitch": "Kippen der Saturn V aus der Senkrechten",
-  "tb_kn_site_jump": "Sprunggeschwindigkeit des Rovers"
+  "tb_kn_site_jump": "Sprunggeschwindigkeit des Rovers",
+  "alm_probe_replay": "Den Flug vom Start an abspielen"
 }

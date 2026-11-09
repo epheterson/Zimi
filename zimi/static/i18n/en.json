@@ -3717,5 +3717,6 @@
   "tb_kn_site_saturn_vac": "Saturn V first-stage thrust in a vacuum",
   "tb_kn_site_saturn_drag": "Saturn V air drag (coefficient × area)",
   "tb_kn_site_saturn_pitch": "Saturn V pitch-over from vertical",
-  "tb_kn_site_jump": "Rover jump speed"
+  "tb_kn_site_jump": "Rover jump speed",
+  "alm_probe_replay": "Replay its flight from launch"
 }

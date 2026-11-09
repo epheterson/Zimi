@@ -3717,5 +3717,6 @@
   "tb_kn_site_saturn_vac": "Empuje de la primera etapa del Saturno V en el vacío",
   "tb_kn_site_saturn_drag": "Resistencia del aire del Saturno V (coeficiente × área)",
   "tb_kn_site_saturn_pitch": "Inclinación del Saturno V desde la vertical",
-  "tb_kn_site_jump": "Velocidad de salto del róver"
+  "tb_kn_site_jump": "Velocidad de salto del róver",
+  "alm_probe_replay": "Reproducir su vuelo desde el lanzamiento"
 }

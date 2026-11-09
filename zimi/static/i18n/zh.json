@@ -3717,5 +3717,6 @@
   "tb_kn_site_saturn_vac": "土星五号一级真空推力",
   "tb_kn_site_saturn_drag": "土星五号空气阻力（系数 × 面积）",
   "tb_kn_site_saturn_pitch": "土星五号偏离垂直的俯仰",
-  "tb_kn_site_jump": "漫游车起跳速度"
+  "tb_kn_site_jump": "漫游车起跳速度",
+  "alm_probe_replay": "从发射起回放它的飞行"
 }
