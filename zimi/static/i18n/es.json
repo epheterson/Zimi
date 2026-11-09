@@ -3713,5 +3713,9 @@
   "tb_kn_site_saturn_burn": "Consumo de la primera etapa del Saturno V",
   "tb_kn_site_saturn_cutoff": "Corte de la primera etapa del Saturno V",
   "tb_kn_site_azimuth": "Acimut de lanzamiento del Apolo 11",
-  "tb_kn_site_tower": "Altura de la torre del Complejo 39"
+  "tb_kn_site_tower": "Altura de la torre del Complejo 39",
+  "tb_kn_site_saturn_vac": "Empuje de la primera etapa del Saturno V en el vacío",
+  "tb_kn_site_saturn_drag": "Resistencia del aire del Saturno V (coeficiente × área)",
+  "tb_kn_site_saturn_pitch": "Inclinación del Saturno V desde la vertical",
+  "tb_kn_site_jump": "Velocidad de salto del róver"
 }

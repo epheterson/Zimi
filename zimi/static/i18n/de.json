@@ -3713,5 +3713,9 @@
   "tb_kn_site_saturn_burn": "Verbrauch der ersten Stufe der Saturn V",
   "tb_kn_site_saturn_cutoff": "Brennschluss der ersten Stufe der Saturn V",
   "tb_kn_site_azimuth": "Startazimut von Apollo 11",
-  "tb_kn_site_tower": "Turmhöhe am Startkomplex 39"
+  "tb_kn_site_tower": "Turmhöhe am Startkomplex 39",
+  "tb_kn_site_saturn_vac": "Schub der ersten Stufe der Saturn V im Vakuum",
+  "tb_kn_site_saturn_drag": "Luftwiderstand der Saturn V (Beiwert × Fläche)",
+  "tb_kn_site_saturn_pitch": "Kippen der Saturn V aus der Senkrechten",
+  "tb_kn_site_jump": "Sprunggeschwindigkeit des Rovers"
 }

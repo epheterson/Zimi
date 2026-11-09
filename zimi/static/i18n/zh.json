@@ -3713,5 +3713,9 @@
   "tb_kn_site_saturn_burn": "土星五号一级燃料消耗率",
   "tb_kn_site_saturn_cutoff": "土星五号一级关机",
   "tb_kn_site_azimuth": "阿波罗11号发射方位角",
-  "tb_kn_site_tower": "39号发射场塔架高度"
+  "tb_kn_site_tower": "39号发射场塔架高度",
+  "tb_kn_site_saturn_vac": "土星五号一级真空推力",
+  "tb_kn_site_saturn_drag": "土星五号空气阻力（系数 × 面积）",
+  "tb_kn_site_saturn_pitch": "土星五号偏离垂直的俯仰",
+  "tb_kn_site_jump": "漫游车起跳速度"
 }

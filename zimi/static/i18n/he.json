@@ -3713,5 +3713,9 @@
   "tb_kn_site_saturn_burn": "קצב צריכת הדלק בשלב הראשון של סטורן 5",
   "tb_kn_site_saturn_cutoff": "כיבוי השלב הראשון של סטורן 5",
   "tb_kn_site_azimuth": "אזימוט השיגור של אפולו 11",
-  "tb_kn_site_tower": "גובה המגדל במתחם השיגור 39"
+  "tb_kn_site_tower": "גובה המגדל במתחם השיגור 39",
+  "tb_kn_site_saturn_vac": "דחף השלב הראשון של סטורן 5 בריק",
+  "tb_kn_site_saturn_drag": "התנגדות האוויר של סטורן 5 (מקדם × שטח)",
+  "tb_kn_site_saturn_pitch": "הטיית סטורן 5 מהאנך",
+  "tb_kn_site_jump": "מהירות הקפיצה של החללית הנודדת"
 }

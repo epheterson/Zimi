@@ -3713,5 +3713,9 @@
   "tb_kn_site_saturn_burn": "सैटर्न V के पहले चरण की ईंधन खपत",
   "tb_kn_site_saturn_cutoff": "सैटर्न V के पहले चरण का कटऑफ़",
   "tb_kn_site_azimuth": "अपोलो 11 का प्रक्षेपण दिगंश",
-  "tb_kn_site_tower": "प्रक्षेपण परिसर 39 के टावर की ऊँचाई"
+  "tb_kn_site_tower": "प्रक्षेपण परिसर 39 के टावर की ऊँचाई",
+  "tb_kn_site_saturn_vac": "निर्वात में सैटर्न V के पहले चरण का थ्रस्ट",
+  "tb_kn_site_saturn_drag": "सैटर्न V का वायु प्रतिरोध (गुणांक × क्षेत्रफल)",
+  "tb_kn_site_saturn_pitch": "सैटर्न V का ऊर्ध्वाधर से झुकाव",
+  "tb_kn_site_jump": "रोवर की कूद की गति"
 }

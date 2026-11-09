@@ -3713,5 +3713,9 @@
   "tb_kn_site_saturn_burn": "Consommation du premier étage de Saturn V",
   "tb_kn_site_saturn_cutoff": "Extinction du premier étage de Saturn V",
   "tb_kn_site_azimuth": "Azimut de lancement d'Apollo 11",
-  "tb_kn_site_tower": "Hauteur de la tour du complexe 39"
+  "tb_kn_site_tower": "Hauteur de la tour du complexe 39",
+  "tb_kn_site_saturn_vac": "Poussée du premier étage de Saturn V dans le vide",
+  "tb_kn_site_saturn_drag": "Traînée de Saturn V (coefficient × surface)",
+  "tb_kn_site_saturn_pitch": "Inclinaison de Saturn V depuis la verticale",
+  "tb_kn_site_jump": "Vitesse de saut du rover"
 }

@@ -3713,5 +3713,9 @@
   "tb_kn_site_saturn_burn": "معدل احتراق المرحلة الأولى لساتورن 5",
   "tb_kn_site_saturn_cutoff": "إيقاف المرحلة الأولى لساتورن 5",
   "tb_kn_site_azimuth": "سمت إطلاق أبولو 11",
-  "tb_kn_site_tower": "ارتفاع برج مجمع الإطلاق 39"
+  "tb_kn_site_tower": "ارتفاع برج مجمع الإطلاق 39",
+  "tb_kn_site_saturn_vac": "دفع المرحلة الأولى لساتورن 5 في الفراغ",
+  "tb_kn_site_saturn_drag": "مقاومة الهواء لساتورن 5 (المعامل × المساحة)",
+  "tb_kn_site_saturn_pitch": "ميلان ساتورن 5 عن الرأسي",
+  "tb_kn_site_jump": "سرعة قفز المركبة الجوّالة"
 }

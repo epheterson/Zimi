@@ -3713,5 +3713,9 @@
   "tb_kn_site_saturn_burn": "Saturn V first-stage burn rate",
   "tb_kn_site_saturn_cutoff": "Saturn V first-stage cut-off",
   "tb_kn_site_azimuth": "Apollo 11 launch azimuth",
-  "tb_kn_site_tower": "Launch Complex 39 tower height"
+  "tb_kn_site_tower": "Launch Complex 39 tower height",
+  "tb_kn_site_saturn_vac": "Saturn V first-stage thrust in a vacuum",
+  "tb_kn_site_saturn_drag": "Saturn V air drag (coefficient × area)",
+  "tb_kn_site_saturn_pitch": "Saturn V pitch-over from vertical",
+  "tb_kn_site_jump": "Rover jump speed"
 }
