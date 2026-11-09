@@ -138,6 +138,13 @@ Budget.prototype.collectTax = function (gameLevel, census) {
   if (paid) this.spend(-paid);
 };
 
+// The year as it stands now, not as the last tax day left it: taxes (data centers' too) less the full cost of roads, fire and
+// police, at the census as it is. A new city, or one just grown or built over, shows its real outlook before a tax day comes.
+Budget.prototype.liveFlow = function (gameLevel, census) {
+  var y = this.yearOf(gameLevel, census);
+  return y.tax + ((census.zc && census.zc.data) || 0) * DATA_TAX - (y.police + y.fire + y.road);
+};
+
 // Land value, then the hum: land near a data center is worth less.
 var landScan = BlockMapUtils.pollutionTerrainLandValueScan;
 BlockMapUtils.pollutionTerrainLandValueScan = function (map, census, blockMaps) {

@@ -198,11 +198,11 @@ export function citiesSheet(s) {
   keep.addEventListener('click', function () { if (c.keep()) { api.close(); citiesSheet(s); } else keep.textContent = s.T('city.k.failed'); });
   body.unshift(keep);
   if (!list.length) body.push(el('p', 'gs-text', s.T('city.k.none')));
-  list.forEach(function (k, i) {
+  list.forEach(function (k) {
     var row = el('div', 'gs-row cy-kept'), what = el('span', 'cy-kept-what'), name = el('input', 'cy-kept-name');
     name.type = 'text'; name.maxLength = 24; name.value = k.name || ''; name.setAttribute('aria-label', s.T('city.k.name'));
     name.addEventListener('change', function () {
-      var r = c.rename(i, name.value);
+      var r = c.rename(k.id, name.value);
       if (r === false) { name.value = k.name || ''; keep.textContent = s.T('city.k.failed'); } else name.value = r || name.value;
     });
     name.addEventListener('keydown', function (e) { if (e.key === 'Enter') name.blur(); });
@@ -210,10 +210,10 @@ export function citiesSheet(s) {
     what.appendChild(el('small', '', s.dateOf(k.month, k.year) + ' \u00b7 ' + s.T('city.k.line', { people: s.T('city.people', { n: k.people }), money: s.money(k.funds) })));
     var open = el('button', 'ar-btn', s.T('city.k.open')), del = el('button', 'ar-btn', s.T('city.k.delete'));
     open.type = del.type = 'button';
-    open.addEventListener('click', function () { api.close(); c.open(i); });
+    open.addEventListener('click', function () { api.close(); c.open(k.id); });
     // Delete asks once, in place: the button says so, and a second tap deletes.
     del.addEventListener('click', function () {
-      if (del.dataset.sure) { c.remove(i); api.close(); citiesSheet(s); return; }
+      if (del.dataset.sure) { c.remove(k.id); api.close(); citiesSheet(s); return; }
       del.dataset.sure = '1'; del.textContent = s.T('city.k.sure');
     });
     var acts = el('span', 'cy-kept-acts'); acts.appendChild(open); acts.appendChild(del);

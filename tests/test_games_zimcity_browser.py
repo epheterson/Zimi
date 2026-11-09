@@ -1004,3 +1004,33 @@ def test_every_tool_in_the_tray_is_a_thumb_wide_on_a_narrow_phone(browser, site,
     pg = phone(browser, site, width)
     widths = pg.evaluate("() => [...document.querySelectorAll('.cy-tool')].map((b) => b.getBoundingClientRect().width)")
     assert len(widths) == 7 and min(widths) >= 44, widths
+
+
+def test_a_kept_city_row_acts_on_its_own_city_when_the_list_changed(browser, site):
+    """A sheet left open while another window reorders the kept list: Delete removes the city on its row, not whatever
+    now sits at that position."""
+    pg = phone(browser, site)
+    pg.evaluate("() => localStorage.removeItem('zimi.zimcity.kept')")
+    box = pg.evaluate(CLEAR)
+    pg.click('.cy-tool[data-tool="road"]')
+    y = box["top"] + box["h"] * 0.5
+    stroke(pg, [(x, y) for x in range(40, 200, 12)])
+    pg.click(".gs-menu-btn")
+    pg.click("#cy-cities")
+    pg.click(OURS + " .cy-keep")
+    pg.keyboard.press("Escape")
+    stroke(pg, [(x, y + 40) for x in range(40, 200, 12)])
+    pg.click(".gs-menu-btn")
+    pg.click("#cy-cities")
+    pg.click(OURS + " .cy-keep")
+    kept = pg.evaluate("() => JSON.parse(localStorage.getItem('zimi.zimcity.kept'))")
+    assert len(kept) == 2 and kept[0]["id"] != kept[1]["id"] and kept[0]["funds"] != kept[1]["funds"]
+    pg.keyboard.press("Escape")
+    pg.click(".gs-menu-btn")
+    pg.click("#cy-cities")
+    shown_first = pg.evaluate("() => JSON.parse(localStorage.getItem('zimi.zimcity.kept'))[0].id")
+    pg.evaluate("() => { const k = JSON.parse(localStorage.getItem('zimi.zimcity.kept')); localStorage.setItem('zimi.zimcity.kept', JSON.stringify(k.reverse())); }")
+    pg.click(OURS + " .cy-kept >> nth=0 >> .ar-btn >> nth=1")
+    pg.click(OURS + " .cy-kept >> nth=0 >> .ar-btn >> nth=1")
+    left = pg.evaluate("() => JSON.parse(localStorage.getItem('zimi.zimcity.kept')).map(k => k.id)")
+    assert left and shown_first not in left and len(left) == 1, (shown_first, left)
