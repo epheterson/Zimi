@@ -7118,11 +7118,7 @@ function _aeKick() {
 }
 function _aeBusy() {
   var fading = !!_ae.orbitFly && !!_ae.orbitFly.endAt && performance.now() - _ae.orbitFly.endAt < AE_ORBITS_FADE_MS;   // orbits going out
-<<<<<<< HEAD
-  return !!(_ae.fly || _ae.drag || _ae.pinch || _ae.hand || fading || _aeStationMoves() || _ae.site || _ae.mission);
-=======
-  return !!(_ae.fly || _ae.drag || _ae.pinch || _ae.hand || fading || _aeStationMoves() || _ae.site || _aeStandBusy());
->>>>>>> origin/topic/stand
+  return !!(_ae.fly || _ae.drag || _ae.pinch || _ae.hand || fading || _aeStationMoves() || _ae.site || _ae.mission || _aeStandBusy());
 }
 // The camera rides the station (7.7 km/s, the Earth turning under it) while the clock is not stopped: drawn every frame,
 // not at the idle interval. A paused clock leaves it as still as any other view.
