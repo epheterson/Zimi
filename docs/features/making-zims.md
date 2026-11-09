@@ -160,6 +160,12 @@ The rendered and alive engines take them on the page they already have open. The
 
 ---
 
+## Checking a ZIM
+
+`zimi check FILE...` asks what openZIM's `zimcheck` asks of a ZIM: the file's own checksum, a main page that exists, every mandatory metadata key in its format and length (Name, Title up to 30 characters, Language as ISO 639-3, Creator, Publisher, Date as YYYY-MM-DD, Description up to 80), a 48x48 PNG illustration, redirects that point at nothing, and internal links in pages that resolve to no entry (links inside scripts are not links). It prints errors and warnings per file and exits 1 if any file has an error. `--quick` skips the checksum and the link scan, which read the whole file. It never changes the file.
+
+---
+
 ## Importing a web archive
 
 Convert a WARC or WACZ web archive into a library ZIM.

@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Highlights
+
+- **`zimi check`:** checks a ZIM the way openZIM's zimcheck does: its checksum, metadata, icon, redirects and internal links.
+
 ### Fixed
 
 - Games: Tri Peaks and Blast open the right encyclopedia article from their About link, and Net no longer links to a page that does not exist.
