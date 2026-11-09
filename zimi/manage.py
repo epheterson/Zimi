@@ -1180,6 +1180,40 @@ def _search_background_failures():
     return background_failures()
 
 
+def _catalog_copies():
+    """The catalog copies Zimi keeps on disk and can fetch again, as paths: the
+    cached catalog pages and their validators, and the .torrent kept for each
+    catalog item that is not installed (mirror mode holds one for every item,
+    tens of MB). A .torrent for an installed ZIM stays: seeding it and checking
+    its pieces need it."""
+    from zimi import library as _lib
+
+    data_dir = _srv.ZIMI_DATA_DIR
+    paths = [_lib._catalog_cache_path(), _lib._validators_path()]
+    tdir = os.path.join(data_dir, "bt", "torrents")
+    try:
+        names = os.listdir(tdir)
+    except OSError:
+        names = []
+    for name in names:
+        if name.endswith(".torrent") and not os.path.exists(os.path.join(_srv.ZIM_DIR, name[: -len(".torrent")])):
+            paths.append(os.path.join(tdir, name))
+    return [p for p in paths if os.path.isfile(p)]
+
+
+def _purge_catalog_copies():
+    """Delete _catalog_copies(); how many bytes that freed."""
+    freed = 0
+    for path in _catalog_copies():
+        try:
+            size = os.path.getsize(path)
+            os.remove(path)
+            freed += size
+        except OSError as e:
+            log.debug("catalog copy not removed: %s", e)
+    return freed
+
+
 def _cache_info_payload():
     """Size breakdown of the Zimi data dir (indexes + caches, NOT the ZIM
     library). Walks only the small-file-count data dir — never the ZIM files.
@@ -1277,8 +1311,10 @@ def _cache_info_payload():
         {"key": "other", "size_bytes": other_bytes},
     ]
     bar_total = sum(seg["size_bytes"] for seg in breakdown)
+    copies = _catalog_copies()
     return {
         "caches": caches,
+        "catalog_copies": {"count": len(copies), "size_bytes": sum(_file_size(p) for p in copies)},
         "total_bytes": sum(c["size_bytes"] for c in caches.values()),
         "data_dir_total_bytes": bar_total,
         "breakdown": breakdown,
@@ -6907,8 +6943,10 @@ def handle_manage_post(handler, parsed, data):
 
     elif parsed.path == "/manage/cache-action":
         # Lightweight cache maintenance for the Server-settings UI.
-        # action ∈ {clear-search, clear-suggest, rebuild-title, rebuild-qid}
+        # action ∈ {clear-search, clear-suggest, rebuild-title, rebuild-qid, purge-catalog}
         action = data.get("action", "")
+        if action == "purge-catalog":
+            return handler._json(200, {"status": "cleared", "target": "catalog", "freed_bytes": _purge_catalog_copies()})
         if action == "clear-search":
             _srv._search_cache_clear()
             return handler._json(200, {"status": "cleared", "target": "search"})
