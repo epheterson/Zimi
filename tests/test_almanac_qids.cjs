@@ -128,7 +128,9 @@ const PLAIN_ROWS = {
   sat_min_rcs: 'a limit this layer chose, not a named thing',
   sat_train_gap: 'a limit this layer chose, not a named thing',
   sat_train_plane: 'a limit this layer chose, not a named thing',
-  sat_gps_el: 'a limit this layer chose, not a named thing'
+  sat_gps_el: 'a limit this layer chose, not a named thing',
+  sat_pass_max: 'a limit this layer chose, not a named thing',
+  sat_lone_starlinks: 'a limit this layer chose, not a named thing'
 };
 const rowsSrc = grab(tbSrc, /var TB_CONST_ROWS = \{[\s\S]*?\n\};/, 'TB_CONST_ROWS');
 const rowKeys = [...rowsSrc.matchAll(/^\s+\['([a-z0-9_]+)', /gm)].map((m) => m[1]);
