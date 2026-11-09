@@ -19,7 +19,7 @@ var AL_DEP_ORBIT_DAYS = 4;                   // GCAT's catalogued orbit is the d
 var AL_WINDOW_HOURS = 72, AL_WINDOW_STEP_S = 30, AL_WINDOWS_SHOWN = 3;
 var AL_TRAIL_S = 12, AL_TRAIL_STEP_S = 2;    // the rocket's trail in the sky: this far back, a point this often
 // ── In the 3D view ──
-var AL_FLY_TILT_RAD = 0.1;                   // the view looks this far south of the ascent's middle, so the ascent sits above the sheet
+var AL_FLY_TILT_RAD = 0.3;                   // the view looks this far south of the ascent's middle, so the ascent sits above the sheet
 var AL_FLY_MIDDLE = 0.4;                     // the share of the ascent the view is centred on: the pad and the far end both fit
 var AL_FLY_DIST = 2.2;                      // Earth radii from the centre when the view comes to a pad: the ascent fits
 var AL_TRACK_COLOR = 0xffc978, AL_TRACK_ALPHA = 0.8, AL_BOOSTER_COLOR = 0x9be7ff, AL_BOOSTER_ALPHA = 0.6;
