@@ -210,6 +210,8 @@ Object.assign(TILES, {
   ohhell: () => tile(FELT_DEEP, face(cid('JH'), 70, 34, 70, -12) + face(cid('9D'), 125, 30, 70) + face(cid('AC'), 180, 34, 70, 12) + pill(136, 142, 48, '2/2')),
   cheat: () => tile(FELT_DEEP, back(66, 40, 62, -8) + back(80, 46, 62, 4) + face(cid('7H'), 190, 30, 70, 8) +
     '<g transform="translate(100 148)"><rect x="-46" y="-15" width="92" height="30" rx="15" fill="#d97706"/><text x="0" y="6" font-size="17" font-weight="800" text-anchor="middle" fill="#fff" font-family="system-ui,sans-serif">2 × 7</text></g>'),
+  snap: () => tile(FELT, face(cid('9H'), 52, 36, 80, -8) + face(cid('9S'), 188, 36, 80, 8) +
+    '<g transform="translate(160 66)" fill="#f59e0b" stroke="#fff" stroke-width="2.5" stroke-linejoin="round"><path d="M0 -30L8 -12L26 -20L16 -4L32 6L12 10L16 28L0 16L-16 28L-12 10L-32 6L-16 -4L-26 -20L-8 -12Z"/></g>'),
   teenpatti: () => tile(FELT_DEEP, face(cid('AS'), 76, 36, 70, -12) + face(cid('AD'), 126, 30, 70) + face(cid('AH'), 176, 36, 70, 12))
 });
 
