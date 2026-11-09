@@ -18,6 +18,7 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 import zimi.library as lib  # noqa: E402
 import zimi.server as server  # noqa: E402
+from tests.waiting import until  # noqa: E402
 
 # Minimal valid OPDS (Atom) feed the parser accepts: one entry, one result.
 _FRESH_XML = (
@@ -79,7 +80,7 @@ def test_stale_returns_immediately_and_spawns_single_refresh(_env, monkeypatch):
 
     def fake_urlopen(req, *a, **k):
         calls.append(1)
-        release.wait(5)  # hold the network open so we can prove we didn't wait
+        release.wait(30)  # hold the network open so we can prove we didn't wait
         return _FakeResp(_FRESH_XML)
 
     monkeypatch.setattr(urllib.request, "urlopen", fake_urlopen)
@@ -97,11 +98,10 @@ def test_stale_returns_immediately_and_spawns_single_refresh(_env, monkeypatch):
     assert e2 is None and i2 == stale_items
 
     # Let the background refresh complete and replace the cache.
+    # (the thread stores the page, then drops its in-flight marker: the marker
+    # going is the state that means it is all done)
     release.set()
-    for _ in range(200):
-        if lib._opds_cache[key][0] != 100.0:
-            break
-        time.sleep(0.02)
+    until(lambda: key not in lib._opds_refreshing, "the background refresh to finish")
     assert lib._opds_cache[key][0] != 100.0  # refreshed to a current timestamp
     assert lib._opds_cache[key][2][0]["name"] == "fresh_zim"
     assert calls == [1]  # exactly one Kiwix fetch despite two requests
