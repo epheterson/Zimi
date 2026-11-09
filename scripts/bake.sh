@@ -3,6 +3,7 @@
 # and deploy the result to the NAS: the whole release as it stands, in one command.
 #   scripts/bake.sh            merge, rebuild, deploy
 #   scripts/bake.sh --no-deploy
+#   BAKE_SKIP='stand models' scripts/bake.sh   leave out lanes still mid-build
 # The bake branch is rebuilt from its base every run (never pushed, never a PR). rerere
 # replays conflict resolutions made by hand once; CHANGELOG lines merge as a union;
 # the built ZIMs are taken from either side and rebuilt after.
@@ -21,6 +22,7 @@ grep -qs '^CHANGELOG.md merge=union' .git/info/attributes || echo 'CHANGELOG.md 
 
 git checkout -q -B "$BAKE" "$BASE"
 for b in $(git for-each-ref --format='%(refname:short)' 'refs/remotes/origin/topic/*'); do
+  case " ${BAKE_SKIP:-} " in *" ${b#origin/topic/} "*) echo "  skipped $b"; continue;; esac
   if git merge -q --no-edit "$b" >/dev/null 2>&1; then echo "  merged $b"; continue; fi
   left=$(git diff --name-only --diff-filter=U)
   for f in $left; do
