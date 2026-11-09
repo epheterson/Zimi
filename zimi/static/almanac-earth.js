@@ -2149,7 +2149,8 @@ var AE_HD_MIN_ALT_KM = 400;
 // A place on a body (latitude, longitude in degrees) as a unit vector in the body's own frame.
 // The point of a body's drawn sphere (squashed along its pole by `flat`) at a latitude and longitude. A map's rows follow
 // the geodetic latitude, so with a flattening the sphere's own (reduced) latitude is the one whose tan is (1 - f) tan(lat):
-// then a texture, tile, pin or road at (lat, lon) lands on the true ellipsoid point.
+// then a texture, tile, pin or road at (lat, lon) lands on the true ellipsoid point. Pass AE_EARTH_FLATTENING for Earth
+// surface points, and never read a latitude off the Earth mesh's uv (its picture row is looked up in AE_EARTH_VERT).
 function _aeLatLonVec(lat, lon, flat) {
   var la = _aeRad(lat), k = flat ? 1 - flat : 1;
   return _aeEqVec(_aeRad(lon), Math.atan2(k * Math.sin(la), Math.cos(la)), 1);
