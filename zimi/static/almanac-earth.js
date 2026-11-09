@@ -777,6 +777,7 @@ function _aeGoLmRow(key) {
 var AE_GO_SVG = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">' +
   '<circle cx="12" cy="12" r="9.5"/><path d="M15.8 8.2l-2.2 5.4-5.4 2.2 2.2-5.4z" fill="currentColor" stroke-width="1.4"/></svg>';
 function _aeGoDot(key) {
+  if (key.indexOf(AE_GO_MS) === 0) return '<i class="ae-go-dot ae-go-probe" style="background:' + AE_PROBE_HEX + ';color:' + AE_PROBE_HEX + '"></i>';
   if (_aeGoLmRow(key)) return '<i class="ae-go-dot ae-go-probe" style="background:' + AE_AMBER_HEX + ';color:' + AE_AMBER_HEX + '"></i>';
   if (key === 'iss') return '<i class="ae-go-dot ae-go-probe" style="background:rgb(255,209,89);color:rgb(255,209,89)"></i>';
   if (key === AE_SPIN_KEY) return '<i class="ae-go-dot" style="background:var(--amber)"></i>';
@@ -805,10 +806,12 @@ function _aeGoGroups() {
   // A group whose table is still on its way shows where it will be, quietly, rather than being missing until it lands.
   if (!_aeTracks && _aeTracksLoading) craft.push(AE_GO_LOADING);
   if (!_aeLm && _aeLmLoading) landings.push(AE_GO_LOADING);
-  return [['alm_go_earth_moon', ['earth', 'moon']], ['alm_go_planets', planets], ['alm_go_moons', moons], ['alm_go_dwarfs', dwarfs], ['alm_go_craft', craft], ['alm_go_landings', landings]]
+  var missions = AE_MISSION_IDS.map(function (id) { return AE_GO_MS + id; });
+  return [['alm_go_missions', missions], ['alm_go_earth_moon', ['earth', 'moon']], ['alm_go_planets', planets], ['alm_go_moons', moons], ['alm_go_dwarfs', dwarfs], ['alm_go_craft', craft], ['alm_go_landings', landings]]
     .filter(function (g) { return g[1].length; });
 }
 function _aeGoName(key) {
+  if (key.indexOf(AE_GO_MS) === 0) return _aeT('alm_ms_' + key.slice(AE_GO_MS.length));
   var lmRow = _aeGoLmRow(key);
   if (lmRow) return lmRow.row[0];
   if (key === 'earth') return _tp('Earth');
@@ -4268,6 +4271,19 @@ var AE_SITE_FACTS = { solSeconds: 88775.244, marsSolDays: 1.0274912517, msdEpoch
   driveLmstH: { msl: 13, m20: 14 }, lrvSpeedMs: 3.61, marsDriveSpeedMs: 3.4, saturnMassKg: 2.97e6, saturnThrustN: 34.5e6, saturnBurnKgS: 13300, saturnCutoffS: 161, launchAzimuthDeg: 72, launchTowerM: 122,
   saturnThrustVacN: 39.0e6, saturnDragCd: 0.5, saturnAreaM2: 80, saturnTilt: { startS: 12, perS: 1.2, pow: 0.78, maxDeg: 62 }, jumpMs: { moon: 3.0, mars: 4.4 } };
 var AE_SITES_JS = ['/static/almanac-sites.js', '/static/almanac-sites-ground.js'];
+// Missions flown end to end (almanac-missions.js): fetched the first time one is asked for, never with the view. The
+// ids are in the order of the Go to list; their names are alm_ms_<id>.
+var AE_MISSIONS_JS = '/static/almanac-missions.js', AE_MISSION_IDS = ['apollo11'], AE_GO_MS = 'ms:', _aeMissionsLoading = false;
+function _aeMissionStart(id) {
+  if (typeof _aeMissionOpen === 'function') { _aeMissionOpen(id); return; }
+  if (_aeMissionsLoading) return;
+  _aeMissionsLoading = true;
+  var s = document.createElement('script');
+  s.src = AE_MISSIONS_JS;
+  s.onload = function () { _aeMissionsLoading = false; _aeMissionOpen(id); };
+  s.onerror = function () { _aeMissionsLoading = false; s.remove(); };
+  document.head.appendChild(s);
+}
 var _aeSitesLoading = false;
 function _aeSitesLoad() {
   if (_aeSitesLoading) return;
@@ -5057,6 +5073,7 @@ function _aePlaceCamera() {
   var c = _aeViewCam();
   if (_ae.hand && _ae.scene) c = _aeHandBlend(_aeHandCam(_ae.scene, _ae.hand), c, _ae.hand.e);
   if (_ae.site && _ae.site.pose) c = _aeSiteCam(c);   // on the ground at a landing site: its own camera
+  if (_ae.mission && _ae.mission.pose) c = _aeMissionCam(c);   // flying a mission (almanac-missions.js): the shot of its phase
   var tp = c.tp, pose = c.pose || _aePoseOf(c), pos = pose.pos, up = pose.up;
   cam.position.set(pos[0], pos[1], pos[2]);
   _ae.roll = c.roll;
@@ -5094,6 +5111,7 @@ function _aePlaceCamera() {
   }
   cam.near = Math.max(craftSpan ? AE_CRAFT_NEAR_MIN : AE_NEAR_MIN, Math.min(toEarth, toMoon, toSun, toBody) * AE_NEAR_FRACTION);
   if (_ae.site) cam.near = _aeSiteNear(cam.near);
+  if (_ae.mission) cam.near = _aeMissionNear(cam.near);
   cam.updateProjectionMatrix();
   S.sky.position.copy(cam.position);
   // An orbit much wider than the screen shows only as arcs through it, a web
@@ -5961,9 +5979,11 @@ function _aeUpdate(ms) {
   // camera, which is near enough).
   _aeUpdatePlanets(sc);
   if (_ae.site) _aeSiteStep(sc);   // standing on a landing site (almanac-sites.js): its frame and camera, before the camera is placed
+  if (_ae.mission) _aeMissionStep(sc);   // a mission being flown (almanac-missions.js): its vehicles and shot, before the camera is placed
   _aePlaceCamera();
   _aePlaceCrafts();
   if (_ae.site) _aeSiteLight(sc);
+  if (_ae.mission) _aeMissionDraw();
   _aeDrawAxes(S, sc);
 }
 
@@ -6078,7 +6098,7 @@ function _aeSetText(el, text) { if (el && el.textContent !== text) el.textConten
 
 function _aeUpdateLabels() {
   var sc = _ae.scene;
-  if (!sc || (_ae.site && _ae.site.pose)) return;   // on the ground the labels are not drawn
+  if (!sc || (_ae.site && _ae.site.pose) || _ae.mission) return;   // on the ground, or in a mission, the labels are not drawn
   _aeUpdateMarks(sc);
   _aeUpdateLandmarks();
   // The tapped satellite is named by its card and marked by its colour, so
@@ -6710,7 +6730,7 @@ function _aeKick() {
 }
 function _aeBusy() {
   var fading = !!_ae.orbitFly && !!_ae.orbitFly.endAt && performance.now() - _ae.orbitFly.endAt < AE_ORBITS_FADE_MS;   // orbits going out
-  return !!(_ae.fly || _ae.drag || _ae.pinch || _ae.hand || fading || _aeStationMoves() || _ae.site);
+  return !!(_ae.fly || _ae.drag || _ae.pinch || _ae.hand || fading || _aeStationMoves() || _ae.site || _ae.mission);
 }
 // The camera rides the station (7.7 km/s, the Earth turning under it) while the clock is not stopped: drawn every frame,
 // not at the idle interval. A paused clock leaves it as still as any other view.
@@ -7026,6 +7046,7 @@ function _aeBindControls() {
     if (!b) return;
     _aeShowGo(false);
     var key = b.getAttribute('data-ae-go'), lmRow = _aeGoLmRow(key);
+    if (key.indexOf(AE_GO_MS) === 0) { _aeMissionStart(key.slice(AE_GO_MS.length)); return; }
     if (lmRow) { _aeLmOpen(lmRow.body, lmRow.row); _aeLmFly(lmRow.body, lmRow.row); return; }
     _aePreset(key);
   };
@@ -7518,6 +7539,7 @@ function _aeBackLabel() { return _aeT(_aeFrom === 'orrery' ? 'alm_solar_system' 
 function _aeClose() {
   if (!_aeIsOpen || (_ae.hand && _ae.hand.dir < 0)) return;
   if (_ae.site) _aeSiteLeave(true);   // the ground's camera gives way before the view is handed back to the page
+  if (_ae.mission) _amStop(true);
   _aeLeaveSpin();
   var frame = _ae.fromHero && _aeReady() && !_ae.el.classList.contains('ae-blank') &&
     (typeof _almanacOpen === 'undefined' || _almanacOpen) ? _aeHeroFrame() : null;
@@ -7529,6 +7551,7 @@ function _aeFinishClose() {
   _aeLeaveSpin();
   _aeIsOpen = false;
   if (_ae.site) _aeSiteLeave(true);
+  if (_ae.mission) _amStop(true);
   if (typeof updateTopbar === 'function') updateTopbar();   // the header's arrow is the Almanac's own again
   if (typeof _almClockUncover === 'function') _almClockUncover();   // the page lands on the moment the clock reached
   _aeStepOut();
