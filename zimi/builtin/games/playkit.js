@@ -296,6 +296,7 @@
     return T('circuit.ord.' + (rule === 'one' || rule === 'two' || rule === 'few' ? rule : 'other'), { n: n });
   };
   Play.SYMBOL_COUNT = SYMBOLS.length;
+  Play.SYMBOL_PATHS = SYMBOLS;   // the drawings alone, in a 24 by 24 box, for a game that draws them into its own svg
   Play.symbolSVG = function (i, size) {
     return '<svg viewBox="0 0 24 24" width="' + size + '" height="' + size + '" aria-hidden="true" fill="currentColor" stroke="rgba(0,0,0,.55)" stroke-width="1.2" stroke-linejoin="round">' + SYMBOLS[i % SYMBOLS.length] + '</svg>';
   };

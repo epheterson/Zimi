@@ -21,7 +21,7 @@ _KEY = re.compile(r"""\bTX?\(\s*['"]([a-z][A-Za-z0-9_.]*)['"]""")
 PAGES = ["snake", "bricks", "pinball", "rocks", "lastline", "lander", "paddles", "circuit", "roadrush", "hopper", "muncher",
          "crossing", "blast", "quest", "kart", "stacker", "memory", "echo", "noughts", "snakesandladders", "pet", "2048",
          "sudoku", "minesweeper", "sokoban", "codebreaker", "fiveletters", "letterbyletter", "quizzical", "jigsaw",
-         "wikirace", "whereintheworld", "timeline", "higherlower", "spellingbee", "minicrossword", "firstlines", "flags", "roundkit", "telephone", "bluff", "babel", "skydetective", "droppin", "passkit"]
+         "wikirace", "whereintheworld", "timeline", "higherlower", "spellingbee", "minicrossword", "firstlines", "flags", "roundkit", "telephone", "bluff", "babel", "skydetective", "droppin", "passkit", "pig", "shutthebox", "tenthousand", "colortrail", "whoisit"]
 _ATTR = re.compile(r'data-t(?:-aria|-title)?="([a-z][A-Za-z0-9_.]*)"')
 
 

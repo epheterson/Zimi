@@ -1,0 +1,38 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Who Is It - ZimiGames</title>
+<link rel="stylesheet" href="games.css">
+<link rel="stylesheet" href="play.css">
+<link rel="stylesheet" href="whoisit.css">
+<!-- zimi-shell --><script src="shell.js"></script><!-- /zimi-shell -->
+</head>
+<body>
+<header class="ar-bar">
+  <a class="ar-back" href="index.html" data-t-aria="shell.back" aria-label="Back">&lsaquo;</a>
+  <h1 data-t="game.whoisit.title">Who Is It</h1>
+  <button class="ar-btn" id="wi-new" type="button" hidden data-t="shell.menu.new">New game</button>
+</header>
+
+<main class="pl-main wi-main">
+  <p class="pl-msg wi-msg" id="wi-msg"></p>
+  <div class="wi-hud">
+    <div class="pl-stat"><small data-t="board.you">You</small><b id="wi-you-left">24</b></div>
+    <div class="wi-mine"><span id="wi-mine" role="img" data-t-aria="whoisit.yourFace" aria-label="Your face"></span><small data-t="whoisit.yourFace">Your face</small></div>
+    <div class="pl-stat"><small data-t="board.zimi">Zimi</small><b id="wi-zimi-left">24</b></div>
+  </div>
+  <div class="wi-grid" id="wi-grid" data-t-aria="whoisit.faces" aria-label="The faces"></div>
+  <div class="wi-tray" id="wi-tray" role="group" data-t-aria="whoisit.questions" aria-label="Questions to ask"></div>
+  <div class="wi-actions"><button class="ar-btn gs-primary" id="wi-guess" type="button" data-t="whoisit.guess">Guess</button></div>
+</main>
+
+<script src="util.js"></script>
+<script src="playkit.js"></script>
+<script src="whoisit-art.js"></script>
+<script src="whoisit.js"></script>
+<!-- zimi-recent --><script defer src="recent.js"></script><!-- /zimi-recent -->
+<!-- zimi-about --><footer class="gm-about"><a href="about.html?qid=Q302368">About Who Is It</a></footer><!-- /zimi-about -->
+</body>
+</html>

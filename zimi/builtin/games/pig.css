@@ -1,0 +1,26 @@
+/* Pig: two scores with a meter each, the die between them, Roll and Hold in two big keys. */
+.pg-table { display: grid; grid-template-columns: 1fr auto 1fr; gap: var(--sp-3); align-items: stretch; width: 100%; max-width: 420px; padding: var(--sp-3); background: var(--surface); border: 1px solid var(--line); border-radius: var(--r-sheet); }
+.pg-side { display: flex; flex-direction: column; justify-content: center; gap: var(--sp-1); min-width: 0; padding: var(--sp-2); border: 2px solid transparent; border-radius: var(--radius); text-align: center; }
+.pg-side.pg-turn { border-color: var(--accent); background: var(--accent-glow); }
+.pg-side.pg-turn small { color: var(--ink); }
+.pg-side small { font-size: var(--fs-small); color: var(--ink2); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.pg-side b { font: 650 var(--fs-display)/1.1 var(--font); font-variant-numeric: tabular-nums; }
+.pg-meter { position: relative; display: block; height: 10px; border-radius: 5px; background: var(--cell); border: 1px solid var(--line); overflow: hidden; }
+.pg-meter i, .pg-meter u { position: absolute; top: 0; bottom: 0; left: 0; text-decoration: none; transition: width 0.2s ease-out; }
+.pg-meter i { background: var(--g-blue); }
+#pg-b .pg-meter i { background: var(--g-red); }
+.pg-meter u { background: repeating-linear-gradient(45deg, var(--accent) 0 4px, transparent 4px 8px); }
+.pg-center { display: flex; flex-direction: column; align-items: center; gap: var(--sp-2); }
+.pg-die { --die-size: 88px; cursor: default; }
+.pg-die.pg-bust { border-color: var(--bad); box-shadow: 0 2px 0 var(--bad); }
+.pg-die.pg-bust i.on { background: var(--bad); }
+.pg-die.pg-tumble { animation: pg-tumble 320ms ease-out; }
+.pg-pot { text-align: center; line-height: 1.1; }
+.pg-pot small { display: block; font-size: var(--fs-small); color: var(--ink2); }
+.pg-pot b { font: 650 var(--fs-display)/1.15 var(--font); font-variant-numeric: tabular-nums; }
+.pg-actions { display: grid; grid-template-columns: 1fr 1fr; gap: var(--sp-3); width: 100%; max-width: 420px; }
+.pg-actions .ar-btn { min-height: 64px; font-size: 18px; font-weight: 650; }
+.pg-actions .ar-btn:disabled { color: var(--ink3); }
+@keyframes pg-tumble { 0% { transform: translateY(-14px) rotate(-24deg) scale(0.9); } 60% { transform: translateY(2px) rotate(8deg); } 100% { transform: none; } }
+@media (prefers-reduced-motion: reduce) { html:not([data-anim="normal"]):not([data-anim="fast"]) .pg-die.pg-tumble { animation: none; } }
+@media (max-width: 380px) { .pg-die { --die-size: 76px; } }

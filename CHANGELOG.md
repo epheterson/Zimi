@@ -10,6 +10,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 ### Changed
 
 - Games: leaving any board, dice or tile game under way keeps a picture of its table as the shelf's tile (live tiles were cards and canvas games only), and Stats lists what you have reached in plain facts.
+### Added
+
+- Games: Pig, Shut the Box and Ten Thousand (dice), Color Trail (a color race for small children) and Who Is It (find Zimi's face with yes-or-no questions), in ten languages.
 
 ### Fixed
 
