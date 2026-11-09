@@ -480,8 +480,8 @@ def m_lrv_body():
 
 def m_lrv_wheel():
     m = Mesh([GREY, ALU])
-    m.cyl((0, 0, 0.41), 0.41, 0.23, 0, n=20, axis="x")
-    m.cyl((0, 0, 0.41), 0.12, 0.3, 1, n=8, axis="x")
+    m.cyl((0, 0, 0), 0.41, 0.23, 0, n=20, axis="x")
+    m.cyl((0, 0, 0), 0.12, 0.3, 1, n=8, axis="x")
     return m.write("lrv-wheel")
 
 
@@ -528,8 +528,8 @@ def m_lunokhod_body():
 
 def m_lunokhod_wheel():
     m = Mesh([GREY, ALU])
-    m.cyl((0, 0, 0.255), 0.255, 0.2, 0, n=14, axis="x")
-    m.cyl((0, 0, 0.255), 0.09, 0.26, 1, n=8, axis="x")
+    m.cyl((0, 0, 0), 0.255, 0.2, 0, n=14, axis="x")
+    m.cyl((0, 0, 0), 0.09, 0.26, 1, n=8, axis="x")
     return m.write("lunokhod-wheel")
 
 
@@ -571,6 +571,22 @@ def m_yutu():
             m.tube((sx * 0.5, sy, 0.6), (sx * 0.62, sy, 0.15), 0.025, 0)
             m.cyl((sx * 0.62, sy, 0.15), 0.15, 0.1, 3, n=10, axis="x")
     return m.write("yutu")
+
+
+def m_zhurong():
+    """Zhurong: 1.85 m tall, six wheels, four panels in a butterfly on top, a mast with the cameras."""
+    m = Mesh([ALU, GOLD, PANEL, GREY, DARK])
+    m.box((0, 0, 0.7), (0.9, 1.1, 0.4), 1)
+    for sx in (-1, 1):
+        for sy in (-1, 1):
+            m.quad([(sx * 0.1, sy * 0.05, 1.0), (sx * 1.25, sy * 0.05, 1.45), (sx * 1.25, sy * 0.95, 1.45), (sx * 0.1, sy * 0.95, 1.0)], 2)
+    m.tube((0, 0.3, 0.9), (0, 0.3, 1.85), 0.025, 0)
+    m.box((0, 0.3, 1.9), (0.3, 0.1, 0.1), 4)
+    for sx in (-1, 1):
+        for sy in (-0.5, 0, 0.5):
+            m.tube((sx * 0.45, sy, 0.7), (sx * 0.62, sy, 0.15), 0.03, 0)
+            m.cyl((sx * 0.62, sy, 0.15), 0.15, 0.1, 3, n=10, axis="x")
+    return m.write("zhurong")
 
 
 def m_viking():
@@ -721,6 +737,7 @@ PROCEDURAL = {
     "lunokhod-wheel": m_lunokhod_wheel,
     "change-lander": m_change_lander,
     "yutu": m_yutu,
+    "zhurong": m_zhurong,
     "viking": m_viking,
     "pathfinder": m_pathfinder,
     "sojourner": m_sojourner,
@@ -732,14 +749,33 @@ PROCEDURAL = {
 # Where each rover's wheels are, in its body's frame (the two procedural rovers; Perseverance's come from its file).
 WHEEL_AT = {
     "lrv-body": (
-        [(sx * 0.915, sy, 0.0) for sy in (1.15, -1.15) for sx in (-1, 1)],
+        [(sx * 0.915, sy, 0.41) for sy in (1.15, -1.15) for sx in (-1, 1)],
         0.41,
     ),
     "lunokhod-body": (
-        [(sx * 1.1, sy, 0.0) for sy in (-1.5, -0.5, 0.5, 1.5) for sx in (-1, 1)],
+        [(sx * 1.1, sy, 0.255) for sy in (-1.5, -0.5, 0.5, 1.5) for sx in (-1, 1)],
         0.255,
     ),
 }
+
+
+def dump_compact(data):
+    """The sites file with one model, rover or site to a line: short enough to read and to review."""
+    out = ["{"]
+    keys = list(data)
+    for n, k in enumerate(keys):
+        v = data[k]
+        tail = "," if n < len(keys) - 1 else ""
+        if isinstance(v, dict):
+            rows = ["  %s: %s" % (json.dumps(a), json.dumps(b, separators=(",", ":"))) for a, b in v.items()]
+            out.append("%s: {\n%s\n }%s" % (json.dumps(k), ",\n".join(rows), tail))
+        elif isinstance(v, list):
+            rows = ["  " + json.dumps(r, separators=(",", ":"), ensure_ascii=False) for r in v]
+            out.append("%s: [\n%s\n ]%s" % (json.dumps(k), ",\n".join(rows), tail))
+        else:
+            out.append("%s: %s%s" % (json.dumps(k), json.dumps(v), tail))
+    out.append("}")
+    return "\n".join(out) + "\n"
 
 
 def main():
@@ -767,8 +803,7 @@ def main():
         data = {"version": 1, "models": {}, "sites": []}
     data["models"].update(meta)
     with open(SITES, "w") as fh:
-        json.dump(data, fh, indent=1, sort_keys=False)
-        fh.write("\n")
+        fh.write(dump_compact(data))
 
 
 if __name__ == "__main__":
