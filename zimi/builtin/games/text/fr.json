@@ -721,6 +721,8 @@
  "cards.result.you": "Vous gagnez, {a} à {b}.",
  "cards.seat.east": "Est",
  "cards.seat.north": "Nord",
+ "cards.seat.northeast": "Nord-est",
+ "cards.seat.northwest": "Nord-ouest",
  "cards.seat.west": "Ouest",
  "cards.seatsAtTable": "Places à la table",
  "cards.selected": "sélectionnée",
