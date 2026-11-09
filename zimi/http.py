@@ -354,6 +354,7 @@ _RATE_LIMITED_API_PATHS = (
     "/suggest",
     "/random",
     "/chunks",
+    "/entries",
     "/bestanswer",
     "/openapi.json",
     "/almanac-links",
@@ -2882,6 +2883,23 @@ class ZimHandler(BaseHTTPRequestHandler):
                 _record_usage("read", zim)
                 return self._json(200, result)
 
+            elif parsed.path == "/entries":
+                zim = param("zim")
+                if not zim:
+                    return self._json(400, {"error": "missing ?zim= parameter"})
+                with _srv._zim_lock:
+                    result = _srv.list_entries(
+                        zim,
+                        mime=param("mime") or None,
+                        prefix=param("prefix") or None,
+                        limit=param("limit", "") or None,
+                        cursor=param("cursor") or None,
+                    )
+                err = result.get("error")
+                if err:
+                    return self._json(404 if "not found" in err else 400, result)
+                return self._json(200, result)
+
             elif parsed.path == "/bestanswer":
                 # The card above a question's results. Its own request, made
                 # after the search has filled its cache, so a search never
@@ -3866,6 +3884,7 @@ class ZimHandler(BaseHTTPRequestHandler):
                             "/search",
                             "/read",
                             "/chunks",
+                            "/entries",
                             "/bestanswer",
                             "/suggest",
                             "/list",
