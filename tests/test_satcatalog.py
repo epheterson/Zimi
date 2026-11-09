@@ -71,13 +71,13 @@ def isolated(tmp_path, monkeypatch):
 
 def test_compact_rows_keep_the_elements_and_round_them():
     row = cat.compact_record(_gp(44714))
-    assert [row[0], row[1], row[2]] == [44714, "STARLINK-1", "2019-074B"]
-    assert row[3] == pytest.approx(
+    assert [row[0], row[1]] == [44714, "STARLINK-1"]
+    assert row[2] == pytest.approx(
         (2026 - 2000) * 365.25 + 313.07, abs=2
     )  # days since 2000-01-01
-    assert row[4:10] == [15.7, 0.0001, 53.14, 83.5, 337.1, 22.9]
-    assert row[10] == 0.0026210  # five significant digits
-    assert row[11:] == ["", None, None]
+    assert row[3:9] == [15.7, 0.0001, 53.14, 83.5, 337.1, 22.9]
+    assert row[9] == 0.0026210  # five significant digits
+    assert row[10:] == ["", None, None]
 
 
 @pytest.mark.parametrize(
@@ -146,12 +146,12 @@ def test_refresh_replaces_the_cache_and_reads_satcat_only_for_new_satellites(
     seen = []
     _stand_in(monkeypatch, _many(), seen=seen)
     first = cat.refresh()
-    assert first and first["sats"][0][11] == "US"
+    assert first and first["sats"][0][-3] == "US"
     assert cat.GP_ACTIVE_URL in seen and cat.SATCAT_URL in seen
     assert os.path.exists(cat._cache_path())
     seen.clear()
     second = cat.refresh()
-    assert second["sats"][0][11] == "US" and seen == [cat.GP_ACTIVE_URL]
+    assert second["sats"][0][-3] == "US" and seen == [cat.GP_ACTIVE_URL]
 
 
 def test_a_bad_answer_leaves_the_cache_as_it_was(monkeypatch):

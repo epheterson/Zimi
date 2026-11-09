@@ -61,7 +61,6 @@ MAX_SATS = 30000
 COLUMNS = (
     "norad",
     "name",
-    "id",
     "epoch",
     "mm",
     "ecc",
@@ -133,7 +132,7 @@ def compact_record(rec):
         epoch = _epoch_days(rec.get("EPOCH"))
         if norad <= 0 or not name or len(name) > 64 or epoch is None:
             return None
-        row = [norad, name, str(rec.get("OBJECT_ID") or "")[:12], epoch]
+        row = [norad, name, epoch]
         for key in ("mm", "ecc", "inc", "raan", "argp", "ma"):
             val = float(rec[_SOURCE_FIELDS[key]])
             lo_hi = _RANGES[_SOURCE_FIELDS[key]]
