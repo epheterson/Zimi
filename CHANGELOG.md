@@ -7,6 +7,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Added
+
+- Search finds PDF collections' documents (nautilus and zimgit libraries) by their listed title, description and author and by the text inside the PDFs, from an index Zimi reads in the background beside the ZIM (#142).
+- `list_entries` (MCP tool and `/entries`): a source's entries by MIME type or path prefix, paged (#142).
+
 ## [1.15.4]
 
 ### Highlights
