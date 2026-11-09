@@ -3832,5 +3832,20 @@
   "alm_ms_plan": "Flug planen",
   "alm_ms_plan_plot": "Start- und Ankunftsdaten",
   "alm_ms_plan_axes": "Start → · Ankunft ↑",
-  "alm_ms_plan_fly": "Fliegen"
+  "alm_ms_plan_fly": "Fliegen",
+  "tb_kn_sun_rotation": "Rotation der Sonne (Carrington-Rate)",
+  "tb_kn_sun_diff_rot": "Rotation der Sonne nach Breite (A, B, C)",
+  "tb_kn_sun_granules": "Granulen über den Sonnenradius, gezeichnet",
+  "tb_kn_sun_prom_height": "Höhe der Protuberanzen, gezeichnet",
+  "tb_kn_sun_flare": "Anstieg und Abklingen eines Flares, gezeichnet",
+  "alm_blurb_vesta": "Eine felsige Welt im Asteroidengürtel mit einem Berg, der mehr als doppelt so hoch ist wie der Everest.",
+  "alm_blurb_mimas": "Ein kleiner Eismond mit einem so großen Krater, Herschel, dass er wie eine Raumstation aussieht.",
+  "alm_blurb_enceladus": "Ein kleiner Eismond, der aus Spalten an seinem Südpol Wasser ins All sprüht.",
+  "alm_blurb_tethys": "Ein Eismond mit einem riesigen Krater, Odysseus, und einem Canyon, der dreiviertel um ihn herumläuft.",
+  "alm_blurb_dione": "Ein Eismond, dessen Rückseite von hellen Steilwänden durchzogen ist.",
+  "alm_blurb_rhea": "Der zweitgrößte Mond des Saturn, eine Welt aus Eis und kraterübersäten Ebenen.",
+  "alm_blurb_iapetus": "Ein Mond mit einer dunklen und einer hellen Seite und einem Grat rund um den Äquator.",
+  "alm_blurb_triton": "Neptuns großer Mond, der rückwärts kreist und Geysire aus Stickstoff hat.",
+  "alm_blurb_charon": "Plutos riesiger Mond, etwa halb so groß wie Pluto, der ihm immer dasselbe Gesicht zeigt.",
+  "alm_blurb_phobos": "Ein winziger, knolliger Mond, der Mars dreimal am Tag umkreist und langsam auf ihn zufällt."
 }

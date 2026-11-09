@@ -3832,5 +3832,20 @@
   "alm_ms_plan": "Planejar um voo",
   "alm_ms_plan_plot": "Datas de lançamento e chegada",
   "alm_ms_plan_axes": "Lançamento → · Chegada ↑",
-  "alm_ms_plan_fly": "Voar"
+  "alm_ms_plan_fly": "Voar",
+  "tb_kn_sun_rotation": "Rotação do Sol (taxa de Carrington)",
+  "tb_kn_sun_diff_rot": "Rotação do Sol por latitude (A, B, C)",
+  "tb_kn_sun_granules": "Grânulos ao longo do raio do Sol, desenhados",
+  "tb_kn_sun_prom_height": "Altura das protuberâncias, desenhada",
+  "tb_kn_sun_flare": "Subida e queda de uma erupção, desenhadas",
+  "alm_blurb_vesta": "Um mundo rochoso do cinturão de asteroides, com uma montanha mais de duas vezes mais alta que o Everest.",
+  "alm_blurb_mimas": "Uma pequena lua gelada com uma cratera tão grande, Herschel, que parece uma estação espacial.",
+  "alm_blurb_enceladus": "Uma pequena lua gelada que lança água no espaço por fendas no seu polo sul.",
+  "alm_blurb_tethys": "Uma lua gelada com uma cratera enorme, Odisseu, e um canyon que dá três quartos da volta.",
+  "alm_blurb_dione": "Uma lua gelada cuja face traseira é riscada por falésias brilhantes.",
+  "alm_blurb_rhea": "A segunda maior lua de Saturno, um mundo de gelo e planícies cheias de crateras.",
+  "alm_blurb_iapetus": "Uma lua com um lado escuro e outro brilhante, e uma crista em volta do equador.",
+  "alm_blurb_triton": "A grande lua de Neptuno, que orbita ao contrário e tem géiseres de azoto.",
+  "alm_blurb_charon": "A lua gigante de Plutão, com metade do seu tamanho, sempre de frente para ele.",
+  "alm_blurb_phobos": "Uma lua minúscula e irregular que dá três voltas por dia a Marte e cai lentamente para ele."
 }

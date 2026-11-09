@@ -3832,5 +3832,20 @@
   "alm_ms_plan": "规划飞行",
   "alm_ms_plan_plot": "发射与到达日期",
   "alm_ms_plan_axes": "发射 → · 到达 ↑",
-  "alm_ms_plan_fly": "飞一次"
+  "alm_ms_plan_fly": "飞一次",
+  "tb_kn_sun_rotation": "太阳自转（卡林顿速率）",
+  "tb_kn_sun_diff_rot": "太阳自转随纬度变化（A、B、C）",
+  "tb_kn_sun_granules": "沿太阳半径绘制的米粒组织数",
+  "tb_kn_sun_prom_height": "日珥高度（绘制值）",
+  "tb_kn_sun_flare": "耀斑上升与衰减（绘制值）",
+  "alm_blurb_vesta": "小行星带中的岩质天体，有一座比珠穆朗玛峰高出一倍多的山。",
+  "alm_blurb_mimas": "一颗小冰卫星，有一个大得出奇的赫歇尔撞击坑，看上去像一座空间站。",
+  "alm_blurb_enceladus": "一颗小小的冰卫星，从南极的裂缝向太空喷出水。",
+  "alm_blurb_tethys": "一颗冰卫星，有巨大的奥德修斯撞击坑，还有一条绕行四分之三圈的峡谷。",
+  "alm_blurb_dione": "一颗冰卫星，背向运动方向的一面布满明亮的悬崖。",
+  "alm_blurb_rhea": "土星第二大的卫星，一个由冰和布满撞击坑的平原构成的世界。",
+  "alm_blurb_iapetus": "一颗一面暗、一面亮的卫星，赤道一圈还有一道山脊。",
+  "alm_blurb_triton": "海王星的大卫星，逆向公转，还有氮气喷泉。",
+  "alm_blurb_charon": "冥王星的巨大卫星，大小约为冥王星的一半，与冥王星始终面对面。",
+  "alm_blurb_phobos": "一颗小而凹凸不平的卫星，每天绕火星三圈，正缓缓坠向火星。"
 }

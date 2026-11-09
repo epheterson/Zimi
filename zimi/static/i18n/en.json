@@ -3832,5 +3832,20 @@
   "alm_ms_plan": "Plan a flight",
   "alm_ms_plan_plot": "Launch and arrival dates",
   "alm_ms_plan_axes": "Launch → · Arrival ↑",
-  "alm_ms_plan_fly": "Fly it"
+  "alm_ms_plan_fly": "Fly it",
+  "tb_kn_sun_rotation": "Sun's rotation (Carrington rate)",
+  "tb_kn_sun_diff_rot": "Sun's rotation by latitude (A, B, C)",
+  "tb_kn_sun_granules": "Granules across the Sun's radius, drawn",
+  "tb_kn_sun_prom_height": "Prominence height, drawn",
+  "tb_kn_sun_flare": "Flare rise and fade, drawn",
+  "alm_blurb_vesta": "A rocky world in the asteroid belt, with a mountain more than twice as tall as Everest.",
+  "alm_blurb_mimas": "A small icy moon with a crater so big, Herschel, that it looks like a space station.",
+  "alm_blurb_enceladus": "A small icy moon that sprays water into space from cracks at its south pole.",
+  "alm_blurb_tethys": "An icy moon with a huge crater, Odysseus, and a canyon that runs three-quarters of the way round.",
+  "alm_blurb_dione": "An icy moon whose trailing side is streaked with bright cliffs.",
+  "alm_blurb_rhea": "Saturn's second-largest moon, a world of ice and cratered plains.",
+  "alm_blurb_iapetus": "A moon with one dark side and one bright side, and a ridge round its equator.",
+  "alm_blurb_triton": "Neptune's big moon, which orbits backwards and has geysers of nitrogen.",
+  "alm_blurb_charon": "Pluto's giant moon, about half its size, locked face to face with Pluto.",
+  "alm_blurb_phobos": "A tiny, lumpy moon that circles Mars three times a day and is slowly falling toward it."
 }

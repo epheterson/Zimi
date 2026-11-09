@@ -3832,5 +3832,20 @@
   "alm_ms_plan": "Planifier un vol",
   "alm_ms_plan_plot": "Dates de lancement et d'arrivée",
   "alm_ms_plan_axes": "Lancement → · Arrivée ↑",
-  "alm_ms_plan_fly": "La faire voler"
+  "alm_ms_plan_fly": "La faire voler",
+  "tb_kn_sun_rotation": "Rotation du Soleil (taux de Carrington)",
+  "tb_kn_sun_diff_rot": "Rotation du Soleil selon la latitude (A, B, C)",
+  "tb_kn_sun_granules": "Granules sur le rayon du Soleil, dessinés",
+  "tb_kn_sun_prom_height": "Hauteur des protubérances, dessinée",
+  "tb_kn_sun_flare": "Montée et décroissance d'une éruption, dessinées",
+  "alm_blurb_vesta": "Un monde rocheux de la ceinture d'astéroïdes, avec une montagne plus de deux fois plus haute que l'Everest.",
+  "alm_blurb_mimas": "Une petite lune glacée au cratère si grand, Herschel, qu'on dirait une station spatiale.",
+  "alm_blurb_enceladus": "Une petite lune glacée qui projette de l'eau dans l'espace par des fissures de son pôle sud.",
+  "alm_blurb_tethys": "Une lune glacée avec un cratère géant, Ulysse, et un canyon qui en fait les trois quarts du tour.",
+  "alm_blurb_dione": "Une lune glacée dont la face arrière est striée de falaises brillantes.",
+  "alm_blurb_rhea": "La deuxième plus grande lune de Saturne, un monde de glace et de plaines criblées de cratères.",
+  "alm_blurb_iapetus": "Une lune avec une face sombre et une face brillante, et une crête autour de l'équateur.",
+  "alm_blurb_triton": "La grande lune de Neptune, qui tourne à l'envers et a des geysers d'azote.",
+  "alm_blurb_charon": "La lune géante de Pluton, d'environ la moitié de sa taille, toujours face à lui.",
+  "alm_blurb_phobos": "Une minuscule lune bosselée qui tourne trois fois par jour autour de Mars et tombe lentement vers lui."
 }
