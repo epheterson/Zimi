@@ -38,6 +38,8 @@ PHONE = {"width": 390, "height": 844}
 DESKTOP = {"width": 1280, "height": 860}
 START_WAIT_MS = 6500   # the shell's start grace (2.5 s after load, twice) with room
 BATCH = 6
+SLICES = 4   # the page list is dealt into this many tests (it was one test, the longest in the suite)
+XDIST_SPLIT = SLICES   # ...which --dist loadgroup runs on different workers (tests/conftest.py)
 WAIT = 60000
 
 
@@ -48,20 +50,13 @@ def _rows():
 
 @pytest.fixture(scope="module")
 def zimi(tmp_path_factory):
-    from zimi import ownzims
+    import games_library_fixture as fx
 
     base = tmp_path_factory.mktemp("final")
-    lib, built, data = base / "lib", base / "built", base / "data"
-    for d in (lib, built, data):
+    lib, data = base / "lib", base / "data"
+    for d in (lib, data):
         d.mkdir()
-    was = ownzims.OUT_DIR
-    ownzims.OUT_DIR = str(built)
-    try:
-        made = ownzims.build(ownzims.OWN[0])
-    finally:
-        ownzims.OUT_DIR = was
-    zim = lib / os.path.basename(made)
-    os.replace(made, zim)
+    zim = fx.games_zim(lib)
     with socket.socket() as s:
         s.bind(("127.0.0.1", 0))
         port = s.getsockname()[1]
@@ -118,9 +113,11 @@ def _shelf(browser, zimi, viewport=PHONE, view="lobby", touch=True):
 # ── every page starts ────────────────────────────────────────────────────────
 
 
-def test_every_page_of_games_json_starts_inside_zimi(browser, zimi):
+@pytest.mark.parametrize("part", range(SLICES))
+def test_every_page_of_games_json_starts_inside_zimi(browser, zimi, part):
     paths = sorted({r["path"] for r in _rows()})
     assert len(paths) > 100 and any(p.startswith("puzzles/") for p in paths)
+    paths = paths[part::SLICES]   # every page is in exactly one slice; the slices run on different workers
     ctx = browser.new_context(viewport=PHONE, has_touch=True, is_mobile=True)
     # Each open page holds a change stream (/events) for as long as it lives: a browser keeps six connections to one host, and
     # a batch of pages each holding one starves the pages' own requests. The games do not use it.

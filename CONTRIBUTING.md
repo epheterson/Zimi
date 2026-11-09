@@ -16,14 +16,14 @@ Which command, when:
 | When | Command |
 |---|---|
 | While editing | the files you touched: `python3 -m pytest tests/test_x.py -q`, and for a `.cjs` file `python3 scripts/run_node_tests.py <word in its name>` |
-| Before a NAS deploy | the quick tier, plus the tests that cover what you changed: `python3 -m pytest -m "not browser" -n auto --dist loadfile -q`, `python3 scripts/run_node_tests.py`, then the browser files for the area you touched |
-| CI (every ready PR) | everything: the quick tier, the node tests, and the browser tests in 4 shards (`pytest -m browser --shard I/4 -n auto --dist loadfile`) |
-| Anywhere, the whole thing | `python3 -m pytest -n auto --dist loadfile -q` and `python3 scripts/run_node_tests.py` |
+| Before a NAS deploy | the quick tier, plus the tests that cover what you changed: `python3 -m pytest -m "not browser" -n auto --dist loadgroup -q`, `python3 scripts/run_node_tests.py`, then the browser files for the area you touched |
+| CI (every ready PR) | everything: the quick tier, the node tests, and the browser tests in 4 shards (`pytest -m browser --shard I/4 -n auto --dist loadgroup`) |
+| Anywhere, the whole thing | `python3 -m pytest -n auto --dist loadgroup -q` and `python3 scripts/run_node_tests.py` |
 
 Things to know:
 
 - A test is marked `browser` automatically when its module (or a fixture it uses) drives Playwright or Chromium; nothing is tagged by hand. `-m "not browser"` is the quick tier, `-m browser` the slow one.
-- `--dist loadfile` keeps a module's tests on one worker, which is what module-scoped servers and libraries assume.
+- `--dist loadgroup` keeps a module's tests on one worker, which is what module-scoped servers and libraries assume (it is `--dist loadfile` with one exception: a module that sets `XDIST_SPLIT = n` has its independent parametrized cases dealt over n workers, so one long module is not the last one running).
 - Tests never bind a fixed port: use `tests/ports.py` (`free_port()`, or the `free_port` fixture) or `--port 0`. Fixed ports collide when workers, or another session, run at once.
 - The suite clears `ZIMI_TORRENT` and `ZIMI_OFFLINE` for itself, so it passes the same with or without them exported; a test that needs either sets it with `monkeypatch.setenv`.
 - Each pytest run uses its own temp directory (tests/conftest.py), so two runs at once do not delete each other's files.
@@ -46,7 +46,7 @@ Before tagging, verify these on the feature branch:
 - [ ] Smoke test locally: `python3 desktop/zimi_desktop.py --serve --port 0` starts and prints `READY`
 - [ ] `desktop-release.yml` smoke test commands work with current auth model (e.g. `Sec-Fetch-Site` header for manage endpoints)
 - [ ] `node -c zimi/static/app.js` passes (no syntax errors)
-- [ ] `python3 -m pytest -n auto --dist loadfile -q` and `python3 scripts/run_node_tests.py` pass (the full suite, see Tests)
+- [ ] `python3 -m pytest -n auto --dist loadgroup -q` and `python3 scripts/run_node_tests.py` pass (the full suite, see Tests)
 - [ ] `./scripts/release-gate.sh` passes — boots real servers against real ZIM files and drives every headline feature over HTTP, which is the only way to catch a feature that is correct in every module and still dead end to end (cross-ZIM link resolution once shipped serving an empty domain map, and no unit test noticed)
 - [ ] CHANGELOG updated (with a `### Highlights` block, see Release notes below), README current, screenshots current
 - [ ] No debug print statements or console.logs that shouldn't ship

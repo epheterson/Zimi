@@ -167,7 +167,7 @@ def test_chips_and_help_fit_a_phone(served, lang):
         pg.evaluate("document.activeElement.blur()")
         help_.tap()
         examples = pg.locator("#suggest-dropdown .search-example")
-        assert examples.count() == 6  # near: (2026-11-03) is the sixth
+        assert examples.count() == 7  # near: (2026-11-03) is the sixth, near:"Place, Region" the seventh
         first = pg.evaluate("t('search_example_exact')")
         assert examples.first.inner_text().startswith(first)
         if lang == "he":

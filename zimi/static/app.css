@@ -465,9 +465,8 @@
      Plain text, not a box: nothing here can be typed into. */
   .game-head { flex: 1; min-width: 0; display: flex; align-items: center; gap: 2px; margin-inline-start: 4px; }
   .game-head[hidden] { display: none; }
-  [dir=rtl] #game-act-btn[data-kind=undo] svg { transform: scaleX(-1); }
+  /* The undo arrow is not mirrored in a right-to-left language: turned round it is the redo arrow. */
   .game-title { flex: 1; min-width: 0; padding-inline: 6px; font-size: 15px; font-weight: 600; color: var(--text); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-  .game-title.two-lines { white-space: normal; line-height: 1.15; display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; }
   .game-head .reader-btn { width: 44px; height: 44px; }   /* touch targets: the bar is 56px, so they sit side by side without touching */
   .game-head .reader-btn[hidden] { display: none; }
   .game-head .reader-btn:disabled { opacity: 0.35; cursor: default; }
@@ -858,6 +857,16 @@
      (almanac.css) arrive with its scripts, off the home page's first paint. */
   .almanac-view { position: fixed; top: var(--under-topbar); left: 0; right: 0; bottom: 0; display: none; flex-direction: column; z-index: 100; background: var(--bg); }
   .almanac-view.open { display: flex; animation: fadeIn 0.15s ease; }
+  /* The veil (app.js _almVeilUp): the dark page with a slowly turning crescent, over the Almanac from the tap until its
+     first screen is drawn (almanac.js _almVeilBegin), then one fade. The turn is a transform, so it runs on the compositor
+     and keeps going through the long tasks of the open. In the template, hidden; the boot gate shows it before any script. */
+  .alm-veil { position: absolute; inset: 0; z-index: 60; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 16px; background: var(--bg); color: var(--text2); font-size: 14px; transition: opacity 0.24s ease; }
+  .alm-veil[hidden] { display: none; }
+  html.almanac-boot .alm-veil[hidden] { display: flex; }
+  .alm-veil.alm-veil-out { opacity: 0; pointer-events: none; }
+  .alm-veil-moon { width: 34px; height: 34px; border-radius: 50%; box-shadow: inset 8px -2px 0 -1px var(--text2); opacity: 0.8; animation: almVeilTurn 2.6s linear infinite; }
+  @keyframes almVeilTurn { to { transform: rotate(360deg); } }
+  @media (prefers-reduced-motion: reduce) { .alm-veil { transition: none; } .alm-veil-moon { animation: none; } }
   .create-content { flex: 1; overflow-y: auto; overflow-x: hidden; -webkit-overflow-scrolling: touch; padding: 24px 16px 40px; overscroll-behavior: contain; }
   .create-inner { max-width: 560px; margin: 0 auto; display: flex; flex-direction: column; gap: 20px; }
   .create-head { display: flex; flex-direction: column; gap: 4px; }
@@ -4411,7 +4420,9 @@
 :root.night-red .app-theme-btn.active { background: var(--amber-glow); color: var(--text); border-color: var(--amber); }
 :root.night-red #article-theme-seg { opacity: .45; pointer-events: none; }
 .night-btn { display: none; align-items: center; justify-content: center; flex-shrink: 0; width: 36px; height: 28px; padding: 0; color: var(--text2); background: none; border: 1px solid transparent; border-radius: var(--radius); cursor: pointer; }
-.night-btn:hover, .night-btn:focus-visible { color: var(--amber); outline: none; }
+/* Hover only where there is one: on a phone a tap left the button lit after it was turned off. */
+@media (hover: hover) { .night-btn:hover { color: var(--amber); } }
+.night-btn:focus-visible { color: var(--amber); outline: none; }
 .night-btn[aria-pressed="true"] { color: var(--amber); border-color: var(--amber-border); }
 :root.night-red .topbar .logo, :root.night-red .pw-brand span, :root.night-red .cat-heading, :root.night-red .footer .footer-brand, :root.night-red .desktop-card h2 {
   background: none; -webkit-text-fill-color: var(--amber); color: var(--amber); }

@@ -116,7 +116,7 @@ def _almanac(browser, served, place=PLACE, init="", **ctx_args):
 
 
 def _settle(pg, iso):
-    pg.evaluate("(iso) => _almScrubSettle(new Date(iso))", iso)
+    pg.evaluate("(iso) => { _almClockSetRate(0); _almScrubSettle(new Date(iso)); }", iso)
     pg.wait_for_function(
         "(t) => _skyState && _skyState.nowTime === t && !_skyState.moonAnim && _skyState.baseBodies",
         arg=_ms(iso),
@@ -270,7 +270,7 @@ def test_the_look_around_view_draws_the_whole_sphere_on_demand_and_leaves_the_ca
 
 COUNT = (
     "window.__kicks = 0; window.__paints = 0;"
-    "const k = window._skyKick; window._skyKick = function () { window.__kicks++; return k.apply(this, arguments); };"
+    "const k = window._skyKick; window.__why = []; window._skyKick = function () { window.__kicks++; window.__why.push(new Error().stack.split('\\n').slice(2, 6).join(' | ')); return k.apply(this, arguments); };"
     "const p = window._skyPaintBase; window._skyPaintBase = function () { window.__paints++; return p.apply(this, arguments); };"
 )
 
@@ -284,10 +284,17 @@ def test_an_idle_sky_asks_for_no_frame_and_a_live_tick_that_moved_nothing_paints
         _drawn(pg)
         pg.wait_for_timeout(1500)
         pg.evaluate("() => { " + COUNT + " }")
+        # What arrives late asks for one frame each (the satellites, the tide stations' coast): wait for a quiet sky.
+        for _ in range(20):
+            pg.evaluate("() => { window.__kicks = 0; window.__paints = 0; }")
+            pg.wait_for_timeout(3000)
+            if pg.evaluate("() => window.__kicks") == 0:
+                break
+        pg.evaluate("() => { window.__kicks = 0; window.__paints = 0; }")
         # Ten seconds of nothing: no frame requested by the sky, nothing painted.
         pg.wait_for_timeout(10000)
         counts = pg.evaluate("() => [window.__kicks, window.__paints, _almanacSkyRAF]")
-        assert counts == [0, 0, None], counts
+        assert counts == [0, 0, None], (counts, pg.evaluate("window.__why"))
         # A live tick half a minute on: the sky has not turned a pixel, so no paint.
         pg.evaluate(
             "() => { _almFocus = null; _skyState.baseDirty = false; const t = _skyState.paintedTime;"
@@ -660,8 +667,8 @@ def test_a_lost_gpu_context_is_given_back_and_taken_again_and_dispose_frees_it(b
         pg.wait_for_function("() => _sgReady() && _sg.starCount === 9096 && _sg.mwReady && !_skyState.baseDirty", polling=POLL_MS)
         assert pg.evaluate("window.__gl.includes(true)")
         # Dispose gives it all back, and nothing is left to draw with.
-        pg.evaluate("_sgDispose()")
-        assert pg.evaluate("_sg") is None and pg.evaluate("_sgReady()") is False
+        # (One turn of the page: the open sky's next paint takes the GPU again, so two round trips can see two states.)
+        assert pg.evaluate("() => { _sgDispose(); return [_sg === null, _sgReady()]; }") == [True, False]
         assert not errors, errors
     finally:
         ctx.close()

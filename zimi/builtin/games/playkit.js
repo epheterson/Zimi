@@ -333,7 +333,13 @@
   };
 
   // A button that is "down" while held, by pointer or by key; fn(true|false). A finger that slides onto a held button's
-  // neighbour in the same row (Left to Right on a racing pad) lets go of the one and holds the other, as a thumb rolls.
+  // neighbour in the same row (Left to Right on a racing pad) lets go of the one and holds the other, as a thumb rolls; never
+  // onto a button another finger already holds (that one's lift would let go of both).
+  var ROW_OVERLAP = 0.5;   // a neighbour is in the same row when this share of its height lies within the held button's
+  function sameRow(a, b) {
+    var ra = a.getBoundingClientRect(), rb = b.getBoundingClientRect();
+    return Math.min(ra.bottom, rb.bottom) - Math.max(ra.top, rb.top) >= ROW_OVERLAP * Math.min(ra.height, rb.height);
+  }
   Play.hold = function (el, fn) {
     var down = false;
     function set(v) { if (v !== down) { down = v; el.setAttribute('aria-pressed', String(v)); fn(v); } }
@@ -343,7 +349,7 @@
     el.addEventListener('pointermove', function (e) {
       if (!down) return;
       var over = document.elementFromPoint(e.clientX, e.clientY), to = over && over.closest && over.closest('button');
-      if (!to || to === el || !to._holdTake || to.parentNode !== el.parentNode) return;
+      if (!to || to === el || !to._holdTake || to.parentNode !== el.parentNode || to.getAttribute('aria-pressed') === 'true' || !sameRow(el, to)) return;
       try { el.releasePointerCapture(e.pointerId); } catch (err) { /* already gone */ }
       set(false); to._holdTake(e.pointerId);
     });

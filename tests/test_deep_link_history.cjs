@@ -60,7 +60,7 @@ check(/_bootDeepLinkArticle\(name, articlePath\)/.test(wBranch),
       'a /w/ deep link boots through the shared helper');
 check(!/openArticle\(name, articlePath\)\s*;/.test(wBranch),
       'and no longer calls openArticle directly, which is what dropped the replace');
-check(/_bootDeepLinkArticle\(aZim, aPath\)/.test(route),
+check(/_bootDeepLinkArticle\(aZim, aPath(, [^)]*)?\)/.test(route),
       'the /?a= form uses the same helper');
 
 // ── and that helper replaces rather than pushes ────────────────────────────

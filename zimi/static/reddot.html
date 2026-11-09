@@ -68,7 +68,7 @@ function isFollowed(zim, sub) { return _follow.indexOf(followKey(zim, sub)) >= 0
 function toggleFollow(zim, sub) {
   var k = followKey(zim, sub), i = _follow.indexOf(k);
   if (i >= 0) _follow.splice(i, 1); else _follow.push(k);
-  try { localStorage.setItem('reddot_follow', JSON.stringify(_follow)); } catch (e) {}
+  prefWrite('reddot_follow', JSON.stringify(_follow));
   if (_home && !_follow.length) { openHome(); return; }
   renderChips();
   if (_home) renderHomeFeed(); else if (_sub) paintFollowButton(); else renderHome({ zims: _zims });

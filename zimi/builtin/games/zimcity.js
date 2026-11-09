@@ -14,14 +14,14 @@ import * as Tools from './zimcity-tools.js';
 import * as Words from './zimcity-words.js';
 import * as Library from './zimcity-library.js';
 import * as Save from './zimcity-save.js';
-import { advise } from './zimcity-advisor.js';
+import { advise, runningOut, LOW_RUNWAY_YEARS } from './zimcity-advisor.js';
 import * as Scen from './zimcity-scenarios.js';
 import * as Climate from './zimcity-climate.js';
 import * as Voices from './zimcity-voices.js';
 import * as Follow from './zimcity-follow.js';
 import * as Away from './zimcity-away.js';
 import { isWater } from './zimcity-modern.js';
-import { budgetSheet, reportSheet, layersSheet, speedSheet, inspectSheet, moreSheet, citiesSheet, scenariosSheet, climateSheet, followSheet, awayCard, settingsRows, newGameRows } from './zimcity-sheets.js';
+import { budgetSheet, reportSheet, layersSheet, speedSheet, inspectSheet, moreSheet, citiesSheet, scenariosSheet, climateSheet, followSheet, awayCard, settingsRows, newGameRows, howExtra } from './zimcity-sheets.js';
 
 var root = window, d = document, Shell = root.ZimiShell, Play = root.ArcadePlay, Util = root.ZimiUtil;
 var T = function (k, v) { return root.ZimiText ? root.ZimiText.T(k, v) : k; };
@@ -71,7 +71,9 @@ function freshCity(level) {
   var map = seeded(seed, function () { return MapGenerator(MAP_W, MAP_H); });
   return cityOf(map, new Simulation(map, level, speed === Simulation.SPEED_PAUSED ? Simulation.SPEED_MED : speed), level, seed);
 }
+var openSeq = 0;                     // each city installed or asked for takes a number, so a slow file never lands over a newer city
 function install(c, cam) {
+  openSeq++; hideNews();
   // A catch-up still running belongs to the city being left: stop it and its sheet, so it never steps this one.
   if (awayJob) { var job = awayJob; awayJob = null; job.cancel(); if (awayWait) awayWait.close(); }
   awayWait = null; catching = null;
@@ -165,7 +167,8 @@ function news(key) {
   if (city.sim._cityTime < city.bornAt + SETTLE_TICKS) return;   // not in a city's first months
   if (!Library.articleFor(key) || Date.now() - (newsAt[key] || 0) < NEWS_AGAIN_MS || !newsEl.hidden) return;
   newsAt[key] = Date.now();
-  Library.lead(key).then(function (l) { if (l) showNews(l); });
+  var c = city;
+  Library.lead(key).then(function (l) { if (l && city === c) showNews(l); });   // a story found for the city left is not shown over the new one
 }
 function showNews(l) {
   newsEl.textContent = '';
@@ -215,7 +218,30 @@ function people() { return city.sim.evaluation.cityPop; }
 function strip() {
   if (!city) return;
   $('cy-funds').textContent = money(city.sim.budget.totalFunds);
+  $('cy-funds').classList.toggle('cy-low', runningOut(outlook()));
   $('cy-when').textContent = T('city.when', { date: dateWords(), people: T('city.people', { n: people() }) });
+  goalStrip();
+}
+// Whether the bank will last: what the last budget left (taxes less the full cost of roads, fire and police) against the
+// years the city has to last, a scenario's to its judging.
+function outlook() {
+  var b = city.sim.budget;
+  return { funds: b.totalFunds, flow: b.cashFlow, horizon: city.scenario ? Math.max(LOW_RUNWAY_YEARS, city.scenario.judgeIn / Scen.TICKS_PER_YEAR) : LOW_RUNWAY_YEARS };
+}
+// A scenario's goal stays on screen under the strip, with where the city stands and the time left; it wraps rather than cuts.
+var goalEl = $('cy-goal');
+function goalPhrase(r) { return T('city.goal.' + r.kind, r.kind === 'class' ? { name: T('city.class.' + r.target) } : { n: r.target }); }
+function goalNow(r) { return r.kind === 'class' ? T('city.class.' + r.now) : root.ZimiText.number(r.now); }
+function goalStrip() {
+  var sc = city.scenario && scenarioOf(city.scenario.id);
+  goalEl.hidden = !sc;
+  if (!sc) { goalEl.textContent = ''; return; }
+  var r = Scen.reading(city.sim, sc), left = Scen.timeLeft(city.scenario.judgeIn);
+  goalEl.textContent = '';
+  var goal = d.createElement('b'), now = d.createElement('span');
+  goal.textContent = T('city.goal.label', { goal: goalPhrase(r) });
+  now.textContent = T('city.goal.status', { now: goalNow(r), left: T('city.goal.' + left.unit, { n: left.n }) });
+  goalEl.appendChild(goal); goalEl.appendChild(d.createTextNode(' ')); goalEl.appendChild(now);
 }
 var DEMAND_MAX = { residential: 2000, commercial: 1500, industrial: 1500 };
 function demand() {
@@ -238,7 +264,9 @@ function iconSvg(name) {
   return svg;
 }
 function costWords(name) {
-  return Tools.isDrawn(name) ? T('city.cost.tile', { money: money(Tools.costOf(name)) }) : money(Tools.costOf(name));
+  if (!Tools.isDrawn(name)) return money(Tools.costOf(name));
+  var water = Tools.waterCostOf(name);   // a road over water is a bridge, five times the price: said before the stroke, not found in the total
+  return water ? T('city.cost.tileWater', { money: money(Tools.costOf(name)), water: money(water) }) : T('city.cost.tile', { money: money(Tools.costOf(name)) });
 }
 function trayButton(name, label) {
   var b = d.createElement('button');
@@ -276,7 +304,11 @@ function hold(name) {
   paintTray();
 }
 var heldEl = $('cy-held');
-function heldLine(r) {
+// A refusal after the finger lifts stays up a few seconds, then the line goes back to the tool's own (it is not news that lasts).
+var REFUSAL_MS = 3000, refusalTimer = 0;
+function heldLine(r, refused) {
+  clearTimeout(refusalTimer);
+  if (refused) refusalTimer = setTimeout(function () { heldLine(); }, REFUSAL_MS);
   heldEl.classList.toggle('cy-bad', !!(r && !r.ok));
   // With no tool held the advisor is the one voice: the tray's own hint shows only while it has nothing to say.
   if (!held) { heldEl.textContent = advice ? '' : T('city.idle'); return; }
@@ -307,9 +339,13 @@ function ghostOf(r) {
   }
   return g;
 }
+// A building lands where it fits nearest the finger (see Tools.nudge); a drawn stroke goes exactly where it was drawn.
+function aimed(tiles) { return Tools.isDrawn(held) ? tiles : Tools.nudge(city, held, tiles); }
 function onStroke(tile, done) {
   if (!held || !city) return;
-  var tiles = strokeTiles(tile);
+  if (done && !stroke) return;   // the tool was changed (or the stroke cancelled) under the finger: what it began is not built with another
+
+  var tiles = aimed(strokeTiles(tile));
   if (!done) {
     var r = Tools.trial(city, held, tiles);
     Tools.drop(city, held);
@@ -320,7 +356,7 @@ function onStroke(tile, done) {
   var built = Tools.build(city, held, tiles);
   stroke = null; view.ghost = null;
   if (built.ok) {
-    lastBuilt = built.undo; undoBtn.disabled = false;
+    lastBuilt = built.undo; lastBuilt.tool = held; undoBtn.disabled = false;
     if (OPENING[held]) { say(T(OPENING[held])); news(OPENING[held]); react(held); }
     if (!city.built) city.built = true;
     advisor();
@@ -329,13 +365,13 @@ function onStroke(tile, done) {
     heldLine();
     Shell.saveNow();
   } else {
-    heldLine(built);
+    heldLine(built, true);
     Shell.shake(heldEl);
   }
 }
 function onHover(tile) {
   if (!held || Tools.isDrawn(held) || !tile) { if (!stroke) view.ghost = null; return; }
-  var r = Tools.trial(city, held, [[tile.x, tile.y]]);
+  var r = Tools.trial(city, held, aimed([[tile.x, tile.y]]));
   Tools.drop(city, held);
   view.ghost = ghostOf(r);
 }
@@ -345,7 +381,7 @@ var advice = null;
 // A step that is no longer the next one is never shown late: it leaves the queue, and if it is on the line now, the new
 // step replaces it at once (the few seconds a message is given are for news, not for stale advice).
 function advisor() {
-  var next = advise(city.map);
+  var next = advise(city.map, outlook());
   if (next === advice) return;
   var old = advice ? T(advice) : null;
   advice = next;
@@ -382,8 +418,9 @@ var reacted = {};
 function react(what) {
   var who = Voices.REACT[what];
   if (!who) return;
-  var id = who[(reacted[what] = ((reacted[what] || 0) + 1)) % who.length], p = Voices.PEOPLE.filter(function (x) { return x.id === id; })[0];
+  var n = reacted[what] || 0, id = who[n % who.length], p = Voices.PEOPLE.filter(function (x) { return x.id === id; })[0];
   say(T('city.v.say', { name: p.name, line: T('city.v.ev.' + what + '.' + id) }));
+  reacted[what] = n + 1;
   lastVoice = id; voiceAt = Date.now();
 }
 // Now and then, while the city runs, the citizen with the strongest feeling says it.
@@ -409,15 +446,18 @@ function scenarioOf(id) { return Scen.SCENARIOS.filter(function (x) { return x.i
 function scenarioTick() {
   var sc = scenarioOf(city.scenario.id), out = Scen.tick(city.sim, sc, city.scenario);
   if (!out) return;
-  var name = T('city.sct.' + sc.id), c = city;
+  var name = T('city.sct.' + sc.id), c = city, r = Scen.reading(c.sim, sc);
   c.scenario = null;   // judged once: the city goes on as a city of its own
+  goalStrip();
   Shell.endSheet({ result: out === 'win' ? 'win' : 'lose', title: T(out === 'win' ? 'city.end.scWin' : 'city.end.scLose'),
-                   text: T(out === 'win' ? 'city.end.scWinText' : 'city.end.scLoseText', { city: name }), stats: endStats() });
+                   text: T(out === 'win' ? 'city.end.scWinText' : 'city.end.scLoseText', { city: name, goal: goalPhrase(r), now: goalNow(r) }), stats: endStats() });
 }
 // Open a scenario (`sc`) or a ready-made city (`file` under zimcity/cities) from its file; the city in progress is left
 // for a new one, as New game does.
 function openFile(path, sc, title) {
+  var mine = ++openSeq;
   return fetch(path).then(function (r) { if (!r.ok) throw new Error(r.status); return r.arrayBuffer(); }).then(function (buf) {
+    if (mine !== openSeq) return;   // another city was chosen while this one was coming
     var map = Scen.mapOf(buf);
     if (!map) throw new Error('not a city');
     var level = Simulation.LEVEL_EASY, sim = new Simulation(map, level, speed === Simulation.SPEED_PAUSED ? Simulation.SPEED_MED : speed);
@@ -427,6 +467,7 @@ function openFile(path, sc, title) {
     sim.budget.cityTax = 7;
     sim._updateTime();
     sim._simulate(sim._constructSimData());   // the engine's first step evaluates the city, so its people show at once
+    Scen.warmUp(sim, Math.max(Scen.OPEN_TICKS, sc && sc.warm || 0));   // before anyone listens: it opens powered and measured
     var c = cityOf(map, sim, level, 0);
     // A city that arrives grown: its milestones are not news, and becoming a metropolis is not a win of the player's
     // (a scenario has its own judging). For its first year the "now a city" messages say nothing.
@@ -437,7 +478,7 @@ function openFile(path, sc, title) {
     view.cam.s = 1; centreOnCity();
     say(sc ? T('city.scl.' + sc.id) : title);
     Shell.saveNow();
-  }).catch(function () { say(T('city.sc.failed'), true); });
+  }).catch(function () { if (mine === openSeq) say(T('city.sc.failed'), true); });   // a request another city has passed says nothing
 }
 // A city loaded from a file opens over its middle of things: the box holding its zones.
 function centreOnCity() {
@@ -502,7 +543,7 @@ function walk(sec) {
   if (!following) return;
   var f = following, traffic = city.sim.blockMaps.trafficDensityMap;
   if (f.walk.advance(sec, function (x, y) { return traffic.worldGet(x, y); })) {
-    var r = Follow.route(city.map, f.walk.trip.home, [f.walk.trip.work]), trip = r ? { home: f.walk.trip.home, work: r.to, path: r.path } : tripFor(f.i, f.p.id);
+    var t0 = f.walk.trip, r = Follow.stillThere(city.map, t0.home) && Follow.stillThere(city.map, t0.work) && Follow.route(city.map, t0.home, [t0.work]), trip = r ? { home: t0.home, work: r.to, path: r.path } : tripFor(f.i, f.p.id);
     if (!trip) { say(T('city.fw.lost', { name: f.p.name }), true); unfollow(); return; }
     var phase = f.walk.phase; f.walk = new Follow.Walk(trip); f.walk.phase = phase;
     if (phase === 'toHome') f.walk.at = { x: trip.path[trip.path.length - 1][0], y: trip.path[trip.path.length - 1][1] };
@@ -557,7 +598,7 @@ function summary() {
 var lastBuilt = null, undoBtn = $('cy-undo');
 undoBtn.addEventListener('click', function () {
   if (!lastBuilt) return;
-  if (Tools.undo(city, lastBuilt)) { status.say(T('city.undo.done')); shownAt = Date.now(); strip(); advisor(); }
+  if (Tools.undo(city, lastBuilt)) { shownAt = 0; say(T('city.undo.done', { what: T('city.tool.' + lastBuilt.tool), money: money(lastBuilt.cost) }), true); strip(); advisor(); view.flash(lastBuilt.tiles); }
   else say(T('city.undo.grown'), true);
   lastBuilt = null; undoBtn.disabled = true;
   Shell.saveNow();
@@ -578,12 +619,21 @@ function goneBroke() {
   var c = city;
   c.broke = true; c.ending = true;
   record('broke');
-  Shell.endSheet({ result: 'lose', title: T('city.end.broke'), text: T('city.end.brokeText'), stats: endStats(), onClose: function () { setTimeout(function () { if (city === c && c.ending) { c.ending = false; if (c.sim.budget.awaitingValues) openBudget(true); } }, 0); } });
+  Shell.endSheet({ result: 'lose', title: T('city.end.broke'), text: brokeText(), stats: endStats(), onClose: function () { setTimeout(function () { if (city === c && c.ending) { c.ending = false; if (c.sim.budget.awaitingValues) openBudget(true); } }, 0); } });
+}
+// What went wrong in the bank's own figures, so the sheet and the strip agree: what is there, what the year costs, what taxes bring.
+// A city under a scenario's clock also says the goal it was after and where it stood.
+function brokeText() {
+  var b = city.sim.budget, sc = city.scenario && scenarioOf(city.scenario.id);
+  var text = T('city.end.brokeText', { funds: money(b.totalFunds), costs: money(b.roadMaintenanceBudget + b.fireMaintenanceBudget + b.policeMaintenanceBudget), taxes: money(b.taxFund) });
+  if (!sc) return text;
+  var r = Scen.reading(city.sim, sc);
+  return text + ' ' + T('city.end.brokeGoal', { goal: goalPhrase(r), now: goalNow(r) });
 }
 function metropolis() {
   Shell.endSheet({ result: 'win', title: T('city.end.metropolis'), text: T('city.end.metropolisText'), stats: endStats(), newLabel: T('shell.menu.new') });
 }
-function endStats() { return [[T('city.r.people'), root.ZimiText.number(people())], [T('city.r.year'), String(city.sim.getDate().year)]]; }
+function endStats() { return [[T('city.r.people'), root.ZimiText.number(people())], [T('city.r.year'), String(city.sim.getDate().year), 'static']]; }
 
 // ── stats, kept across cities ──
 function stats() { return Play.load(STATS_KEY, { cities: 0, best: 0, metropolis: 0, broke: 0 }); }
@@ -631,7 +681,7 @@ $('cy-new').addEventListener('click', function () {
 
 // ── what the shell keeps and asks ──
 function pack() {
-  return { sim: Save.packSim(city.sim), settleUntil: city.settleUntil || 0, seed: city.seed, level: city.level, won: city.won, broke: city.broke, built: city.built, scenario: city.scenario || null, name: city.name || '', climate: city.climate, climateOn: climateOn, away: awayPace, savedAt: Date.now(), people: people(),
+  return { sim: Save.packSim(city.sim), settleUntil: city.settleUntil || 0, seed: city.seed, level: city.level, won: city.won, broke: city.broke, built: city.built, scenario: city.scenario || null, name: city.name || '', climate: city.climate, climateOn: climateOn, away: awayPace, budget: { taxFund: city.sim.budget.taxFund, cashFlow: city.sim.budget.cashFlow, waiting: city.sim.budget.awaitingValues }, savedAt: Date.now(), people: people(),
            cam: { x: view.cam.x, y: view.cam.y, s: view.cam.s }, speed: speed, layer: layer, disasters: disasters };
 }
 function unpack(k) {
@@ -640,9 +690,14 @@ function unpack(k) {
   var back = Save.unpackSim(k.sim, k.level || 0, speed);
   if (!back) return false;
   disasters = !!k.disasters; layer = k.layer || 'off'; view.layer = layer;
+  var sc = k.scenario && scenarioOf(k.scenario.id);
+  if (sc && sc.warm) Scen.warmUp(back.sim, sc.warm, true);   // traffic is not kept; the city is
+  if (typeof k.people === 'number') back.sim.evaluation.cityPop = k.people;   // the count is kept: a city just opened reads its people, not 0 until the year's evaluation
+  var bk = k.budget;   // what the engine does not save: the year's taxes, and a budget still waiting to be set
+  if (bk) { back.sim.budget.taxFund = +bk.taxFund || 0; back.sim.budget.cashFlow = +bk.cashFlow || 0; back.sim.budget.awaitingValues = !!bk.waiting; }
   var c = cityOf(back.map, back.sim, k.level || 0, k.seed);
   c.won = !!k.won; c.broke = !!k.broke; c.built = k.built !== false; c.name = k.name || ''; c.settleUntil = k.settleUntil || 0;
-  if (k.scenario && scenarioOf(k.scenario.id)) c.scenario = k.scenario;
+  if (sc) c.scenario = k.scenario;
   if (k.climate && typeof k.climate.carbon === 'number') c.climate = Object.assign(Climate.fresh(), k.climate);   // older cities start with none
   climateOn = k.climateOn !== false;
   awayPace = Away.PACES.indexOf(k.away) >= 0 ? k.away : Away.DEFAULT_PACE;
@@ -713,17 +768,44 @@ function awaySheet(r) {
 var KEPT_KEY = 'zimi.zimcity.kept', KEPT_MAX = 5;
 function kept() { try { var v = JSON.parse(localStorage.getItem(KEPT_KEY)); return Array.isArray(v) ? v : []; } catch (e) { return []; } }
 function putKept(list) { try { localStorage.setItem(KEPT_KEY, JSON.stringify(list)); return true; } catch (e) { return false; } }
-function card() { var dt = city.sim.getDate(); return { at: Date.now(), month: dt.month, year: dt.year, people: people(), funds: city.sim.budget.totalFunds, data: pack() }; }
+var KEPT_NAME_MAX = 24;
+// A kept city has a name: the one it has (a scenario's, a ready-made city's, or one given before), else "City n" with the
+// first n no kept city uses.
+function nameFor(l) {
+  if (city.name) return city.name;
+  var n = l.length + 1, used = l.map(function (k) { return k.name; });
+  while (used.indexOf(T('city.k.dflt', { n: n })) >= 0) n++;
+  return T('city.k.dflt', { n: n });
+}
+function card(l) {
+  var dt = city.sim.getDate(), name = nameFor(l || kept());
+  city.name = name;
+  return { at: Date.now(), name: name, month: dt.month, year: dt.year, people: people(), funds: city.sim.budget.totalFunds, data: pack() };
+}
 var cities = {
   list: kept, max: KEPT_MAX,
-  keep: function () { var l = kept(); if (l.length >= KEPT_MAX) return false; l.unshift(card()); return putKept(l); },
+  keep: function () {
+    var l = kept(), was = city.name;
+    if (l.length >= KEPT_MAX) return false;
+    l.unshift(card());
+    if (putKept(l)) return true;
+    city.name = was;   // not kept: the city does not carry a number the list never held
+    return false;
+  },
   remove: function (i) { var l = kept(); l.splice(i, 1); putKept(l); },
+  // The player's name for a kept city (an empty one keeps the old); the city it holds carries it when opened.
+  rename: function (i, name) {
+    var l = kept(), k = l[i], n = String(name || '').trim().slice(0, KEPT_NAME_MAX);
+    if (!k || !n) return k ? k.name : '';
+    k.name = k.data.name = n;
+    return putKept(l) ? n : false;   // false: the new name could not be kept
+  },
   // Opening a kept city puts the one in progress in its place (when anything has been built), so nothing is lost.
   open: function (i) {
-    var l = kept(), want = l[i];
+    var l = kept(), want = l[i], was = city.name;
     if (!want) return;
-    if (city.built) l[i] = card(); else l.splice(i, 1);
-    putKept(l);
+    if (city.built) l[i] = card(l.filter(function (k, j) { return j !== i; })); else l.splice(i, 1);
+    if (!putKept(l)) { city.name = was; say(T('city.k.failed'), true); return; }   // the city in progress could not be put in the list: it stays
     unpack(want.data);
     Shell.saveNow();
   }
@@ -739,13 +821,16 @@ Shell.game({
     return [[T('city.st.cities'), root.ZimiText.number(s.cities)], [T('city.st.best'), T('city.people', { n: Math.max(s.best, city ? people() : 0) })],
             [T('city.st.metropolis'), root.ZimiText.number(s.metropolis)]];
   },
-  about: function () { return Words.credit(T); }
+  about: function () { return Words.credit(T); },
+  // How to play: the fingers and the sizes shown, and the keys only when there is a keyboard to press them on.
+  help: function () { return root.matchMedia && root.matchMedia('(pointer: coarse)').matches ? { keys: '', extra: howExtra(sheets) } : { extra: howExtra(sheets) }; }
 });
 
 // ── start ──
 var input = new Input(view, {
   tool: function () { return held; },
   stroke: onStroke,
+  release: function () { hold(''); },
   cancel: function () { stroke = null; view.ghost = null; if (held) Tools.drop(city, held); heldLine(); },
   inspect: function (x, y) { inspectSheet(sheets, x, y); },
   hover: onHover,
@@ -763,7 +848,7 @@ if (root.ZimiText && root.ZimiText.onChange) root.ZimiText.onChange(function () 
 // The tests' handle (as every game has one): the city, the map, and the clock run ahead by n steps.
 root.__zimcity = { get city() { return city; }, get view() { return view; }, step: function (n) { for (var i = 0; i < n; i++) step(); strip(); demand(); advisor(); }, news: news, library: Library, happened: happened, land: centreOnLand, said: function () { return messages.concat(shownLine); }, get catching() { return catching; }, catchUp: catchUp, follow: follow, get following() { return following; }, voice: function () { voiceAt = 0; voices(performance.now()); } };
 
-Shell.persist({ save: function () { return city ? pack() : null; }, load: function (k) { if (!unpack(k)) return false; awayFrom(k); return true; } });
+Shell.persist({ save: function () { return city ? pack() : null; }, load: function (k) { if (!unpack(k)) return false; awayFrom(k); if (!catching && city.sim.budget.awaitingValues) setTimeout(function () { if (!sheetOpen()) openBudget(true); }, 0); return true; } });
 if (!city) { install(freshCity(pendingLevel)); record('new'); }
 demand();
 summary();

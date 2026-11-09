@@ -47,9 +47,11 @@
     return JSON.parse(JSON.stringify(out));
   }
 
+  var MAX_DRAWS = 1e7;   // a save claiming more is damaged: replaying it would freeze the page
   function restore(saved) {
     var game = JSON.parse(JSON.stringify(saved));
-    if (!game.rng || typeof game.rng.seed !== 'number' || typeof game.rng.draws !== 'number') throw new Error('no generator to put back');
+    var r = game.rng;
+    if (!r || typeof r.seed !== 'number' || !Number.isSafeInteger(r.draws) || r.draws < 0 || r.draws > MAX_DRAWS) throw new Error('no generator to put back');
     game.rng = counted(game.rng.seed, game.rng.draws);
     return game;
   }

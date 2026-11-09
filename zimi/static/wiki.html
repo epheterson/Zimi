@@ -465,7 +465,7 @@ function renderViews() {
 }
 function setView(v) {
   _view = v;
-  try { localStorage.setItem(VIEW_KEY, v); } catch (e) {}
+  prefWrite(VIEW_KEY, v);
   renderViews();
   if (_q) renderResults();
 }
@@ -843,7 +843,7 @@ function pickLang(code) {
   var zimi = false;
   try { zimi = window.parent._uiLangFollows(code); } catch (e) { zimi = false; }
   if (zimi && code !== _lang) {
-    try { localStorage.setItem(LANG_KEY, code); } catch (e) {}
+    prefWrite(LANG_KEY, code);
     tell({ zimi: 'ui-lang', lang: code });
     return;
   }
@@ -895,7 +895,7 @@ function setLang(code) {
   if (code === _lang) return;
   _lang = code; _sel = [];
   applyDir();
-  try { localStorage.setItem(LANG_KEY, code); } catch (e) {}
+  prefWrite(LANG_KEY, code);
   renderLangs(); renderPills();
   if (_q) wikiSearch(_q); else renderToday();
   fetch('/wiki/home?day=' + _day + '&lang=' + encodeURIComponent(code)).then(function(r) { return r.ok ? r.json() : null; }).then(function(d) {

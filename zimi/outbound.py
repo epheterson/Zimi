@@ -131,6 +131,7 @@ SOURCES = {
     "desktop": ("app_updates",),
     "winsparkle": ("app_updates",),
     "satellites": ("satellites",),
+    "almanachd": ("almanac_hd",),
     "voices": ("voices",),
     "streetzim": ("streetzim",),
     "sso": ("sso",),

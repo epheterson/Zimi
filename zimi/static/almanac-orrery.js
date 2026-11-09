@@ -473,9 +473,9 @@ function _orreryOpenEarthView(target) {
 // ── Saying what the orrery does, until it has been done ──
 // A phone has no hover, and nothing said that a planet flies or that Earth
 // opens in 3D (Eric, 2026-09-29, found neither). Until each has been done
-// once on this device, a line under the orrery says it (on touch). Done,
+// once for this person, a line under the orrery says it (on touch). Done,
 // each goes quiet for good.
-var _ORRERY_TRIED_KEY = 'zimi_orrery_tried';
+var _ORRERY_TRIED_KEY = SK.ALM_ORRERY_TRIED;
 var _orreryTriedCache = null;          // read once: the draw loop asks every frame
 function _orreryTried() {
   if (!_orreryTriedCache) {
@@ -488,7 +488,7 @@ function _orreryMarkTried(what) {
   var tried = _orreryTried();
   if (tried[what]) return;
   tried[what] = 1;
-  try { localStorage.setItem(_ORRERY_TRIED_KEY, JSON.stringify(tried)); } catch (e) { /* this visit only */ }
+  _prefWrite(_ORRERY_TRIED_KEY, JSON.stringify(tried));
   _orreryRenderHint();
 }
 function _orreryRenderHint() {
@@ -698,8 +698,6 @@ function _initOrrery() {
   } else {
     _orreryInView = true;
   }
-  _orrerySpeedLabel = document.getElementById('orrery-speed-label');
-  _orrerySliderEl = document.getElementById('orrery-slider');
   _orrerySelectedKey = null;
   _orreryRenderHint();
   _orreryCamReset();
@@ -776,7 +774,7 @@ function _initOrrery() {
       ? '<button type="button" class="orrery-tip-btn" data-orr-earth="' + _almEsc(hit.data.name.toLowerCase()) + '">' +
         _almEsc(t('alm_orr_planet_view', { name: _tp(hit.data.name) })) + '</button>'
       : '';
-    if (_orreryIsDestination(hit) && !_orreryTravelFocus()) {
+    if (_orreryIsDestination(hit)) {
       return close + '<button type="button" class="orrery-tip-btn" data-orr-fly="' + _almEsc(hit.data.name) + '">' +
         _almEsc(t('alm_orr_fly')) + '</button>';
     }
@@ -936,8 +934,6 @@ function _initOrrery() {
 
   _orreryShowTipFn = _showTip;
 
-  // Initial sync, not just the date: a re-init mid-travel (deep-link return,
-  // panel rebuild) must restore the controls' overridden state too.
   _orrerySyncToFocus();
 }
 
@@ -1422,36 +1418,26 @@ function _drawOrrery(canvas, dpr) {
   ctx.restore(); // the camera
 }
 
-var _orreryPlaying = true;
+// The orrery has no clock of its own: it draws the moment the page shows (_almFocusInstant), at the page's pace. Its
+// loop (_orreryAnimate) runs only for what moves by itself: the opening spin (the scenery) and the rockets' glow and orbits.
+var _orreryPlaying = false;
 
+// The opening spin: planets turn fast on their own so the page opens alive, until the clock is touched. It is scenery,
+// an offset on the drawn moment, never the page's own. Reduced motion, it holds still.
 var ORRERY_SCENERY_SPEED = 100000;
-var _orrerySpeed = ORRERY_SCENERY_SPEED;
-
-var _orreryTimeOffset = 0;       // milliseconds offset from real time
-// Whether the offset is a moment someone chose (the speed slider, a ride)
-// rather than the orrery's own spin, which runs fast from the start as
-// scenery. The Earth view opens on a chosen moment, and on now otherwise.
-var _orreryClockChosen = false;
-function _orreryAmbientOffset() { return _orreryClockChosen ? 0 : _orreryTimeOffset; }
+var _orreryScenery = false;
+var _orrerySceneryMs = 0;
 
 var _orreryLastFrame = 0;        // last rAF timestamp
 
-// ── Time-machine coupling ──
-// The almanac's travel focus (_almFocus, almanac.js) outranks the orrery's
-// local clock: while the lever is thrown — or the almanac is parked on any
-// instant other than now — the planets must sit where the time machine says,
-// not where the orrery's own speed control had wandered. Returning to now
-// hands the local clock (offset + speed slider) back, untouched. (#48)
-function _orreryTravelFocus() {
-  return (typeof _almFocus !== 'undefined' && _almFocus) ? _almFocus : null;
-}
+// The one moment every orrery consumer reads (planet draw, rocket launches, the Voyager card).
+function _orrerySimTime() { return _almFocusInstant().getTime() + _orrerySceneryMs; }
 
-// The one clock every orrery consumer reads (planet draw, rocket launches,
-// the date readout, the Voyager card). Local time = real now plus whatever
-// offset the speed slider has accumulated.
-function _orrerySimTime() {
-  var f = _orreryTravelFocus();
-  return f ? f.getTime() : Date.now() + _orreryTimeOffset;
+// The clock was set by someone (the slider, a typed date, a calendar day, a ride): the scenery has done its part.
+function _orreryClockTouched() {
+  _orreryScenery = false;
+  _orrerySceneryMs = 0;
+  _orreryAutoTransit = false;
 }
 
 // Travel-tick visibility gate. The orrery lives well below the fold, so most
@@ -1479,21 +1465,12 @@ function _orreryTravelTick() {
   if (_almanacOrreryRAF || !_orreryCanvas || !_orreryInView) return;
   _almTravelThrottled('orrery', _ORRERY_TRAVEL_TICK_MS, function () {
     _drawOrrery(_orreryCanvas, _orreryDpr);
+    if (_voyagerCardIdx >= 0) _updateVoyagerCard();
   });
 }
 
-// Settle-time sync (called from _almRepaintFocus): reflect the travel verdict
-// once, exactly — date readout, control availability, and a fresh frame even
-// when the rAF loop is parked. The speed slider is disabled while the time
-// machine owns the clock: under an override it would move nothing, and a dead
-// control that looks alive is worse than one that says so.
+// Settle-time sync (called from _almRepaintFocus): a fresh frame for the settled moment even when the loop is parked.
 function _orrerySyncToFocus() {
-  var overridden = !!_orreryTravelFocus();
-  var slider = document.getElementById('orrery-slider');
-  if (slider) slider.disabled = overridden;
-  var tSlider = document.getElementById('orrery-transit-slider');
-  if (tSlider) tSlider.disabled = overridden;
-  _orreryUpdateDate();
   if (!_almanacOrreryRAF && _orreryCanvas) _drawOrrery(_orreryCanvas, _orreryDpr);
 }
 
@@ -1520,10 +1497,6 @@ var _orreryAutoTransit = false;  // true when rocket launch controls speed profi
 
 var _orreryCanvas = null;        // cached DOM refs for RAF loop
 
-var _orrerySpeedLabel = null;
-
-var _orrerySliderEl = null;
-
 var _orreryDpr = 1;
 
 // Hohmann transfer transit time in days
@@ -1540,60 +1513,44 @@ function _transitEffectiveSpeed(rk) {
   return rk.departSpeed + blend * (rk.cruiseSpeed - rk.departSpeed);
 }
 
-function _orrerySliderInput(val) {
-  _orreryClockChosen = true;
-  _orreryAutoTransit = false; // Manual control disengages auto-transit
-  var intVal = parseInt(val);
-  // Manual input always wins — auto-transit was overwriting the slider
-  // every frame, making speed unadjustable during a rocket flight.
-  _orreryAutoTransit = false;
-  _orrerySpeed = _sliderToSpeed(intVal);
-  var label = document.getElementById('orrery-speed-label');
-  if (label) label.textContent = _formatSpeed(_orrerySpeed);
-  // Always animating — start if not already
-  if (Math.abs(_orrerySpeed) > 1 && !_orreryPlaying) {
-    _orreryPlaying = true;
-    _orreryLastFrame = performance.now();
-    _orreryAnimate();
-  }
-  // Back to 1× = stop fast-forwarding but keep real-time ticking
-  if (Math.abs(_orrerySpeed) <= 1) {
-    _orrerySpeed = 1;
-    _orreryPlaying = false;
-  }
-}
-
-function _orrerySetSlider(speed) {
-  _orrerySpeed = speed;
-  var slider = document.getElementById('orrery-slider');
-  if (slider) slider.value = _speedToSlider(speed);
-  var label = document.getElementById('orrery-speed-label');
-  if (label) label.textContent = _formatSpeed(speed);
-}
-
-// How the orrery opens: spinning fast as scenery, or, where motion is reduced, still at now until someone asks.
+// How the orrery opens: spinning as scenery, or, where motion is reduced, still until someone asks.
 function _orreryStartState() {
   var still = typeof _almReduceMotion === 'function' && _almReduceMotion();
-  _orreryPlaying = !still;
-  _orrerySetSlider(still ? 1 : ORRERY_SCENERY_SPEED);
+  _orreryScenery = !still;
+  _orrerySceneryMs = 0;
+  _orreryPlaying = _orreryScenery;
 }
 
-function _orrerySnapToNow() {
+// Now: the rides end and the view comes home. The clock itself is the page's (_almBackToToday).
+function _orreryClockReset(closing) {
   _orreryAutoTransit = false;
-  _orreryTimeOffset = 0;
-  _orreryClockChosen = false;
+  _orreryScenery = false;
+  _orrerySceneryMs = 0;
   _orreryRockets = [];
-  _orrerySetSlider(1);
   _orreryPlaying = false;
-  var nowBtn = document.getElementById('orrery-now');
-  if (nowBtn) nowBtn.style.display = 'none';
+  if (closing) return;
   _orreryShowTransit(false);
-  _orreryUpdateDate();
   _orreryUpdateRide();
   _orreryCamReset();
-  var canvas = document.getElementById('almanac-orrery');
-  if (canvas) _drawOrrery(canvas, window.devicePixelRatio || 1);
+  if (_orreryCanvas) _drawOrrery(_orreryCanvas, _orreryDpr);
 }
+
+// A flight sets the clock's pace while it is auto-flown: slow off the pad, fast in the cruise, slow to arrive. The
+// clock's loop asks each frame; at arrival the clock goes back to real time.
+function _orreryRideTick() {
+  if (!_orreryAutoTransit) return;
+  var rk = _orreryGetActiveRocket();
+  if (rk) rk.elapsed = _orreryRocketElapsed(rk);
+  // Out of view the orrery's own loop is parked and never marks the arrival, so the clock's loop ends the ride too.
+  if (rk && rk.elapsed < rk.duration) {
+    _almRate = _transitEffectiveSpeed(rk);
+  } else {
+    _orreryAutoTransit = false;
+    _almRate = 1;
+  }
+}
+// A rocket's time in flight is the clock's distance from its launch: a rewind un-flies it, a pause holds it.
+function _orreryRocketElapsed(rk) { return Math.max(0, _orrerySimTime() - rk._launchRealTime); }
 
 function _orreryShowTransit(show) {
   var wrap = document.getElementById('orrery-transit-wrap');
@@ -1611,18 +1568,12 @@ function _orreryGetActiveRocket() {
 function _orreryTransitSlider(val) {
   var rk = _orreryGetActiveRocket();
   if (!rk) return;
-  var frac = val / 1000;
-  _orreryClockChosen = true;
-  rk.elapsed = frac * rk.duration;
-  var simLaunchTime = rk._launchRealTime || Date.now();
-  _orreryTimeOffset = (simLaunchTime - Date.now()) + rk.elapsed;
-  _orreryUpdateDate();
+  _orreryClockTouched();
+  _almClockNudge(new Date(rk._launchRealTime + (val / 1000) * rk.duration));
+  rk.elapsed = _orreryRocketElapsed(rk);
   _orreryUpdateTransitLabel();
   _orreryUpdateRide();
-  if (!_orreryPlaying) {
-    var canvas = document.getElementById('almanac-orrery');
-    if (canvas) _drawOrrery(canvas, window.devicePixelRatio || 1);
-  }
+  if (!_orreryPlaying && _orreryCanvas) _drawOrrery(_orreryCanvas, _orreryDpr);
 }
 
 function _orreryUpdateTransitLabel() {
@@ -1819,58 +1770,24 @@ function _orreryUpdateRide() {
   if (_orreryTwinOpen) _orreryLightClock(lcBeta, speed, performance.now());
 }
 
-function _orreryUpdateDate() {
-  var el = document.getElementById('orrery-date');
-  if (!el) return;
-  var d = new Date(_orrerySimTime());
-  var lang = (typeof _currentLang !== 'undefined') ? _currentLang : 'en';
-  var opts = { year: 'numeric', month: 'short', day: 'numeric' };
-  el.textContent = d.toLocaleDateString(lang, typeof _almEraOpts === 'function' ? _almEraOpts(d, opts) : opts);
-  // While the time machine owns the clock, its RETURN control is the honest
-  // way back — a local "Now" would fight the almanac's focus, so hide it.
-  var nowBtn = document.getElementById('orrery-now');
-  if (nowBtn) nowBtn.style.display =
-    (!_orreryTravelFocus() && Math.abs(_orreryTimeOffset) > MS_PER_DAY) ? '' : 'none';
-}
-
 function _orreryAnimate() {
   if (!_orreryPlaying || !_almanacOpen) {
     _almanacOrreryRAF = null;
     return;
   }
   // Out of view the loop parks, keeping _orreryLastFrame: the first frame back on screen takes the whole gap in one
-  // step, so the simulated clock and the rockets are where they would have been, and nothing woke the page meanwhile.
+  // step, so the scenery and the rockets' glow are where they would have been, and nothing woke the page meanwhile.
   if (!_orreryInView) { _almanacOrreryRAF = null; return; }
   var now = performance.now();
   var dt = now - _orreryLastFrame;
   _orreryLastFrame = now;
+  if (_orreryScenery) _orrerySceneryMs += dt * ORRERY_SCENERY_SPEED;
 
-  // Time machine override: the focus IS the clock, so the local offset stops
-  // accumulating and rockets hold their positions (suspend, never interpolate
-  // across a scrub jump). The loop keeps painting — a moving focus then shows
-  // up here every frame for free via _orrerySimTime.
-  var _travelHeld = !!_orreryTravelFocus();
-
-  // Auto-transit: modulate speed based on active rocket's flight progress
-  if (_orreryAutoTransit && !_travelHeld) {
-    var autoRk = _orreryGetActiveRocket();
-    if (autoRk && !autoRk.arrived) {
-      _orrerySpeed = _transitEffectiveSpeed(autoRk);
-      if (_orrerySpeedLabel) _orrerySpeedLabel.textContent = _formatSpeed(_orrerySpeed);
-      if (_orrerySliderEl) _orrerySliderEl.value = Math.min(_speedToSlider(_orrerySpeed), parseInt(_orrerySliderEl.max) || 60);
-    }
-  }
-
-  // Advance simulated time
-  if (!_travelHeld) _orreryTimeOffset += dt * _orrerySpeed;
-
-  // Update all rocket missions
+  // Update all rocket missions: where each is in its flight is the clock's, what glows and orbits is this loop's.
   var hasInFlight = false;
-  if (_travelHeld) dt = 0;   // freeze mission clocks with the sim clock
   for (var ri = 0; ri < _orreryRockets.length; ri++) {
     var rk = _orreryRockets[ri];
-    rk.elapsed += dt * _orrerySpeed;
-    if (rk.elapsed < 0) rk.elapsed = 0;
+    rk.elapsed = _orreryRocketElapsed(rk);
     var prog = rk.elapsed / rk.duration;
     // Un-arrive if rewinding past arrival
     if (prog < 1 && rk.arrived) { rk.arrived = false; rk.pathFade = 1.0; }
@@ -1899,15 +1816,7 @@ function _orreryAnimate() {
   if (activeRocket) {
     _orreryUpdateTransitLabel();
   }
-  if (!hasInFlight && _orreryRockets.length > 0) {
-    _orreryShowTransit(false);
-    if (_orreryAutoTransit) {
-      _orreryAutoTransit = false;
-      _orrerySetSlider(100000); // Return to default speed after arrival
-    }
-  }
-
-  _orreryUpdateDate();
+  if (_orreryRockets.length > 0) _orreryShowTransit(hasInFlight);   // a rewind past an arrival brings the slider back
   _orreryUpdateMissions();
   _orreryUpdateRide();
 
@@ -1918,20 +1827,15 @@ function _orreryAnimate() {
 
   // One loop, ever: a start while the loop runs (the Almanac opening, a
   // resume, a ride) takes over the frame already asked for instead of
-  // asking for a second. Two ran: every frame drawn twice, and only one of
-  // them stopped when the Earth view paused the Almanac, so the Earth's
-  // clock ran on at the orrery's speed under a "Real time" label.
+  // asking for a second.
   if (_almanacOrreryRAF) cancelAnimationFrame(_almanacOrreryRAF);
   _almanacOrreryRAF = requestAnimationFrame(_orreryAnimate);
 }
 
 function _orreryLaunchRocket(targetName) {
   if (targetName === 'Earth') return;
-  // No launches while the time machine holds the clock: the mission timer
-  // would be frozen at the focus instant, leaving a rocket welded to Earth.
-  // The tap still selects the planet, so its article stays one tap away.
-  if (_orreryTravelFocus()) return;
   _orreryMarkTried('fly');
+  _orreryClockTouched();   // the flight is timed on the page's clock, so the scenery stops first
 
   var earthA = _PLANETS['Earth'].a;
   var targetA = _PLANETS[targetName].a;
@@ -1989,12 +1893,10 @@ function _orreryLaunchRocket(targetName) {
   _orreryUpdateTransitLabel();
   _orreryUpdateRide();
 
-  // Enable auto-transit speed profile
+  // The clock sets out at the flight's own pace, and the flight keeps it (_orreryRideTick).
+  _almClockSetRate(departSpeed);
   _orreryAutoTransit = true;
-  _orreryClockChosen = true;
   if (!_orreryPlaying) {
-    _orrerySpeed = departSpeed;
-    _orrerySetSlider(departSpeed);
     _orreryPlaying = true;
     _orreryLastFrame = performance.now();
     _orreryAnimate();

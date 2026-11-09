@@ -36,7 +36,7 @@ for (const c of ['SEARCH_QUOTES', '_SEARCH_UNSPACED', '_searchUnaccent', '_searc
 }
 // near:'s numbers, as app.js writes them (the default, the widest it reaches, a mile).
 vm.runInContext(src.match(/const SEARCH_NEAR_DEFAULT_KM = [^;]+;/)[0].replace(/^const /, 'var '), sandbox);
-for (const f of ['_searchTokens', '_searchNearRadius', 'parseSearchQuery', '_searchTermRe', 'searchQueryMatches', '_catalogText', 'catalogItemMatches', '_libraryFilterText', '_libraryMatches']) {
+for (const f of ['_searchTokens', '_searchFilterKey', '_searchNearExtent', '_searchNearRadius', 'parseSearchQuery', '_searchTermRe', 'searchQueryMatches', '_catalogText', 'catalogItemMatches', '_libraryFilterText', '_libraryMatches']) {
   vm.runInContext(grab(f), sandbox);
 }
 

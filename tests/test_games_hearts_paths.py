@@ -27,6 +27,8 @@ from test_games_trick_fixtures import FIXTURES, GAMES, INIT, STEP_MS, VIEW, brow
 
 SHEET = ".ar-sheet:not([hidden])"
 MAX_STEPS = int(os.environ.get("ZIMI_TRICK_STEPS", 12000))
+# Each recorded game is its own test behind a cheap server and browser: --dist loadgroup deals them over workers (tests/conftest.py).
+XDIST_SPLIT = 2
 PEOPLE_KEYS = (
     "(() => { localStorage.setItem('zimi.games.hearts.seats', JSON.stringify({ kinds: %s })); "
     "localStorage.setItem('zimi.games.players', JSON.stringify(['Ava', 'Bo', 'Cy', 'Di'])); })();"

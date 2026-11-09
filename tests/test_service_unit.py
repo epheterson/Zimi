@@ -12,10 +12,17 @@ import os
 import subprocess
 import sys
 
+import pytest
+
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, ROOT)
 
 from zimi import service  # noqa: E402
+
+
+_LINUX_ONLY = pytest.mark.skipif(
+    sys.platform == "win32", reason="a systemd unit holds POSIX paths; a Windows path is quoted and escaped for systemd, so the literal comparison means nothing there"
+)
 
 
 def test_the_unit_ships_inside_the_package():
@@ -34,6 +41,7 @@ def test_the_unit_starts_this_python_and_makes_its_folders():
     assert "UMask=0027" in text
 
 
+@_LINUX_ONLY
 def test_print_and_install_from_the_command_line(tmp_path):
     out = subprocess.run([sys.executable, "-m", "zimi", "service", "print"], cwd=ROOT, capture_output=True, text=True)
     assert out.returncode == 0 and "ExecStart=" + sys.executable + " -m zimi serve" in out.stdout, out.stderr

@@ -10,17 +10,40 @@
    (48 a year). */
 
 import { GameMap } from './zimcity/engine/gameMap.js';
+import { TileUtils } from './zimcity/engine/tileUtils.js';
+import * as TV from './zimcity/engine/tileValues.js';
+import { TICKS_PER_YEAR } from './zimcity-away.js';
 
 export var W = 120, H = 100, FILE_BYTES = 27120, MAP_AT = 3120;
 
-// id, file, year, funds, disaster [kind, ticks until it], the ticks until the goal is judged, the goal, and the real place
-// (Wikidata ID, latitude, longitude) when there is one.
+// Bern's goal. Micropolis asks for traffic below 80; its roads carry about twice what this engine's do (a do-nothing Bern
+// settles at 46 to 55 here, and a player laying rail along the busiest 150 road tiles gets it under 35), so a goal of 80 was
+// met by a city that had done nothing. The goal sits under what a do-nothing city reaches and over what rail can do.
+export var TRAFFIC_GOAL = 35;
+// A file holds no power flags, census or traffic, so every file city first lives OPEN_TICKS out of sight (the power scan and
+// the census have run; before, every zone flashed "no power" and the size read village), and a scenario whose goal reads
+// traffic lives WARM_TICKS, half a year, so the map the strip reads is a measured city's and opens over the goal.
+export var OPEN_TICKS = 6, WARM_TICKS = 24;
+
+// Hamburg's bombing takes this share of the city's buildings. Micropolis asks a metropolis of Hamburg, but its city is a
+// metropolis already (118,000 people) and its fires only touch a few trees, so a Hamburg left alone was won at the start.
+// With a fifth of the buildings gone, a Hamburg left alone ends at 60,000 to 76,000 people; zoning the rubble again (the
+// roads, power lines and plants stand) takes it past the 100,000 of a metropolis within the five years.
+export var BOMBED_SHARE = 0.2;
+
+// Tokyo's goal. Micropolis asks for a score above 500; a Tokyo left alone opens at 602 and ends the five years at 472 to
+// 590, so 500 was met by a city that had done nothing. A city that cuts its taxes to 4 reaches 620 to 650, so the goal sits
+// above what a do-nothing city reaches and below what taxes alone can do.
+export var TOKYO_GOAL = 610;
+
+// id, file, year, funds, disaster [kind, ticks until it], the ticks until the goal is judged, the goal, the ticks of
+// warm-up its reading needs (see WARM_TICKS), and the real place (Wikidata ID, latitude, longitude) when there is one.
 export var SCENARIOS = [
   { id: 'dullsville', file: 'snro.111', year: 1900, funds: 5000, disaster: null, judge: 30 * 48, goal: ['class', 4] },
   { id: 'sanfrancisco', file: 'snro.222', year: 1906, funds: 20000, disaster: ['earthquake', 10], judge: 5 * 48, goal: ['class', 4], place: ['Q62', 37.7775, -122.4164] },
-  { id: 'hamburg', file: 'snro.333', year: 1944, funds: 20000, disaster: ['fires', 5], judge: 5 * 48, goal: ['class', 4], place: ['Q1055', 53.55, 10] },
-  { id: 'bern', file: 'snro.444', year: 1965, funds: 20000, disaster: null, judge: 10 * 48, goal: ['traffic', 80], place: ['Q70', 46.948, 7.4475] },
-  { id: 'tokyo', file: 'snro.555', year: 1957, funds: 20000, disaster: ['monster', 3], judge: 5 * 48, goal: ['score', 500], place: ['Q1490', 35.6897, 139.6922] },
+  { id: 'hamburg', file: 'snro.333', year: 1944, funds: 20000, disaster: ['bombing', 5, BOMBED_SHARE], judge: 5 * 48, goal: ['class', 4], place: ['Q1055', 53.55, 10] },
+  { id: 'bern', file: 'snro.444', year: 1965, funds: 20000, disaster: null, judge: 10 * 48, goal: ['traffic', TRAFFIC_GOAL], warm: WARM_TICKS, place: ['Q70', 46.948, 7.4475] },
+  { id: 'tokyo', file: 'snro.555', year: 1957, funds: 20000, disaster: ['monster', 3], judge: 5 * 48, goal: ['score', TOKYO_GOAL], place: ['Q1490', 35.6897, 139.6922] },
   { id: 'detroit', file: 'snro.666', year: 1972, funds: 20000, disaster: null, judge: 10 * 48, goal: ['crime', 60], place: ['Q12439', 42.3317, -83.0458] },
   { id: 'boston', file: 'snro.777', year: 2010, funds: 20000, disaster: ['meltdown', 5], judge: 5 * 48, goal: ['score', 500], place: ['Q100', 42.3601, -71.0589] },
   { id: 'rio', file: 'snro.888', year: 2047, funds: 20000, disaster: ['floods', 2 * 48], judge: 10 * 48, goal: ['score', 500], place: ['Q8678', -22.9111, -43.2056] }
@@ -48,15 +71,53 @@ export function mapOf(buffer) {
   return map;
 }
 
+// One tick of the city's clock is up to 16 of the engine's phases.
+export function runTicks(sim, n) {
+  for (var i = 0; i < n; i++) {
+    var t = sim._cityTime;
+    for (var k = 0; k < 16 && sim._cityTime === t; k++) sim._simulate(sim._constructSimData());
+    sim._updateTime();
+  }
+}
+// Live `ticks` ticks out of sight and put the money, the date and the budget (the year's taxes, the funding shares, a
+// budget waiting to be set) back: the city comes to the player measured (power reaches its zones, the census and the
+// traffic map are filled) instead of an unmeasured file, and has grown by nothing the player can see. `keepTiles` also
+// puts every tile back as it was: a city already kept only needs its unsaved maps rebuilt, not another half year of growth.
+export function warmUp(sim, ticks, keepTiles) {
+  var b = sim.budget, map = sim._map, kept = {}, tiles = [];
+  Object.keys(b).forEach(function (k) { if (typeof b[k] === 'number' || typeof b[k] === 'boolean') kept[k] = b[k]; });
+  if (keepTiles) for (var y = 0; y < map.height; y++) for (var x = 0; x < map.width; x++) tiles.push(map.getTileValue(x, y));
+  var time = sim._cityTime;
+  runTicks(sim, ticks);
+  Object.assign(b, kept); b.setFunds(kept.totalFunds);
+  if (keepTiles) for (var i = 0; i < tiles.length; i++) map.setTileValue(i % map.width, Math.floor(i / map.width), tiles[i]);
+  sim._cityTime = time; sim._updateTime();
+}
+
+// Hamburg's firebombing: this share of the city's buildings (houses, shops, factories, hospitals and churches) go to
+// rubble. Roads, power lines and plants stand, so the city can be rebuilt by zoning the ground again.
+export function bomb(sim, share) {
+  var map = sim._map;
+  for (var y = 0; y < map.height; y++) for (var x = 0; x < map.width; x++) {
+    var v = map.getTileValue(x, y);
+    if (!map.getTile(x, y).isZone() || v < TV.RESBASE || v >= TV.PORTBASE || Math.random() >= share) continue;
+    for (var dy = -1; dy <= 1; dy++) for (var dx = -1; dx <= 1; dx++) {
+      if (!map.testBounds(x + dx, y + dy)) continue;
+      var nv = map.getTileValue(x + dx, y + dy);
+      if (nv >= TV.RESBASE && nv < TV.PORTBASE) map.setTo(x + dx, y + dy, TileUtils.randomRubble());   // the building's own tiles; a road or a line through the footprint stands
+    }
+  }
+}
+
 // The disaster's moment and the judging, one tick of the city's clock at a time. `run` is {left, judgeIn} (kept with
 // the city); returns 'win', 'lose' or null.
 export function tick(sim, sc, run) {
   if (sc.disaster && run.left > 0) {
     var kind = sc.disaster[0], d = sim.disasterManager;
-    if (kind === 'fires') d.makeFire();                         // Hamburg: fires all through its wait
-    else if (kind === 'floods' && run.left % 24 === 0) d.makeFlood();
+    if (kind === 'floods' && run.left % 24 === 0) d.makeFlood();
     else if (run.left === 1) {
       if (kind === 'earthquake') d.makeEarthquake();
+      if (kind === 'bombing') bomb(sim, sc.disaster[2]);
       if (kind === 'monster') sim.spriteManager.makeMonster();
       if (kind === 'meltdown') d.makeMeltdown();
     }
@@ -74,10 +135,28 @@ export function judge(sim, sc) {
   if (g[0] === 'traffic') return trafficAverage(sim) < g[1];
   return false;
 }
-// The original's TrafficAverage: the traffic map's mean over the blocks that have land value (the engine works it out
-// inside its evaluation without keeping it).
-function trafficAverage(sim) {
-  var t = sim.blockMaps.trafficDensityMap, lv = sim.blockMaps.landValueMap, sum = 0, n = 0;
-  for (var x = 0; x < t.width; x++) for (var y = 0; y < t.height; y++) if (lv.get(x, y)) { sum += t.get(x, y); n++; }
-  return n ? sum / n : 0;
+// Where the city stands against the goal, for the strip and the end sheets: {kind, target, now}. A class goal names the
+// size wanted and the size now; the others are numbers (the score, the crime and traffic averages), rounded.
+export function reading(sim, sc) {
+  var g = sc.goal, e = sim.evaluation, census = sim._census;
+  if (g[0] === 'class') return { kind: 'class', target: CLASSES[g[1]].toLowerCase(), now: String(e.cityClass).toLowerCase() };
+  var now = g[0] === 'score' ? e.cityScore : g[0] === 'crime' ? census.crimeAverage : trafficAverage(sim);
+  return { kind: g[0], target: g[1], now: Math.round(now) };
+}
+// The time left to the judging, as {n, unit}: whole years, and months once less than a year is left.
+export { TICKS_PER_YEAR };   // the one clock (zimcity-away.js)
+export var TICKS_PER_MONTH = 4;
+export function timeLeft(ticks) {
+  return ticks > TICKS_PER_YEAR ? { n: Math.ceil(ticks / TICKS_PER_YEAR), unit: 'years' } : { n: Math.max(1, Math.ceil(ticks / TICKS_PER_MONTH)), unit: 'months' };
+}
+// The original's TrafficAverage, as the engine's evaluation works it out (evaluation.js getTrafficAverage, which does not keep
+// it): the traffic map's mean over the blocks that have land value, a floor, times 2.4. Without that 2.4 Bern's goal (below 80)
+// was met by a city whose real figure was twice that.
+var TRAFFIC_SCALE = 2.4;
+export function trafficAverage(sim) {
+  var t = sim.blockMaps.trafficDensityMap, lv = sim.blockMaps.landValueMap, sum = 0, n = 1;
+  for (var x = 0; x < lv.gameMapWidth; x += lv.blockSize) {
+    for (var y = 0; y < lv.gameMapHeight; y += lv.blockSize) if (lv.worldGet(x, y) > 0) { sum += t.worldGet(x, y); n++; }
+  }
+  return Math.floor(sum / n) * TRAFFIC_SCALE;
 }

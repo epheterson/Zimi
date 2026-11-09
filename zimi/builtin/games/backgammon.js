@@ -614,7 +614,7 @@
 
   function finishGame(w) {
     var o = outcome(s, w); session[w] += o.points; paint();
-    G.finish(T(o.kind === 'single' ? 'backgammon.win.single' : 'backgammon.win.' + o.kind, { n: o.points }), G.vsComputer() ? (isHuman(w) ? 'w' : 'l') : null, sideName(w));
+    G.finish(T('backgammon.why.' + o.kind) + ' ' + T('backgammon.win.' + o.kind, { n: o.points }), G.vsComputer() ? (isHuman(w) ? 'w' : 'l') : null, sideName(w));
   }
 
   function hint() {
@@ -653,5 +653,5 @@
       else beginTurn();
     }
   });
-  if (new URLSearchParams(location.search).has('debug')) root.__bk = { state: function () { return s; }, engine: root.BackgammonEngine, session: function () { return session; } };
+  if (new URLSearchParams(location.search).has('debug')) root.__bk = { state: function () { return s; }, finish: function (w) { finishGame(w); }, engine: root.BackgammonEngine, session: function () { return session; } };
 })(typeof globalThis !== 'undefined' ? globalThis : this);

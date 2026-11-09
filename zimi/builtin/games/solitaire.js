@@ -97,6 +97,32 @@
     return s;
   }
 
+  // Any move left, with the stock as a way to find one: every card the stock can turn up (and the waste turned over again, until a
+  // pass repeats itself) is tried against the tableau and the foundations. Taking a card back off a foundation is a move, but
+  // not a way forward, so it does not count.
+  function boardMove(state) {
+    var P = state.piles, from = ['waste'].concat(TABLEAU), to = FOUNDATION.concat(TABLEAU), i, j, k, n;
+    for (i = 0; i < from.length; i++) {
+      n = P[from[i]].length;
+      for (j = 0; j < n; j++) for (k = 0; k < to.length; k++) {
+        if (j === 0 && isTableau(from[i]) && isTableau(to[k]) && !P[to[k]].length) continue;   // a column's own bottom card to an empty column only shuffles (bestMove skips it too)
+        if (legalMove(state, from[i], j, to[k])) return true;
+      }
+    }
+    return false;
+  }
+  function hasMove(state) {
+    var s = state, seen = {}, key;
+    while (s) {
+      if (boardMove(s)) return true;
+      key = s.piles.stock.map(function (c) { return c.id; }).join() + '|' + s.piles.waste.map(function (c) { return c.id; }).join();
+      if (seen[key]) return false;
+      seen[key] = true;
+      s = drawStock(s);
+    }
+    return false;
+  }
+
   // Where a tap sends a card: a foundation first (its own suit's pile, else an
   // empty one), then a tableau pile that already has cards, then an empty one
   // (never to move a king that is already at the bottom of its column).
@@ -212,7 +238,7 @@
   var api = {
     TABLEAU: TABLEAU, FOUNDATION: FOUNDATION, SCORE: SCORE,
     blankState: blankState, newState: newState, canPick: canPick, legalMove: legalMove, applyMove: applyMove, drawStock: drawStock,
-    bestMove: bestMove, isWon: isWon, canAutoFinish: canAutoFinish, autoFinishStep: autoFinishStep,
+    bestMove: bestMove, hasMove: hasMove, isWon: isWon, canAutoFinish: canAutoFinish, autoFinishStep: autoFinishStep,
     timeBonus: timeBonus, almostWon: almostWon, why: why, place: place
   };
   root.ZimiSolitaire = api;
@@ -256,6 +282,7 @@
         var lost = before.score - after.score;
         page.note(lost > 0 ? TX('sol.recycledCost', { points: Z.plural(lost, 'point') }) : TX('sol.recycled'));
       },
+      stuck: Z.stuckWhen(api, hasMove),
       after: function (st) { if (canAutoFinish(st)) autoFinish(); },
       statText: function (sec, st) { return Z.fmtTime(sec) + ' · ' + st.score; },
       cascadeOrder: function (st) {

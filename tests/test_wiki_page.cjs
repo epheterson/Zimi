@@ -18,6 +18,8 @@ const page = fs.readFileSync(path.join(root, 'wiki.html'), 'utf8').replace(/\r\n
 const src = fs.readFileSync(path.join(root, 'app.js'), 'utf8').replace(/\r\n/g, '\n');
 const appsJs = fs.readFileSync(path.join(root, 'apps.js'), 'utf8').replace(/\r\n/g, '\n');
 const reader = fs.readFileSync(path.join(root, 'wiki-reader.js'), 'utf8').replace(/\r\n/g, '\n');
+// A choice goes through apps.js's prefWrite: the shell's door when there is one, else this browser's storage, never throwing.
+const prefWriteKeepsHere = /function prefWrite\(key, value\) \{[^]*?window\.parent\._prefWrite\(key, value\)[^]*?catch \(e\) \{\}\n  try \{ if \(value == null\) localStorage\.removeItem\(key\); else localStorage\.setItem\(key, String\(value\)\); \} catch \(e\) \{\}/.test(appsJs);
 let failures = 0;
 function ok(label, cond, detail) {
   console.log((cond ? 'PASS  ' : 'FAIL  ') + label + (detail ? '  ' + detail : ''));
@@ -150,7 +152,7 @@ ok('pills: all on until one is tapped, the first tap narrows, the last one off i
 ok('a change of pills redraws what is shown: the search again, or Today', /function scopeChanged\(\) \{\s*renderPills\(\);\s*if \(_q\) wikiSearch\(_q\); else renderToday\(\);/.test(page));
 ok('search asks /search scoped to the chosen wikis, quick first, the full text when the quick answer is partial', /'\/search\?q=' \+ encodeURIComponent\(_q\) \+ '&zim=' \+ encodeURIComponent\(zims\)/.test(page) && /get\(base \+ '&fast=1'\)/.test(page) && /if \(!d1\.partial\) return;\s*get\(base\)/.test(page));
 ok('results carry their wiki, and its language when the search reaches every language', /function srcLine\(zim\)/.test(page) && /_everyLanguage && w\.language/.test(page));
-ok('two views, cards and a list, remembered in this browser (and read safely)', /var VIEW_KEY = 'zimi_wiki_view';/.test(page) && /try \{ localStorage\.setItem\(VIEW_KEY, v\); \} catch \(e\) \{\}/.test(page) && /try \{ _view = localStorage\.getItem\(VIEW_KEY\)/.test(page));
+ok('two views, cards and a list, remembered in this browser (and read safely)', /var VIEW_KEY = 'zimi_wiki_view';/.test(page) && /prefWrite\(VIEW_KEY, v\);/.test(page) && prefWriteKeepsHere && /try \{ _view = localStorage\.getItem\(VIEW_KEY\)/.test(page));
 ok('a day\'s picks are kept for the day, so a return is instant and no pick changes', /var TODAY_KEY = 'zimi_wiki_today';/.test(page) && /kept\.day === _day/.test(page));
 ok('Today is a front page: the day\'s article, where you were, and the day of every wiki of the language',
   /var PARTS = \['picks', 'otd', 'extras', 'front'\];/.test(page) && /otdHtml\(evs\)/.test(page) && /dykHtml\(fz,/.test(page) && /potdHtml\(pz,/.test(page) && /fromPick\(_got\.picks\[z\]\)/.test(page) && /frontItems\(plan\.front\)/.test(page) && /section\('continue', STR\.continue/.test(page));
@@ -163,7 +165,7 @@ ok('the trails\' keys are the shell\'s (SK), written nowhere else', /WIKI_TRAIL:
 ok('a mini is the server\'s word for it (its flavour), not the file name read again', /mini = info\.flavour === 'mini';/.test(reader) && !/_wikiIsMini|_mini\(\?:/.test(reader));
 ok('only answers with something in them are kept in this browser', /if \(!keep\) return;/.test(page) && /if \(hasContent\(_got\[p\]\[n\]\)\) store\[p\]\[n\]/.test(page));
 ok('a failed ask is asked again on the next view', /return _failed\[z\] \|\| !known\('picks', z\)/.test(page));
-ok('the language is remembered in this browser, and the whole page follows it', /var LANG_KEY = 'zimi_wiki_lang';/.test(page) && /try \{ localStorage\.setItem\(LANG_KEY, code\); \} catch \(e\) \{\}/.test(page) && /_lang = code; _sel = \[\];/.test(page));
+ok('the language is remembered in this browser, and the whole page follows it', /var LANG_KEY = 'zimi_wiki_lang';/.test(page) && /prefWrite\(LANG_KEY, code\);/.test(page) && prefWriteKeepsHere && /_lang = code; _sel = \[\];/.test(page));
 ok('the page asks for the language it wants (kept, else yours, else Zimi\'s); the server settles it', /'\/wiki\/home\?day=' \+ _day \+ '&lang=' \+ encodeURIComponent\(storedLang\(\) \|\| yourLang\(\) \|\| STR\.lang \|\| 'en'\)/.test(page) && /_lang = d\.lang \|\| '';/.test(page));
 ok('your languages (Settings > Languages) lead its language list', /_langs = yoursFirst\(d\.languages \|\| \[\]\);/.test(page) && /yours\.indexOf\(STR\.lang\) < 0 \? yours\[0\] : ''/.test(page));
 ok('search reaches the language chosen, and every language when asked', /\(_everyLanguage \? _wikis : scoped\(\)\)/.test(page) && /STR\.search_all_languages/.test(page));

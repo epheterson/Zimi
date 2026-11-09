@@ -15,17 +15,37 @@
   "use strict";
   var d = document, root = window;
   var SHELF = "../index.html";
-  var KEYPAD = { solo: 9, keen: 9, towers: 9, unequal: 9, filling: 9, group: "abcdefgh" };
+  // The keys under the board: how many digits (or letters) this game of the puzzle takes, from its parameters (a 5 by 5 Towers
+  // takes 1 to 5). `lead`: the number the parameters begin with; solo's are columns by rows of a block.
+  var KEYPAD_ALPHABET = "123456789abcdefghijklmnopqrstuvwxyz", KEYPAD_FALLBACK = 9;
+  function lead(p) { var m = /^(\d+)/.exec(p); return m ? +m[1] : 0; }
+  var KEYPAD_SIZE = {
+    solo: function (p) { var m = /^(\d+)x(\d+)/.exec(p) || /^(\d+)j/.exec(p); return m ? (m[2] ? m[1] * m[2] : +m[1]) : 0; },
+    keen: lead, towers: lead, unequal: lead, group: lead, filling: function () { return KEYPAD_FALLBACK; }
+  };
+  var KEYPAD_LETTERS = { group: 1 };
   var KEY_CODES = { Backspace: 8, Enter: 13 };
   var LONG_PRESS_MS = 450;     // a touch held this long, without moving, is a right press
   var LONG_PRESS_SLOP = 10;    // px a finger may drift and still be holding still
   var TWO_FINGER_MS = 350;     // two fingers down and up within this, without moving, are the middle button
   var NATIVE_QUIET_MS = 700;   // after a touch, the browser's own mouse events for it are dropped
-  var SOLVED_SHEET_MS = 1000;  // the puzzle's own flash of success plays before the sheet comes
+  var SOLVED_SHEET_MS = 700;   // the puzzle's own flash of success plays before the sheet comes
   var READY_POLL_MS = 50;      // how often to ask whether the puzzle's own script has started the game
   var CLOCK_TICK_MS = 500;     // how often the solving clock counts
   var BEST_KEY = "zimi.games.puzzleBest";
   var ADVANCED_OPEN_KEY = "zimi.games.puzzleAdvanced";
+  // The puzzle's own preferences are the person's, and the frontend keeps them under this page's address + " preferences",
+  // which differs by reader (Zimi's /w/..., Kiwix's /content/...) and so cannot ride the account. That one key is kept
+  // under a name that can (zimi.games.puzzleprefs.<puzzle>); what an older visit left under the address is read until
+  // the first save.
+  (function () {
+    var name = (root.location.pathname.split("/").pop() || "").replace(/\.html?$/, "").replace(/[^A-Za-z0-9_-]/g, "");
+    var proto = root.Storage && root.Storage.prototype;
+    if (!name || !proto) return;
+    var old = root.location.pathname + " preferences", key = "zimi.games.puzzleprefs." + name, get = proto.getItem, set = proto.setItem;
+    proto.getItem = function (k) { var v = k === old ? get.call(this, key) : null; return v === null ? get.call(this, k) : v; };
+    proto.setItem = function (k, v) { return set.call(this, k === old ? key : k, v); };
+  })();
   // Pages that stay in the ZIM but are not on the shelf: the shelf's own game of the same kind is the one tile, and Back goes to it.
   var FOLDED = { mines: "minesweeper", solo: "sudoku", guess: "codebreaker" };
   // Puzzles whose right button does nothing the left does not: no Mark toggle for them.
@@ -37,8 +57,9 @@
   // The day's puzzle (ZimiShell.daily, ../shell.js): its daily type and the day's seed as a game ID ("10x10t0dn#<seed>"), so the
   // puzzle makes the same grid for everyone that day. A daily left part-way comes back from its own save instead.
   var DAILY = root.ZimiShell && root.ZimiShell.daily;
-  if (DAILY && typeof DAILY.kind === "string" && !root.location.hash && !root.ZimiShell.peekSave() && root.history && root.history.replaceState) {
-    root.history.replaceState(null, "", root.location.pathname + root.location.search + "#" + DAILY.kind + "#" + DAILY.seed);
+  var DAILY_HASH = DAILY && typeof DAILY.kind === "string" ? "#" + DAILY.kind + "#" + DAILY.seed : "";
+  if (DAILY_HASH && !root.location.hash && !root.ZimiShell.peekSave() && root.history && root.history.replaceState) {
+    root.history.replaceState(null, "", root.location.pathname + root.location.search + DAILY_HASH);
   }
 
   function el(tag, cls, text) {
@@ -90,7 +111,11 @@
     net: { 5: "amber" },                                    // the wires that are lit
     mines: { 1: "sunk", 20: "surface2", 21: "edge" },       // an opened square sinks into the page; a closed one is raised, with an ink edge
     loopy: { 2: "unknown" },                                // an edge not yet drawn is a faint guide under the lines that are
-    pattern: { 4: "unknown" }                               // a square not yet decided sits just above the panel
+    pattern: { 4: "unknown" },                              // a square not yet decided sits just above the panel
+    mosaic: { 1: "unknown", 5: "ink" },                    // a square not yet decided is a quiet panel, and its clue reads as ink on it
+    flip: { 2: "lit" },                                     // a lit square is amber, so a solved board is a lit one and not a blank page
+    unruly: { 3: "lit" },                                   // a white square is cream, so it is not a lighter grey of the unfilled ones
+    tents: { 1: "line", 2: "grass" }                        // the grid is a quiet line, and grass is the table's green, not neon lime
   };
   var raw = [], mapped = [];
   function isDark() {
@@ -132,6 +157,10 @@
     if (role === "surface2") return toHex(ground);
     if (role === "edge") return toHex(mix(ink, ground, 0.3));
     if (role === "unknown") return toHex(mix(ground, ink, 0.16));
+    if (role === "lit") return toHex(mix(ground, parse(token("--select-ring", "#f59e0b")), dark ? 0.9 : 0.4));
+    if (role === "ink") return toHex(ink);
+    if (role === "line") return toHex(mix(ground, ink, 0.72));      // the grid and the counts at the edges: softer than ink, still readable
+    if (role === "grass") return toHex(mix(ground, parse(token("--felt", "#285c43")), dark ? 0.55 : 0.22));
     if (!KEEP_BLUE[NAME] && s > 0.8 && h >= 225 && h <= 250 && l >= 0.4 && l <= 0.5) { var sl = SLATE[dark ? "dark" : "light"]; return toHex(fromHsl(sl[0], sl[1], sl[2])); }
     if (s < 0.12) return toHex(mix(ink, ground, (rgb[0] + rgb[1] + rgb[2]) / 765));      // grey: black is ink, white is surface2
     var plain = !CATEGORICAL[NAME];
@@ -703,6 +732,7 @@
   // Each line the frontends write, in the player's language. The number-bearing ones are matched by their English shape.
   var STATUS = [
     [/\bMoves(?: since auto-solve)?: \d+\s*/g, function () { return ""; }],
+    [/\bCannot move!\s*/i, function () { return T("cards.noMoves", "No moves left") + ". "; }],
     [/^COMPLETED!\s*/i, function () { return T("pz.solved", "Solved") + ". "; }],
     [/\bAuto-solve[dr]( used)?\.?/i, function () { return T("pz.solutionShown", "Solution shown") + "."; }],
     [/^\[(\d+:\d\d)\]\s*/, function (m, clock) { return clock + " · "; }],
@@ -794,6 +824,15 @@
       }, true);
     });
   }
+  // A puzzle that can run out of moves (Same Game) says so the way the card games do: a sheet with the score and New game; Undo is
+  // in the bar behind it. One sheet for each time the status turns to "Cannot move!".
+  var stuck = false;
+  function declareStuck(raw) {
+    if (stuck) return;
+    stuck = true;
+    var score = /Score: (\d+)/.exec(raw);
+    if (!freshLoad && root.ZimiShell) root.ZimiShell.endSheet({ result: "over", title: T("cards.noMoves", "No moves left"), text: T("cards.stuck", "Undo a few moves to try another way."), stats: score ? [[T("play.score", "Score"), num(score[1])]] : [], after: 0 });
+  }
   var freshLoad = true;      // the game that is there when the page opens (or comes back from a save) is not a win
   function declareWin() {
     if (solved) return;
@@ -802,12 +841,14 @@
   }
   // The solving clock: counts while a game is under way, the page is showing and the Menu is shut. A new game, or taking every move
   // back, starts it over.
-  var held = false;
+  var held = false, wasUnder = false;
   function tickClock() {
     var now = Date.now(), under = canMove("undo") || canMove("redo");
     if (under && !solved && !held && d.visibilityState !== "hidden") elapsed += Math.min(now - ticked, 2 * CLOCK_TICK_MS);
     if (!under) { if (solved) newGameStarted(); elapsed = 0; }
     ticked = now;
+    if (wasUnder && !under) syncKeypad();   // a game of another size begins with no moves; the save is read only then (and when the Menu shuts), not every tick
+    wasUnder = under;
   }
   function newGameStarted() { solved = false; elapsed = 0; }
   // The frontend calls timer_callback each frame with the seconds since the last one; a burst of calls is one animation or flash.
@@ -840,6 +881,7 @@
     function sync() {
       var raw = bar.textContent, t = sayStatus(raw);
       if (/^(\[\d+:\d\d\]\s*)?COMPLETED!/i.test(raw)) declareWin(); else if (solved && !/COMPLETED!/i.test(raw)) { solved = false; }
+      if (/Cannot move!/i.test(raw)) declareStuck(raw); else stuck = false;
       if (line.textContent !== t) line.textContent = t;
       line.hidden = !t;
     }
@@ -929,19 +971,46 @@
   }
   // The row under the board on touch: the digits for the puzzles that take them, and Mark (Pencil, where there are digits), which
   // makes the taps that follow right presses until it is pressed again. Neither is shown with a keyboard and a mouse.
-  function touchRow(canvas, name, into) {
-    var spec = KEYPAD[name], labels = spec ? (typeof spec === "number" ? "123456789".slice(0, spec).split("") : spec.split("")) : [];
-    var keys = el("div", "zf-keys");
-    keys.setAttribute("role", "group");
-    word(keys, "pz.keypad", "Keypad", "aria-label");
-    labels.concat(spec ? ["Backspace"] : []).forEach(function (k) {
+  // The keys this puzzle's current game takes: ["1", ... "5"], or letters for Group; [] for a puzzle with no keypad.
+  function keypadLabels(name) {
+    var size = KEYPAD_SIZE[name];
+    if (!size) return [];
+    var par = /^PARAMS\s*:\d+:(.*)$/m.exec(saveText() || "");
+    if (!par) return [];   // no game to ask yet: the keys stay as they are
+    var n = Math.min(size(par[1]) || KEYPAD_FALLBACK, KEYPAD_ALPHABET.length);
+    return (KEYPAD_LETTERS[name] ? KEYPAD_ALPHABET.slice(KEYPAD_FALLBACK) : KEYPAD_ALPHABET).slice(0, n).split("");
+  }
+  var keypad = null;   // { name, canvas, row, labels }: the keys on the page now
+  function fillKeys(labels) {
+    keypad.row.textContent = "";
+    var gone = labelled.indexOf(keypad.back);
+    if (gone >= 0) labelled.splice(gone, 1);   // the old Clear key is gone with its row
+    labels.concat(["Backspace"]).forEach(function (k) {
       var b = el("button", "ar-btn", k === "Backspace" ? String.fromCharCode(0x232b) : k);
       b.type = "button";
-      if (k === "Backspace") word(b, "pz.clear", "Clear", "aria-label"); else b.setAttribute("aria-label", k);
+      if (k === "Backspace") { word(b, "pz.clear", "Clear", "aria-label"); keypad.back = labelled[labelled.length - 1]; } else b.setAttribute("aria-label", k);
       b.onpointerdown = function (e) { e.preventDefault(); };
-      b.onclick = function () { sendKey(canvas, k); };
-      keys.appendChild(b);
+      b.onclick = function () { sendKey(keypad.canvas, k); };
+      keypad.row.appendChild(b);
     });
+    keypad.labels = labels.join("");
+  }
+  // A new game of another size has other keys: checked when the clock sees a game's moves all taken back or gone, and when the Menu shuts.
+  function syncKeypad() {
+    if (!keypad) return;
+    var labels = keypadLabels(keypad.name);
+    if (labels.length && labels.join("") !== keypad.labels) fillKeys(labels);
+  }
+  function touchRow(canvas, name, into) {
+    var spec = KEYPAD_SIZE[name], keys = el("div", "zf-keys");
+    keys.setAttribute("role", "group");
+    word(keys, "pz.keypad", "Keypad", "aria-label");
+    if (spec) {
+      var pad = el("span", "zf-pad");   // the keys and Clear, apart from Mark
+      keypad = { name: name, canvas: canvas, row: pad, labels: "" };
+      keys.appendChild(pad);
+      fillKeys(KEYPAD_LETTERS[name] ? "abcdefgh".split("") : "123456789".split(""));
+    }
     if (!LEFT_ONLY[name]) {
       var mark = word(el("button", "ar-btn zf-mark"), spec ? "pz.pencil" : "pz.mark", spec ? "Pencil" : "Mark");
       mark.type = "button";
@@ -983,8 +1052,9 @@
       // except the day's: a solved daily comes back solved (its own save, gone with the day).
       save: function () { return solved && !DAILY ? null : { sav: saveText(), t: elapsed }; },
       load: function (data) {
-        // A link to one particular game (#id) is that game, not the one left behind; a daily's own save is the day's game.
-        if (!data || typeof data.sav !== "string" || !encoder || (root.location.hash && !DAILY)) return false;
+        // A link to one particular game (#id) is that game, not the one left behind; a daily's own save is the day's game, and a
+        // daily's own address is the day's game too (any other #id on it is that game).
+        if (!data || typeof data.sav !== "string" || !encoder || (root.location.hash && root.location.hash !== DAILY_HASH)) return false;
         loadText(data.sav);
         elapsed = +data.t || 0;
         return true;
@@ -1018,6 +1088,8 @@
     if (!canvas) return;
     buildBar();
     var frame = fitBox();
+    // The puzzle's goal in one line (the first line of How to play), above the board.
+    frame.parentNode.insertBefore(word(el("p", "pz-rules"), "help." + NAME + ".goal", ""), frame);
     watchStatus(frame);
     touchIsMouse(canvas);
     touchRow(canvas, NAME, frame.parentNode);
@@ -1032,8 +1104,8 @@
         inProgress: function () { var u = $("undo"); return !!u && !u.disabled && !solved; },
         menu: newGameOptions, settings: prefsSettings, stats: puzzleStats
       });
-      if (root.ZimiShell.onHold) root.ZimiShell.onHold(function (on) { held = on; });
-      whenRunning(function () { watchFlash(); persistGame(); d.documentElement.classList.add("zf-running"); });   // zf-running: the saved game, if any, is back
+      if (root.ZimiShell.onHold) root.ZimiShell.onHold(function (on) { held = on; if (!on) syncKeypad(); });
+      whenRunning(function () { watchFlash(); persistGame(); syncKeypad(); d.documentElement.classList.add("zf-running"); });   // zf-running: the saved game, if any, is back
     }
   }
   start();

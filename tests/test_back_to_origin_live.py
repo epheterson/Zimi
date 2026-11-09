@@ -136,7 +136,8 @@ def test_almanac_to_an_article_and_back_to_its_place_and_date(served, lang, phon
             timeout=30000,
         )
         # A day away from today, and the Almanac scrolled to a link.
-        pg.evaluate("() => _almSelectDay(_almTodayJDN - 40)")
+        # A jump keeps the clock running at its pace, so the moment is held still to compare it.
+        pg.evaluate("() => { _almSelectDay(_almTodayJDN - 40); _almClockSetRate(0); }")
         focus = pg.evaluate("() => _almFocus && _almFocus.getTime()")
         assert focus
         pg.evaluate(QUIET, QUIET_MS)

@@ -108,9 +108,10 @@
   function show(fresh) {
     paint();
     var w = g.words[g.round], playing = g.phase === 'play';
-    els.how.textContent = playing ? T('babel.how') : '';
+    els.how.textContent = playing ? T('babel.how') : T(g.won ? 'babel.gotIt' : 'babel.missed');   // the line is always there, so the clues never move
     drawClues(fresh);
-    els.form.hidden = !playing; els.more.hidden = !playing || g.shown >= w.clues.length;
+    els.field.disabled = els.guess.disabled = !playing;   // the form stays (and is dimmed) once the word is settled
+    els.more.hidden = !playing || g.shown >= w.clues.length;
     els.next.hidden = playing; els.read.hidden = playing || !dict || !w.path;
     if (!playing) {
       els.next.textContent = T(g.round + 1 >= g.words.length ? 'round.seeScore' : 'round.next');
@@ -120,7 +121,7 @@
   }
 
   function guess(text) {
-    if (g.phase !== 'play' || !text.trim()) return;
+    if (!g || g.phase !== 'play' || !text.trim()) return;
     var w = g.words[g.round];
     if (isRight(text, w.answer)) { g.points[g.round] = pointsFor(g.shown); return solve(true); }
     if (g.shown >= w.clues.length) { g.points[g.round] = 0; return solve(false); }
@@ -141,7 +142,7 @@
   function finish() {
     done = true; var best = Play.load(BEST_KEY, {}), key = dict ? 'library' : 'built-in', mine = best[key] || 0, score = total(), max = g.words.length * pointsFor(START_CLUES);
     if (score > mine) { best[key] = score; Play.save(BEST_KEY, best); }
-    var line = T('round.verdict.' + Lib.verdict(score, max));
+    var line = Lib.verdictLine(T, 'round.verdict.', Lib.verdict(score, max));
     status.say(line);
     ZimiShell.endSheet({ result: 'over', text: line, stats: [[T('play.score'), T('round.of', { n: score, total: max })], [T('play.best'), Play.num(Math.max(score, mine))]] });
   }
@@ -156,7 +157,8 @@
   }
   function newGame() {
     if (building) return; building = true; done = false;
-    status.say(T('babel.choosing')); els.how.textContent = ''; els.clues.innerHTML = ''; els.form.hidden = els.more.hidden = els.next.hidden = els.read.hidden = true;
+    status.say(T('babel.choosing')); els.how.textContent = ''; els.clues.innerHTML = ''; els.more.hidden = els.next.hidden = els.read.hidden = true;
+    els.field.disabled = els.guess.disabled = true;   // until the words are chosen (show() opens them)
     var rows = Lib.sample(root.BABEL_WORDS, ROUNDS, Math.random);
     var work = dict ? Promise.all(rows.map(libraryWord)) : Promise.resolve([]);
     work.then(function (found) {

@@ -113,7 +113,9 @@ const PLAIN_ROWS = {
   julian_century: 'no article of its own (a hundred Julian years)',
   moon_k: 'a ratio of two radii, not a named thing',
   light_au: 'a sum of two things (light, the AU), not one article',
-  zero_c: 'a conversion of one scale into another'
+  zero_c: 'a conversion of one scale into another',
+  clock_stops: 'the clock slider\'s own stops, not a named thing',
+  clock_span: 'how far the clock travels, a limit of this page'
 };
 const rowsSrc = grab(tbSrc, /var TB_CONST_ROWS = \{[\s\S]*?\n\};/, 'TB_CONST_ROWS');
 const rowKeys = [...rowsSrc.matchAll(/^\s+\['([a-z0-9_]+)', /gm)].map((m) => m[1]);

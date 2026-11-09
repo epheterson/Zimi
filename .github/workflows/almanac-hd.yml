@@ -1,13 +1,16 @@
-name: Almanac HD
+name: Almanac HD tile source
 
-# Builds Almanac HD (scripts/build_almanac_hd.py: NASA's Earth and Moon as tile
-# pyramids, about 115 MB) and attaches it to a release that already exists.
-# Zimi fetches it from there once, when someone opening the Almanac says yes
-# (zimi/almanachd.py reads zimi/assets/almanac-hd.json for the file and tag).
+# Makes a NEW tile source: scripts/build_almanac_hd.py (NASA's Earth and Moon as tile pyramids, planets, the Apollo sites;
+# about an hour of downloads) and attaches the ZIM to a release that already exists. Rare: when NASA reissues an image or
+# a body is added. Not part of a release.
 #
-# By hand, not on every release: the imagery changes when NASA reissues it, not
-# when Zimi does. The descriptor it writes is uploaded as an artifact; commit it
-# with the release that names that tag. It never creates or moves a tag.
+# The tile source is the immutable input of every release's HD flavour (scripts/build_almanac_maxi.py, run by
+# desktop-release.yml): zimi/assets/almanac-tiles.json pins its file, size, sha256 and the release that carries it. To
+# publish a new one:
+#   1. Run this workflow with the tag of an existing release.
+#   2. Copy the pin it prints (the job summary, and the almanac-tiles-pin artifact) into zimi/assets/almanac-tiles.json
+#      and commit it. The next release builds its HD flavour from the new tiles.
+# It never creates or moves a tag, and nothing here is needed to release Zimi.
 
 on:
   workflow_dispatch:
@@ -35,7 +38,7 @@ jobs:
 
       - run: pip install -r requirements.txt "Pillow>=13.0.0" numpy scipy
 
-      - name: Build the tiles and the ZIM
+      - name: Build the tiles and the tile source ZIM
         env:
           TAG: ${{ inputs.tag }}
         run: python3 scripts/build_almanac_hd.py --out dist --tag "$TAG"
@@ -46,7 +49,16 @@ jobs:
           TAG: ${{ inputs.tag }}
         run: gh release upload "$TAG" dist/zimi_almanac_hd_*.zim --clobber
 
+      - name: Print the pin to commit
+        run: |
+          {
+            echo "Commit this as zimi/assets/almanac-tiles.json:"
+            echo '```json'
+            cat zimi/assets/almanac-tiles.json
+            echo '```'
+          } | tee -a "$GITHUB_STEP_SUMMARY"
+
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
-          name: almanac-hd-descriptor
-          path: zimi/assets/almanac-hd.json
+          name: almanac-tiles-pin
+          path: zimi/assets/almanac-tiles.json

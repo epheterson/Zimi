@@ -5,3 +5,4 @@ Creator: Zimi
 Publisher: Zimi
 Tags: _category:education;astronomy;zimi;zimi:own
 Icon: icon.png
+Articles: index.html

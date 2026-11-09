@@ -409,14 +409,14 @@ function _atEl(id) { return document.getElementById(id); }
 function _atLang() { return (typeof _currentLang !== 'undefined' && _currentLang) || 'en'; }
 
 // Feet and miles where people measure in them, metres elsewhere; the toggle
-// is remembered on this device only.
+// is remembered with the person (SK.ALM_UNITS).
 function _atUnits() {
   try { var v = localStorage.getItem(AT_UNITS_KEY); if (v === 'ft' || v === 'm') return v; } catch (e) {}
   var nav = (typeof navigator !== 'undefined' && navigator.language) || '';
   return /-(US|LR|MM)$/i.test(nav) || (/^en$/i.test(nav) && _atLang() === 'en') ? 'ft' : 'm';
 }
 function _atSetUnits(u) {
-  try { localStorage.setItem(AT_UNITS_KEY, u); } catch (e) {}
+  _prefWrite(AT_UNITS_KEY, u);
   _atRender();
 }
 
@@ -475,13 +475,21 @@ function _atEnsureData(loc) {
   _atFetch('/almanac-place?lat=' + loc.lat + '&lon=' + loc.lon).then(function(d) {
     if (_at.key !== key) return;
     _at.data = d; _at.loading = false;
+    // The live sky's sea needs the stations, not the month's tides: it is told now, and a page held for it (almanac.js
+    // _almSeaWaiting) is let go, before the section below is drawn.
+    if (typeof _skySeaChanged === 'function') _skySeaChanged();
+    if (typeof _almSeaGiveUp === 'function') _almSeaGiveUp();
     var st = _getLocation().stored ? _atTideStation() : null;
     if (!st) { _atRender(); return; }
-    _atMonthWarm(st, _almFocusInstant().getTime()).then(function() { if (_at.key === key) _atRender(); }, function() {
-      // A day that could not be worked out: the section says the tide is not to be had, not a blank (and does not
-      // try the same sum again in the draw).
-      if (_at.key === key) { _at.data = { failed: true }; _atRender(); }
-    });
+    // The month's tides are the section's, below the page's first screen: worked out once that screen has been shown a while.
+    var warm = function() {
+      _atMonthWarm(st, _almFocusInstant().getTime()).then(function() { if (_at.key === key) _atRender(); }, function() {
+        // A day that could not be worked out: the section says the tide is not to be had, not a blank (and does not
+        // try the same sum again in the draw).
+        if (_at.key === key) { _at.data = { failed: true }; _atRender(); }
+      });
+    };
+    if (typeof _almWhenSettled === 'function') _almWhenSettled(warm); else warm();
   }).catch(function() {
     if (_at.key !== key) return;
     _at.loading = false; _at.data = { failed: true }; _atRender();

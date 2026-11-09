@@ -1,0 +1,291 @@
+{
+ "_about": "Fourteen real features from the place layer of maps_en_all_2026-06 (Kiwix's world map): z9 tiles around Springfield IL, Cologne, Tokyo, Paris and Chicago, and z4 for the state. Tags are as the tiles carry them, languages other than en and de left out. A value is [type, n] where the tile stored a number (rank and capital are sint) and a string where it stored text. lat/lng are the point's place. What the tiles do not carry on a town: population, region, country, ISO codes (iso_a2 is only on class=country points). Springfield (village) is a village, which the index leaves out.",
+ "features": [
+  {
+   "z": 9,
+   "lat": 39.799,
+   "lng": -89.644,
+   "tags": {
+    "name": "Springfield",
+    "name:en": "Springfield",
+    "name_en": "Springfield",
+    "name_int": "Springfield",
+    "name:latin": "Springfield",
+    "name_de": "Springfield",
+    "class": "city",
+    "rank": [
+     "sint",
+     6
+    ],
+    "capital": [
+     "sint",
+     4
+    ]
+   }
+  },
+  {
+   "z": 9,
+   "lat": 39.8454,
+   "lng": -88.9524,
+   "tags": {
+    "name": "Decatur",
+    "name:en": "Decatur",
+    "name_en": "Decatur",
+    "name_int": "Decatur",
+    "name:latin": "Decatur",
+    "name_de": "Decatur",
+    "class": "city",
+    "rank": [
+     "sint",
+     7
+    ],
+    "capital": [
+     "sint",
+     6
+    ]
+   }
+  },
+  {
+   "z": 9,
+   "lat": 38.8909,
+   "lng": -90.1844,
+   "tags": {
+    "name": "Alton",
+    "name:en": "Alton",
+    "name_en": "Alton",
+    "name_int": "Alton",
+    "name:latin": "Alton",
+    "name_de": "Alton",
+    "class": "town",
+    "rank": [
+     "sint",
+     7
+    ]
+   }
+  },
+  {
+   "z": 9,
+   "lat": 39.7344,
+   "lng": -90.2288,
+   "tags": {
+    "name": "Jacksonville",
+    "name:en": "Jacksonville",
+    "name_en": "Jacksonville",
+    "name_int": "Jacksonville",
+    "name:latin": "Jacksonville",
+    "name_de": "Jacksonville",
+    "class": "town",
+    "rank": [
+     "sint",
+     11
+    ],
+    "capital": [
+     "sint",
+     6
+    ]
+   }
+  },
+  {
+   "z": 9,
+   "lat": 39.72,
+   "lng": -89.679,
+   "tags": {
+    "name": "Woodside",
+    "name:en": "Woodside Township",
+    "name_en": "Woodside",
+    "name_int": "Woodside",
+    "name:latin": "Woodside",
+    "name_de": "Woodside",
+    "class": "town",
+    "rank": [
+     "sint",
+     11
+    ]
+   }
+  },
+  {
+   "z": 9,
+   "lat": 50.9383,
+   "lng": 6.96,
+   "tags": {
+    "name": "Köln",
+    "name:en": "Cologne",
+    "name_en": "Cologne",
+    "name_int": "Cologne",
+    "name:latin": "Köln",
+    "name_de": "Köln",
+    "class": "city",
+    "rank": [
+     "sint",
+     6
+    ]
+   }
+  },
+  {
+   "z": 9,
+   "lat": 51.2254,
+   "lng": 6.7763,
+   "tags": {
+    "name": "Düsseldorf",
+    "name:en": "Dusseldorf",
+    "name_en": "Dusseldorf",
+    "name_int": "Dusseldorf",
+    "name:latin": "Düsseldorf",
+    "name_de": "Düsseldorf",
+    "class": "city",
+    "rank": [
+     "sint",
+     7
+    ],
+    "capital": [
+     "sint",
+     4
+    ]
+   }
+  },
+  {
+   "z": 9,
+   "lat": 50.688,
+   "lng": 7.6477,
+   "tags": {
+    "name": "Altenkirchen (Westerwald)",
+    "name:en": "Altenkirchen",
+    "name_en": "Altenkirchen",
+    "name_int": "Altenkirchen",
+    "name:latin": "Altenkirchen (Westerwald)",
+    "name_de": "Altenkirchen",
+    "class": "town",
+    "rank": [
+     "sint",
+     11
+    ]
+   }
+  },
+  {
+   "z": 9,
+   "lat": 35.6768,
+   "lng": 139.7639,
+   "tags": {
+    "name": "東京都",
+    "name:en": "Tokyo",
+    "name_en": "Tokyo",
+    "name_int": "Tokyo",
+    "name:latin": "Tokyo",
+    "name:nonlatin": "東京都",
+    "name_de": "Tokio",
+    "class": "city",
+    "rank": [
+     "sint",
+     1
+    ],
+    "capital": [
+     "sint",
+     2
+    ]
+   }
+  },
+  {
+   "z": 9,
+   "lat": 35.4503,
+   "lng": 139.6343,
+   "tags": {
+    "name": "横浜市",
+    "name:en": "Yokohama",
+    "name_en": "Yokohama",
+    "name_int": "Yokohama",
+    "name:latin": "Yokohama",
+    "name:nonlatin": "横浜市",
+    "name_de": "Yokohama",
+    "class": "city",
+    "rank": [
+     "sint",
+     6
+    ],
+    "capital": [
+     "sint",
+     4
+    ]
+   }
+  },
+  {
+   "z": 9,
+   "lat": 48.8535,
+   "lng": 2.3483,
+   "tags": {
+    "name": "Paris",
+    "name:en": "Paris",
+    "name_en": "Paris",
+    "name_int": "Paris",
+    "name:latin": "Paris",
+    "name_de": "Paris",
+    "class": "city",
+    "rank": [
+     "sint",
+     1
+    ],
+    "capital": [
+     "sint",
+     2
+    ]
+   }
+  },
+  {
+   "z": 9,
+   "lat": 41.8756,
+   "lng": -87.6244,
+   "tags": {
+    "name": "Chicago",
+    "name:en": "Chicago",
+    "name_en": "Chicago",
+    "name_int": "Chicago",
+    "name:latin": "Chicago",
+    "name_de": "Chicago",
+    "class": "city",
+    "rank": [
+     "sint",
+     2
+    ],
+    "capital": [
+     "sint",
+     6
+    ]
+   }
+  },
+  {
+   "z": 9,
+   "lat": 41.7153,
+   "lng": -86.7776,
+   "tags": {
+    "name": "Springfield",
+    "name:en": "Springfield",
+    "name_en": "Springfield",
+    "name_int": "Springfield",
+    "name:latin": "Springfield",
+    "name_de": "Springfield",
+    "class": "village",
+    "rank": [
+     "sint",
+     13
+    ]
+   }
+  },
+  {
+   "z": 4,
+   "lat": 33.2571,
+   "lng": -86.8304,
+   "tags": {
+    "name": "Alabama",
+    "name:en": "Alabama",
+    "name_en": "Alabama",
+    "name_int": "Alabama",
+    "name:latin": "Alabama",
+    "name_de": "Alabama",
+    "class": "state",
+    "rank": [
+     "sint",
+     1
+    ]
+   }
+  }
+ ]
+}

@@ -46,9 +46,15 @@ const sandbox = {
   _isExchangePage: no, _isTubePage: no, _isMapPage: no, _isGameShelf: no,
   showHistoryDropdown: nop, hideSuggest: nop, clearSearch: nop, renderHome: nop,
   doSearch: v => sent.search.push(v),
+  fetchNearPlaces: nop,
   fetchSuggestions: v => sent.suggest.push(v),
 };
 vm.createContext(sandbox);
+// The near: typing test is app.js's own, run as written.
+const nearFrom = src.indexOf('const NEAR_PLACES_DELAY_MS');
+const nearTo = src.indexOf('\n}\n', src.indexOf('function _nearTyping(')) + 3;
+if (nearFrom < 0 || nearTo < nearFrom) throw new Error('near typing not found');
+vm.runInContext(src.slice(nearFrom, nearTo).replace(/^const /gm, 'var '), sandbox);
 const onInput = vm.runInContext('(' + handler + ')', sandbox);
 
 let failures = 0;

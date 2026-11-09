@@ -37,9 +37,11 @@ RUN pip install --no-cache-dir -r requirements.txt
 # on a slim base. Inside the container Chromium cannot use its own sandbox
 # (Docker's seccomp profile blocks the user namespaces it needs); the renderer
 # detects that and steps down for exactly that launch, saying so in the log.
+# --only-shell: Chromium's headless build, which is all capture ever runs (no window is
+# shown); the full browser was half the image.
 ENV PLAYWRIGHT_BROWSERS_PATH=/ms-playwright
-RUN pip install --no-cache-dir "playwright>=1.40" \
- && playwright install --with-deps chromium \
+RUN pip install --no-cache-dir "playwright>=1.49" \
+ && playwright install --with-deps --only-shell chromium \
  && chmod -R a+rx /ms-playwright \
  && rm -rf /var/lib/apt/lists/*
 
@@ -149,9 +151,10 @@ RUN pip install --no-cache-dir "piper-tts>=1.8,<2"
 RUN pip install --no-cache-dir "kokoro-onnx>=0.6,<0.7" "misaki[zh]>=0.9.4,<0.10" "num2words>=0.5.14,<0.6"
 
 WORKDIR /app
-COPY zimi/ ./zimi/
+# Owned by zimi as it lands: a chown -R afterwards wrote the whole package again as a second layer.
+COPY --chown=zimi:zimi zimi/ ./zimi/
 
-RUN mkdir -p /config && chown -R zimi:zimi /app /config
+RUN mkdir -p /config && chown zimi:zimi /app /config
 
 # No `USER zimi`: the entrypoint starts as root for one chown of the DATA folder
 # (a bind mount Docker just created is root-owned, which stopped Zimi on the

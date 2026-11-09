@@ -478,7 +478,15 @@ def test_the_download_loop_installs_through_qbittorrent(world, tmp_path, monkeyp
         "dest": str(lib_local / "wiki.zim"),
         "started": time.time(),
     }
-    threading.Timer(0.3, fake.finish, args=(tid,)).start()
+    def finish_once_added():
+        # The torrent is finished once the loop has handed it to the fake client: a fixed timer fired before the hand-over
+        # on a slow runner (KeyError in the timer's thread, then the loop's fallback).
+        deadline = time.time() + 30
+        while tid not in fake.torrents and time.time() < deadline:
+            time.sleep(0.02)
+        fake.finish(tid)
+
+    threading.Thread(target=finish_once_added, daemon=True).start()
     got = library._try_bt_download(
         b, dl, torrent_url=src, staging_dir=str(staging), poll_interval=0.05
     )

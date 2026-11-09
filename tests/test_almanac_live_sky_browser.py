@@ -109,7 +109,7 @@ def _almanac(browser, served, reduced=False, place=PLACE, horizon=False):
 
 
 def _settle(pg, iso):
-    pg.evaluate("(iso) => _almScrubSettle(new Date(iso))", iso)
+    pg.evaluate("(iso) => { _almClockSetRate(0); _almScrubSettle(new Date(iso)); }", iso)   # paused there: a jump keeps the pace
     pg.wait_for_function(
         "(t) => _skyState && _skyState.nowTime === t && !_skyState.moonAnim && _skyState.bodies.length",
         arg=_ms(iso),
@@ -169,7 +169,7 @@ def test_the_sun_and_the_moon_open_the_3d_view_on_themselves(browser, served):
         _tap_body(pg, "sun")
         _wait_view(pg, "sun")
         assert pg.evaluate(
-            "document.getElementById('ae-back-text').textContent"
+            "_aeBackLabel()"
         ) == pg.evaluate("t('almanac')")
         # The view keeps the page's clock: it shows the sky's instant.
         assert abs(pg.evaluate("_aeDisplayMs()") - _ms(DAY)) < 60000
@@ -220,7 +220,7 @@ def test_a_planet_is_named_and_found_in_the_solar_system(browser, served):
 SECBAR_STATE = """() => { const b = document.getElementById('alm-secbar'), c = b.querySelector('.pill.active');
   return { hidden: b.hidden, active: c && c.dataset.sec, cur: _almSecBar.cur }; }"""
 # A scroll position past the first section where no section crosses the line under the bar: between two sections.
-GAP_SCROLL = """() => { const root = document.getElementById('almanac-content'), line = ALM_SECBAR_LINE;
+GAP_SCROLL = """() => { const root = document.getElementById('almanac-content'), line = _almSecBarLine();
   for (let y = 900; y < root.scrollHeight - root.clientHeight; y += 20) {
     root.scrollTop = y;
     const top = root.getBoundingClientRect().top + line;
@@ -244,6 +244,8 @@ def test_the_section_bar_is_there_when_a_jump_lands(browser, served):
         assert pg.evaluate(SECBAR_STATE)["hidden"] is True
         y = pg.evaluate(GAP_SCROLL)
         assert y > 0, "the page has a place between two sections"
+        # The scroll event goes out with a frame; a headless page can sit without one for a while.
+        pg.evaluate("() => new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r)))")
         pg.wait_for_timeout(400)
         got = pg.evaluate(SECBAR_STATE)
         assert got["hidden"] is False and got["active"] and got["active"] != "today", (y, got)
@@ -263,7 +265,7 @@ def test_the_orrery_sun_opens_the_3d_view_on_the_sun(browser, served):
     ctx, pg, errors = _almanac(browser, served)
     try:
         pg.evaluate(
-            "_orrerySnapToNow(); document.getElementById('almanac-orrery').scrollIntoView({ block: 'center' })"
+            "_orreryClockReset(); document.getElementById('almanac-orrery').scrollIntoView({ block: 'center' })"
         )
         # The bar above the Almanac slides away after a scroll down; tap once
         # the orrery has stopped moving with it.
@@ -281,7 +283,7 @@ def test_the_orrery_sun_opens_the_3d_view_on_the_sun(browser, served):
         pg.touchscreen.tap(sun["x"], sun["y"])
         _wait_view(pg, "sun")
         assert pg.evaluate(
-            "document.getElementById('ae-back-text').textContent"
+            "_aeBackLabel()"
         ) == pg.evaluate("t('alm_solar_system')")
         assert not errors, errors
     finally:
@@ -670,7 +672,7 @@ def test_the_light_clock_on_a_ride(browser, served):
     ctx, pg, errors = _almanac(browser, served)
     try:
         pg.evaluate(
-            "_orrerySnapToNow(); _orreryLaunchRocket('Mars'); _orreryTwinInput(1)"
+            "_orreryClockReset(); _orreryLaunchRocket('Mars'); _orreryTwinInput(1)"
         )
         # The twins and the light clock open from "What if it flew to the stars?" and
         # are not drawn while closed.

@@ -10,6 +10,7 @@ import sys
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from test_games_persist_browser import VIEW, browser, served  # noqa: E402,F401
+from games_wait import game_ready, quiet  # noqa: E402
 
 # Watch the top card of a pile for the answer to a tap: the session's move count changes, or the card shakes.
 WATCH = """(pile) => {
@@ -28,10 +29,11 @@ def test_a_tap_under_a_column_reaches_its_top_card(served, browser):
     page.goto("%s/spider.html" % served)
     page.wait_for_selector(".zc-card", state="attached")
     page.wait_for_function("() => window.ZimiSpider && ZimiSpider.session && ZimiSpider.session.state.piles.c0.length > 0")
-    page.wait_for_timeout(1500)   # the deal lands
+    game_ready(page)   # the deal lands
+    quiet(page, 1500)
     x, bottom = page.evaluate(WATCH, "c3")
     page.touchscreen.tap(x, bottom + 200)
-    page.wait_for_timeout(400)
+    quiet(page, 400)
     assert page.evaluate(HEARD), "a tap under column 4 went nowhere"
     ctx.close()
 

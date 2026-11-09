@@ -10,7 +10,7 @@
 
   // ── the rules ────────────────────────────────────────────────────────────
   var QUESTIONS = 5, EARTH_KM = 6371.0088, MAP_W = 800, MAP_H = 400, MAX_POINTS = 100, WORLD_SCALE_KM = 1500, DEFAULT_REGION_KM = 40, MIN_SCALE_KM = 2, MAX_SCALE_KM = 1500, DIAG_SHARE = 6;
-  var MIN_ZOOM = 1, MAX_ZOOM = 12;
+  var MAX_ZOOM = 12, WORLD_CENTRE_LON = 10, FIT_PAD = 2.2, FIT_MARGIN = 0.08;   // the world opens centred on Europe and Africa; the answer view is this many times the span of the two pins
 
   function rad(d) { return d * Math.PI / 180; }
   // The distance over the ground between two points, in kilometres (the great circle).
@@ -51,7 +51,7 @@
   var Play = root.ArcadePlay, $ = Play.$, T = Play.T, NS = 'http://www.w3.org/2000/svg';
   Play.applyTheme();
   var BEST_KEY = 'zimi.games.droppin.best', ZOOM_STEP = 1.8, ASK_MS = 8000, MAP_ZOOM_TRUTH = 15, PIN_PX = 5, TAP_PX = 8;
-  var els = { n: $('dp-n'), ask: $('dp-ask'), frame: $('dp-frame'), world: $('dp-world'), cross: $('dp-cross'), zoom: $('dp-zoom'), msg: $('dp-msg'), drop: $('dp-drop'), mapLink: $('dp-map'), next: $('dp-next'), score: $('dp-score'), newBtn: $('dp-new'), zin: $('dp-zin'), zout: $('dp-zout') };
+  var els = { stage: $('dp-stage'), n: $('dp-n'), ask: $('dp-ask'), frame: $('dp-frame'), world: $('dp-world'), cross: $('dp-cross'), zoom: $('dp-zoom'), msg: $('dp-msg'), drop: $('dp-drop'), mapLink: $('dp-map'), next: $('dp-next'), score: $('dp-score'), newBtn: $('dp-new'), zin: $('dp-zin'), zout: $('dp-zout') };
   var status = Play.status(els.msg), g = null, libList = [], mapZim = '', mapBounds = null, building = false, done = false;
   var view = { x: 0, y: 0, w: MAP_W, h: MAP_H }, pin = null, layer = null, drag = null;
 
@@ -66,7 +66,7 @@
   function mapUrl(hash) { return Lib.articleUrl(mapZim, 'index.html') + (hash ? '#' + hash : ''); }
   function truthHash() { return Lib.mapHash(MAP_ZOOM_TRUTH, q().lat, q().lon, q().name); }
   function showMap(hash) {
-    els.world.toggleAttribute('hidden', true); els.zoom.hidden = true; els.frame.hidden = false; els.cross.hidden = false;
+    els.stage.classList.remove('world'); els.world.toggleAttribute('hidden', true); els.zoom.hidden = true; els.frame.hidden = false; els.cross.hidden = false;
     els.frame.src = mapUrl(hash || '');
   }
   function mapCenter() {
@@ -81,18 +81,33 @@
     for (i = -60; i <= 60; i += 30) { var y = project(i, 0).y; svg('line', { x1: 0, y1: y, x2: MAP_W, y2: y }, grid); }
     svg('path', { d: root.WORLD_LAND_D, class: 'land' }, els.world);
     layer = svg('g', {}, els.world);
-    view = { x: 0, y: 0, w: MAP_W, h: MAP_H }; fitHeight(); view.y = (MAP_H - view.h) / 2; applyView();
+    els.stage.classList.add('world');
+    view = { x: 0, y: 0, w: maxWidth(), h: 0 }; fitHeight(); view.x = Math.max(0, Math.min(MAP_W - view.w, project(0, WORLD_CENTRE_LON).x - view.w / 2)); view.y = (MAP_H - view.h) / 2; applyView();
+    if (g && g.ans) fitAnswer();
   }
   // The viewBox keeps the shape of the box it is drawn in, so a tap lands where the finger is.
   function ratio() { return els.world.clientHeight / Math.max(1, els.world.clientWidth) || MAP_H / MAP_W; }
   function fitHeight() { view.h = view.w * ratio(); }
+  // The widest view there is: the whole width, or less when the box is taller than the map is wide (so no empty sea shows above and below).
+  function maxWidth() { return Math.min(MAP_W, MAP_H / ratio()); }
+  // Left and right, the map stays in its box; a view wider than the map (a short, wide box showing both far-apart pins) is centred, sea on both sides.
+  function clampX(x, w) { return w >= MAP_W ? (MAP_W - w) / 2 : Math.max(0, Math.min(MAP_W - w, x)); }
+  // The view that holds the answer and the pin with room round them (neither is ever at an edge), as tight as the zoom allows; for
+  // two pins far apart it is the whole map, with some sea above and below.
+  function fitAnswer() {
+    var t = project(q().lat, q().lon), a = project(g.ans.lat, g.ans.lon), r = ratio();
+    var w = Math.max(MAP_W / MAX_ZOOM, Math.min(Math.max(MAP_W, MAP_H / r), Math.max(Math.abs(t.x - a.x) * FIT_PAD, Math.abs(t.y - a.y) * FIT_PAD / r)));
+    var h = w * r, cx = (t.x + a.x) / 2, cy = (t.y + a.y) / 2;
+    var m = w * FIT_MARGIN;   // a pin on the very edge of the map still has its whole disc in view
+    view.w = w; view.h = h; view.x = w >= MAP_W ? clampX(0, w) : Math.max(-m, Math.min(MAP_W - w + m, cx - w / 2)); view.y = Math.max(Math.min(0, MAP_H - h) - m, Math.min(Math.max(0, MAP_H - h) + m, cy - h / 2)); applyView();
+  }
   // Up and down, the map may sit anywhere its box still shows some of it, centred when the box is taller than the map.
   function clampY(y, h) { var lo = Math.min(0, MAP_H - h), hi = Math.max(0, MAP_H - h); return Math.max(lo, Math.min(hi, y)); }
   function applyView() { els.world.setAttribute('viewBox', view.x + ' ' + view.y + ' ' + view.w + ' ' + view.h); }
   function unit() { return view.w / Math.max(1, els.world.clientWidth); }
   function zoomBy(f, at) {
-    var w = Math.max(MAP_W / MAX_ZOOM, Math.min(MAP_W / MIN_ZOOM, view.w / f)), h = w * ratio(), fx = at ? at.fx : 0.5, fy = at ? at.fy : 0.5;
-    view.x = Math.max(0, Math.min(MAP_W - w, view.x + (view.w - w) * fx)); view.y = clampY(view.y + (view.h - h) * fy, h); view.w = w; view.h = h; applyView(); paintPins();
+    var w = Math.max(MAP_W / MAX_ZOOM, Math.min(Math.max(maxWidth(), f < 1 ? view.w : 0), view.w / f)), h = w * ratio(), fx = at ? at.fx : 0.5, fy = at ? at.fy : 0.5;
+    view.x = clampX(view.x + (view.w - w) * fx, w); view.y = clampY(view.y + (view.h - h) * fy, h); view.w = w; view.h = h; applyView(); paintPins();
   }
   function frac(e) { var r = els.world.getBoundingClientRect(); return { fx: (e.clientX - r.left) / r.width, fy: (e.clientY - r.top) / r.height }; }
   function paintPins() {
@@ -111,7 +126,7 @@
     if (!drag) return;
     var dx = e.clientX - drag.x, dy = e.clientY - drag.y;
     if (Math.hypot(dx, dy) > TAP_PX) drag.moved = true;
-    if (drag.moved) { var u = unit(); view.x = Math.max(0, Math.min(MAP_W - view.w, drag.vx - dx * u)); view.y = clampY(drag.vy - dy * u, view.h); applyView(); paintPins(); }
+    if (drag.moved) { var u = unit(); view.x = clampX(drag.vx - dx * u, view.w); view.y = clampY(drag.vy - dy * u, view.h); applyView(); paintPins(); }
   });
   els.world.addEventListener('pointerup', function (e) {
     var was = drag; drag = null;
@@ -119,7 +134,9 @@
     var f = frac(e), pt = unproject(view.x + f.fx * view.w, view.y + f.fy * view.h);
     pin = { lat: Math.max(-90, Math.min(90, pt.lat)), lon: Math.max(-180, Math.min(180, pt.lon)) }; paintPins(); els.drop.removeAttribute('aria-disabled');
   });
-  els.zin.addEventListener('click', function () { zoomBy(ZOOM_STEP); });
+  // Zooming in goes to the pin when there is one (the player tapped where they mean), else to the middle.
+  function centreOn(p) { view.x = clampX(p.x - view.w / 2, view.w); view.y = clampY(p.y - view.h / 2, view.h); applyView(); paintPins(); }
+  els.zin.addEventListener('click', function () { zoomBy(ZOOM_STEP); if (pin) centreOn(project(pin.lat, pin.lon)); });
   els.zout.addEventListener('click', function () { zoomBy(1 / ZOOM_STEP); });
 
   // ── the round ──
@@ -147,7 +164,7 @@
       els.cross.hidden = true;
       if (!restored) { try { els.frame.contentWindow.location.hash = truthHash(); } catch (e) { els.frame.src = mapUrl(truthHash()); } }
     }
-    else paintPins();
+    else { fitAnswer(); paintPins(); }
     paint();
   }
   // Inside Zimi, the place on the whole StreetZim map (the one it came from, else one whose box holds it), once the pin is down.
@@ -165,7 +182,7 @@
   function finish() {
     done = true; var best = Play.load(BEST_KEY, {}), key = g.mode, mine = best[key] || 0, max = g.qs.length * MAX_POINTS;
     if (g.total > mine) { best[key] = g.total; Play.save(BEST_KEY, best); }
-    var line = T('round.verdict.' + Lib.verdict(g.total, max));
+    var line = Lib.verdictLine(T, 'round.verdict.', Lib.verdict(g.total, max));
     status.say(line);
     ZimiShell.endSheet({ result: 'over', text: line, stats: [[T('play.score'), T('round.of', { n: g.total, total: max })], [T('play.best'), Play.num(Math.max(g.total, mine))]] });
   }

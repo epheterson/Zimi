@@ -17,6 +17,7 @@ import pytest
 pytest.importorskip("playwright")
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from test_games_trick_fixtures import GAMES, browser, served  # noqa: E402,F401
+from games_wait import quiet  # noqa: E402
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 AXE = open(os.path.join(HERE, "vendor", "axe.min.js"), encoding="utf-8").read()
@@ -61,9 +62,9 @@ def scan(browser, served, path, width, theme, lang):
     try:
         page.goto("%s/%s#lang=%s" % (served, path, lang))
         page.wait_for_load_state("load")
-        page.wait_for_timeout(1200)
+        quiet(page, 1200)   # built: nothing changing, nothing animating (at most the 1.2 s this once waited)
         page.mouse.click(width // 2, 420)
-        page.wait_for_timeout(500)
+        quiet(page, 500)
         page.add_script_tag(content=AXE)
         return page.evaluate(RUN)
     finally:

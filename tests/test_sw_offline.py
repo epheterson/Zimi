@@ -340,7 +340,7 @@ function run(onLine, kept) {
 }
 process.stdout.write(JSON.stringify({
   nonet: run(false), server: run(true),
-  german: run(false, { offline_title_nonet: 'Sie sind offline', conn_retry: 'Erneut versuchen' }),
+  german: run(false, { offline_title_nonet: 'Du bist offline', conn_retry: 'Erneut versuchen' }),
 }));
 """
         proc = subprocess.run(
@@ -357,7 +357,7 @@ process.stdout.write(JSON.stringify({
         self.assertNotEqual(got["nonet"][1], got["server"][1])
         self.assertEqual(
             got["german"][0],
-            "Sie sind offline",
+            "Du bist offline",
             "the words the app kept for the language",
         )
         self.assertEqual(got["german"][2], "Erneut versuchen")

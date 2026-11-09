@@ -270,7 +270,7 @@ def _snippet_thumbnail(archive, zim, path, text):
 def result_snippet(zim, path):
     """{"snippet", "thumbnail"?} for a result card, or None when the ZIM is not
     there (or not this user's). Read once, then kept."""
-    from zimi.previews import lead_text
+    from zimi.previews import article_position, lead_text
 
     _ensure_server_refs()
     key = (zim, path)
@@ -294,6 +294,9 @@ def result_snippet(zim, path):
                 thumb = _snippet_thumbnail(archive, zim, path, text)
                 if thumb:
                     out["thumbnail"] = thumb
+                at = article_position(text)
+                if at:
+                    out["position"] = {"lat": at[0], "lng": at[1]}
         except Exception:
             pass
     with _snippet_cache_lock:
@@ -2970,6 +2973,36 @@ def find_places(query_str, limit=_PLACES_PER_MAP, near_at=None):
     return groups
 
 
+def suggest_places(query_str, limit=8):
+    """Autocomplete for a place being typed ("Spri", "Springfield, IL"): the
+    towns of the installed Kiwix maps, each as the ``label`` it is offered by
+    ("Springfield, Illinois, United States") and the ``token`` picking it puts
+    after near: ('"Springfield, Illinois"'), the largest first. The same town
+    on two maps is one. [] until a map's towns are read."""
+    from zimi import mapplaces as _mapplaces
+
+    q = (query_str or "").strip()
+    if not q:
+        return []
+    found = []
+    for z in _srv._zim_list_cache or []:
+        name = z.get("name")
+        if not (_mapplaces.is_kiwix_map(z) and name and _srv.zim_allowed(name)):
+            continue
+        for p in _mapplaces.suggest(name, q, limit):
+            if not any(p["label"] == f["label"] and _same_place(p, f) for f in found):
+                found.append(p)
+    found.sort(key=lambda p: -p["score"])
+    return [
+        {
+            k: p[k]
+            for k in ("label", "token", "name", "region", "country", "local", "lat", "lng", "zoom")
+            if p.get(k) not in (None, "")
+        }
+        for p in found[:limit]
+    ]
+
+
 def _with_towns(pages, towns, limit):
     """A Kiwix map's place pages, then the towns read from its tiles that are
     not one of those pages: a page and a town of one name within about ten
@@ -3135,6 +3168,19 @@ def parse_latlng(text):
     return (lat, lng) if -90 <= lat <= 90 and -180 <= lng <= 180 else None
 
 
+def _named_on(maps, text, qualified_only=False):
+    """The places called ``text`` on any of ``maps`` (zimi.mapplaces.named),
+    each once: the same place on two maps is one."""
+    from zimi import mapplaces as _mapplaces
+
+    seen = []
+    for z in maps:
+        for p in _mapplaces.named(z["name"], text, qualified_only):
+            if not any(_same_place(p, q) for q in seen):
+                seen.append(p)
+    return seen
+
+
 def near_places(parsed, at=None):
     """A near: search (Eric, 2026-11-03: "should we also include like radius
     near a location?"): None when the query has no near:, else
@@ -3163,21 +3209,25 @@ def near_places(parsed, at=None):
     ]
     here = parse_latlng(f["value"])
     others = 0
+    words = [
+        mapsearch.normalize_text(t["text"]) for g in parsed["groups"] for t in g[:1]
+    ]
     if here:
         anchor = {"name": f["value"], "sub": "", "lat": here[0], "lng": here[1]}
     else:
+        # The words after the place may say where it is ("near:Paris Texas"):
+        # read so first, and only a place there takes them; else they are words
+        # a name must hold, as they always were.
         seen = []
-        for z in maps:
-            for p in _mapplaces.named(z["name"], f["value"]):
-                if not any(_same_place(p, q) for q in seen):
-                    seen.append(p)
+        if words:
+            seen = _named_on(maps, f["value"] + " " + " ".join(words), qualified_only=True)
+            if seen:
+                words = []
+        seen = seen or _named_on(maps, f["value"])
         anchor = _mapplaces.pick(seen, at)
         others = max(len(seen) - 1, 0)
     if not anchor:
         return {"places": [], "near": {"place": f["value"], "found": False}}
-    words = [
-        mapsearch.normalize_text(t["text"]) for g in parsed["groups"] for t in g[:1]
-    ]
     groups = []
     for z in maps:
         found = _mapplaces.near(
@@ -3197,6 +3247,7 @@ def near_places(parsed, at=None):
         "places": groups,
         "near": {
             "place": anchor["name"],
+            "where": _mapplaces.locality(anchor),
             "sub": anchor["sub"],
             "lat": round(anchor["lat"], 4),
             "lng": round(anchor["lng"], 4),

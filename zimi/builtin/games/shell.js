@@ -703,7 +703,7 @@
       });
       card.appendChild(row);
     }
-    el = api.el = h('div', { class: 'ar-sheet' }, [card]);
+    el = api.el = h('div', { class: 'ar-sheet' + (opts.end ? ' gs-end' : '') }, [card]);
     el.addEventListener('pointerdown', function (e) { if (e.target === el) api.close(); });
     sheetKeys(el, card, api.close, !!opts.guard);
     d.body.appendChild(el);
@@ -768,6 +768,20 @@
   // The end's notes: three rising for a win, two falling for a loss (C5 E5 G5; G4 D4), quiet.
   var END_NOTES = { win: [523, 659, 784], lose: [392, 294] };
   function endNotes(result) { (END_NOTES[result] || []).forEach(function (f, i) { Shell.tone(f, 420, 0.16, i * NOTE_GAP_MS); }); }
+  // Where the stamp lands: in the free space under what the page shows, never on it; with no such space, where the overlay puts it.
+  var STAMP_PX = 84, STAMP_ROOM_PX = 132;
+  function stampSpot(overlay) {
+    var at = overlay.querySelector('.gs-m-at'), H = root.innerHeight || 0, base = overlay.getBoundingClientRect().top, bottom = 0, y;
+    Array.prototype.forEach.call(d.body.querySelectorAll('*'), function (e) {
+      if (e.children.length || e.closest('.gs-moment, .ar-sheet, .gs-rest, .ar-bar, script, style')) return;
+      var r = e.getBoundingClientRect(), cs = root.getComputedStyle(e);
+      if (!r.width || !r.height || cs.position === 'fixed' || cs.visibility === 'hidden') return;
+      if (r.bottom <= H - STAMP_PX / 2) bottom = Math.max(bottom, r.bottom);
+      else if (r.top < H && r.height >= STAMP_ROOM_PX) bottom = H;   // a board that runs to the bottom leaves no room (a thin footer line down there does not count)
+    });
+    // Room: the middle of it. None: the stamp keeps its place in the overlay (a spot above the overlay would be clipped away).
+    if (at && H - bottom >= STAMP_ROOM_PX) at.style.top = Math.round(bottom + (H - bottom) / 2 - base) + 'px';
+  }
   function momentNode() {
     var kids = [h('i', { class: 'gs-m-ring' }), h('img', { class: 'gs-m-stamp', src: HOME + 'mark.svg', alt: '' })], i, a, r;
     for (i = 0; i < SCATTER; i++) {
@@ -787,6 +801,7 @@
   // The figures in the chips count up from nothing; the chip says its final value to a screen reader at once.
   function countUp(chips) {
     chips.forEach(function (c) {
+      if (c.classList.contains('gs-chip-static')) return;
       var b = c.querySelector('b'), to = b ? parseInt(b.textContent, 10) : NaN, text = b && b.textContent;
       if (!b || !/^\d+$/.test(text) || to < 2) return;
       c.setAttribute('aria-label', c.textContent);
@@ -903,7 +918,7 @@
     } catch (e) { /* full or blocked: the board goes without it */ }
   }
   function dayStarted() {
-    var day = Shell.daily && Shell.daily.kind !== 'own' ? Shell.daily.day : null;
+    var day = roundDaily();   // an own-daily game's round too, opened from its ordinary page
     if (!day || (Shell.isWatching && Shell.isWatching())) return;
     var runs = dayRuns(day);
     if (runs[PAGE]) return;
@@ -1057,8 +1072,22 @@
     var nav = root.navigator || {}, label = btn ? btn.textContent : '';
     var told = function (key) { if (!btn) return; btn.textContent = T(key); root.setTimeout(function () { btn.textContent = label; }, COPIED_MS); };
     var coarse = root.matchMedia && root.matchMedia('(pointer: coarse)').matches;
-    if (coarse && nav.share) return nav.share({ text: text }).catch(function () { /* the person closed the share sheet */ });
-    try { nav.clipboard.writeText(text).then(function () { told('shell.copied'); }, function () { told('shell.copyFail'); }); } catch (e) { told('shell.copyFail'); }
+    // The clipboard first, then a hidden field and the old copy command (a frame without the clipboard permission has no other way).
+    var copy = function () {
+      var fall = function () {
+        var ok = false, box = d && d.createElement && d.createElement('textarea');
+        try {
+          if (box && d.body) { box.value = text; box.setAttribute('readonly', ''); box.style.cssText = 'position:fixed;opacity:0;top:0'; d.body.appendChild(box); box.select(); ok = !!d.execCommand('copy'); box.remove(); }
+        } catch (e) { ok = false; }
+        told(ok ? 'shell.copied' : 'shell.copyFail');
+      };
+      try { nav.clipboard.writeText(text).then(function () { told('shell.copied'); }, fall); } catch (e) { fall(); }
+    };
+    // A page in a frame may not be allowed the system's share sheet: then it copies, and the button says so (silence was the failure).
+    if (coarse && nav.share) {
+      try { return nav.share({ text: text }).catch(function (e) { if (!e || e.name !== 'AbortError') copy(); /* the person closing the share sheet is not a failure */ }); } catch (e) { return copy(); }
+    }
+    copy();
   };
   // The daily's line to paste: the game and the date, the result as a square (or the game's own squares) with its chips, the streak.
   // Nothing in it gives the day's answer away.
@@ -1075,6 +1104,11 @@
     var n = streakOf(readStats(), day, PAGE);
     if (n > 1) lines.push(T('daily.streak', { n: n }));
     return lines.join('\n');
+  }
+  // The daily's streak, in the end sheet of every daily the same way (a game that keeps its own streak chip says `ownStreak`).
+  function streakLine(day) {
+    var n = streakOf(readStats(), day);
+    return n ? h('p', { class: 'gs-daily-streak', text: T('daily.streakLabel') + ': ' + T('daily.streakDays', { n: n }) }) : null;
   }
   function shareRow(day, result, chips) {
     var btn = h('button', { class: 'ar-btn gs-share', type: 'button', text: T('daily.shareIt') });
@@ -1105,7 +1139,7 @@
     var lines = [[T('daily.streakLabel'), T('daily.streakDays', { n: t.streak })], [T('stats.best'), T('daily.streakDays', { n: t.best })],
       [T('stats.dailies'), F(t.dailies)], [T('stats.finished'), F(t.finished)], [T('stats.wins'), F(t.wins)], [T('stats.kinds'), F(t.kinds)]];
     var most = Object.keys(all.g).sort(function (a, b) { return all.g[b].n - all.g[a].n; }).slice(0, STATS_TOP_GAMES)
-      .map(function (p) { return [pageName(p), T('stats.playedWon', { n: F(all.g[p].n), w: F(all.g[p].w) })]; });
+      .map(function (p) { return [pageName(p), T('stats.playedWon', { played: T('stats.played', { n: all.g[p].n }), won: T('stats.wonCount', { n: all.g[p].w }) })]; });   // numbers, not text: each count picks its own plural form
     var earned = h('ul', { class: 'gs-earned' }, ACHIEVEMENTS.map(function (a) {
       var got = t.earned.indexOf(a[0]) >= 0, name = T('stats.a.' + a[0]);
       return h('li', { class: got ? 'gs-got' : '', 'aria-label': got ? name : T('stats.notYet', { name: name }) }, [h('span', { 'aria-hidden': 'true', text: got ? '✓' : '–' }), h('span', { 'aria-hidden': 'true', text: name })]);
@@ -1124,7 +1158,7 @@
   Shell.endSheet = function (opts) {
     countResult(opts.result || 'over');
     var daily = roundDaily();
-    if (daily) opts = Object.assign({}, opts, { extra: (opts.extra || []).concat([shareRow(daily, opts.result, opts.stats || [])]) });
+    if (daily) opts = Object.assign({}, opts, { extra: (opts.extra || []).concat([opts.ownStreak ? null : streakLine(daily), shareRow(daily, opts.result, opts.stats || [])]).filter(Boolean) });
     syncBest(PAGE);   // the game has kept its own best by the time it ends; the board's shape follows it
     if (Shell.hasBoard() && signedIn()) {
       var boardBtn = h('button', { class: 'gs-person-change gs-board-open', type: 'button', text: T('board.open') });
@@ -1133,7 +1167,8 @@
     }
     // `title`: the caller's own headline, already in the player's language ("2nd of 5", "Solved"), over the result's.
     var title = opts.title ? String(opts.title) : opts.name ? T(opts.team ? 'shell.end.winsTeam' : 'shell.end.wins', { name: opts.name }) : T(END_TITLES[opts.result] || END_TITLES.over);
-    var chips = (opts.stats || []).slice(0, 2).map(function (s) { return h('span', { class: 'gs-chip' }, [h('span', { text: s[0] }), h('b', { text: String(s[1]) })]); });
+    // A figure that is a name and not an amount (a year) says [label, value, 'static']: it never counts up from nothing.
+    var chips = (opts.stats || []).slice(0, 2).map(function (s) { return h('span', { class: 'gs-chip' + (s[2] === 'static' ? ' gs-chip-static' : '') }, [h('span', { text: s[0] }), h('b', { text: String(s[1]) })]); });
     var newGame = function () { dirty = false; clearRest(); if (Shell.daily) leaveDaily(); else if (opts.onNew) opts.onNew(); else if (newBtn) newBtn.click(); };
     var length = opts.result === 'win' ? BEAT_MS : opts.result === 'lose' ? LOSS_BEAT_MS : 0;
     var after = opts.after === undefined ? (length && !reducedMotion() ? length : SHEET_GUARD_MS) : opts.after;
@@ -1145,7 +1180,7 @@
       if (shown) return;
       shown = true; release(); clearRest();
       var started = false, api = Shell.sheet({
-        title: title, text: opts.text, guard: true,
+        title: title, text: opts.text, guard: true, end: true,
         onClose: function () { if (!started) showRest(title, label, newGame); if (opts.onClose) opts.onClose(); },
         body: (chips.length ? [h('div', { class: 'gs-chips' }, chips)] : []).concat(opts.extra || []),
         actions: [{ label: T('shell.close') }, { label: label, primary: true, keep: true, onclick: function () { started = true; api.close(); newGame(); } }]
@@ -1159,7 +1194,7 @@
     haptic(opts.result);
     if (beat) {
       // The moment lands in the last stretch before the sheet; a game that took longer on its own flourish has finished by then.
-      timers.push(root.setTimeout(function () { if (!shown) { overlay = opts.result === 'win' ? momentNode() : lossNode(); d.body.appendChild(overlay); endNotes(opts.result); } }, Math.max(0, after - length)));
+      timers.push(root.setTimeout(function () { if (!shown) { overlay = opts.result === 'win' ? momentNode() : lossNode(); d.body.appendChild(overlay); stampSpot(overlay); endNotes(opts.result); } }, Math.max(0, after - length)));
     }
     // A tap or key anywhere skips the beat (the sheet is up at once); a tap on the bar (Menu, Back) is the player doing something else.
     var armedAt = Date.now();
@@ -1345,7 +1380,14 @@
       var box = h('div', { class: 'gs-extras' });
       extras.forEach(function (b) {
         b.classList.add('gs-moved', 'gs-tile');
-        if (!b.querySelector('.gs-icon')) b.insertBefore(iconNode(iconFor(b)), b.firstChild);
+        // A button that draws its own icon (FreeCell's Hint) keeps it as the tile's, and an icon-only one says its name under it.
+        var own = b.querySelector('svg'), name = b.getAttribute('aria-label'), said = b.querySelector('.gs-item-l');
+        if (own && !own.classList.contains('gs-icon')) { own.classList.add('gs-icon'); own.setAttribute('width', ICON_PX); own.setAttribute('height', ICON_PX); }
+        else if (!b.querySelector('.gs-icon')) b.insertBefore(iconNode(iconFor(b)), b.firstChild);
+        if (name && !b.textContent.replace(said ? said.textContent : '', '').trim()) {
+          if (!said) b.appendChild(said = h('span', { class: 'gs-item-l' }));
+          said.textContent = name;
+        }
         box.appendChild(b);
       });
       if (!box.dataset.wired) { box.dataset.wired = '1'; box.addEventListener('click', function (e) { if (e.target.closest('.ar-btn')) closeMenu(); }); }
@@ -1625,7 +1667,9 @@
   var MARK_PX = 20, MARK_GAP = 12;
   function hostMarkCss(url) {
     var at = 'content:"";position:absolute;pointer-events:none;width:' + MARK_PX + 'px;height:' + MARK_PX + 'px;background:url(' + url + ') center/contain no-repeat;';
-    return 'html.gs-hosted body:has(> .ar-bar) .zc-table::before{' + at + 'z-index:0;right:' + MARK_GAP + 'px;bottom:' + MARK_GAP + 'px}' +
+    // While a sheet is up the mark is not shown: it sits 12px in from the corner, where the sheet's rounded corner lets it peek out.
+    return 'html.gs-hosted body:has(.ar-sheet:not([hidden]))::before, html.gs-hosted body:has(.ar-sheet:not([hidden])) .zc-table::before{opacity:0}' +
+      'html.gs-hosted body:has(> .ar-bar) .zc-table::before{' + at + 'z-index:0;right:' + MARK_GAP + 'px;bottom:' + MARK_GAP + 'px}' +
       'html.gs-hosted body:has(> .ar-bar):not(:has(.zc-table))::before{' + at.replace('absolute', 'fixed') + 'z-index:-1;right:' + MARK_GAP + 'px;bottom:calc(' + MARK_GAP + 'px + var(--safe-b, 0px))}' +
       ':root[data-theme="dark"].gs-hosted body:has(> .ar-bar):not(:has(.zc-table))::before{filter:drop-shadow(1px 0 0 var(--mark-ring)) drop-shadow(-1px 0 0 var(--mark-ring)) drop-shadow(0 1px 0 var(--mark-ring)) drop-shadow(0 -1px 0 var(--mark-ring))}' +
       '@media (prefers-color-scheme:dark){:root:not([data-theme="light"]).gs-hosted body:has(> .ar-bar):not(:has(.zc-table))::before{filter:drop-shadow(1px 0 0 var(--mark-ring)) drop-shadow(-1px 0 0 var(--mark-ring)) drop-shadow(0 1px 0 var(--mark-ring)) drop-shadow(0 -1px 0 var(--mark-ring))}}';

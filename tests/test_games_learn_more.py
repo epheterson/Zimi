@@ -52,24 +52,14 @@ def zimi(tmp_path_factory):
         yield os.environ["LEARN_MORE_URL"]
         return
     import games_library_fixture as fx
-    from zimi import ownzims
-
     base = tmp_path_factory.mktemp("learn")
     fx.build(str(base))
-    zdir, built = base / "lib", base / "built"
+    zdir = base / "lib"
     shutil.copytree(
         base / "zims2", zdir
     )  # the second library: the lists, a Wiktionary, a Gutenberg and a map
-    built.mkdir()
     (base / "data").mkdir()
-    shutil.copytree(GAMES, base / "src" / "games")   # a snapshot: the build must not read files that are being edited
-    was = (ownzims.OUT_DIR, ownzims.SOURCE_ROOT)
-    ownzims.OUT_DIR, ownzims.SOURCE_ROOT = str(built), str(base / "src")
-    try:
-        made = ownzims.build(ownzims.OWN[0])
-    finally:
-        ownzims.OUT_DIR, ownzims.SOURCE_ROOT = was
-    shutil.copy(made, zdir / os.path.basename(made))
+    fx.games_zim(zdir)
     port = free_port()
     # No ZIMI_RATE_LIMIT: set, it also caps this machine at 8 open change streams, and a module of pages holds more than
     # that until their heartbeat; unset, the loopback is unlimited. The delete test lost its stream to that 429.
@@ -178,6 +168,14 @@ def back_to(page, name):
     return game(page, name)
 
 
+def open_study_sky(page):
+    """The game opens on its intro; the Almanac's sky over it opens when asked (the Look button)."""
+    f = game(page, "skydetective.html")
+    click(f, "#sk-look")
+    page.locator(".gamesky .alm-sky-host").wait_for(state="attached", timeout=WAIT)
+    return f
+
+
 # ── Sky Detective ────────────────────────────────────────────────────────────
 
 
@@ -185,7 +183,9 @@ def test_sky_detective_studies_the_almanacs_sky_first(browser, zimi):
     ctx, page, errors = open_game(browser, zimi, "skydetective.html")
     f = game(page, "skydetective.html")
     assert hosted(f)
-    # The Almanac's own sky opens over the page before any question, names on (its label plan), in the player's place and moment.
+    # The game opens on its intro; asked, the Almanac's own sky opens over the page before any question, names on (its label plan), in the player's place and moment.
+    assert page.locator(".gamesky").count() == 0, "the sky opened over the intro on its own"
+    click(f, "#sk-look")
     page.locator(".gamesky .alm-sky-host").wait_for(state="attached", timeout=WAIT)
     assert page.evaluate(
         "typeof _skyHost === 'object' && _skyHost && _skyHost.s.hosted"
@@ -247,8 +247,7 @@ def motion_ctx(browser, ios):
 
 def test_the_study_sky_follows_the_phone_after_the_one_tap_ios_needs(browser, zimi):
     ctx, page, errors = open_game(browser, zimi, "skydetective.html", motion_ctx(browser, ios=True))
-    game(page, "skydetective.html")
-    page.locator(".gamesky .alm-sky-host").wait_for(state="attached", timeout=WAIT)
+    open_study_sky(page)
     btn = page.locator(".gamesky-btn:not(.primary)").first
     btn.wait_for(state="visible", timeout=WAIT)
     assert page.evaluate("window.__asked") == 0, "asked for motion before any tap"
@@ -284,8 +283,7 @@ def test_the_study_sky_follows_the_phone_after_the_one_tap_ios_needs(browser, zi
 
 def test_where_no_ask_is_needed_the_study_sky_follows_at_once_and_drag_still_works(browser, zimi):
     ctx, page, errors = open_game(browser, zimi, "skydetective.html", motion_ctx(browser, ios=False))
-    game(page, "skydetective.html")
-    page.locator(".gamesky .alm-sky-host").wait_for(state="attached", timeout=WAIT)
+    open_study_sky(page)
     assert page.locator(".gamesky-btn").count() == 2, "a motion button where nothing needs asking"
     for _ in range(3):
         page.evaluate("__fire({ alpha: 0, beta: 90, gamma: 0 }, true)")   # facing north
@@ -298,8 +296,7 @@ def test_back_closes_the_study_sky_and_stays_in_the_game(browser, zimi):
     """Browser Back and Zimi's back arrow each close the sky over the game, and the game (not the shelf) is still there."""
     for how in ("browser", "arrow"):
         ctx, page, errors = open_game(browser, zimi, "skydetective.html")
-        f = game(page, "skydetective.html")
-        page.locator(".gamesky .alm-sky-host").wait_for(state="attached", timeout=WAIT)
+        f = open_study_sky(page)
         if how == "browser":
             page.go_back()
         else:
@@ -326,8 +323,7 @@ def test_back_closes_the_study_sky_and_stays_in_the_game(browser, zimi):
 def test_no_name_in_the_study_sky_overlaps_a_mark_or_another_name(browser, zimi, width):
     ctx = browser.new_context(viewport={"width": width, "height": 812}, has_touch=True, is_mobile=True)
     ctx, page, errors = open_game(browser, zimi, "skydetective.html", ctx)
-    game(page, "skydetective.html")
-    page.locator(".gamesky .alm-sky-host").wait_for(state="attached", timeout=WAIT)
+    open_study_sky(page)
     seen = 0
     for az, alt, fov in [(180, 35, 90), (90, 10, 90), (270, 10, 70), (0, 15, 100), (180, 5, 120), (135, 20, 60), (225, 12, 80)]:
         page.evaluate("([a, l, f]) => { AlmanacSkyView.setView(_skyHost.host, a, l, f); _skyHostDraw(); }", [az, alt, fov])
@@ -356,7 +352,7 @@ def test_a_sky_answer_is_seen_again_in_the_same_sky_and_the_round_survives_a_rel
 ):
     ctx, page, errors = open_game(browser, zimi, "skydetective.html")
     f = game(page, "skydetective.html")
-    page.locator(".gamesky-btn.primary").click()
+    click(f, "#sk-next")   # Start, from the intro
     f.wait_for_function("() => __sky.g.study === false", timeout=WAIT)
     # answer the first question (a name, or a tap on the thing named)
     kind = f.evaluate("__sky.g.qs[0].kind")
@@ -408,7 +404,7 @@ def test_a_study_left_before_starting_comes_back_as_a_study_without_reopening_th
     browser, zimi
 ):
     ctx, page, errors = open_game(browser, zimi, "skydetective.html")
-    f = game(page, "skydetective.html")
+    f = open_study_sky(page)
     # Close: back to the page's own study (WebKit asks for motion, so Turn on motion sits before it)
     page.locator(".gamesky-btn:not(.primary)").last.click()
     page.locator(".gamesky").wait_for(state="detached", timeout=WAIT)

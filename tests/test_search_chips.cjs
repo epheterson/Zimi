@@ -47,7 +47,7 @@ const decls = [
   'var _langDisplayCache = ', 'var _langDisplayCacheLang = ', 'var _SPECIAL_LANG = ', 'var _LANG3_NAMES = ',
   'function _langDisplayName(', 'const _LANG3TO2 = ',
   'const SEARCH_QUOTES = ', 'const _SEARCH_UNSPACED = ', 'const SEARCH_FILTERS = ',
-  'const SEARCH_BAR_FILTERS = ', 'const SEARCH_NEAR_RADIUS = ', 'const SEARCH_NEAR_DEFAULT_KM = ', 'const _searchUnquote = ', 'function _searchNearRadius(', 'function tHtml(',
+  'const SEARCH_BAR_FILTERS = ', 'const SEARCH_NEAR_RADIUS = ', 'const SEARCH_NEAR_DEFAULT_KM = ', 'const _searchUnquote = ', 'function _searchNearExtent(', 'function _searchFilterKey(', 'function _searchNearRadius(', 'function tHtml(',
   'function _searchTokens(', 'function parseSearchQuery(', 'const _isOrToken = ', 'function _searchRebuild(',
   'function _searchTokenWords(', 'function searchQueryChips(', 'const _reEscape = ', 'function _searchSourceTitle(',
   'function _searchChipLabel(', 'const _CHIP_X_SVG = ', 'function _searchChipHtml(', 'function searchChipsHtml(',
@@ -71,6 +71,16 @@ check(one('whale lang:fr').kind === 'lang' && one('whale lang:fr').value === 'fr
 check(one('whale in:wikipedia').kind === 'source' && one('whale source:wikipedia').kind === 'source', 'in: and source: are a source chip');
 check(one('cats OR dogs').kind === 'or' && same(one('cats OR dogs').words, ['cats', 'dogs']), 'OR is an "or" chip');
 check(same(kinds('"a b" -c lang:fr in:x d OR e'), ['exact', 'without', 'lang', 'source', 'or']), 'chips come in the order typed');
+
+// near: with where the place is: one chip, in the words the person typed, and
+// its x takes the place, the words that say where, and the distance away together.
+const near1 = S.searchQueryChips('parks near:Springfield, Illinois, USA 5mi hotel');
+check(near1.length === 1 && near1[0].kind === 'near' && near1[0].value === 'Springfield, Illinois, USA' && near1[0].unit === 'mi',
+  'near:Springfield, Illinois, USA 5mi is one chip, as typed: ' + JSON.stringify(near1.map(c => c.value)));
+check(near1[0].query === 'parks hotel', 'its x takes the place, where it is and the distance: ' + JSON.stringify(near1[0].query));
+const near2 = one('near:"New Haven, Connecticut" 3km');
+check(near2.value === 'New Haven, Connecticut' && near2.query === '', 'a quoted place with where is one chip too: ' + JSON.stringify(near2.value));
+check(S.parseSearchQuery('near:Paris, OR x', S.SEARCH_BAR_FILTERS).groups.length === 1, 'an OR is not where a place is');
 
 // ── labels, in words ─────────────────────────────────────────────────────
 const label = (q, pool) => S._searchChipLabel(one(q), pool || [], false);
@@ -174,7 +184,7 @@ for (const lang of LANGS) {
 ui('en');
 
 // ── the "?" examples, written per language ───────────────────────────────
-const KIND = { exact: 'exact', without: 'without', or: 'or', lang: 'lang', source: 'source', near: 'near' };
+const KIND = { exact: 'exact', without: 'without', or: 'or', lang: 'lang', source: 'source', near: 'near', where: 'near' };
 for (const lang of LANGS) {
   for (const key of [...S.SEARCH_EXAMPLES, ...S.CATALOG_EXAMPLES]) {
     const ex = i18n[lang][key];

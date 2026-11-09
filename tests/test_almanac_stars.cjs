@@ -31,6 +31,7 @@ function check(ok, label) {
 const S = { Math, Date, Intl, Object, JSON, console, String, Number, Array, isNaN, Float32Array, Uint8Array, Uint16Array, Int8Array, ArrayBuffer,
   window: {}, document: { getElementById: () => null } };
 vm.createContext(S);
+vm.runInContext(require("./sk.cjs")(), S);   // app.js SK, loaded before every Almanac file
 vm.runInContext('var JD_UNIX_EPOCH = 2440587.5; var JD_J2000 = 2451545.0; var MS_PER_DAY = 86400000;' +
   'var JULIAN_CENTURY = 36525; var DEG_TO_RAD = Math.PI / 180; function t(k) { return k; }', S);
 const almSrc = read('almanac.js');
@@ -180,8 +181,9 @@ function closest(fromMs, toMs, target) {
     'only the 3D view\'s map loader calls its loader');
   check(/_sgLoadStars\(\)/.test(src) && !/_aeDecodeStars|AE_STARS_/.test(src), 'which asks the sky\'s loader and keeps no decoder of its own');
   const sky = read('almanac-sky.js'), asks = sky.split('\n').filter((l) => /_sgLoadData\(/.test(l));
-  check(asks.length === 1 && /function _skyGLSky[\s\S]*?_sgLoadData\(_skyKickDirty\)/.test(sky),
-    'and the live sky asks only from the GPU sky, never in the 2D fallback');
+  check(asks.length === 2 && /function _skyGLSky[\s\S]*?_sgLoadData\(_skyKickDirty, [^)]*\)/.test(sky) &&
+    /function _skyAwaitingGPU[\s\S]*?if \(_sgReady\(\)\) \{[^}]*_sgLoadData\(_skyKickDirty, /.test(sky),
+    'and the live sky asks only from the GPU sky (and from the held first sight, which paints nothing to ask with), never in the 2D fallback');
   check(!/stars-v1/.test(read('sw.js')), 'and the service worker does not precache it');
 }
 

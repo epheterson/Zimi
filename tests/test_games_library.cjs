@@ -99,6 +99,9 @@ const Lib = load(['librarykit.js']).GamesLib;
     check(R.isTarget({ path: 'Republic_of_France', title: 'France' }, { path: 'France', title: 'France' }), 'race: a redirect that lands on the same title is arriving');
     check(R.isTarget({ path: 'Cafe', title: 'Café' }, { path: 'Cafe_x', title: 'Cafe' }), 'race: accents do not stop a title matching');
     check(!R.isTarget({ path: 'Paris', title: 'Paris' }, { path: 'France', title: 'France' }), 'race: another article is not the target');
+    const route = { parKind: 'route', par: 4 }, shortest = { parKind: 'shortest', par: 4 };
+    check(R.parNote(route, 3).key === 'race.beatRoute' && R.parNote(route, 4).key === 'race.matchedRoute' && R.parNote(route, 5).key === 'race.parRoute', 'race: a route par is beaten, matched or only stated');
+    check(R.parNote(shortest, 4).key === 'race.matchedShortest' && R.parNote(shortest, 6).key === 'race.parShortest' && R.parNote(shortest, 6).n === 4, 'race: a shortest par is matched or stated, with its number');
 
     // The walk: every page it returns is a link of the one before, never repeated, never a dead end.
     const pages = {};
@@ -281,6 +284,39 @@ const Lib = load(['librarykit.js']).GamesLib;
 
     const tray = { x: 0, y: 282, w: 360, h: 150 }, sc = J.scatter(24, tray, 60, 67.5, Lib.rng(11));
     check(sc.length === 24 && sc.every(p => p.x >= 0 && p.x <= 300 && p.y >= 282 && p.y <= 282 + 150 - 67.5 + 1e-9), 'jigsaw: pieces start inside the tray');
+    // No piece lies wholly under the others: dealt on a tray with random stacking, every piece keeps a part in view.
+    {
+      let worst = 1;
+      [[12, 360, 270], [24, 360, 270], [48, 360, 270], [100, 360, 270], [100, 330, 250]].forEach(([n, bw, bh], k) => {
+        const g = J.gridFor(n, bw / bh), pw = bw / g.cols, ph = bh / g.rows, trayR = { x: 0, y: bh + 12, w: bw, h: Math.round(bh * 0.55) };
+        for (let seed = 1; seed <= 40; seed++) {
+          const rng = Lib.rng(seed * 7 + k), cnt = g.cols * g.rows, pos = J.scatter(cnt, trayR, pw, ph, rng), z = pos.map(p => p.z);
+          pos.forEach((p, i) => {
+            let seen = 0, total = 0;
+            for (let a = 0; a < 6; a++) for (let b = 0; b < 6; b++) {
+              const x = p.x + (a + 0.5) * pw / 6, y = p.y + (b + 0.5) * ph / 6;
+              const covered = pos.some((q, j) => j !== i && (z[j] > z[i] || (z[j] === z[i] && j > i)) && x >= q.x && x < q.x + pw && y >= q.y && y < q.y + ph);
+              total++; if (!covered) seen++;
+            }
+            worst = Math.min(worst, seen / total);
+          });
+        }
+      });
+      check(worst >= 0.1, 'jigsaw: in a tray (stacked as the page stacks them) every piece keeps at least a tenth of itself in view (worst ' + worst.toFixed(2) + ')');
+    }
+    // A finished picture has no seams: every edge is a whole pixel, and the pieces meet each other and the board's edge exactly.
+    {
+      let exact = true;
+      [[360, 270, 6, 4], [333, 251, 7, 5], [300, 301, 10, 10]].forEach(([bw, bh, cols, rows]) => {
+        for (let i = 0; i < cols * rows; i++) {
+          const h = J.pixelHome(i, cols, rows, bw, bh), r = J.pixelHome(i + 1, cols, rows, bw, bh), d = J.pixelHome(i + cols, cols, rows, bw, bh);
+          exact = exact && [h.x, h.y, h.w, h.h].every(Number.isInteger);
+          if ((i % cols) < cols - 1) exact = exact && h.x + h.w === r.x; else exact = exact && h.x + h.w === bw;
+          if (i + cols < cols * rows) exact = exact && h.y + h.h === d.y; else exact = exact && h.y + h.h === bh;
+        }
+      });
+      check(exact, 'jigsaw: pieces are whole pixels that meet exactly, and end on the board\'s edge');
+    }
     check(!J.solved([]) && !J.solved([{ locked: true }, { locked: false }]) && J.solved([{ locked: true }, { locked: true }]), 'jigsaw: solved when every piece is locked, never for an empty board');
 
     // The drawn pictures run on a stub canvas context (no canvas in node) and draw something for every scene.

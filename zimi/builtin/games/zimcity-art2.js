@@ -41,6 +41,9 @@ function block(atlasCtx, at, base, size, paint) {
   }
 }
 
+// Where the plant's chimneys let the smoke out: the tile (in the 4 x 4, reading order) and where in it the puff starts.
+var SMOKE = [{ tile: 2, x: 16, y: 20 }, { tile: 3, x: 16, y: 20 }, { tile: 6, x: 16, y: 20 }, { tile: 7, x: 16, y: 20 }];
+
 var ROOFS = ['#b4552e', '#c96f45', '#8d6e57', '#6f7a86'];   // homes, by land value: clay, terracotta, brown, slate
 
 function homes(ctx, n, s, value, den, seed) {
@@ -110,6 +113,17 @@ export function buildings(atlasCtx, at, s) {
     box(ctx, 10, 46, 70, 60, 12, s.metal, s.metalDark);
     box(ctx, 72, 8, 14, 14, 30, s.brick, s.brickDark); box(ctx, 98, 8, 14, 14, 30, s.brick, s.brickDark);
     ctx.fillStyle = s.coal; ctx.beginPath(); ctx.ellipse(98, 92, 18, 12, 0, 0, Math.PI * 2); ctx.fill();
+  });
+  // The plant's four chimney tiles animate (four frames each, in the engine's own numbering) and the original frames are
+  // the original's pixels: each is the plant's own tile with a puff of smoke rising over it instead.
+  SMOKE.forEach(function (g, i) {
+    for (var f = 0; f < 4; f++) {
+      var from = at(TV.COALBASE + g.tile), to = at(TV.COALSMOKE1 + i * 4 + f);
+      atlasCtx.clearRect(to[0], to[1], ART, ART);
+      atlasCtx.drawImage(atlasCtx.canvas, from[0], from[1], ART, ART, to[0], to[1], ART, ART);
+      atlasCtx.fillStyle = 'rgba(236, 236, 232, ' + (0.8 - f * 0.15).toFixed(2) + ')';
+      atlasCtx.beginPath(); atlasCtx.arc(to[0] + g.x + f * 2, to[1] + g.y - f * 5, 5 + f * 1.5, 0, Math.PI * 2); atlasCtx.fill();
+    }
   });
   block(atlasCtx, at, TV.NUCLEARBASE, 4, function (ctx, n) {
     lot(ctx, n, s); ctx.fillStyle = s.yard; ctx.fillRect(4, 4, n - 8, n - 8);

@@ -38,7 +38,7 @@
 
 /* Controls row and result lines. */
 .bg-controls { display: flex; flex-wrap: wrap; gap: 8px; justify-content: center; }
-.bg-stats { margin: 0; font: var(--fs-small) var(--font); color: var(--ink2); text-align: center; }
+.bg-stats, .bg-rules { margin: 0; font: var(--fs-small) var(--font); color: var(--ink2); text-align: center; }
 .bg-stats[hidden] { display: none; }
 
 /* Sheets: option chips. */

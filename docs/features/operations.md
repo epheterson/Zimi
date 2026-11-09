@@ -26,7 +26,7 @@ podman run -d --name zimi --network host \
 
 `--userns=keep-id:uid=1000,gid=1000` maps the image's user to you, so the ZIMs Zimi downloads into `./zims` are yours to read and delete. `:Z` is the SELinux label Fedora and RHEL need on a bind mount, harmless elsewhere. To start it at boot, install [deploy/podman/zimi.container](../../deploy/podman/zimi.container) under `~/.config/containers/systemd/` (a Quadlet unit), then `systemctl --user daemon-reload && systemctl --user start zimi`.
 
-**As a service, after a pip install.** `zimi serve` runs in the foreground on purpose, so the system starts it, restarts it and keeps its log. On Linux, the systemd unit that ships with Zimi runs it at boot as its own `zimi` user: `zimi service print` shows it (the steps are in its header) and `sudo zimi service install` writes it to /etc/systemd/system. systemd makes /var/lib/zimi/zims for your ZIM files, state files are 0640 and credentials 0600, and `journalctl -u zimi` shows its log. On a Raspberry Pi serving a school this is the whole setup. Without systemd (a USB disk carried between machines), `zimi serve -d` runs in the background the way `kiwix-serve -d` does, with `zimi.pid` and `zimi.log` in the data directory.
+**As a service, after a pip install.** `zimi serve` runs in the foreground on purpose, so the system starts it, restarts it and keeps its log. On Linux, the systemd unit that ships with Zimi runs it at boot as its own `zimi` user: `zimi service print` shows it (the steps are in its header) and `sudo /var/lib/zimi/venv/bin/zimi service install` writes it to /etc/systemd/system, running the Python of the venv that installs it. systemd makes /var/lib/zimi/zims for your ZIM files, state files are 0640 and credentials 0600, and `journalctl -u zimi` shows its log. On a Raspberry Pi serving a school this is the whole setup. Without systemd (a USB disk carried between machines), `zimi serve -d` runs in the background the way `kiwix-serve -d` does, with `zimi.pid` and `zimi.log` in the data directory.
 
 **Deploy manifests.** `deploy/` ships `docker-compose.yml`, `kubernetes.yaml`, a Podman Quadlet unit and a `README.md` covering host/bridge networking and air-gap. See also [Networking & deployment modes](../deployment-networking.md).
 
@@ -45,7 +45,7 @@ Everything Zimi can reach beyond this machine, one row per destination. Server s
 | `api.github.com` | Whether a newer Zimi is out | **Check for updates**: Automatically (default), when an admin opens Server settings, at most daily; Ask first, only on Check now; Never. | Zimi's version in the user agent | Server settings: Check for updates; `ZIMI_UPDATE_CHECK`; `ZIMI_OFFLINE` |
 | `raw.githubusercontent.com` | The desktop app's updater feed (Sparkle on macOS, WinSparkle on Windows) | At launch and on the updater's schedule, only under Automatically. macOS asks the person first on the second launch. | The app's version | The same setting; `auto_update_check: false` in the desktop config; `ZIMI_OFFLINE` |
 | `celestrak.org` | ISS and GPS orbits for the Almanac's 3D Earth | **Satellite data from the internet**: Ask first (default), only on Get fresh data; Automatically, while the Earth view is open with data over six hours old; Never. | Zimi's user agent | The Earth view's gear (the Almanac); `ZIMI_SATELLITE_UPDATES`; `ZIMI_OFFLINE` |
-| `github.com` | Almanac HD, the sharper Earth and Moon (one ZIM, a few hundred MB) | **Almanac HD**: Ask first (default), offered in the Almanac's Earth view to an admin; Automatically, on the Almanac's first open; Never. | Zimi's user agent | `ZIMI_ALMANAC_HD`; `ZIMI_OFFLINE` |
+| `github.com` | Almanac HD: the HD flavour of the Almanac (`zimi_almanac_maxi_<month>.zim`, about 200 MB: the whole Almanac with sharper Earth, Moon and planets inside), and the small manifest on this version's release that names it | **Almanac HD**: Ask first (default), the file is offered to an admin at once, sized ("about N MB") from what Zimi knows offline, and nothing is fetched until they say yes; then the manifest is read, the file downloaded and its sha256 checked; Automatically, the same on the Almanac's first open; Never, nothing is read. A build with no release has no manifest and downloads nothing. | Zimi's user agent | `ZIMI_ALMANAC_HD`; `ZIMI_OFFLINE` |
 | `huggingface.co`, `github.com`, `pypi.org` | Voices for the Dictionary's Say, pinned per release: Piper voices from Hugging Face (rhasspy/piper-voices), about 60 MB each; the Kokoro model (English, Spanish, French, Italian, Portuguese, Hindi, Chinese) from GitHub (kokoro-onnx's model-files-v1.0), 121 MB. On a pip or uv install without the engines, the first voice also installs piper-tts and kokoro-onnx from PyPI (about 110 MB), and uv's Python 3.12 where uv brings one | **Voices for Dictionary**: Ask first (default), only when an admin presses Download in the Dictionary or in Server settings; Automatically, the first time a word is said in a language with a voice not yet here; Never. | Zimi's user agent | Server settings: Voices for Dictionary; `ZIMI_VOICE_DOWNLOADS`; `ZIMI_OFFLINE` |
 | `archive.org` | StreetZim's regions (one search, one request per region, cached a day) and StreetZim downloads | An admin shows StreetZim in the catalog's Maps, or opens a map's "map of here" list; a download someone starts. | Zimi's user agent | `ZIMI_OFFLINE`; the shipped snapshot answers |
 | `<team>.cloudflareaccess.com` | Cloudflare Access signing keys | Only with single sign-on set up (`ZIMI_SSO_TEAM`, `ZIMI_SSO_AUD`): when a sign-in carries a key not cached. | Nothing about the person | Don't set up SSO; `ZIMI_OFFLINE` (cached keys only) |
@@ -69,7 +69,7 @@ What reaches nothing:
 | `ZIMI_OFFLINE` | env / config `offline` | `0` | `1` = full air-gap (all internet features off; mDNS stays) |
 | `ZIMI_UPDATE_DELAY_DAYS` | env | `0` | Defer adopting a release by N days |
 | `ZIMI_UPDATE_CHECK` | env / Server settings | `auto` | Whether Zimi looks for its own updates: `auto` (when Server settings opens, at most daily, and the desktop updater), `ask` (only on Check now) or `never` |
-| `ZIMI_ALMANAC_HD` | env / `POST /manage/almanac-hd` | `ask` | Almanac HD from Zimi's GitHub release: `ask` (offered in the Almanac to an admin), `auto` (fetched on the Almanac's first open) or `never` |
+| `ZIMI_ALMANAC_HD` | env / `POST /manage/almanac-hd` | `ask` | Almanac HD from this version's GitHub release: `ask` (offered in the Almanac to an admin), `auto` (fetched on the Almanac's first open) or `never` |
 | `ZIMI_SATELLITE_UPDATES` | env / Server settings / the Earth view's gear | `ask` | Satellite data for the Almanac's 3D Earth from CelesTrak: `ask` (only when an admin asks), `auto` (in the background, at most every six hours) or `never` |
 | `ZIMI_VOICE_DOWNLOADS` | env / Server settings | `ask` | Voices for the Dictionary's Say (Piper from Hugging Face, Kokoro from GitHub): `ask` (only when an admin asks), `auto` (a language's voice the first time a word in it is said) or `never` |
 | `ZIMI_PIPER` | env | — | The Piper command Say runs, when it is not `piper` on PATH or piper-tts in Zimi's Python |
@@ -77,6 +77,19 @@ What reaches nothing:
 | `ZIMI_RATE_LIMIT` / `_TRUSTED` / `_LOGIN` | env | — | Request rate limits (frozen at startup). This machine and private networks (LAN, link-local, Tailscale) reaching Zimi directly are not limited unless `ZIMI_RATE_LIMIT` is set; anything forwarded by a proxy is. |
 | `ZIMI_TRUSTED_PROXIES` | env | — | CIDR allowlist for forwarded-client-IP trust |
 | `ZIMI_INDEX_THROTTLE` | env / config | `1` | Throttle background index building |
+
+## Portable Linux build
+
+`zimi-<version>-linux-x64.tar.gz` and `-arm64.tar.gz` (Raspberry Pi 64-bit included) unpack to one folder with a `zimi` executable. No Python, no window; it needs glibc 2.35 or newer. Make a `zimi-data` folder beside the executable and it keeps everything there: settings, users, caches, `zimi.pid` and `zimi.log`. Put ZIMs in a `zims` folder beside it and they are served with no flags. Copy the folder to a USB disk and it works wherever the disk is plugged in.
+
+```bash
+mkdir zimi-data zims            # once
+./zimi serve -d --zim-dir ./zims   # in the background, like kiwix-serve -d
+kill $(cat zimi-data/zimi.pid)     # stop it
+sudo ./zimi service install        # systemd unit that runs this executable (as the folder's owner)
+```
+
+One rule picks the paths: a flag, then an environment variable, then the config file, then this folder (`zimi-data` and `zims`, used when `zimi-data` exists or `--portable` / `ZIMI_PORTABLE=1` is given), then the normal defaults. `zimi config` shows which one won. A `zimi-data` that cannot be written is an error, never a quiet move to `~/.cache`. The build leaves out voices, BitTorrent, MCP and the Create engines that need a browser or a Python; `./zimi doctor` lists what is and is not there.
 
 ## Troubleshoot
 

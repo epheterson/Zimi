@@ -409,17 +409,36 @@
   // How far a meld's cards fan, as shares of a card's width, widest first: wide enough that every card's corner index shows
   // (a wild card among naturals reads as itself), narrower only when the table runs out of height for the rows.
   var MELD_STEPS = [0.42, 0.34, 0.26, 0.18, 0.1];
-  var rowH = function (g) { return g.ch + TAG_H + 4; };
+  // When even the narrowest fan will not fit, the melds' cards shrink instead (shares of the table's card), and the two tightest fans are the last resort.
+  var KEEP_STEPS = 3;   // the fans (0.42 to 0.26) that keep a rank readable; the tighter two are the last level's last resort
+  // The melds' card size as a share of the table's card, each level tried in turn: the last two give up the count tags under the melds
+  // (the slots still say them aloud, and a canasta still glows) so a table of 22 melds fits in the height a phone has.
+  var MELD_LEVELS = [{ scale: 1, tags: true }, { scale: 0.8, tags: true }, { scale: 0.66, tags: true }, { scale: 0.56, tags: true }, { scale: 0.56, tags: false }, { scale: 0.48, tags: false }];
+  var rowH = function (g) { return g.mch + g.tagH + 4; };
   // Melds flow left to right, each as wide as its fan, and wrap: spots[k] = {x, row, w}.
   function flowMelds(g, melds, step) {
     var x = g.pad, row = 0, right = g.W - g.pad, spots = melds.map(function (mm) {
-      var w = Math.round(Math.min(right - g.pad, g.cw + (mm.cards.length - 1) * step));
+      var w = Math.round(Math.min(right - g.pad, g.mcw + (mm.cards.length - 1) * step));
       if (x > g.pad && x + w > right) { x = g.pad; row++; }
       var sp = { x: x, row: row, w: w };
-      x += w + MELD_GAP;
+      x += w + g.meldGap;
       return sp;
     });
     return { spots: spots, rows: row + 1 };
+  }
+  // The first level and fan that seat both sides' melds in `room`, the widest fan of the largest cards first; the last one when none does.
+  function fitMelds(g, st, V, room) {
+    var mine, theirs, last = MELD_LEVELS.length - 1;
+    for (var j = 0; j <= last; j++) {
+      var lv = MELD_LEVELS[j];
+      g.mcw = Math.round(g.cw * lv.scale); g.mch = Math.round(g.ch * lv.scale); g.tagH = lv.tags ? TAG_H : 0; g.meldGap = lv.scale < 0.6 ? MELD_GAP / 2 : MELD_GAP;
+      for (var i = 0; i < (j < last ? KEEP_STEPS : MELD_STEPS.length); i++) {
+        g.step = Math.round(g.mcw * MELD_STEPS[i]);
+        mine = flowMelds(g, st.melds[V], g.step); theirs = flowMelds(g, st.melds[1 - V], g.step);
+        if ((mine.rows + theirs.rows) * rowH(g) <= room) return { mine: mine, theirs: theirs };
+      }
+    }
+    return { mine: mine, theirs: theirs };
   }
   // V is the side looking: its hand and melds sit at the bottom.
   function geo(m, st, V) {
@@ -429,12 +448,7 @@
     g.barY = g.yBot - BAR_H;   // yBot is the top of your hand (its extra rows included)
     g.statusY = g.barY - 4 - T.STATUS_H;
     g.oppMeldY = g.northY + g.ch + 8;
-    var room = g.statusY - 4 - g.oppMeldY - (g.ch + TAG_H + 12), mine, theirs;
-    for (var i = 0; i < MELD_STEPS.length; i++) {
-      g.step = Math.round(g.cw * MELD_STEPS[i]);
-      mine = flowMelds(g, st.melds[V], g.step); theirs = flowMelds(g, st.melds[1 - V], g.step);
-      if ((mine.rows + theirs.rows) * rowH(g) <= room) break;
-    }
+    var fit = fitMelds(g, st, V, g.statusY - 4 - g.oppMeldY - (g.ch + TAG_H + 12)), mine = fit.mine, theirs = fit.theirs;
     g.myMeldY = g.statusY - 4 - mine.rows * rowH(g);
     g.spots = [];
     g.spots[V] = mine.spots; g.spots[1 - V] = theirs.spots;
@@ -457,9 +471,9 @@
     [0, 1].forEach(function (side) {
       st.melds[side].forEach(function (mm, k) {
         var sp = meldSpot(g, side, k);
-        var fanned = meldFan(mm), step = fanned.length > 1 ? (sp.w - g.cw) / (fanned.length - 1) : 0;
-        fanned.forEach(function (id, i) { cards.push({ id: id, pile: 'm' + side + '-' + mm.rank, idx: i, x: Math.round(sp.x + i * step), y: sp.y, up: true, glow: isCanasta(mm), mark: side === V && view && view.target === mm.rank }); });
-        slots.push({ id: 'm' + side + '-' + mm.rank, x: sp.x, y: sp.y, w: sp.w, h: g.ch, quiet: true, label: TX(side === V ? 'canasta.meldAria.you' : 'canasta.meldAria', { rank: rankName(mm.rank), cards: Z.plural(mm.cards.length, 'card') }) });
+        var fanned = meldFan(mm), step = fanned.length > 1 ? (sp.w - g.mcw) / (fanned.length - 1) : 0, small = g.mcw < g.cw ? g.mcw : 0;
+        fanned.forEach(function (id, i) { cards.push({ id: id, pile: 'm' + side + '-' + mm.rank, idx: i, x: Math.round(sp.x + i * step), y: sp.y, cw: small, up: true, glow: isCanasta(mm), mark: side === V && view && view.target === mm.rank }); });
+        slots.push({ id: 'm' + side + '-' + mm.rank, x: sp.x, y: sp.y, w: sp.w, h: g.mch, cw: small, quiet: true, label: TX(side === V ? 'canasta.meldAria.you' : 'canasta.meldAria', { rank: rankName(mm.rank), cards: Z.plural(mm.cards.length, 'card') }) });
       });
     });
     var gap = Math.round(g.cw * PILE_GAP), sx = Math.round(g.cx - g.cw - gap / 2), px = Math.round(g.cx + gap / 2);
@@ -502,13 +516,13 @@
     var tagSig = '';
     function layTags(st, m) {
       var g = geo(m, st, seats.view());
-      var sig = JSON.stringify([seats.view(), st.melds.map(function (l) { return l.map(function (mm) { return [mm.rank, mm.cards.length, wildCount(mm.cards)]; }); }), st.stock.length, st.pile.length, st.pileFrozen, st.pile.length ? last(st.pile) : -1, g.W, g.myMeldY, g.centreY]);
+      var sig = JSON.stringify([seats.view(), st.melds.map(function (l) { return l.map(function (mm) { return [mm.rank, mm.cards.length, wildCount(mm.cards)]; }); }), st.stock.length, st.pile.length, st.pileFrozen, st.pile.length ? last(st.pile) : -1, g.W, g.myMeldY, g.centreY, g.tagH]);
       if (sig === tagSig) return;
       tagSig = sig;
       tags.forEach(function (e) { e.remove(); }); tags = [];
       var add = function (txt, x, y, w, cls) { if (!txt) return; var e = Z.h('div', { class: 'c2-tag ' + (cls || ''), style: 'left:' + Math.round(x) + 'px;top:' + Math.round(y) + 'px;width:' + Math.round(w) + 'px;height:' + (TAG_H - 1) + 'px' }, [Z.h('span', { text: txt })]); table.appendChild(e); tags.push(e); };
       [0, 1].forEach(function (side) {
-        st.melds[side].forEach(function (mm, k) { var sp = meldSpot(g, side, k); add(meldTag(mm), sp.x, sp.y + g.ch + 1, sp.w, 'c2-meld' + (isCanasta(mm) ? ' c2-turn' : '')); });
+        if (g.tagH) st.melds[side].forEach(function (mm, k) { var sp = meldSpot(g, side, k); add(meldTag(mm), sp.x, sp.y + g.mch + 1, sp.w, 'c2-meld' + (isCanasta(mm) ? ' c2-turn' : '')); });
       });
       var gap = Math.round(g.cw * PILE_GAP), sx = Math.round(g.cx - g.cw - gap / 2), px = Math.round(g.cx + gap / 2), w = Math.round(g.cw * TAG_SHARE), off = (w - g.cw) / 2;
       add(TX('canasta.tag.stock', { n: st.stock.length }), sx - off, g.centreY + g.ch + 2, w);

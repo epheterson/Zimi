@@ -57,6 +57,7 @@ sandbox._getLocation = () => sandbox.__loc;
 sandbox._almDisplayTz = () => sandbox.__home;
 sandbox._almDeviceTz = () => sandbox.__device;
 vm.createContext(sandbox);
+vm.runInContext(require("./sk.cjs")(), sandbox);
 vm.runInContext(pieces.join('\n'), sandbox);
 const { _almTzForLocation, _almClockCards, _almClockLit, _almClockShown, _almTzCardLabel, _TZ_CITIES, _MAP_CITIES } = sandbox;
 

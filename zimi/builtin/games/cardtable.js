@@ -32,6 +32,8 @@
   }
   // The longest hand on the table, for a state that keeps hands[] (0 before the first deal).
   function longestHand(st) { return st && st.hands ? Math.max.apply(null, st.hands.map(function (h) { return h ? h.length : 0; }).concat([0])) : 0; }
+  // A board's `cols` for any game whose state keeps hands[]: Hearts asks for it too, so every card game sizes its cards alike.
+  function stateCols(st, W, pad, gap) { return handCols(longestHand(st), W, pad, gap); }
   var SIDE_STEP_MIN = 0.07, SIDE_STEP_MAX = 0.2, TOP_STEP_SHARE = 0.3, SIDE_OFFSET_CARDS = 3.4, TRICK_DX = 0.72, TRICK_DY = 0.62;
   var MIN_STEP_SHARE = 0.42, ROW_STEP_SHARE = 0.5, FLASH_MS = 1800, PANEL_GAP = 8;
   // The slot a card is dropped on to play it: this many cards wide and tall either side of the table's middle.
@@ -232,7 +234,7 @@
     function unflash() { if (view.flash) { view.flash = ''; paint(); } }
 
     board = Z.createBoard({
-      table: el.table, cols: cfg.cols || function (st, W, pad, gap) { return handCols(longestHand(st), W, pad, gap); }, heightShare: cfg.heightShare || 0.11, enterTaps: true, face: cfg.face,
+      table: el.table, cols: cfg.cols || stateCols, heightShare: cfg.heightShare || 0.11, enterTaps: true, face: cfg.face,
       place: function (st, m) {
         takeCounts();
         var p = cfg.place(st, m, view);
@@ -476,7 +478,7 @@
   }
 
   root.ZimiTable = {
-    paintChips: paintChips, SEAT_POS: SEAT_POS, HAND13_COLS: HAND13_COLS, handCols: handCols, SUIT_GLYPH: SUIT_GLYPH, STATUS_H: STATUS_H, STATUS_MAX: STATUS_MAX, SCORE_BAR_H: SCORE_BAR_H,
+    paintChips: paintChips, SEAT_POS: SEAT_POS, HAND13_COLS: HAND13_COLS, handCols: handCols, stateCols: stateCols, SUIT_GLYPH: SUIT_GLYPH, STATUS_H: STATUS_H, STATUS_MAX: STATUS_MAX, SCORE_BAR_H: SCORE_BAR_H,
     next: next, sortHand: sortHand, rankHigh: rankHigh, short: short, shortList: shortList, shuffleOf: shuffleOf,
     countBy: countBy, maxBy: maxBy, minBy: minBy,
     geometry: geometry, rowsFor: rowsFor, sideStep: sideStep, trickSpot: trickSpot, seatSpot: seatSpot, posOf: posOf, posFor: posFor, handCards: handCards, fan: fan, takeCounts: takeCounts, handRows: handRows,

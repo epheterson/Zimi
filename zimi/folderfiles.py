@@ -27,6 +27,7 @@ A text file is a sidecar only when it says at least one of those keys, so a
 ``notes.txt`` of prose beside ``notes.pdf`` stays a page.
 """
 
+import fnmatch
 import html as _html
 import json
 import os
@@ -123,6 +124,7 @@ FOLDER_KEYS = (
     "publisher",
     "tags",
     "icon",
+    "articles",
 )
 ITEM_KEYS = ("title", "author", "date", "description", "cover")
 SIDECAR_EXTS = (".txt", ".json")
@@ -202,7 +204,8 @@ def parse_sidecar(text, keys, as_json=False):
             if key not in keys or v is None:
                 continue
             if isinstance(v, list):
-                v = ", ".join(str(x).strip() for x in v if str(x).strip())
+                # Tags are a comma list; article patterns are the space-separated ones article_rule reads.
+                v = (" " if key == "articles" else ", ").join(str(x).strip() for x in v if str(x).strip())
             v = str(v).strip()
             if v:
                 out[key] = v
@@ -216,6 +219,25 @@ def parse_sidecar(text, keys, as_json=False):
         if key in keys and v and key not in out:
             out[key] = v
     return out
+
+
+def article_rule(articles):
+    """Whether a page is an article (in search, suggestions and a random pick),
+    from a zimi.txt ``Articles:`` line: space-separated patterns matched one
+    path segment at a time (``*.html`` is the top level only, ``puzzles/*.html``
+    one folder down), a ``!`` pattern excluding. No line: every page is one."""
+    pats = (articles or "").split()
+    if not pats:
+        return lambda path: True
+
+    def hit(pat, path):
+        a, b = pat.split("/"), path.split("/")
+        return len(a) == len(b) and all(fnmatch.fnmatchcase(x, y) for x, y in zip(b, a))
+
+    keep = [p for p in pats if not p.startswith("!")]
+    drop = [p[1:] for p in pats if p.startswith("!")]
+    # Only exclusions ("!private/*"): everything else is an article.
+    return lambda path: (not keep or any(hit(p, path) for p in keep)) and not any(hit(p, path) for p in drop)
 
 
 def read_sidecar(fs_path, keys):

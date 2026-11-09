@@ -265,7 +265,7 @@
     if (game.mode === 'daily') chips.push([T('fiveletters.streak'), Play.num(stats.streak)]);
     var text = won ? '' : T('fiveletters.theWord', { word: shown() });
     if (game.blurb) text = (text ? text + ' ' : '') + T('fiveletters.gloss', { word: game.title, meaning: game.blurb });
-    ZimiShell.endSheet({ result: won ? 'win' : 'lose', stats: chips, text: text || undefined, after: Play.reducedMotion() ? 0 : END_DELAY_MS });
+    ZimiShell.endSheet({ result: won ? 'win' : 'lose', stats: chips, ownStreak: true, text: text || undefined, after: Play.reducedMotion() ? 0 : END_DELAY_MS });
   }
 
   // Only the daily counts toward the streak and the spread.

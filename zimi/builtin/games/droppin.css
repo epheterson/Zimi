@@ -3,6 +3,7 @@
 .dp-n { margin: 0; min-height: 1.2em; font-size: var(--fs-small); color: var(--ink2); }
 .dp-ask { margin: 0; font-size: var(--fs-sheet); font-weight: 600; text-align: center; text-wrap: balance; }
 .dp-stage { position: relative; width: 100%; height: min(58svh, 460px); border: 1px solid var(--line); border-radius: var(--r-sheet); overflow: hidden; background: var(--surface2); }
+.dp-stage.world { height: min(58svh, 460px, 88vw); }   /* the world is wider than tall: a box no taller than the map needs shows no empty sea */
 .dp-frame { width: 100%; height: 100%; border: 0; }
 .dp-world[hidden], .dp-zoom[hidden] { display: none; }   /* the display rules below would otherwise beat the hidden attribute */
 .dp-world { display: block; width: 100%; height: 100%; touch-action: none; cursor: crosshair; background: #16233f; }

@@ -1,123 +1,94 @@
 #!/bin/bash
-# Deploy Zimi — NAS + local app build
-set -e
+# Deploy Zimi to the NAS: send what changed, build the image (cached), swap the
+# container, wait until it answers. The desktop app is a release check:
+# desktop/build_local.sh.
+set -euo pipefail
+cd "$(dirname "$0")"
+
+NAS_DIR=/volume1/docker/kiwix
+# One SSH connection for every step (a Synology handshake is ~1 s each).
+SOCK="${TMPDIR:-/tmp}/zimi-deploy-ssh-%r@%h"
+SSH="ssh -o ControlMaster=auto -o ControlPath=$SOCK -o ControlPersist=60"
+t0=$(date +%s)
+step() { echo "  $1 ($(( $(date +%s) - t0 ))s)"; }
 
 echo "=== Deploying to NAS ==="
-ssh nas "mkdir -p /volume1/docker/kiwix/zimi /volume1/docker/kiwix/zimi-data"
-# Ship the whole package as a tar so new modules deploy automatically.
-# Excludes pycache + tests so the image stays slim.
-tar cf - --exclude='__pycache__' --exclude='*.pyc' zimi/ docker/ | ssh nas "cd /volume1/docker/kiwix && tar xf -"
-cat requirements.txt | ssh nas "cat > /volume1/docker/kiwix/requirements.txt"
-cat Dockerfile | ssh nas "cat > /volume1/docker/kiwix/Dockerfile"
-# Ship our own compose so the deploy is deterministic — never trust whatever
-# compose happens to be sitting in the NAS dir. A stale stock-kiwix compose left
-# there once hijacked a deploy (down --remove-orphans killed the live Zimi
-# container, up -d started the wrong image at 256m and crash-looped). Back up any
-# existing compose to .prev before overwriting, for a one-step manual rollback.
-ssh nas "cd /volume1/docker/kiwix && [ -f docker-compose.yml ] && cp -p docker-compose.yml docker-compose.yml.prev || true"
-cat docker-compose.nas.yml | ssh nas "cat > /volume1/docker/kiwix/docker-compose.yml"
-echo "  Files copied (incl. canonical NAS compose)"
-
-# BUILD FIRST, then swap. The order used to be down → build → up, which meant
-# the site was off for the entire build and that ANY build failure left the NAS
-# with no container at all — not the old one, none. A dropped SSH did exactly
-# that.
-#
-# And a CACHED build, which this was not for a long time. The Dockerfile puts
-# `COPY zimi/` second to last, after pip, Playwright's 400MB Chromium, Node and
-# yt-dlp, precisely so a code change invalidates one small layer. --no-cache
-# threw all of that away and re-downloaded a browser to ship a changed JS file:
-# measured 2026-09-13, the same deploy takes 8 SECONDS cached and over ten
-# minutes without. Reach for --no-cache only when something outside the build
-# context changed — a pinned upstream you want re-fetched, a suspect cache —
-# never for a source edit.
-#
-# Built first, the running container keeps serving the old image the whole time
-# and a failed build changes nothing: `set -e` stops here and prod is still up.
-#
-# `| tail -3` makes the PIPELINE's status tail's, which is always 0 — so a
-# failed build reported success and left the previous image running. That is
-# how a Dockerfile that exited 127 still printed "NAS deployed", and how a
-# whole evening of "deploy=0" meant nothing. pipefail makes the build's own
-# status the one that counts, and `set -e` above then stops the script.
-set -o pipefail
-ssh nas "cd /volume1/docker/kiwix && /usr/local/bin/docker-compose build" 2>&1 | tail -3
-
-# Only now, with a good image in hand, is it safe to take the site down. `down`
-# immediately before `up` also keeps the reason it was there in the first place:
-# no name-conflict against a still-shutting-down container.
-ssh nas "cd /volume1/docker/kiwix && /usr/local/bin/docker-compose down --remove-orphans --timeout 30" 2>&1 | tail -3
-ssh nas "cd /volume1/docker/kiwix && /usr/local/bin/docker-compose up -d" 2>&1 | tail -3
-
-# Say it only when it is true. A container that exited on boot is not a deploy.
-sleep 10
-if ssh nas "/usr/local/bin/docker ps --filter name=^zimi$ --format '{{.Names}}'" | grep -qx zimi; then
-  echo "  NAS deployed"
+# One deploy at a time: two would interleave their extractions and build a mix of revisions.
+# mkdir is atomic; the trap lets go on every exit. A killed deploy leaves the lock: rmdir it by hand.
+LOCK=$NAS_DIR/.deploy.lock
+$SSH nas "mkdir $LOCK" 2>/dev/null || { echo "another deploy holds $LOCK on the NAS (rmdir it if that deploy died)" >&2; exit 1; }
+trap '$SSH nas "rmdir $LOCK" 2>/dev/null || true' EXIT
+# Only what changed since the last deploy crosses the wire (the package is ~100 MB,
+# a deploy usually a few files). The stamp lives in .git, so a fresh clone sends
+# everything once. (Synology refuses rsync unless its rsync service is on, so tar.)
+STAMP=.git/zimi-last-deploy
+SRC="zimi docker requirements.txt Dockerfile docker-compose.nas.yml"
+if [ -f "$STAMP" ]; then
+  files=$(find $SRC -type f -newer "$STAMP" ! -path '*/__pycache__/*' ! -name '*.pyc')
 else
-  echo "  NAS DEPLOY FAILED — container is not running" >&2
-  exit 1
+  files=$(find $SRC -type f ! -path '*/__pycache__/*' ! -name '*.pyc')
 fi
-
-echo ""
-echo "=== Purging Cloudflare cache ==="
-CF_ZONE=$(yq '.config.cf_zone_id' ~/vault/secrets/services.yml)
-CF_TOKEN=$(yq '.config.cf_token' ~/vault/secrets/services.yml)
-if [ -n "$CF_ZONE" ] && [ "$CF_ZONE" != "null" ] && [ -n "$CF_TOKEN" ] && [ "$CF_TOKEN" != "null" ]; then
-  curl -s -X POST "https://api.cloudflare.com/client/v4/zones/${CF_ZONE}/purge_cache" \
-    -H "Authorization: Bearer ${CF_TOKEN}" \
-    -H "Content-Type: application/json" \
-    --data '{"purge_everything":true}' \
-    | python3 -c "import sys,json; r=json.load(sys.stdin); print('  Purged' if r.get('success') else f'  Failed: {r}')"
-else
-  echo "  Skipped (no Cloudflare credentials)"
+touch "$STAMP.next"
+# A file deleted since the last deploy would stay in the NAS tree (tar only adds) and the image would
+# copy it: remove what the last deploy sent and this checkout no longer has. Nothing is scanned on the NAS.
+find $SRC -type f ! -path '*/__pycache__/*' ! -name '*.pyc' | sort > "$STAMP.list.next"
+deleted=""
+[ -f "$STAMP.list" ] && deleted=$(comm -23 "$STAMP.list" "$STAMP.list.next")
+$SSH nas "mkdir -p $NAS_DIR/zimi-data"
+if [ -n "$files" ]; then
+  printf '%s\n' "$files" | tar cf - -T - | $SSH nas "cd $NAS_DIR && tar xf -"
 fi
+if [ -n "$deleted" ]; then
+  printf '%s\n' "$deleted" | tr '\n' '\0' | $SSH nas "cd $NAS_DIR && xargs -0 rm -f --"
+  step "removed $(printf '%s\n' "$deleted" | grep -c .) deleted files"
+fi
+step "sent $(printf '%s' "$files" | grep -c . || true) changed files"
+# kiwix-serve reads our own ZIMs from zimi/builtin only when it starts.
+own_zims=$(printf '%s\n' "$files" | grep -c 'zimi/builtin/.*\.zim$' || true)
 
-echo ""
-echo "=== Building desktop app ==="
-pkill -9 -f "dist/Zimi" 2>/dev/null || true
-sleep 1
+# BUILD FIRST, then swap: the running container serves the old image the whole
+# build, and a failed build (set -e, pipefail) changes nothing. Cached: `COPY
+# zimi/` is the second-to-last layer, so a code change rebuilds only it; never
+# --no-cache for a source edit (over ten minutes, it re-downloads Chromium).
+# The compose shipped is ours, never whatever sits in the NAS dir (a stale one
+# once started the wrong image); the previous one is kept as .prev.
+$SSH nas "set -eo pipefail; cd $NAS_DIR
+  [ -f docker-compose.yml ] && cp -p docker-compose.yml docker-compose.yml.prev || true
+  cp docker-compose.nas.yml docker-compose.yml
+  /usr/local/bin/docker-compose build 2>&1 | tail -2
+  /usr/local/bin/docker-compose up -d --remove-orphans 2>&1 | tail -2
+  for i in \$(seq 1 240); do
+    curl -sf -o /dev/null http://localhost:8899/health && exit 0
+    sleep 1
+  done
+  echo 'no answer from /health after 240 s' >&2; exit 1"
+step "NAS deployed, /health answers"
 
-# The in-process BitTorrent engine (libtorrent) only lands in the frozen app if
-# it's importable in the interpreter PyInstaller runs under. libtorrent 2.0
-# ships wheels for CPython <= 3.13 only — building under a newer python (e.g.
-# 3.14, the current `python3` default) silently produces an HTTP-only app that
-# reports "BT unavailable". CI pins Python 3.12; the local build must match, so
-# pick a compatible interpreter and build from a dedicated venv that carries the
-# same deps CI installs.
-BUILD_PY=""
-for cand in python3.13 python3.12 python3; do
-  if command -v "$cand" >/dev/null 2>&1 && \
-     "$cand" -c 'import sys; sys.exit(0 if sys.version_info[:2] <= (3, 13) else 1)' 2>/dev/null; then
-    BUILD_PY="$cand"
-    break
+# The stamp moves only when kiwix-serve has the new own ZIMs; a failed restart is tried again by the next deploy.
+advance=1
+if [ "$own_zims" -gt 0 ]; then
+  if $SSH nas "if /usr/local/bin/docker ps --filter name=^kiwix\$ -q | grep -q .; then timeout 60 /usr/local/bin/docker restart kiwix >/dev/null; fi"; then
+    step "kiwix-serve restarted for the new own ZIMs"
+  else
+    advance=0; echo "  kiwix-serve restart failed: the next deploy sends these ZIMs again and retries" >&2
   fi
-done
-if [ -z "$BUILD_PY" ]; then
-  echo "  WARNING: no python <= 3.13 found — no libtorrent wheel, app will be HTTP-only"
-  BUILD_PY="python3"
 fi
-echo "  Build interpreter: $($BUILD_PY --version 2>&1) ($BUILD_PY)"
+if [ "$advance" = 1 ]; then mv "$STAMP.next" "$STAMP"; else rm -f "$STAMP.next"; fi
+mv "$STAMP.list.next" "$STAMP.list"
 
-BUILD_VENV=".build-venv"
-if [ ! -x "$BUILD_VENV/bin/python" ] || \
-   ! "$BUILD_VENV/bin/python" -c 'import sys; sys.exit(0 if sys.version_info[:2] <= (3, 13) else 1)' 2>/dev/null; then
-  rm -rf "$BUILD_VENV"
-  "$BUILD_PY" -m venv "$BUILD_VENV"
+# Cloudflare keeps pages of the public host at its edge: drop only that host's
+# copy (purge_everything would drop every host in the zone). The host, zone and
+# a narrow Zone > Cache Purge token come from the operator's own secrets;
+# without them the deploy is still
+# complete and the service worker's content-hashed cache still updates.
+CF_HOST=$(yq '.config.zimi_public_host' ~/vault/secrets/services.yml 2>/dev/null || true)
+CF_ZONE=$(yq '.config.cf_zone_id_zimi' ~/vault/secrets/services.yml 2>/dev/null || true)
+CF_TOKEN=$(yq '.config.cf_purge_token' ~/vault/secrets/services.yml 2>/dev/null || true)
+if [ -n "$CF_HOST" ] && [ "$CF_HOST" != "null" ] && [ -n "$CF_ZONE" ] && [ "$CF_ZONE" != "null" ] && [ -n "$CF_TOKEN" ] && [ "$CF_TOKEN" != "null" ]; then
+  curl -s -X POST "https://api.cloudflare.com/client/v4/zones/${CF_ZONE}/purge_cache" \
+    -H "Authorization: Bearer ${CF_TOKEN}" -H "Content-Type: application/json" \
+    --data "{\"hosts\":[\"${CF_HOST}\"]}" \
+    | python3 -c "import sys,json; r=json.load(sys.stdin); print('  Cloudflare cache purged for the public host' if r.get('success') else '  Cloudflare purge refused: ' + '; '.join(e.get('message','') for e in r.get('errors',[])))"
 fi
-"$BUILD_VENV/bin/pip" install -q --upgrade pip
-"$BUILD_VENV/bin/pip" install -q -r desktop/requirements-desktop.txt
-# Soft dependency, mirroring CI: no wheel for this interpreter → warn and build
-# HTTP-only, never block the build.
-if "$BUILD_VENV/bin/pip" install -q "libtorrent==2.0.*" 2>/dev/null; then
-  echo "  libtorrent bundled (BitTorrent enabled)"
-else
-  echo "  WARNING: no libtorrent wheel for $($BUILD_PY --version 2>&1) — app will be HTTP-only"
-fi
-
-"$BUILD_VENV/bin/pyinstaller" desktop/zimi_desktop.spec --noconfirm 2>&1 | tail -5
-echo "  App built"
-
-echo ""
-echo "=== Launching app ==="
-open dist/Zimi.app
-echo "  Done!"
+$SSH -O exit nas 2>/dev/null || true
+echo "Done in $(( $(date +%s) - t0 ))s"

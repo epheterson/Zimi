@@ -1,12 +1,12 @@
 /* ZimiGames: Bricks (a paddle, a ball, a wall to knock down). Our own code, GPL-3.0.
    No network, no fonts, no modules. The rules (pure functions, no DOM, so node can test them)
-   and the page (only when there is a document). The play field is 320 by 440 units; the page scales it. */
+   and the page (only when there is a document). The play field is 320 by 480 units; the page scales it. */
 (function (root) {
   'use strict';
 
   // ── the rules ────────────────────────────────────────────────────────────
-  var W = 320, H = 440;
-  var PADDLE_W = 64, PADDLE_H = 10, PADDLE_Y = H - 38, BALL_R = 5;
+  var W = 320, H = 480;
+  var PADDLE_W = 64, PADDLE_H = 10, PADDLE_Y = H - 96, BALL_R = 5;   // the paddle sits above the thumb: a drag anywhere moves it, so the strip below is where the thumb rests
   var BRICK_COLS = 10, BRICK_W = 28, BRICK_H = 14, BRICK_GAP = 2, BRICK_TOP = 52;
   var MAX_ANGLE = Math.PI / 3;       // off the vertical, at the paddle's very edge
   var MIN_VERTICAL = 0.28;           // a ball is never allowed to go nearly flat
@@ -274,7 +274,7 @@
   }
   function begin() {
     if (armed) armed.cancel();
-    g = createGame(0); runId = Play.runId(); mode = 'playing'; told = ''; fx = []; status.say(''); Play.pauseLabel(els.pause, false); els.pause.disabled = false; hud(); draw(); startLoop();
+    g = createGame(0); launch(g); runId = Play.runId(); mode = 'playing'; told = ''; fx = []; status.say(''); Play.pauseLabel(els.pause, false); els.pause.disabled = false; hud(); draw(); startLoop();
   }
   function levelUp() {
     var next = createGame(g.level + 1, g.lives, g.score), n = g.level + 2;
@@ -286,7 +286,7 @@
   function pause() { if (mode !== 'playing') return; mode = 'paused'; Play.pauseLabel(els.pause, true); status.say(T('play.paused')); }
   function resume() { if (mode !== 'paused') return; mode = 'playing'; told = ''; Play.pauseLabel(els.pause, false); status.say(''); startLoop(); }
   function toggle() { if (mode === 'playing') pause(); else resume(); }
-  function proceed() { mode = 'playing'; told = ''; status.say(''); hud(); draw(); startLoop(); }
+  function proceed() { launch(g); mode = 'playing'; told = ''; status.say(''); hud(); draw(); startLoop(); }
   function finish() {
     mode = 'over'; els.pause.disabled = true; Play.pauseLabel(els.pause, false);
     if (g.score > best.score) { best.score = g.score; Play.save(BEST_KEY, best); }

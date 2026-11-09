@@ -13,6 +13,7 @@ import { RoadTool } from './zimcity/engine/roadTool.js';
 import { WireTool } from './zimcity/engine/wireTool.js';
 import * as TV from './zimcity/engine/tileValues.js';
 import * as Modern from './zimcity-modern.js';
+import { isRoad } from './zimcity-words.js';
 
 // The tray, in the order a city is built: a road, power to it, then the three zones; Bulldoze last before More.
 export var TRAY = ['road', 'wire', 'residential', 'commercial', 'industrial', 'bulldozer'];
@@ -29,6 +30,8 @@ var BUILDINGS = {
   solar: [3500, Modern.SOLAR, 3, false], wind: [2500, Modern.WIND, 3, false], datacenter: [12000, Modern.DATACENTER, 3, false]
 };
 export var PER_TILE = { road: 10, wire: 5, rail: 20, park: 10, bulldozer: 1 };
+// What a tile costs over water (the engine's bridges and lines laid across it), for the tools that have one.
+export var OVER_WATER = { road: 50, wire: 25, rail: 100 };
 
 export function makeTools(map) {
   var t = { road: new RoadTool(map), wire: new WireTool(map), rail: new RailTool(map), park: new ParkTool(map), bulldozer: new BulldozerTool(map) };
@@ -40,6 +43,7 @@ export function isDrawn(name) { return name in PER_TILE; }
 var ZONES = ['residential', 'commercial', 'industrial'];
 export function isSingle(name) { return !!BUILDINGS[name] && ZONES.indexOf(name) < 0; }
 export function sizeOf(name) { return BUILDINGS[name] ? BUILDINGS[name][2] : 1; }
+export function waterCostOf(name) { return OVER_WATER[name] || 0; }
 export function costOf(name) { return BUILDINGS[name] ? BUILDINGS[name][0] : PER_TILE[name]; }
 
 // Try a stroke: the tool along `tiles` ([[x, y]], in order; for a building, the centre of each footprint) on the pending
@@ -50,7 +54,11 @@ export function trial(city, name, tiles) {
   tool.clear();
   tiles.forEach(function (p) {
     if (!map.testBounds(p[0], p[1])) return;
+    // A footprint that fails part-way (a tree cleared, then a tile that cannot be) must leave nothing pending: its dirt and
+    // its cost would otherwise be built with the footprint that did fit.
+    var pendingWas = Object.assign({}, tool._worldEffects._data), costWas = tool._applicationCost;
     tool.doTool(p[0], p[1], city.sim.blockMaps);
+    if (tool.result !== tool.TOOLRESULT_OK) { tool._worldEffects._data = pendingWas; tool._applicationCost = costWas; }
     last = tool.result;
     parts.push([p[0], p[1], tool.result === tool.TOOLRESULT_OK]);
     if (tool.result === tool.TOOLRESULT_OK) any = true;
@@ -66,6 +74,35 @@ export function trial(city, name, tiles) {
     if (BUILDINGS[name] && parts.length) blocker = inTheWay(map, parts[parts.length - 1], sizeOf(name));
   } else if (cost > budget.totalFunds) why = 'money';
   return { tiles: out, parts: parts, cost: cost, ok: why === 'ok', why: why, blocker: blocker, short: Math.max(0, cost - budget.totalFunds) };
+}
+
+// A building aimed a tile or two wrong (its footprint is wider than a fingertip, so a tap beside a road lands on the road)
+// goes to the nearest place it fits, preferring one flush against a road; one that fits where it was aimed does not move.
+// Returns the tiles as they should be built: shifted by the same step when the first footprint had to move.
+export var NUDGE_REACH = 2;
+var BESIDE_ROAD_BONUS = 0.75;   // tiles of nudge a road beside the footprint is worth
+function fits(city, name, p) {
+  var r = trial(city, name, [p]);
+  drop(city, name);
+  return r.parts.length > 0 && r.parts[0][2];
+}
+function besideRoad(map, p, size) {
+  var x0 = p[0] - 1, y0 = p[1] - 1;
+  for (var i = 0; i < size; i++) {
+    if ([[x0 + i, y0 - 1], [x0 + i, y0 + size], [x0 - 1, y0 + i], [x0 + size, y0 + i]].some(function (q) { return map.testBounds(q[0], q[1]) && isRoad(map.getTileValue(q[0], q[1])); })) return true;
+  }
+  return false;
+}
+export function nudge(city, name, tiles) {
+  if (!BUILDINGS[name] || !tiles.length || fits(city, name, tiles[0])) return tiles;
+  var at = tiles[0], size = sizeOf(name), best = null;
+  for (var dy = -NUDGE_REACH; dy <= NUDGE_REACH; dy++) for (var dx = -NUDGE_REACH; dx <= NUDGE_REACH; dx++) {
+    var p = [at[0] + dx, at[1] + dy], far = Math.hypot(dx, dy);
+    if (!(dx || dy) || far > NUDGE_REACH + 0.5 || !fits(city, name, p)) continue;
+    var score = far - (besideRoad(city.map, p, size) ? BESIDE_ROAD_BONUS : 0);
+    if (!best || score < best.score) best = { dx: dx, dy: dy, score: score };
+  }
+  return best ? tiles.map(function (q) { return [q[0] + best.dx, q[1] + best.dy]; }) : tiles;
 }
 
 // The first thing in a building's footprint (centre `p`, `size` square, as the engine lays it) that is not bare ground:

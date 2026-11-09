@@ -135,3 +135,25 @@ def watch(page, selector):
 def seen(page, text, timeout=WAIT_MS):
     """The watched element said `text` at some point since `watch`, even if it has cleared since."""
     page.wait_for_function("text => (window.__seen || []).some(t => t.includes(text))", arg=text, timeout=timeout)
+
+
+QUIET_JS = """
+async ([quiet, cap]) => {
+  const running = () => document.getAnimations().filter(a => { const t = a.effect && a.effect.getComputedTiming(); return t && t.endTime !== Infinity && a.playState === 'running'; });
+  const start = performance.now();
+  let last = start;
+  const watch = new MutationObserver(() => { last = performance.now(); });
+  watch.observe(document, { subtree: true, childList: true, attributes: true, characterData: true });
+  while (performance.now() - start < cap && (performance.now() - last < quiet || running().length)) await new Promise(r => setTimeout(r, 20));
+  watch.disconnect();
+  await new Promise(r => requestAnimationFrame(() => requestAnimationFrame(r)));
+  return Math.round(performance.now() - start);
+}
+"""
+
+
+def quiet(page, cap, quiet_ms=300):
+    """The page has stopped changing: nothing in the document changed for `quiet_ms` and no animation that ends is still running
+    (what a fixed pause of `cap` ms stood for: a page building, a tap's answer arriving). Never longer than `cap`, the pause it
+    replaces, so a page that never stops changing (a clock ticking each frame) costs what it did. Returns the ms it took."""
+    return page.evaluate(QUIET_JS, [quiet_ms, cap])

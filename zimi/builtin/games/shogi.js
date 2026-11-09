@@ -114,7 +114,7 @@
     var html = '';
     for (var i = 0; i < sans.length; i++) {
       if (i % 2 === 0) html += '<span class="sg-n">' + (i / 2 + 1) + '.</span>';
-      html += '<span class="sg-m' + (i === sans.length - 1 ? ' now' : '') + '">' + sans[i] + '</span>';
+      html += '<span class="sg-m' + (i === sans.length - 1 ? ' now' : '') + '">' + sans[i] + '</span> ';   // the space is where a line may break: between moves, never inside one
     }
     els.moves.innerHTML = html;
     els.moves.scrollTop = els.moves.scrollHeight;
@@ -185,6 +185,13 @@
     }, COMPUTER_DELAY_MS);
   }
 
+  // A move in plain words (the piece's name and the squares), not the engine's notation: "Drop a knight on 3d".
+  function plainMove(m) {
+    var to = E.squareName(E.to(m)), text;
+    if (E.isDrop(m)) text = T('shogi.hint.drop', { piece: T('shogi.piece.' + E.from(m)), to: to });
+    else text = T(pos.sq[E.to(m)] ? 'shogi.hint.take' : 'shogi.hint.move', { piece: T('shogi.piece.' + Math.abs(pos.sq[E.from(m)])), from: E.squareName(E.from(m)), to: to });
+    return E.isPromo(m) ? T('shogi.hint.promote', { move: text }) : text;
+  }
   // Hint: the move our engine plays at its best (Fairy-Stockfish's levels are for the computer's turn), shown on the board;
   // a drop shows the square it lands on.
   function hint() {
@@ -192,7 +199,7 @@
     brain.ask({ sfen: E.toSfen(pos), level: 'strong', seen: seenCounts() }, function (r) {
       if (!G.done(token)) return;
       tip = r && r.move ? [E.isDrop(r.move) ? -1 : E.from(r.move), E.to(r.move)] : null; paint();
-      G.say(tip ? T('makruk.hint', { move: E.san(pos, r.move) }) : T('board.noHint'));
+      G.say(tip ? T('makruk.hint', { move: plainMove(r.move) }) : T('board.noHint'));
     }, E.LEVELS.strong.ms);
   }
 
@@ -224,8 +231,8 @@
   function onHand(e) {
     if (G.over || G.thinking || !G.human(turnIdx())) return;
     var t = +e.currentTarget.dataset.piece;
-    sel = -1;
-    if (selDrop === t) { selDrop = 0; targets = {}; tip = null; } else {
+    sel = -1; tip = null;
+    if (selDrop === t) { selDrop = 0; targets = {}; } else {
       selDrop = t; targets = targetsFor(function (m) { return E.isDrop(m) && E.from(m) === t; });
       if (!Object.keys(targets).length) { selDrop = 0; G.refuse(e.currentTarget, T('shogi.cantDrop')); }
       else G.say(T('shogi.chooseDrop'));

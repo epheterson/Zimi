@@ -469,4 +469,17 @@ const sources = read('earth/SOURCES.txt');
 check(/milkyway-v1\.webp/.test(sources) && /ESO/.test(sources) && /Brunier/.test(sources) && /CC BY 4\.0/.test(sources) && /eso0932a/.test(sources), 'the panorama is credited to ESO and S. Brunier under CC BY 4.0');
 check(/constellations-v1\.json/.test(sources) && /d3-celestial/.test(sources) && /BSD/.test(sources) && /Stellarium/.test(sources), 'the constellation lines are credited, and Stellarium\'s data is said not to be used');
 
+// The hero's first paint and the sky's first frame share one crossing search (the tiles are primed, then the sky asks).
+{
+  run('var __calls = 0, __real = _skyFactsAt; _skyFactsAt = function () { __calls++; return __real.apply(null, arguments); }');
+  const t0 = Date.parse('2026-10-14T20:00:00Z');
+  run('_skyFactsNear(' + t0 + ', 34, 0)');
+  run('_skyFactsNear(' + (t0 + 2000) + ', 34, 0)');
+  check(run('__calls') === 1, 'the same place a moment later reuses the facts');
+  run('_skyFactsNear(' + (t0 + 60000) + ', 34, 0)');
+  run('_skyFactsNear(' + (t0 + 61000) + ', 35, 0)');
+  check(run('__calls') === 3, 'a later minute or another place works them out again');
+  run('_skyFactsAt = __real');
+}
+
 done();

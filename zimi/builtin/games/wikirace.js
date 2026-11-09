@@ -74,7 +74,14 @@
     return title + ' ' + date + '\n' + steps.map(function (s) { return s.title; }).join(' > ') + '\n' + (steps.length - 1) + ' clicks, ' + Math.floor(ms / 1000) + ' s';
   }
 
-  var Engine = { isTarget: isTarget, validatePath: validatePath, shortest: shortest, walk: walk, normTitle: normTitle, raceText: raceText, MIN_LINKS: MIN_LINKS, MIN_HOPS: MIN_HOPS, MAX_HOPS: MAX_HOPS };
+  // What the finish says about par, as a string id and the number: matching par (or beating a route that was only known, not the
+  // shortest) is said; anything else says what par is.
+  function parNote(pair, clicks) {
+    if (pair.parKind === 'route' && clicks < pair.par) return { key: 'race.beatRoute', n: pair.par };
+    if (clicks === pair.par) return { key: pair.parKind === 'route' ? 'race.matchedRoute' : 'race.matchedShortest', n: pair.par };
+    return { key: pair.parKind === 'route' ? 'race.parRoute' : 'race.parShortest', n: pair.par };
+  }
+  var Engine = { parNote: parNote, isTarget: isTarget, validatePath: validatePath, shortest: shortest, walk: walk, normTitle: normTitle, raceText: raceText, MIN_LINKS: MIN_LINKS, MIN_HOPS: MIN_HOPS, MAX_HOPS: MAX_HOPS };
   root.WikiRaceEngine = Engine;
 
   if (typeof document === 'undefined') return;
@@ -298,7 +305,7 @@
   function openResult(ms, n) {
     els.share.hidden = false; paintTrail();
     line.say(T('race.arrived', { target: race.pair.end.title }));
-    ZimiShell.endSheet({ result: 'win', text: parLabel(race.pair), stats: [[T('race.clicksLabel'), Play.num(n)], [T('play.time'), Play.fmtClock(ms)]], extra: routeNodes() });
+    ZimiShell.endSheet({ result: 'win', text: (function (note) { return T(note.key, { n: note.n }); })(Engine.parNote(race.pair, n)), stats: [[T('race.clicksLabel'), Play.num(n)], [T('play.time'), Play.fmtClock(ms)]], extra: routeNodes() });
   }
 
   function go(path) {

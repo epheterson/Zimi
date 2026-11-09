@@ -114,9 +114,13 @@ body.zc-game { padding-bottom: var(--safe-b); }
    in dark the sheet is surface2 with a visible line. */
 .ar-sheet { position: fixed; inset: 0; display: grid; place-items: center; padding: var(--gutter); background: var(--scrim); z-index: 50; }
 .ar-sheet[hidden] { display: none; }
+/* The end of a game sits at the bottom, under the board just finished (a mate, a solved grid), with the scrim lighter: the position stays to be seen. */
+.ar-sheet.gs-end { place-items: end center; padding-bottom: max(var(--gutter), var(--safe-b, 0px)); background: color-mix(in srgb, var(--scrim) 45%, transparent); }
+.gs-daily-streak { margin: 0 0 var(--sp-2); font-size: var(--fs-small); color: var(--ink2); }
 /* The veil covers the game, never the bar: Back, the stat and Menu stay at full strength (Menu is how the sheet closes). */
 body:has(> .ar-bar) .ar-sheet { top: var(--bar-h); }
 .ar-sheet-card { width: min(420px, 100%); max-height: calc(100vh - 32px); overflow: auto; padding: var(--sp-5) 20px 20px; border: 1px solid var(--line); border-radius: var(--r-sheet); background: var(--surface2); color: var(--ink); box-shadow: var(--shadow-popup); }
+html:not(.gs-hosted) body:has(> .ar-bar) .ar-sheet-card { max-height: calc(100vh - var(--bar-h) - 2 * var(--gutter)); max-height: calc(100dvh - var(--bar-h) - 2 * var(--gutter)); }   /* the sheet sits under the bar: its card ends above the screen's foot (inside Zimi's reader it covers the page from the top) */
 .ar-sheet-card:focus { outline: none; }
 .ar-sheet-card h2 { margin: 0 0 var(--sp-3); font-size: var(--fs-sheet); font-weight: 650; line-height: 1.25; letter-spacing: -0.01em; }
 /* No pebble on a sheet: the bar above it already carries it, and two on one screen is wallpaper. A sheet on a page with no bar (the shelf's) keeps it, 20px. */
@@ -426,7 +430,8 @@ html.gs-hosted .ar-shelf header:not(:has(.sh-tools)) { display: none; }
 .ar-box-lid .ar-game-icon { padding: 4px; }
 .ar-box-label { display: block; padding: 6px 2px 2px; }
 .ar-box:not(:first-child) .ar-box-label { padding-left: calc(var(--ov) + 2px); }
-.ar-box-label strong { display: block; font-size: 13px; line-height: 1.25; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+/* A name wraps onto more lines before it is cut ("Crucigrama mini", "Cinco letras"), and only after three (a narrow box under another) does it end in dots. */
+.ar-box-label strong { display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 3; font-size: 13px; line-height: 1.25; overflow: hidden; overflow-wrap: anywhere; hyphens: auto; }
 .ar-box-label small { display: block; margin-top: 1px; font-size: var(--fs-caption); line-height: 1.3; color: #6b5d4a; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-variant-numeric: tabular-nums; }
 .ar-continue { flex: 1 1 360px; min-width: 0; }
 /* A phone: a tighter fan so about five boxes lie in view and the rest peek from the edge (the table scrolls). Only the top box has room for the time. */
@@ -621,6 +626,8 @@ body:has(> .ar-bar) .gs-moment { top: var(--bar-h); }
 .gs-rest { position: fixed; left: 50%; bottom: max(var(--gutter), var(--safe-b)); z-index: 40; width: min(420px, calc(100% - 2 * var(--gutter))); transform: translateX(-50%); display: grid; gap: var(--sp-3); padding: var(--sp-4); border: 1px solid var(--line); border-radius: var(--r-sheet); background: var(--surface2); color: var(--ink); box-shadow: var(--shadow-popup); text-align: center; }
 .gs-rest p { margin: 0; font-size: var(--fs-sheet); font-weight: 650; letter-spacing: -0.01em; }
 .gs-rest .gs-rest-new { width: 100%; min-height: 56px; font-size: var(--fs-title); font-weight: 650; }
+/* inside Zimi the corner holds its small mark: the bar rests above it */
+html.gs-hosted .gs-rest { bottom: calc(max(var(--gutter), var(--safe-b, 0px)) + 32px); }
 .gs-rest { animation: gs-rest-in 240ms ease-out; } @keyframes gs-rest-in { from { opacity: 0; transform: translate(-50%, 12px); } }
 .gs-end-win h2 { font-weight: 800; animation: gs-title-pop 360ms cubic-bezier(0.2, 0.9, 0.25, 1.2); transform-origin: left center; }
 .gs-end-win .gs-chip b { color: var(--accent); }
@@ -638,6 +645,8 @@ body:has(> .ar-bar) .gs-splash { top: var(--bar-h); }
 .gs-sp-card .gs-chips { justify-content: center; margin: 0; }
 .gs-sp-play { width: 100%; min-height: 56px; margin-top: var(--sp-2); font-size: var(--fs-title); font-weight: 650; }
 .gs-sp-hint { margin: 0; font-size: var(--fs-small); color: var(--ink2); }
+/* The hint is the splash's own; the page's status line under it says the same and would show through as a second copy. */
+body:has(> .gs-splash) .pl-msg { visibility: hidden; }
 :root:not([data-anim="off"]) .gs-sp-card { animation: gs-sp-in 220ms ease-out; } @keyframes gs-sp-in { from { opacity: 0; transform: translateY(8px) scale(0.97); } }
 @media (max-height: 520px) { .gs-sp-art { display: none; } }
 

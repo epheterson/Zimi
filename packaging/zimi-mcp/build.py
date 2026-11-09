@@ -46,6 +46,7 @@ MODULES = (
     "htmlmd",
     "mapsearch",
     "mapplaces",
+    "regions",
     "placedata",
     "subproc",
     "libzimcompat",
@@ -57,8 +58,8 @@ MODULES = (
     "exchange",
     "reddot",
 )
-# Data the core reads at import: the language-code table.
-DATA = ("assets/lang-codes.json",)
+# Data the core reads at import (the language-code table) and the towns' regions.
+DATA = ("assets/lang-codes.json", "assets/admin1-snapshot.json.gz")
 # Distributions zimi-mcp must never pull in (the CI smoke test checks).
 EXCLUDED_DISTS = ("libtorrent", "zeroconf", "pywebview", "PyMuPDF", "playwright")
 

@@ -1,10 +1,10 @@
 #!/usr/bin/env python3
-"""Fit the mean circular orbits almanac-space.js draws the major moons on.
+"""Fit the mean circular orbits the 3D view (almanac-earth.js) draws the major moons on.
 
     python3 scripts/fit_moon_orbits.py
 
-Needs the internet (JPL Horizons) and prints the SP_MOONS table, in the form
-it has in zimi/static/almanac-space.js so it pastes over it, with how far a mean circular orbit strays
+Needs the internet (JPL Horizons) and prints each moon's ``orbit: [a, L0, rate]``, in the form
+it has in AE_PLANETS in zimi/static/almanac-earth.js so it pastes over it, with how far a mean circular orbit strays
 from Horizons over 1990-2060. Each moon is taken relative to its planet in the
 J2000 ecliptic frame, turned into the planet's equatorial plane (the IAU pole
 below), and its angle in that plane is fitted as lambda0 + n * (JD - J2000)
@@ -98,19 +98,16 @@ def fit(name, cmd, center, planet, seed):
     }
 
 
-# IAU mean radii (km), the `r` of each SP_MOONS row.
-RADIUS_KM = {"Io": 1821.6, "Europa": 1560.8, "Ganymede": 2634.1, "Callisto": 2410.3, "Titan": 2574.7}
+def orbit_row(f):
+    """One moon's fit as the line to paste over its ``orbit`` in AE_PLANETS: [a km, L0 deg, rate deg/day]."""
+    return "  orbit: [%.0f, %.3f, %.6f],   // %s: worst miss %.1f deg" % (
+        f["a_km"], f["lam0"], f["deg_per_day"], f["name"].lower(), f["worst_deg"])
 
 
 def main():
-    print("var SP_MOONS = {   // paste over the rows in zimi/static/almanac-space.js (the Moon's row is the Earth view's Meeus series)")
+    print("// paste each over the moon's orbit in AE_PLANETS in zimi/static/almanac-earth.js (the Moon's own is the Meeus series)")
     for name, cmd, center, planet, seed in MOONS:
-        f = fit(name, cmd, center, planet, seed)
-        print(
-            "  %s: { planet: '%s', a: %.0f, L0: %.3f, rate: %.6f, r: %s },   // worst miss %.1f deg"
-            % (name, planet, f["a_km"], f["lam0"], f["deg_per_day"], RADIUS_KM[name], f["worst_deg"])
-        )
-    print("  Moon: { planet: 'Earth', a: 384400, r: 1737.4 }\n};")
+        print(orbit_row(fit(name, cmd, center, planet, seed)))
 
 
 if __name__ == "__main__":

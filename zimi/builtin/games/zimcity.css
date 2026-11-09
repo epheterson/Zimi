@@ -1,9 +1,9 @@
 /* ZimCity: the map owns the screen. The strip above it (demand, money, then the date and people, quieter), the status
    line, the map, then the held tool's line and the tray at the thumb. Zone colours are materials (the original's
    green, blue and yellow, pulled toward neutral); everything else is games.css tokens. */
-:root { --cy-res: #3f9a52; --cy-com: #3b6fc4; --cy-ind: #c9961a; }
-@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) { --cy-res: #5cb46d; --cy-com: #6d93e0; --cy-ind: #e0b043; } }
-:root[data-theme="dark"] { --cy-res: #5cb46d; --cy-com: #6d93e0; --cy-ind: #e0b043; }
+:root { --cy-res: #3f9a52; --cy-com: #3b6fc4; --cy-ind: #c9961a; --cy-ground: #cdbf98; }
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) { --cy-res: #5cb46d; --cy-com: #6d93e0; --cy-ind: #e0b043; --cy-ground: #4d4738; } }
+:root[data-theme="dark"] { --cy-res: #5cb46d; --cy-com: #6d93e0; --cy-ind: #e0b043; --cy-ground: #4d4738; }
 
 body.cy-page { display: flex; flex-direction: column; height: 100%; height: 100dvh; overflow: hidden; padding-left: var(--safe-l); padding-right: var(--safe-r); box-sizing: border-box; }
 .cy-page .gm-about { display: none; }
@@ -23,18 +23,27 @@ body.cy-page { display: flex; flex-direction: column; height: 100%; height: 100d
 .cy-funds { flex: none; font: 650 var(--fs-title)/1 var(--font); font-variant-numeric: tabular-nums; letter-spacing: -0.01em; }
 .cy-when { flex: 1 1 auto; min-width: 0; text-align: end; font-size: var(--fs-small); color: var(--ink2); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-variant-numeric: tabular-nums; }
 
-.cy-msg { flex: none; min-height: 1.45em; padding: 0 var(--gutter); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 100%; }
+.cy-funds.cy-low { color: var(--bad); }
+/* A scenario's goal: always there, and wrapping onto a second line before it would be cut (the goal first, then where the city stands). */
+.cy-goal { flex: none; margin: 0; padding: 0 var(--gutter) var(--sp-1); display: flex; flex-wrap: wrap; column-gap: var(--sp-2); font-size: var(--fs-small); line-height: 1.35; color: var(--ink2); }
+.cy-goal[hidden] { display: none; }
+.cy-goal b { color: var(--ink); font-weight: 650; }
+.cy-goal span { font-variant-numeric: tabular-nums; }
+.cy-msg { flex: none; min-height: 1.45em; padding: 0 var(--gutter); max-width: 100%; display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; line-clamp: 2; overflow: hidden; line-height: 1.35; }   /* two lines before it is cut: a long translation or a citizen's quote is read whole */
 
 /* The map: everything left between the strip and the tray. */
-.cy-stage { position: relative; flex: 1 1 auto; min-height: 120px; border-top: 1px solid var(--line); border-bottom: 1px solid var(--line); background: var(--surface); }
+.cy-stage { position: relative; flex: 1 1 auto; min-height: 120px; border-top: 1px solid var(--line); border-bottom: 1px solid var(--line); background: var(--cy-ground); }   /* the land's own colour until the first picture is drawn, so the map is never a blank sheet */
 #cy-map { position: absolute; inset: 0; width: 100%; height: 100%; display: block; touch-action: none; user-select: none; -webkit-user-select: none; -webkit-touch-callout: none; }
 #cy-map:focus-visible { outline-offset: -3px; }
 
 /* The held tool's line and the tray, clear of the home indicator. */
 .cy-foot { flex: none; padding: var(--sp-2) var(--gutter) calc(var(--sp-2) + var(--safe-b)); display: flex; flex-direction: column; gap: var(--sp-2); }
-.cy-held { margin: 0; min-height: 1.4em; font-size: var(--fs-small); color: var(--ink2); text-align: center; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-variant-numeric: tabular-nums; }
+.cy-held { margin: 0; min-height: 1.4em; font-size: var(--fs-small); color: var(--ink2); text-align: center; display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; line-clamp: 2; overflow: hidden; font-variant-numeric: tabular-nums; }
 .cy-held.cy-bad { color: var(--bad); }
 .cy-tray { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); gap: var(--sp-1); }
+/* Seven tools must each stay a thumb wide (--target): a narrow phone gives the tray the page's edges, and a very narrow one two rows. */
+@media (max-width: 380px) { .cy-foot { padding-inline: var(--sp-2); } .cy-tray { gap: 2px; } }
+@media (max-width: 340px) { .cy-tray { grid-template-columns: repeat(auto-fit, minmax(var(--target), 1fr)); } }
 .cy-tool { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 2px; min-width: 0; min-height: 48px; padding: 4px 2px; border: 1px solid var(--line); border-radius: var(--radius); background: var(--surface); color: var(--ink); cursor: pointer; touch-action: manipulation; }
 @media (hover: hover) { .cy-tool:hover, .cy-more-tool:hover { border-color: var(--accent); } }
 .cy-tool[aria-pressed="true"] { background: var(--accent-glow); border-color: var(--accent); box-shadow: inset 0 0 0 1px var(--accent); }
@@ -60,17 +69,21 @@ body.cy-page { display: flex; flex-direction: column; height: 100%; height: 100d
 .cy-sub { margin: var(--sp-3) 0 var(--sp-1); font-size: var(--fs-body); font-weight: 650; }
 .cy-credit p { margin: 0 0 var(--sp-2); }
 
-/* Landscape on a phone: the tray moves beside the map. */
+/* Landscape on a phone: the map takes the whole height under the bar, and what the strip, the message and the tray say
+   stands in a column beside it (a bar, a strip and a line above the map left it 270 px of 390). */
 @media (orientation: landscape) and (max-height: 520px) {
-  .cy-main { display: grid; grid-template-columns: 1fr auto; grid-template-rows: auto auto 1fr; }
-  .cy-strip, .cy-msg { grid-column: 1 / -1; }
-  .cy-stage { grid-column: 1; grid-row: 3; }
-  .cy-foot { grid-column: 2; grid-row: 3; width: 168px; min-height: 0; overflow-y: auto; justify-content: flex-end; }
+  .cy-main { display: grid; grid-template-columns: 1fr 184px; grid-template-rows: auto auto auto 1fr; }
+  .cy-stage { grid-column: 1; grid-row: 1 / -1; }
+  .cy-strip, .cy-goal, .cy-msg, .cy-foot { grid-column: 2; }
+  .cy-strip { flex-wrap: wrap; gap: var(--sp-1) var(--sp-2); padding-inline: 10px; }
+  .cy-when { flex: 1 0 100%; text-align: start; }
+  .cy-goal { padding-inline: 10px; }
+  .cy-msg { padding-inline: 10px; text-align: start; font-size: var(--fs-small); -webkit-line-clamp: 4; line-clamp: 4; }
+  .cy-foot { grid-row: 4; min-height: 0; overflow-y: auto; justify-content: flex-end; padding-inline: 10px; }
   /* Icons only, three across: seven tools in three rows fit the height a phone on its side leaves. */
   .cy-tray { grid-template-columns: repeat(3, minmax(0, 1fr)); }
   .cy-tool { min-height: var(--target); }
   .cy-tool .cy-tool-l { display: none; }
-  .cy-held { white-space: normal; }
 }
 
 /* The news card: an article's lead over the top of the map when something happens that the library knows about. */
@@ -112,6 +125,8 @@ body.cy-page { display: flex; flex-direction: column; height: 100%; height: 100d
 .cy-keep { width: 100%; margin-bottom: var(--sp-2); }
 .cy-kept { align-items: center; }
 .cy-kept-what { display: flex; flex-direction: column; min-width: 0; }
+.cy-kept-name { font: inherit; font-weight: 650; color: inherit; background: none; border: 0; border-bottom: 1px dashed var(--ink3); padding: 2px 0; min-width: 0; width: 100%; border-radius: 0; }
+.cy-kept-name:focus { outline: none; border-bottom: 1px solid var(--accent); }
 .cy-kept-what small { font-size: var(--fs-small); color: var(--ink2); }
 .cy-kept-acts { display: flex; gap: var(--sp-2); flex: none; }
 
@@ -127,3 +142,19 @@ body.cy-page { display: flex; flex-direction: column; height: 100%; height: 100d
 .cy-maps { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: var(--sp-2); }
 .cy-maps .ar-btn { min-height: var(--target); padding: 0 var(--sp-1); font-size: var(--fs-small); }
 .cy-sc-note { font-size: var(--fs-small); color: var(--ink2); margin-top: var(--sp-3); }
+
+/* How to play: the gestures and the sizes, as pictures with a word or a number each */
+.cy-how { display: flex; flex-direction: column; gap: 8px; margin-top: 12px; }
+.cy-how-row { display: flex; align-items: center; gap: 12px; margin: 0; }
+.cy-how-row .cy-icon { flex: none; }
+.cy-how-sizes { gap: 20px; flex-wrap: wrap; }
+.cy-how-size { display: inline-flex; align-items: center; gap: 4px; }
+.cy-how-size b { margin-inline-start: 4px; font-variant-numeric: tabular-nums; }
+
+/* The bar's Undo and Pause are pictures (their words stay for a screen reader): a translated word beside Menu squeezed the
+   title to "Zi..." in Spanish and out of sight in German and Russian. */
+.cy-page #cy-undo, .cy-page #cy-pause { position: relative; width: 44px; padding: 0; font-size: 0; }
+.cy-page #cy-undo::before, .cy-page #cy-pause::before { content: ""; position: absolute; inset: 0; margin: auto; width: 22px; height: 22px; background: currentColor; -webkit-mask: var(--cy-glyph) center / contain no-repeat; mask: var(--cy-glyph) center / contain no-repeat; }
+.cy-page #cy-undo { --cy-glyph: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2.2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M9 14L4 9l5-5M4 9h10.5a5.5 5.5 0 0 1 0 11H11'/%3E%3C/svg%3E"); }
+.cy-page #cy-pause { --cy-glyph: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='3.4' stroke-linecap='round'%3E%3Cpath d='M8 5v14M16 5v14'/%3E%3C/svg%3E"); }
+.cy-page #cy-pause[data-t="play.resume"] { --cy-glyph: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath d='M7 4l13 8-13 8z' fill='black'/%3E%3C/svg%3E"); }

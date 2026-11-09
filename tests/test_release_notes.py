@@ -150,3 +150,9 @@ def test_an_issue_the_highlights_name_is_not_listed_again_under_fixed():
     body = release_notes.release_body(log, "2.0.0")
     assert body.count("#137") == 1, body
     assert "**Fixed**\n\n- Wide infoboxes fit (#136)." in body, body
+
+
+def test_a_differently_worded_line_for_a_named_issue_is_not_listed_again():
+    log = "## [2.0.0]\n\n### Highlights\n\n- **Linux:** a unit at boot (#137).\n\n### Added\n\n- `zimi service install` writes the systemd unit, as asked in #137.\n"
+    body = release_notes.release_body(log, "2.0.0")
+    assert "**Fixed**" not in body, body

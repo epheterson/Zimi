@@ -266,6 +266,46 @@ def test_a_drag_with_a_zone_lays_a_row_and_undo_takes_the_last_one_back(browser,
     assert pg.evaluate("() => document.getElementById('cy-undo').disabled")
 
 
+def test_undo_says_what_it_took_back_at_once(browser, site):
+    """Undo is not silent: the status line names the tool and the money returned the moment it is pressed, even right
+    after another line was shown, and the taken-back tiles are flashed on the map."""
+    pg = phone(browser, site)
+    box = pg.evaluate(CLEAR)
+    pg.click('.cy-tool[data-tool="residential"]')
+    y = box["top"] + box["h"] * 0.55
+    stroke(pg, [(60, y), (70, y)])
+    pg.evaluate("() => { window.__zimcity.step(2); }")
+    pg.click("#cy-undo")
+    line = pg.evaluate("() => document.getElementById('cy-msg').textContent")
+    assert line.startswith("Undone: Homes, $") and line.endswith(" back"), line
+    assert pg.evaluate("() => !!window.__zimcity.view.pulse")
+
+
+def test_a_kept_city_has_a_name_the_player_can_change(browser, site):
+    pg = phone(browser, site)
+    pg.evaluate("() => localStorage.removeItem('zimi.zimcity.kept')")
+    box = pg.evaluate(CLEAR)
+    pg.click('.cy-tool[data-tool="road"]')
+    y = box["top"] + box["h"] * 0.5
+    stroke(pg, [(x, y) for x in range(40, 200, 12)])
+    pg.click(".gs-menu-btn")
+    pg.click("#cy-cities")
+    pg.click(OURS + " .cy-keep")
+    name = OURS + " .cy-kept-name"
+    assert pg.input_value(name) == "City 1"
+    pg.fill(name, "Zosia Falls")
+    pg.keyboard.press("Enter")
+    kept = pg.evaluate("() => JSON.parse(localStorage.getItem('zimi.zimcity.kept'))")
+    assert kept[0]["name"] == "Zosia Falls" and kept[0]["data"]["name"] == "Zosia Falls"
+    pg.click(OURS + " .gs-x")
+    pg.click(".gs-menu-btn")
+    pg.click("#cy-cities")
+    assert pg.input_value(name) == "Zosia Falls"   # still there when the list is opened again
+    pg.fill(name, "   ")   # a blank name keeps the old one
+    pg.keyboard.press("Enter")
+    assert pg.input_value(name) == "Zosia Falls"
+
+
 def test_an_unpowered_zone_says_why_it_is_not_growing(browser, site):
     pg = phone(browser, site)
     box = pg.evaluate(CLEAR)
@@ -391,7 +431,7 @@ def test_the_advisor_follows_a_city_built_without_a_finger(browser, site):
     pg = phone(browser, site)
     pg.evaluate(TOWN)
     pg.wait_for_timeout(1300)
-    assert pg.evaluate("() => document.getElementById('cy-msg').textContent") == "Run a power line to the zones that flash"
+    assert pg.evaluate("() => document.getElementById('cy-msg').textContent") == "Connect the zones to power"
 
 
 def test_the_city_is_never_painted_whole(browser, site):
@@ -861,12 +901,13 @@ def test_a_complaint_is_said_only_when_the_census_supports_it(browser, site):
 
 
 def test_a_plant_over_a_road_says_the_road_is_in_the_way(browser, site):
-    """A 4 x 4 footprint centred on a finger just below a road overlaps it: the line names the road, not "Bulldoze"."""
+    """A 4 x 4 footprint with roads all round it, too many to move aside, overlaps one: the line names the road, not "Bulldoze"."""
     pg = phone(browser, site)
     box = pg.evaluate(CLEAR)
     y = box["top"] + box["h"] * 0.55
     pg.evaluate("""(y) => import('./zimcity-tools.js').then((T) => { const z = window.__zimcity, v = z.view, r = v.canvas.getBoundingClientRect(), t = v.tileAt(v.w / 2, y - r.top);
-      T.build(z.city, 'road', [[t.x - 4, t.y - 1]].concat(T.steps([t.x - 4, t.y - 1], [t.x + 4, t.y - 1]))); })""", y)
+      z.city.sim.budget.totalFunds = 100000;
+      for (let dy = -6; dy <= 6; dy++) T.build(z.city, 'road', [[t.x - 6, t.y + dy]].concat(T.steps([t.x - 6, t.y + dy], [t.x + 6, t.y + dy]))); })""", y)
     hold_more(pg, "Coal plant")
     touch(pg, "touchStart", [(box["w"] / 2, y)])
     assert pg.text_content("#cy-held") == "In the way: Road"
@@ -887,7 +928,7 @@ def test_brownouts_with_power_to_spare_ask_for_a_line_not_a_plant(browser, site)
       c.sim._emitEvent(M.FRONT_END_MESSAGE, { subject: M.BLACKOUTS_REPORTED }); out.push(z.said().slice());
       c.shortAt = c.sim._cityTime; c.sim._emitEvent(M.FRONT_END_MESSAGE, { subject: M.BLACKOUTS_REPORTED }); out.push(z.said().slice());
       return out; }""")
-    assert "Run a power line to the zones that flash" in said[0] and not any(s.startswith("Brownouts") for s in said[0]), said
+    assert "Connect the zones to power" in said[0] and not any(s.startswith("Brownouts") for s in said[0]), said
     assert any(s.startswith("Brownouts") for s in said[1]), said
 
 
@@ -899,3 +940,59 @@ def test_the_away_card_starts_from_the_people_the_city_had(browser, site):
     come_back(pg, save, hours_ago=3)
     text = pg.wait_for_selector(AWAY_CARD).text_content()
     assert had > 0 and ("%s to" % format(had, ",")) in text, (had, text)
+
+
+def test_a_stroke_is_built_with_the_tool_it_began_with_and_not_when_let_go_off_the_map(browser, site):
+    """A tool changed under the finger does not build the stroke with the new one; a stroke let go off the map builds nothing."""
+    pg = phone(browser, site)
+    box = pg.evaluate(CLEAR)
+    left = pg.evaluate("() => document.getElementById('cy-map').getBoundingClientRect().left")
+    y = box["top"] + box["h"] * 0.5
+    before = funds(pg)
+    pg.click('.cy-tool[data-tool="road"]')
+    pg.mouse.move(left + 60, y)
+    pg.mouse.down()
+    pg.mouse.move(left + 140, y, steps=4)
+    pg.evaluate("() => document.querySelector('.cy-tool[data-tool=\"residential\"]').click()")   # the tool changes under the finger
+    pg.mouse.up()
+    pg.wait_for_timeout(100)
+    assert funds(pg) == before, funds(pg)
+    pg.click('.cy-tool[data-tool="road"]')
+    pg.mouse.move(left + 60, y)
+    pg.mouse.down()
+    pg.mouse.move(left + 140, y, steps=4)
+    pg.mouse.move(left + 140, box["top"] - 40, steps=3)   # up past the map's edge
+    pg.mouse.up()
+    pg.wait_for_timeout(100)
+    assert funds(pg) == before, funds(pg)
+
+
+def test_the_keyboard_keeps_its_cursor_in_view_and_escape_puts_the_tool_down(browser, site):
+    pg = phone(browser, site)
+    pg.evaluate("() => { const v = window.__zimcity.view; v.cam.s = 3; v.centreOn(60, 50); }")
+    pg.click('.cy-tool[data-tool="road"]')
+    pg.focus("#cy-map")
+    for _ in range(40):
+        pg.keyboard.press("ArrowRight")
+    seen = pg.evaluate("""() => { const v = window.__zimcity.view, c = v.cam, t = v.cursor;
+      return { x: t.x * 16 >= c.x && (t.x + 1) * 16 <= c.x + v.w / c.s + 0.01 }; }""")
+    assert seen["x"], seen
+    pg.keyboard.press("Escape")
+    assert pg.evaluate("() => document.querySelector('.cy-tool[data-tool=\"road\"]').getAttribute('aria-pressed')") == "false"
+
+
+def test_the_budget_a_city_waits_on_and_its_taxes_survive_a_reload(browser, site):
+    pg = phone(browser, site)
+    pg.evaluate("() => { const b = window.__zimcity.city.sim.budget; b.taxFund = 1234; b.awaitingValues = true; }")
+    pg.evaluate("() => window.ZimiShell.saveNow()")
+    pg.reload()
+    pg.wait_for_function("() => window.__zimcity && window.__zimcity.city")
+    pg.wait_for_selector(".cy-step")   # the year's budget comes back up, as it was waiting
+    assert pg.evaluate("() => window.__zimcity.city.sim.budget.taxFund") == 1234
+
+
+@pytest.mark.parametrize("width", [320, 360, 375])
+def test_every_tool_in_the_tray_is_a_thumb_wide_on_a_narrow_phone(browser, site, width):
+    pg = phone(browser, site, width)
+    widths = pg.evaluate("() => [...document.querySelectorAll('.cy-tool')].map((b) => b.getBoundingClientRect().width)")
+    assert len(widths) == 7 and min(widths) >= 44, widths

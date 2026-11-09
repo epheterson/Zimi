@@ -399,7 +399,7 @@
       var m = board.metrics(), out = { chips: [], text: '' };
       layTags(st, m);
       var V = seats.view(), hot = seats.hotseat(), mine = options(st, V), name = yourHand(st);
-      out.fact = TX('holdem.fact', { chips: st.players[V].chips });
+      out.fact = TX('holdem.fact', { n: st.players[V].chips });
       if (handDone(st)) {
         var r = st.result, lines = [];
         if (r) {

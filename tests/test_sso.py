@@ -37,7 +37,6 @@ from typing import Any, cast
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 import zimi.server as _srv  # noqa: E402
-from tests.ports import free_port  # noqa: E402
 from zimi import http as _http  # noqa: E402
 from zimi import manage, sso, users  # noqa: E402
 
@@ -734,18 +733,17 @@ class TestSigningKeys(_SSOBase):
 class TestThroughTheServer(_SSOBase):
     """The wiring: a real socket, real header parsing, the real do_GET path."""
 
-    PORT = free_port()
-
     def setUp(self):
         super().setUp()
         from http.server import ThreadingHTTPServer
 
         self._orig_zim_dir = _srv.ZIM_DIR
         _srv.ZIM_DIR = self._tmp
-        self._server = ThreadingHTTPServer(("127.0.0.1", self.PORT), _http.ZimHandler)
+        # Port 0: the system picks one now (a port chosen at import was taken by the time a parallel worker bound it).
+        self._server = ThreadingHTTPServer(("127.0.0.1", 0), _http.ZimHandler)
         self._thread = threading.Thread(target=self._server.serve_forever, daemon=True)
         self._thread.start()
-        self._base = "http://127.0.0.1:%d" % self.PORT
+        self._base = "http://127.0.0.1:%d" % self._server.server_address[1]
 
     def tearDown(self):
         self._server.shutdown()

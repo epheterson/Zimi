@@ -26,6 +26,12 @@
       { rows: [[0, 0, 3], [2, 0, 3], [4, 0, 3], [6, 0, 3], [8, 0, 3], [10, 0, 3], [12, 0, 3], [0, 14, 3], [2, 14, 3], [4, 14, 3], [6, 14, 3], [8, 14, 3], [10, 14, 3], [12, 14, 3], [4, 6, 4], [6, 6, 4], [8, 6, 4]] },
       { rows: [[2, 1, 2], [4, 1, 2], [6, 1, 2], [8, 1, 2], [10, 1, 2], [2, 15, 2], [4, 15, 2], [6, 15, 2], [8, 15, 2], [10, 15, 2], [5, 7, 3], [7, 7, 3]] },
       { rows: [[4, 2, 1], [6, 2, 1], [8, 2, 1], [4, 16, 1], [6, 16, 1], [8, 16, 1]] }
+    ] },
+    // Tall, for a phone held upright: 9 tiles across and 10 down, so the tiles come out about 1.6 times as wide as the turtle's (18 half-tiles across against 30).
+    { id: 'tower', name: 'Tower', layers: [
+      { rows: [[0, 0, 9], [2, 0, 9], [4, 0, 9], [6, 0, 9], [8, 0, 9], [10, 0, 9], [12, 0, 9], [14, 0, 9], [16, 0, 9], [18, 0, 9]] },
+      { rows: [[4, 2, 7], [6, 2, 7], [8, 2, 7], [10, 2, 7], [12, 2, 7], [14, 2, 7]] },
+      { rows: [[6, 6, 3], [8, 6, 3], [10, 6, 3], [12, 6, 3]] }
     ] }
   ];
 
@@ -151,7 +157,9 @@
   var BK = root.BoardKit, UI = root.BoardUI, T = UI.t, $ = function (id) { return document.getElementById(id); };
   var SETTINGS_KEY = 'mahjong.settings', STATS_KEY = 'mahjong.stats';
   var settings = BK.load(SETTINGS_KEY, {});
-  if (!LAYOUTS.some(function (l) { return l.id === settings.layout; })) settings.layout = 'turtle';
+  // A first visit on an upright phone starts on the tall layout (the turtle's tiles are about 22 px wide there); anyone's own choice is kept.
+  var UPRIGHT_PHONE_PX = 520, UPRIGHT_RATIO = 1.3;   // a narrow desktop window is not an upright phone: it must be clearly taller than wide
+  if (!LAYOUTS.some(function (l) { return l.id === settings.layout; })) settings.layout = !settings.layout && root.innerWidth < UPRIGHT_PHONE_PX && root.innerHeight > root.innerWidth * UPRIGHT_RATIO ? 'tower' : 'turtle';
   var stats = BK.load(STATS_KEY, {});
   var MIN_UNIT = 8, MAX_UNIT = 28, ZOOM_UNIT = 22, ROW_RATIO = 1.34, LAYER_SHIFT = 0.3, MIN_SHIFT_PX = 3, SIDE_PAD_PX = 6, REMOVE_MS = 260;
   var faceName = root.MahjongTiles.faceName, faceMarkup = root.MahjongTiles.faceMarkup;   // the tile art lives in mahjong-tiles.js

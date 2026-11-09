@@ -1128,8 +1128,7 @@ function rememberVoice(e) {
   var p = voicePrefs();
   if (p.remember === false || p.voice === e) return;
   p.voice = e;
-  try { localStorage.setItem(VOICE_PREFS_KEY, JSON.stringify(p)); } catch (x) {}
-  prefTouched(VOICE_PREFS_KEY);
+  prefWrite(VOICE_PREFS_KEY, JSON.stringify(p));
 }
 // What the server says, less the engines the person switched off; a
 // language whose default was one falls to the next on, named (row.named),

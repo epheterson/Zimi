@@ -96,9 +96,12 @@ const S = {
   EN, HE_PLANETS,
 };
 vm.createContext(S);
+vm.runInContext(require("./sk.cjs")(), S);   // app.js SK, loaded before every Almanac file
+vm.runInContext(require("./sk.cjs").prefWriteSource(), S);
 vm.runInContext(
   'var JD_UNIX_EPOCH = 2440587.5, JD_J2000 = 2451545.0, MS_PER_DAY = 86400000, JULIAN_CENTURY = 36525;' +
-  'var DEG_TO_RAD = Math.PI / 180; var _almanacOpen = false; var _almFocus = null; var _currentLang = "en";' +
+  'var DEG_TO_RAD = Math.PI / 180; var _almanacOpen = false; var _almFocus = null; var _almRate = 1; var _currentLang = "en";' +
+  'function _almFocusInstant() { return _almFocus || new Date(); } function _almClockSetRate(r) { _almRate = r; }' +
   'var _voyagerPositions = [];' +
   'function t(k, vars) { var s = EN[k] || k; if (vars) for (var v in vars) s = s.split("{" + v + "}").join(vars[v]); return s; }' +
   'function _tp(n) { return _currentLang === "he" ? (HE_PLANETS[n.toLowerCase()] || n) : n; }' +
@@ -191,7 +194,7 @@ el('ae-card-body'); el('ae-card-count');
 // The count as the card shows it, in seconds.
 const UNIT_S = { ns: 1e-9, 'μs': 1e-6, ms: 1e-3, sec: 1 };
 function shownSeconds() {
-  const m = /([\d.,]+)\s*(ns|μs|ms|sec)$/.exec(el('ae-card-count').textContent);
+  const m = /([\d.,]+)\s*(ns|μs|ms|sec)(?=\s|$)/.exec(el('ae-card-count').textContent);
   return m ? parseFloat(m[1].replace(/,/g, '')) * UNIT_S[m[2]] : NaN;
 }
 let prev = -1, monotonic = true;
@@ -205,7 +208,7 @@ check(monotonic, 'the count since the tap never runs backwards as the rate dips'
 prev = run('_ae.selected.gainedS');
 check(near(prev, 20 * 38.5e-6, 2e-6), 'twenty days gain about 20 x 38.5 us, got ' + (prev * 1e6).toFixed(1) + ' us');
 const shown = el('ae-card-count').textContent;
-check(/: 770 μs$|: 7\d\d μs$/.test(shown), 'the counter reads in microseconds, not a seven-figure ns count: "' + shown + '"');
+check(/\+7\d\d μs(\s|$)/.test(shown), 'the counter reads in microseconds, not a seven-figure ns count: "' + shown + '"');
 check(run('_aeFmtGain(0.86e-9)') === '0.86 ns', 'a fresh count reads "0.86 ns"');
 check(run('_aeFmtGain(5.0e-3)') === '5.0 ms', 'after a jump it reads "5.0 ms"');
 run('_aeUpdateCard(' + (T0 - 3600000) + ')');

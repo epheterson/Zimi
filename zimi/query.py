@@ -9,6 +9,9 @@
     -key:value      the filter, negated
     near:place 25km places within 25 km (or 25mi) of a place, or of
                     near:<lat>,<lng>; 25 km when no distance follows
+    near:Springfield, IL   the place may say where: after a comma, the next
+                    word is part of it ("Paris, France", "Springfield, Illinois,
+                    United States"); near:"New Haven, Connecticut" holds spaces
 
 The web client has the same parser (parseSearchQuery in static/app.js) for the
 catalog, and tests/fixtures/search_query_cases.json holds the cases both must
@@ -101,19 +104,45 @@ def _filter_key(text, filters):
     return filters[key.lower()] if sep and value and key.lower() in filters else None
 
 
+def _near_extent(tokens, at, filters):
+    """The index of the last token near:'s place uses. A place whose token ends
+    in a comma has the next token too ("near:Paris, France"), and so on while
+    a comma ends them: that token is where the place is, not a word to search."""
+    last = at
+    while (
+        tokens[last][0].endswith(",")
+        and not tokens[last][1]
+        and last + 1 < len(tokens)
+    ):
+        nxt, phrase = tokens[last + 1][0], tokens[last + 1][1]
+        if (
+            not phrase
+            and (nxt == "OR" or nxt.startswith("-") or NEAR_RADIUS.match(nxt) or _filter_key(nxt, filters))
+        ):
+            break
+        last += 1
+    return last
+
+
 def word_spans(q, filters=LIBRARY_FILTERS):
     """Where in ``q`` the words to search are, as (start, end): each word and
     phrase, not OR, an exclusion or a filter. What a spelling suggestion may
     correct, leaving every operator as it was typed."""
     out = []
     after_near = False
-    for text, phrase, neg, start, end in _tokens(q or ""):
+    tokens = _tokens(q or "")
+    resume = 0
+    for at, (text, phrase, neg, start, end) in enumerate(tokens):
+        if at < resume:
+            continue  # near:'s place, past its first word
         was_near, after_near = after_near, False
         if not phrase and was_near and NEAR_RADIUS.match(text):
             continue  # near:'s distance
         key = None if phrase else _filter_key(text.lstrip("-"), filters)
         if neg or (not phrase and (text == "OR" or text.startswith("-") or key)):
             after_near = key == "near"
+            if after_near:
+                resume = _near_extent(tokens, at, filters) + 1
             continue
         out.append((start, end))
     return out
@@ -147,9 +176,15 @@ def parse_query(q, filters=LIBRARY_FILTERS):
                     continue
             key = _filter_key(text, filters)
             if key:
-                f = {"key": key, "value": _unquote(text.partition(":")[2]).lower(), "negate": neg}
+                value = _unquote(text.partition(":")[2])
+                last = at
                 if key == "near":
-                    f.update(_near_radius(tokens, at + 1, skip))
+                    last = _near_extent(tokens, at, filters)
+                    skip.update(range(at + 1, last + 1))
+                    value = " ".join([value] + [_unquote(t[0]) for t in tokens[at + 1 : last + 1]])
+                f = {"key": key, "value": value.lower(), "negate": neg}
+                if key == "near":
+                    f.update(_near_radius(tokens, last + 1, skip))
                 found.append(f)
                 join_next = False
                 continue

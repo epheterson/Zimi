@@ -108,6 +108,15 @@
     s.moves++; s.score += SCORE.move;
     return sweepRuns(s);
   }
+  // Any move left: a run onto a column that takes it (an empty one does), or a deal.
+  function hasMove(state) {
+    var P = state.piles, i, j, k;
+    if (canDeal(state)) return true;
+    for (i = 0; i < COLUMNS.length; i++) {
+      for (j = 0; j < P[COLUMNS[i]].length; j++) for (k = 0; k < COLUMNS.length; k++) if (legalMove(state, COLUMNS[i], j, COLUMNS[k])) return true;
+    }
+    return false;
+  }
   function runsDone(state) { return DONE.filter(function (d) { return state.piles[d].length; }).length; }
   function isWon(state) { return runsDone(state) === SETS; }
 
@@ -196,7 +205,7 @@
     COLUMNS: COLUMNS, DONE: DONE, SCORE: SCORE,
     deck: deck, shuffledDeck: shuffledDeck, blankState: blankState, newState: newState, isSuitRun: isSuitRun,
     canPick: canPick, legalMove: legalMove, applyMove: applyMove, sweepRuns: sweepRuns, canDeal: canDeal, dealRow: dealRow,
-    runsDone: runsDone, isWon: isWon, bestMove: bestMove, why: why, almostWon: almostWon, place: place
+    runsDone: runsDone, isWon: isWon, hasMove: hasMove, bestMove: bestMove, why: why, almostWon: almostWon, place: place
   };
   root.ZimiSpider = api;
 
@@ -215,6 +224,7 @@
     page = Z.solitairePage({
       rules: api, id: 'spider' + suits, saveId: 'spider', place: place, cols: COLS, newGame: newGame, stock: dealRow,
       score: function (st) { return st.score; },
+      stuck: Z.stuckWhen(api, hasMove),
       why: why,
       after: function (st) {
         var before = session.history[session.history.length - 1];

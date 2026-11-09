@@ -37,8 +37,10 @@ export function add(more) { Object.keys(more).forEach(function (k) { ARTICLE[k] 
 
 // "Open Kyoto on the map": the place on an installed StreetZim map whose box holds it, inside Zimi; else null.
 export function mapLink(lat, lon, label, T) {
-  if (!Lib || Lib.modeNow() !== 'zimi') return Promise.resolve(null);
-  return Lib.library().then(function (list) {
+  if (!Lib || !window.fetch) return Promise.resolve(null);
+  // Wait for the first look at where we are running: asked before it is done, the answer is not "no map", only "not yet".
+  return Lib.mode().then(function (mode) { return mode === 'zimi' ? Lib.library() : null; }).then(function (list) {
+    if (!list) return null;
     var m = Lib.mapFor(list, lat, lon, '', label);
     if (!m) return null;
     var a = document.createElement('a');

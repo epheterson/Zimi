@@ -87,8 +87,7 @@ for (const [theme, lang] of [['dark', ''], ['light', ''], ['dark', 'he']]) {
     if (lang === 'he') {
       // Right to left, the gear and its panel sit on the left.
       const gear = await page.locator('#ae-gear').boundingBox();
-      const back = await page.locator('#ae-back').boundingBox();
-      expect(gear.x).toBeLessThan(back.x);
+      expect(gear.x).toBeLessThan(PHONE.width / 2);
       expect((await panel.boundingBox()).x).toBeLessThan(PHONE.width / 2);
     }
     await page.screenshot({ path: `${SHOTS}/gear-${name}.png` });

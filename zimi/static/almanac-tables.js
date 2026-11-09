@@ -1887,6 +1887,9 @@ var TB_CONST_ROWS = {
       ['saros', TB_SAROS_SYNODIC * _CN_SYN, 3, 'd', TB_SAROS_SYNODIC + ' × ' + _tbT('mc_synodic')]
     ];
   },
+  // Every number a body's sheet in the 3D view shows, and what the axes stand on (almanac-earth.js, which holds them).
+  k_bodies: _aeRefBodiesRows,
+  k_poles: _aeRefAxesRows,
   k_time: function () {
     var now = Date.now();
     return [
@@ -1900,7 +1903,10 @@ var TB_CONST_ROWS = {
       ['delta_t', _cnDeltaTdays(_dateToJD(now)) * TB_S_PER_DAY_SI, 1, 's', 'Espenak, Meeus'],
       ['delta_t_measured', AR_MEASURED_DELTA_T.s, 1, 's', 'IERS ' + AR_MEASURED_DELTA_T.year],
       ['tai_utc', AR_TAI_MINUS_UTC, 0, 's', 'IERS'],
-      ['last_leap', AR_LAST_LEAP_SECOND, 0, '', 'IERS']
+      ['last_leap', AR_LAST_LEAP_SECOND, 0, '', 'IERS'],
+      // The clock's speed slider (almanac.js): its stops, a minute, an hour, a day and a year a second either way, and how far it travels.
+      ['clock_stops', ALM_RATE_STOPS.join(', '), 0, '×', 'Zimi'],
+      ['clock_span', '±' + _ALM_YEAR_MAX, 0, 'yr', 'Zimi']
     ];
   },
   k_nav: function () {

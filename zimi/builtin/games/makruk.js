@@ -75,7 +75,7 @@
     var count = [0, 0];
     for (var s2 = 0; s2 < N; s2++) if (pos.sq[s2]) count[pos.sq[s2] > 0 ? 0 : 1]++;
     var names = G.names(sideName(0), sideName(1));
-    score(names, count, G.over ? -1 : turnIdx());
+    score(names, count.map(function (n) { return T('cards.n.piece', { n: n }); }), G.over ? -1 : turnIdx());   // what the number counts is said
     flipBtn.setAttribute('aria-pressed', String(flipped()));
     G.setUndo(played.length > 0); G.setHint(open);
   }

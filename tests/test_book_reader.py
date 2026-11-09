@@ -300,3 +300,46 @@ def test_a_book_reads_like_an_e_reader_on_a_phone(served):
             assert st()["page"] == 1
         finally:
             br.close()
+
+
+def test_a_sentence_over_a_page_break_is_read_whole(served):
+    """Eric, 2026-11-07: "can we detect a sentence crossing a page and feed the whole
+    thing to the reader so it plays through uninterrupted?". A page opens mid-sentence
+    (here inside a hyphenated word, "ing" of "read-ing"; 2026-10-21: the voice spelled
+    out a syllable): reading on, the sentence is one chunk said once; a page opened
+    directly begins at the first sentence that starts on it (Eric, 2026-11-08: "first
+    visible sentence start makes sense")."""
+    from playwright.sync_api import sync_playwright
+
+    with sync_playwright() as pw:
+        br = pw.chromium.launch()
+        ctx = br.new_context(**pw.devices["iPhone 13"])
+        pg = ctx.new_page()
+        try:
+            _open(pg, served, "Liber.1")
+            pg.evaluate("() => _ttsLoad()")
+            _tap(pg, 365)  # the title page, then the chapter's first page
+            _tap(pg, 365)
+            got = pg.evaluate(
+                """() => { const d = document.getElementById('reader-frame').contentDocument;
+                const r = d.__zbHere(), at = r.startContainer.data.slice(Math.max(0, r.startOffset - 1), r.startOffset + 1);
+                const m = _ttsReadModel(d, _readerMainContent(d)), here = _ttsOffsetOf(m, r.startContainer, r.startOffset);
+                const all = _ttsPlanFrom(m, 0, m.text.length, false).chunks, direct = _ttsMakePlan(d).chunks[0];
+                const spans = all.flatMap(c => c.spans), over = all.filter(c => c.spans.some(sp => sp.s < here && sp.e > here));
+                const crossing = all.flatMap(c => c.spans).filter(sp => sp.s < here && sp.e > here)[0];
+                return { split: /\\w\\w/.test(at), here: here, first: direct.spans[0], text: direct.text, crossing: crossing,
+                  over: over.map(c => c.spans.map(sp => [sp.s, sp.e])),
+                  ordered: spans.every((sp, i) => !i || spans[i - 1].e <= sp.s) }; }"""
+            )
+            assert got["split"], "the page opens inside a word (the fixture hyphenates)"
+            assert (
+                got["first"]["s"] >= got["crossing"]["e"] > got["here"]
+            ), got  # opened here: the first sentence that starts on the page, not the tail before it
+            assert not got["text"].startswith("ing"), got
+            assert len(got["over"]) == 1 and got["over"][0][0] == [
+                got["crossing"]["s"],
+                got["crossing"]["e"],
+            ], got  # reading on: the crossing sentence is one chunk
+            assert got["ordered"], "no sentence is said twice"
+        finally:
+            br.close()

@@ -55,7 +55,6 @@
     var cls = 'jg-pc ' + (han ? 'han' : 'cho') + (chars ? '' : ' icon') + (t === 7 ? ' k' : t === 1 ? ' p' : t === 6 ? ' g' : '');
     return '<span class="' + cls + '"><span>' + (chars ? HANJA[t][han ? 'h' : 'c'] : root.ZimiPieceIcons.figure(t)) + '</span></span>';
   }
-  function fmtPoints(x) { return x % 1 ? x.toFixed(1) : String(x); }
 
   function paint() {
     var kingSq = E.inCheck(pos, pos.turn) ? pos.king[pos.turn === CHO ? 0 : 1] : -1;
@@ -74,7 +73,7 @@
       c.setAttribute('aria-label', s === sel ? T('chess.sq.selected', { label: label }) : label);
     }
     var pts = E.points(pos), names = G.names(sideName(0), sideName(1));
-    score([names[0], names[1]], [fmtPoints(pts[0]), fmtPoints(pts[1]) + ' (+1.5)'], G.over ? -1 : turnIdx());
+    score([names[0], names[1]], [T('cards.n.point', { n: pts[0] }), T('cards.n.point', { n: pts[1] }) + ' (+1.5)'], G.over ? -1 : turnIdx());
     els.pass.disabled = !open || E.inCheck(pos);
     els.flip.setAttribute('aria-pressed', String(flipped()));
     G.setUndo(played.length > 0); G.setHint(open);

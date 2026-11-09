@@ -113,7 +113,9 @@ def build_openapi():
                         'near:<place> or near:"two words" or near:<lat>,<lng>, then an optional '
                         "distance (25km, 10mi; 25 km when none): places on the installed Kiwix "
                         "maps within it, nearest first, in places (each with km), and what was "
-                        "measured from in near; the other words must be in a place's name.",
+                        "measured from in near; the other words must be in a place's name. "
+                        'The place may say where: near:"Paris, Texas", near:Springfield, IL, '
+                        "near:Paris France.",
                     ),
                     _param(
                         "near_at",
@@ -171,6 +173,28 @@ def build_openapi():
                                         "name passed over) and by (nearest or "
                                         "largest: how one was picked). Optional."
                                     ),
+                                },
+                                "places": {
+                                    "type": "array",
+                                    "description": (
+                                        "Places on the installed maps, one group per "
+                                        "map (a near: search lists the towns around "
+                                        "the starting place, nearest first within "
+                                        "each map). Optional."
+                                    ),
+                                    "items": {
+                                        "type": "object",
+                                        "properties": {
+                                            "zim": {"type": "string"},
+                                            "title": {"type": "string"},
+                                            "main_path": {"type": "string"},
+                                            "unit": {"type": "string"},
+                                            "places": {
+                                                "type": "array",
+                                                "items": {"type": "object"},
+                                            },
+                                        },
+                                    },
                                 },
                                 "unsearched": {
                                     "type": "array",

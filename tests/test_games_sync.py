@@ -224,6 +224,14 @@ def test_an_admin_sets_someones_name_by_the_same_rules(data):
     assert h.status == 409, "one name per server, for an admin too"
 
 
+def test_a_malformed_name_is_a_400_not_a_crash(data):
+    manage._set_manage_password(ADMIN_PW)
+    for bad in (5, ["Kid"], {"a": 1}):
+        h = _Handler({"Authorization": "Bearer " + ADMIN_PW}, path="/manage/users")
+        manage._handle_users_post(h, {"action": "set-display", "name": bad, "display": "X"})
+        assert h.status == 400
+
+
 # ── leaderboards ──
 
 import json  # noqa: E402

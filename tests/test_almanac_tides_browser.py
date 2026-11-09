@@ -220,11 +220,20 @@ def test_the_tide_section_keeps_the_height_it_will_draw_at(browser, served):
         pg.wait_for_function(DRAWN, polling=POLL_MS, timeout=60000)
         drawn = pg.evaluate("document.getElementById('almanac-place').offsetHeight")
         pg.close()
-        # A second visit: the space kept before drawing is the drawn height.
+        # A second visit: the space kept before drawing is the drawn height. The stations are held
+        # back so the tide is not drawn (and the space let go) before it is read, as a fast runner does.
+        held = []
+        ctx.route("**/almanac-place?*", lambda route: held.append(route))
         pg, errors = _open(ctx, served)
         kept = pg.evaluate(
             "parseFloat(document.getElementById('almanac-place').style.minHeight) || 0"
         )
+        for _ in range(600):
+            if held:
+                break
+            pg.wait_for_timeout(POLL_MS)
+        while held:
+            held.pop().continue_()
         assert abs(kept - drawn) <= STILL_PX, (kept, drawn)
         pg.wait_for_function(DRAWN, polling=POLL_MS, timeout=60000)
         assert (
@@ -270,7 +279,7 @@ def test_the_tide_follows_the_one_clock(browser, served):
     try:
         pg, errors = _open(ctx, served)
         pg.wait_for_function(DRAWN, polling=POLL_MS, timeout=60000)
-        pg.evaluate("_almScrubSettle(new Date('2026-10-01T19:00:00Z'))")
+        pg.evaluate("_almClockSetRate(0); _almScrubSettle(new Date('2026-10-01T19:00:00Z'))")
         pg.wait_for_function(DRAWN, polling=POLL_MS)
         pg.evaluate("document.querySelector('#almanac-place .at-section')._mark = 1")
         moon0 = pg.evaluate(
@@ -300,7 +309,7 @@ def test_the_tide_follows_the_one_clock(browser, served):
             "document.querySelector('#almanac-place .at-section')._mark === 1"
         )
         # A bar is a day to go to: three days on, the same time of day.
-        pg.evaluate("_almScrubSettle(new Date('2026-10-01T19:00:00Z'))")
+        pg.evaluate("_almClockSetRate(0); _almScrubSettle(new Date('2026-10-01T19:00:00Z'))")
         pg.locator(".at-m-day").nth(14 + 3).click()
         assert (
             pg.evaluate("_almFocusInstant().toISOString()")
@@ -318,7 +327,7 @@ def test_the_tide_is_calm(browser, served):
         pg, errors = _open(ctx, served)
         pg.wait_for_function(DRAWN, polling=POLL_MS, timeout=60000)
         # Noon in the harbour: the day's next turn is on the curve.
-        pg.evaluate("_almScrubSettle(new Date('2026-10-01T19:00:00Z'))")
+        pg.evaluate("_almClockSetRate(0); _almScrubSettle(new Date('2026-10-01T19:00:00Z'))")
         pg.wait_for_function(DRAWN, polling=POLL_MS)
         # The answer first, and the curve agrees with it: one turn is written
         # large, with the height the lead gives; the rest are a quiet time.
@@ -344,7 +353,7 @@ def test_the_tide_is_calm(browser, served):
         assert pg.locator("#at-fig svg").is_visible()
         assert "Bulges exaggerated" in pg.inner_text("#at-why-panel")
         # Open, it stays open as the Almanac's clock moves (the section is drawn again).
-        pg.evaluate("_almScrubSettle(new Date('2026-10-03T19:00:00Z'))")
+        pg.evaluate("_almClockSetRate(0); _almScrubSettle(new Date('2026-10-03T19:00:00Z'))")
         pg.wait_for_function(DRAWN, polling=POLL_MS)
         assert pg.locator("#at-why-panel").is_visible()
         pg.locator("#at-why-btn").click()
@@ -449,7 +458,7 @@ def test_far_from_any_station_there_is_no_tide_section(browser, served):
         assert pg.evaluate("() => document.getElementById('almanac-place').offsetHeight") == 0
         assert "tides" not in _bar_keys(pg)
         # Time travel keeps it absent: a tide is a prediction for any date, but not of water that is not here.
-        pg.evaluate("() => _almScrubSettle(new Date('2031-06-21T12:00:00Z'))")
+        pg.evaluate("() => { _almClockSetRate(0); _almScrubSettle(new Date('2031-06-21T12:00:00Z')); }")
         pg.wait_for_timeout(300)
         assert pg.evaluate("() => document.querySelector('#almanac-place .almanac-section')") is None
         # The next visit keeps no space for it.

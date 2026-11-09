@@ -13,6 +13,7 @@ import pytest
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from test_games_persist_browser import browser, served  # noqa: E402,F401
+from games_wait import game_ready, quiet  # noqa: E402
 
 OVER = """() => { const a = document.querySelector('.br-auction').getBoundingClientRect();
   return [...document.querySelectorAll('.zc-card:not(.zc-off)')].map(c => c.getBoundingClientRect())
@@ -25,6 +26,7 @@ def test_no_card_covers_the_auction(served, browser, width):
     page = ctx.new_page()
     page.goto("%s/bridge.html" % served)
     page.wait_for_function("() => { const a = document.querySelector('.br-auction'); return a && !a.hidden && a.getBoundingClientRect().width > 0; }")
-    page.wait_for_timeout(800)   # the deal lands
+    game_ready(page)   # the deal lands
+    quiet(page, 800)
     assert page.evaluate(OVER) == 0
     ctx.close()

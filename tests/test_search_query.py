@@ -49,6 +49,20 @@ class TestParser(unittest.TestCase):
                 )
                 self.assertEqual(got["plain"], case["plain"])
 
+    def test_the_words_after_a_comma_say_where_the_place_is(self):
+        """near:Springfield, IL is a place and where it is, not a place and a word
+        to search; a spelling suggestion leaves all of it alone."""
+        q = "parks near:Springfield, Illinois, USA 5mi hotels"
+        got = Q.parse_query(q)
+        self.assertEqual(Q.near_filter(got)["value"], "springfield, illinois, usa")
+        self.assertEqual([[t["text"] for t in g] for g in got["groups"]], [["parks"], ["hotels"]])
+        self.assertEqual([q[a:b] for a, b in Q.word_spans(q)], ["parks", "hotels"])
+        # An OR, an exclusion or another filter after the comma is not a place.
+        for tail in ("OR", "-x", "lang:en"):
+            with self.subTest(tail=tail):
+                got = Q.parse_query(f"near:Paris, {tail} x")
+                self.assertEqual(Q.near_filter(got)["value"], "paris,")
+
     def test_near_cases(self):
         # Eric, 2026-11-03: "should we also include like radius near a location?"
         for case in self.cases["near"]:

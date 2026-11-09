@@ -206,7 +206,7 @@
       stats.solved++; if (!g.hints) stats.clean++; Play.save(STATS_KEY, stats);
     }
     status.say(T('minicw.solved'));
-    ZimiShell.endSheet({ result: 'win', stats: [[T('minicw.hintsUsed'), Play.num(g.hints)]] });
+    ZimiShell.endSheet({ result: 'win', stats: [[T('play.time'), Play.fmtClock(g.ms || 0)], [T('minicw.hintsUsed'), Play.num(g.hints)]] });
   }
 
   function start(mode) {
@@ -217,7 +217,7 @@
     if (!words) { building = false; status.say(''); return; }
     cluesFor(words).then(function (got) {
       building = false; sol = solution(words);
-      g = { mode: mode, date: mode === 'daily' ? today : '', words: words, clues: got.clues, lib: got.lib, cells: sol.map(function () { return ''; }), hinted: [], hints: 0, sel: 0, dir: 'a', dict: dict };
+      g = { mode: mode, date: mode === 'daily' ? today : '', words: words, clues: got.clues, lib: got.lib, cells: sol.map(function () { return ''; }), hinted: [], hints: 0, ms: 0, sel: 0, dir: 'a', dict: dict };
       build(); paint(); status.say('');
     });
   }
@@ -275,6 +275,9 @@
       if (solved(g.cells, sol)) win();
     } else { if (kept) ZimiShell.forget(); start('daily'); }
   });
+  // The time spent: a second at a time while the page is showing, a puzzle under way and a letter in the grid (kept with the save).
+  var CLOCK_MS = 1000;
+  setInterval(function () { if (g && !done && !building && !document.hidden && !document.querySelector('.ar-sheet:not([hidden])') && g.cells.some(Boolean)) g.ms = (g.ms || 0) + CLOCK_MS; }, CLOCK_MS);
   ZimiShell.persist({ save: function () { return g && g.cells.some(Boolean) ? { g: g } : null; } });
   root.__cw = { get g() { return g; }, get dict() { return dict; }, get sol() { return sol; } };
 })(this);

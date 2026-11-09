@@ -160,7 +160,7 @@
   function finish() {
     var best = Play.load(BEST_KEY, {}), key = zim || 'built-in', mine = best[key] || 0, total = sets.length * SIZE;
     if (score > mine) { best[key] = score; Play.save(BEST_KEY, best); }
-    var line = T('round.verdict.' + Lib.verdict(score, total));
+    var line = Lib.verdictLine(T, 'round.verdict.', Lib.verdict(score, total));
     status.say(line); done = true;
     ZimiShell.endSheet({ result: 'over', text: line, stats: [[T('play.score'), T('round.of', { n: score, total: total })], [T('play.best'), Play.num(Math.max(score, mine))]] });
   }

@@ -28,7 +28,7 @@
 .bk-pip { fill: var(--bk-pip); }
 .bk-die.used { opacity: 0.3; }
 .bk-last { fill: var(--accent-glow); stroke: var(--select-ring); stroke-width: 2; }
-.bk-target { fill: var(--legal); fill-opacity: 0.35; stroke: var(--legal); stroke-width: 2.5; }
+.bk-target { fill: var(--legal); fill-opacity: 0.6; stroke: var(--legal); stroke-width: 3.5; }
 .bk-hint { fill: none; stroke: var(--select-ring); stroke-width: 3; stroke-dasharray: 6 4; }
 .bk-cube rect { fill: #f7f3e6; stroke: #5a4a2a; stroke-width: 1.5; }
 .bk-cube text { font: 800 14px var(--mono); fill: var(--disc-b); }

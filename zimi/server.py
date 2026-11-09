@@ -130,7 +130,7 @@ except ImportError:
 # SSL context using certifi CA bundle (PyInstaller bundles lack system certs)
 SSL_CTX = ssl.create_default_context(cafile=certifi.where())
 
-ZIMI_VERSION = "1.15.3"
+ZIMI_VERSION = "1.15.4"
 
 
 def bundled(module):
@@ -394,10 +394,19 @@ _SHAPE_RETRY_SECONDS = 900.0  # look again for ZIMs added since
 LAST_REQUEST_AT = 0.0
 
 
-def _wait_until_idle():
-    """Block until nobody has asked the server for anything recently."""
+def _wait_until_idle(max_wait=None):
+    """Block until nobody has asked the server for anything recently, or for ``max_wait`` seconds when given (a
+    worker with one cheap read to make, which a busy server must not starve). True when it is quiet."""
+    deadline = None if max_wait is None else time.time() + max_wait
     while time.time() - LAST_REQUEST_AT < _SHAPE_IDLE_SECONDS:
-        time.sleep(_SHAPE_IDLE_POLL_SECONDS)
+        if deadline is not None and time.time() >= deadline:
+            return False
+        time.sleep(
+            _SHAPE_IDLE_POLL_SECONDS
+            if deadline is None
+            else min(_SHAPE_IDLE_POLL_SECONDS, max(0.0, deadline - time.time()))
+        )
+    return True
 
 
 class _PoliteGuard:
@@ -786,6 +795,31 @@ def discovery_candidates():
     return [c for c in cands if not (c in seen or seen.add(c))]
 
 
+PORTABLE_DATA_NAME = "zimi-data"
+PORTABLE_ZIMS_NAME = "zims"
+
+
+def portable_root(env=None):
+    """The folder a portable Zimi keeps itself in, or None for the normal paths.
+
+    One rule: a frozen build whose own folder holds ``zimi-data`` (or any run with ZIMI_PORTABLE=1, which
+    ``--portable`` sets) is portable. State then lives in ``<folder>/zimi-data`` and the ZIMs are read from
+    ``<folder>/zims`` when it exists, so the folder can sit on a USB disk and move between machines. The
+    folder is the executable's; a source run has none, so there ZIMI_PORTABLE=1 means the working directory.
+    It is a default, not an order: a flag, an environment variable or a config file still wins."""
+    env = os.environ if env is None else env
+    forced = env.get("ZIMI_PORTABLE", "").strip().lower() in ("1", "true", "yes", "on")
+    if getattr(sys, "frozen", False):
+        root = os.path.dirname(os.path.realpath(sys.executable))
+    elif forced:
+        root = os.getcwd()
+    else:
+        return None
+    if forced or os.path.isdir(os.path.join(root, PORTABLE_DATA_NAME)):
+        return root
+    return None
+
+
 def discover_zim_dir(candidates=None):
     """Probe the candidate locations for ZIMs. First hit wins; None if none.
 
@@ -1148,8 +1182,8 @@ def resolve_settings(
     the same chain with no flag layer (they have no flags) and their values are
     always the string their environment variable carries.
 
-    Precedence, strictly: flag > environment > config file > discovered >
-    built-in default. ``discovered_zim_dir`` is the fifth, lowest layer: it
+    Precedence, strictly: flag > environment > config file > portable folder >
+    discovered > built-in default (see ``portable_root``). ``discovered_zim_dir`` is the fifth, lowest layer: it
     only ever replaces the hardcoded fallback, never a value any person or
     file supplied — that is the 1.9 compatibility contract, and it is why
     discovery is an argument (the impure probe stays in the caller) rather
@@ -1174,6 +1208,11 @@ def resolve_settings(
     zim_dir, zim_dir_src = pick(
         zim_dir_flag, "--zim-dir", "ZIM_DIR", "zim_dir", DEFAULT_ZIM_DIR
     )
+    # A portable folder's own `zims`, below every explicit source and above discovery.
+    portable = portable_root(env)
+    portable_zims = portable and os.path.join(portable, PORTABLE_ZIMS_NAME)
+    if portable_zims and zim_dir_src.startswith("default") and os.path.isdir(portable_zims):
+        zim_dir, zim_dir_src = portable_zims, f"portable: {portable_zims}"
     # Discovery fills in ONLY what was the hardcoded fallback: `pick` says
     # "default" exactly when no flag, env or config named a zim_dir. Applied
     # before the data-dir derivation below so a discovered stick carries its
@@ -1191,6 +1230,10 @@ def resolve_settings(
         os.path.join(zim_dir, DEFAULT_DATA_DIR_NAME),
         f"<zim_dir>/{DEFAULT_DATA_DIR_NAME}",
     )
+    if portable and data_dir_src.startswith("default"):
+        # Not "default": a stick that cannot be written is an error to read, not a reason to keep
+        # the settings in ~/.cache where they would never travel with it.
+        data_dir, data_dir_src = os.path.join(portable, PORTABLE_DATA_NAME), f"portable: {portable}"
     host, host_src = pick(host_flag, "--host", "ZIMI_HOST", "host", DEFAULT_HOST)
     port, port_src = pick(port_flag, "--port", "ZIMI_PORT", "port", DEFAULT_PORT)
     if not isinstance(port, int) or isinstance(port, bool):
@@ -2921,6 +2964,9 @@ def _zim_base_name(filename):
       stackoverflow.com_es_all_2024-01.zim → stackoverflow_es
     """
     name = filename.split(".zim")[0]
+    # The Almanac's HD flavour is the tile library, not a build of the Almanac the package serves: its own name.
+    if re.match(r"zimi_almanac_maxi_\d{4}-\d{2}[a-z]?$", name):
+        return "zimi_almanac_maxi"
     # Extract language code before stripping (e.g. _fr_, _de_, _es_)
     lang_match = re.search(r"(?:\.com)?_([a-z]{2,3})_(?:all|maxi|2\d{3})", name)
     lang_code = lang_match.group(1) if lang_match else ""
@@ -3219,8 +3265,8 @@ def get_zim_files():
 
 
 #: ZIMs that are data for a part of Zimi, not something to read: served at /w/<name>/ to the part that uses them,
-#: never on Home, in the library's grid, in search or in the title indexes (Almanac HD: the Almanac's tiles).
-DATA_PACKS = frozenset(("zimi_almanac_hd",))
+#: never on Home, in the library's grid, in search or in the title indexes (Almanac HD: the Almanac's tiles, in the Almanac's maxi flavour or 1.15.3's tile ZIM).
+DATA_PACKS = frozenset(("zimi_almanac_maxi", "zimi_almanac_hd"))
 
 
 def content_zims():
@@ -4907,6 +4953,8 @@ def _resolve_boot(args):
     # with no config file present this resolves to exactly today's values.
     # getattr with a default: only `serve` and `config` carry these flags, and
     # the rest of the subcommands still want the file's zim_dir/data_dir.
+    if getattr(args, "portable", False):
+        os.environ["ZIMI_PORTABLE"] = "1"  # one switch, read by portable_root() wherever paths resolve
     flags = {
         k: getattr(args, k, None)
         for k in ("zim_dir", "data_dir", "host", "port", "config")
@@ -5060,6 +5108,11 @@ def main():
             "--host",
             default=None,
             help=f"Address to bind (default: {DEFAULT_HOST})",
+        )
+        p.add_argument(
+            "--portable",
+            action="store_true",
+            help=f"Keep state in <folder>/{PORTABLE_DATA_NAME} beside the executable (automatic when that folder exists)",
         )
         p.add_argument(
             "--config",
@@ -5445,7 +5498,7 @@ def main():
         action="store_true",
         help="Exit 1 when a feature this kind of install should include is missing",
     )
-    p_doctor.add_argument("--kind", choices=("docker", "desktop", "pip"), help=argparse.SUPPRESS)
+    p_doctor.add_argument("--kind", choices=("docker", "desktop", "portable", "pip"), help=argparse.SUPPRESS)
     add_boot_flags(p_doctor)
 
     p_service = sub.add_parser("service", help="The systemd unit that runs Zimi at boot (Linux)")
@@ -6003,6 +6056,7 @@ from zimi.search import (  # noqa: E402, F401
     _random_map_place,
     _map_home_view,
     find_places,
+    suggest_places,
     parse_latlng,
     # Search / suggest caches (dicts + constants + functions)
     _search_cache,

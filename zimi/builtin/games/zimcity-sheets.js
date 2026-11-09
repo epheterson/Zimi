@@ -19,6 +19,23 @@ function list(rows) {
 }
 function pct(s, n) { return s.T('city.pct', { n: Math.round(n) }); }
 
+// How to play, shown: what the fingers do, and how big the buildings are (the tray's own pictures, then the size in tiles).
+var GESTURES = [['drag', 'city.how.drag'], ['pinch', 'city.how.pinch'], ['press', 'city.how.press']];
+var SIZES = [[['residential', 'commercial', 'industrial'], '3 \u00d7 3'], [['coal'], '4 \u00d7 4']];
+export function howExtra(s) {
+  var box = el('div', 'cy-how');
+  GESTURES.forEach(function (g) { var row = el('p', 'cy-how-row'); row.appendChild(s.iconSvg(g[0])); row.appendChild(el('span', '', s.T(g[1]))); box.appendChild(row); });
+  var sizes = el('p', 'cy-how-row cy-how-sizes');
+  SIZES.forEach(function (z) {
+    var group = el('span', 'cy-how-size');
+    z[0].forEach(function (n) { group.appendChild(s.iconSvg(n)); });
+    group.appendChild(el('b', '', z[1]));
+    sizes.appendChild(group);
+  });
+  box.appendChild(sizes);
+  return [box];
+}
+
 // A number to set with a step down and a step up: a label on the left, − value + on the right, each 44 px.
 function stepper(label, value, min, max, step, words, onChange) {
   var row = el('div', 'gs-row cy-step'), lab = el('label', '', label), box = el('div', 'gs-seg cy-stepper');
@@ -178,13 +195,19 @@ export function citiesSheet(s) {
   var keep = el('button', 'ar-btn cy-keep', s.T('city.k.keep'));
   keep.type = 'button';
   if (list.length >= c.max) { keep.disabled = true; body.push(el('p', 'gs-text', s.T('city.k.full', { n: c.max }))); }
-  keep.addEventListener('click', function () { if (c.keep()) { api.close(); citiesSheet(s); } });
+  keep.addEventListener('click', function () { if (c.keep()) { api.close(); citiesSheet(s); } else keep.textContent = s.T('city.k.failed'); });
   body.unshift(keep);
   if (!list.length) body.push(el('p', 'gs-text', s.T('city.k.none')));
   list.forEach(function (k, i) {
-    var row = el('div', 'gs-row cy-kept'), what = el('span', 'cy-kept-what');
-    what.appendChild(el('b', '', s.dateOf(k.month, k.year)));
-    what.appendChild(el('small', '', s.T('city.k.line', { people: s.T('city.people', { n: k.people }), money: s.money(k.funds) })));
+    var row = el('div', 'gs-row cy-kept'), what = el('span', 'cy-kept-what'), name = el('input', 'cy-kept-name');
+    name.type = 'text'; name.maxLength = 24; name.value = k.name || ''; name.setAttribute('aria-label', s.T('city.k.name'));
+    name.addEventListener('change', function () {
+      var r = c.rename(i, name.value);
+      if (r === false) { name.value = k.name || ''; keep.textContent = s.T('city.k.failed'); } else name.value = r || name.value;
+    });
+    name.addEventListener('keydown', function (e) { if (e.key === 'Enter') name.blur(); });
+    what.appendChild(name);
+    what.appendChild(el('small', '', s.dateOf(k.month, k.year) + ' \u00b7 ' + s.T('city.k.line', { people: s.T('city.people', { n: k.people }), money: s.money(k.funds) })));
     var open = el('button', 'ar-btn', s.T('city.k.open')), del = el('button', 'ar-btn', s.T('city.k.delete'));
     open.type = del.type = 'button';
     open.addEventListener('click', function () { api.close(); c.open(i); });

@@ -1,29 +1,21 @@
-// The solar-system orrery must follow the almanac's time machine (#48).
+// The solar-system orrery has no clock of its own: it draws the Almanac's one clock (#48, and the time travel control).
 //
-// The orrery historically kept its own clock (Date.now() + _orreryTimeOffset,
-// driven by its speed slider), so travelling the almanac to 2100 left the
-// planets parked at today. The fix routes every consumer of the orrery's
-// clock through ONE function, _orrerySimTime(), whose precedence rule is:
-//
-//   _almFocus set (scrubbing, or parked on any non-now instant)
-//       -> the focus IS the clock (the time machine outranks the slider)
-//   _almFocus null (almanac at now)
-//       -> local clock: real now + the slider's accumulated offset, untouched
+// Once the orrery kept its own clock (Date.now() + _orreryTimeOffset, driven by its own speed slider), so travelling the
+// Almanac to 2100 left the planets parked at today, and the page, the orrery and the 3D view showed three moments. Now
+// every consumer reads ONE function, _orrerySimTime(), which is the page's moment (_almFocusInstant) plus the opening
+// scenery spin (an offset that is zero the moment anyone sets the clock). The rate is the page's too (_almRate).
 //
 // What this locks in:
-//   1. The precedence rule itself, executed from the shipped source.
-//   2. Every clock consumer reads _orrerySimTime() — no second copy of
-//      "Date.now() + _orreryTimeOffset" can drift back in (that inline
-//      expression is exactly how the bug existed).
-//   3. The animation loop suspends local time and mission clocks while the
-//      focus is held (rockets must never interpolate across a scrub jump),
-//      and rocket launches are refused then (their mission timer would be
-//      frozen, welding a rocket to Earth).
-//   4. The travel wiring exists on the almanac side: the visual tier ticks
-//      the orrery, and the settle repaint syncs it exactly.
+//   1. _orrerySimTime executed from the shipped source: the focus is the clock, scenery is only an offset on it, and
+//      touching the clock removes the offset.
+//   2. No second clock: nothing in the orrery or the page adds a local offset or keeps a speed of its own, and every
+//      consumer reads _orrerySimTime().
+//   3. A flight is timed on the clock (its elapsed time is the clock's distance from its launch), so a rewind un-flies it
+//      and a pause holds it; a launch is no longer refused away from now, and it sets the clock's pace.
+//   4. The wiring exists on the almanac side: the visual tier ticks the orrery, and the settle repaint syncs it exactly.
 //
-// Pure-helper approach, matching tests/test_almanac_tz_resolution.cjs: pull
-// the functions out of the shipped source by name and eval them in a sandbox.
+// Pure-helper approach, matching tests/test_almanac_tz_resolution.cjs: pull the functions out of the shipped source by
+// name and eval them in a sandbox.
 //
 // Run: node tests/test_orrery_time_machine.cjs   (exit 0 = pass)
 
@@ -53,59 +45,52 @@ function extractFn(src, name) {
   throw new Error('unbalanced braces in ' + name);
 }
 
-// ── 1. Precedence rule, executed ─────────────────────────────────────────
-const sandbox = { _almFocus: null, _orreryTimeOffset: 0, Date };
+// ── 1. The clock, executed ───────────────────────────────────────────────
+const sandbox = { _almFocus: null, _orreryScenery: true, _orrerySceneryMs: 0, _orreryAutoTransit: true, Date };
 vm.createContext(sandbox);
 vm.runInContext(
-  extractFn(orrSrc, '_orreryTravelFocus') + '\n' + extractFn(orrSrc, '_orrerySimTime'),
+  'function _almFocusInstant() { return _almFocus || new Date(); }\n' +
+  extractFn(orrSrc, '_orrerySimTime') + '\n' + extractFn(orrSrc, '_orreryClockTouched'),
   sandbox
 );
 
-sandbox._almFocus = null;
-sandbox._orreryTimeOffset = 0;
 let t = vm.runInContext('_orrerySimTime()', sandbox);
-check(Math.abs(t - Date.now()) < 2000, 'at now with zero offset, sim time is real now');
+check(Math.abs(t - Date.now()) < 2000, 'at now with no scenery turned, sim time is real now');
 
-sandbox._orreryTimeOffset = 86400000 * 10; // slider wandered +10 days
+sandbox._orrerySceneryMs = 86400000 * 10; // the opening spin has turned ten days
 t = vm.runInContext('_orrerySimTime()', sandbox);
-check(Math.abs(t - (Date.now() + 86400000 * 10)) < 2000,
-  'at now, the local offset (speed slider) owns the clock');
+check(Math.abs(t - (Date.now() + 86400000 * 10)) < 2000, 'the opening spin is an offset on the page\'s moment');
 
 const focus2100 = new Date('2100-06-01T12:00:00Z');
 sandbox._almFocus = focus2100;
+vm.runInContext('_orreryClockTouched()', sandbox);
 t = vm.runInContext('_orrerySimTime()', sandbox);
-check(t === focus2100.getTime(),
-  'with a travel focus, the focus IS the clock — the local offset is ignored');
+check(t === focus2100.getTime(), 'with the clock set, the focus IS the clock: the scenery offset is gone');
+check(sandbox._orreryScenery === false && sandbox._orreryAutoTransit === false, 'setting the clock ends the scenery and any auto-flown ride');
 
-sandbox._almFocus = null;
-t = vm.runInContext('_orrerySimTime()', sandbox);
-check(Math.abs(t - (Date.now() + 86400000 * 10)) < 2000,
-  'returning to now hands the untouched local clock back');
-
-// ── 2. Single-clock discipline: no consumer bypasses _orrerySimTime ──────
-// The inline pattern below is the exact shape of the original bug. The one
-// legitimate `Date.now() + _orreryTimeOffset` computation lives INSIDE
-// _orrerySimTime itself; nothing else may repeat it.
-const inlineClock = /Date\.now\(\)\s*\+\s*_orreryTimeOffset/g;
-const orrHits = (orrSrc.match(inlineClock) || []).length;
-check(orrHits === 1, 'almanac-orrery.js computes the local clock exactly once (inside _orrerySimTime), found ' + orrHits);
-check(!(almSrc.match(inlineClock) || []).length, 'almanac.js (Voyager card) reads _orrerySimTime, not its own clock copy');
+// ── 2. One clock: no consumer keeps its own ──────────────────────────────
+for (const dead of ['_orreryTimeOffset', '_orrerySpeed', '_orreryClockChosen', '_orreryTravelFocus', '_orrerySliderInput', '_orreryUpdateDate']) {
+  check(!orrSrc.includes(dead) && !almSrc.includes(dead), 'the orrery keeps no ' + dead + ' of its own');
+}
+check(!/Date\.now\(\)\s*\+/.test(extractFn(orrSrc, '_orrerySimTime')), 'sim time is not computed from real now');
 check(extractFn(orrSrc, '_drawOrrery').includes('_orrerySimTime()'), '_drawOrrery renders _orrerySimTime()');
 check(extractFn(almSrc, '_updateVoyagerCard').includes('_orrerySimTime()'), '_updateVoyagerCard reads _orrerySimTime()');
 
-// ── 3. Suspension under a held focus ─────────────────────────────────────
+// ── 3. A flight is timed on the clock ────────────────────────────────────
 const animate = extractFn(orrSrc, '_orreryAnimate');
-check(/var _travelHeld = !!_orreryTravelFocus\(\)/.test(animate), '_orreryAnimate consults the travel focus');
-check(/if \(!_travelHeld\) _orreryTimeOffset \+=/.test(animate), 'local time accumulation is gated off while the focus is held');
-check(/if \(_travelHeld\) dt = 0/.test(animate), 'mission clocks freeze with the sim clock (suspend, never interpolate)');
+check(/rk\.elapsed = _orreryRocketElapsed\(rk\)/.test(animate) && !/rk\.elapsed \+=/.test(animate),
+  'a rocket\'s time in flight is the clock\'s distance from its launch, not a sum of its own frames');
+check(/function _orreryRocketElapsed\(rk\) \{ return Math\.max\(0, _orrerySimTime\(\) - rk\._launchRealTime\); \}/.test(orrSrc),
+  'a rewind past the launch holds the rocket at Earth, and a pause holds it where it is');
 const launch = extractFn(orrSrc, '_orreryLaunchRocket');
-check(/if \(_orreryTravelFocus\(\)\) return/.test(launch), 'rocket launches are refused while the time machine owns the clock');
-const upDate = extractFn(orrSrc, '_orreryUpdateDate');
-check(/_orreryTravelFocus\(\)/.test(upDate), "the local 'Now' button yields to the time machine's RETURN while overridden");
+check(!/_almFocus|Focus\(\)/.test(launch), 'a launch does not ask whether the clock is at now: it is not refused away from it');
+check(/_almClockSetRate\(departSpeed\);\s*\n\s*_orreryAutoTransit = true;/.test(launch), 'a launch sets the clock\'s pace, then lets the flight keep it');
+check(/_almRate = _transitEffectiveSpeed\(rk\)/.test(extractFn(orrSrc, '_orreryRideTick')), 'the flight sets the clock\'s pace each frame');
 
 // ── 4. Almanac-side wiring ────────────────────────────────────────────────
 check(extractFn(almSrc, '_almTravelLive').includes('_orreryTravelTick'), '_almTravelLive ticks the orrery in the visual tier');
 check(extractFn(almSrc, '_almRepaintFocus').includes('_orrerySyncToFocus'), '_almRepaintFocus settles the orrery exactly');
+check(extractFn(almSrc, '_almClockFrame').includes('_orreryRideTick'), 'the clock\'s loop asks a flight for its pace');
 const tick = extractFn(orrSrc, '_orreryTravelTick');
 check(/_almanacOrreryRAF/.test(tick) && /_orreryInView/.test(tick), 'travel tick defers to the running loop and skips offscreen paints');
 check(/_almTravelThrottled\('orrery'/.test(tick), 'travel tick rides the shared travel throttle (canvas-tier cadence)');
