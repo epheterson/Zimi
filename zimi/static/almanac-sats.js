@@ -475,13 +475,17 @@ function _asSample(ms) {
     _ae.dirty = true; _aeKick();
   }).catch(function () { _as.posting = false; });
 }
-// Fade by the age of each satellite's elements at the instant shown; one SGP4 could not answer for does not draw.
+// Fade by the age of each satellite's elements: how old they were when the data was read, and then how far the instant
+// shown is from the present. The present is always drawn as fresh as the data is (the snapshot that ships is the newest
+// there is offline, and the layer says when it may be out of date); moving the date away from it is what ages the
+// elements. One SGP4 could not answer for does not draw.
 function _asAlphas(ms) {
   if (ms - _as.alphaAt < AS_ALPHA_REFRESH_MS && ms >= _as.alphaAt) return;
   var d = _as.data, al = _as.cloud.geometry.attributes.aAlpha.array, ok = _as.ok, n = d.n;
-  var t = (ms - AS_EPOCH_ORIGIN_MS) / MS_PER_DAY;
+  var t = (ms - AS_EPOCH_ORIGIN_MS) / MS_PER_DAY, shift = Math.abs(t - (Date.now() - AS_EPOCH_ORIGIN_MS) / MS_PER_DAY);
+  var read = (Date.parse(d.fetched) - AS_EPOCH_ORIGIN_MS) / MS_PER_DAY;
   for (var i = 0; i < n; i++) {
-    var age = Math.abs(t - d.epoch[i]);
+    var age = (isNaN(read) ? 0 : Math.max(0, read - d.epoch[i])) + shift;
     al[i] = !ok[i] || age >= AS_AGE_GONE_DAYS ? 0
       : age <= AS_AGE_FRESH_DAYS ? 1 : Math.max(AS_ALPHA_FLOOR, 1 - (age - AS_AGE_FRESH_DAYS) / (AS_AGE_GONE_DAYS - AS_AGE_FRESH_DAYS));
   }
