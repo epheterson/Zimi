@@ -3692,5 +3692,12 @@
   "alm_blurb_jwst": "金色镜面的望远镜，用红外光看见最古老的星系。",
   "alm_blurb_cassini": "在土星轨道待了多年，还把着陆器送上了土卫六。",
   "alm_blurb_galileo": "第一个绕木星运行的探测器，还向它的云层投下一枚探测器。",
-  "alm_blurb_europaclipper": "正飞往木星，去研究木卫二隐藏的海洋。"
+  "alm_blurb_europaclipper": "正飞往木星，去研究木卫二隐藏的海洋。",
+  "alm_site_visit": "站在着陆点",
+  "alm_site_drive": "在这里驾驶月球车",
+  "alm_site_leave": "离开着陆点",
+  "alm_site_landing": "跳到着陆时刻",
+  "alm_site_pace": "加快时间",
+  "alm_site_jump": "跳跃",
+  "alm_site_landed": "着陆于 {date}"
 }

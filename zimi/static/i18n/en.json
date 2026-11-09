@@ -3692,5 +3692,12 @@
   "alm_blurb_jwst": "A gold-mirrored telescope that sees the oldest galaxies in infrared light.",
   "alm_blurb_cassini": "Spent years at Saturn and sent a lander down to Titan.",
   "alm_blurb_galileo": "The first spacecraft to orbit Jupiter, and it dropped a probe into its clouds.",
-  "alm_blurb_europaclipper": "On its way to Jupiter to study Europa's hidden ocean."
+  "alm_blurb_europaclipper": "On its way to Jupiter to study Europa's hidden ocean.",
+  "alm_site_visit": "Stand at the site",
+  "alm_site_drive": "Drive a rover here",
+  "alm_site_leave": "Leave the site",
+  "alm_site_landing": "Go to the landing time",
+  "alm_site_pace": "Speed up time",
+  "alm_site_jump": "Jump",
+  "alm_site_landed": "Landed {date}"
 }
