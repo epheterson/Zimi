@@ -5942,7 +5942,7 @@ function _aeUpdate(ms) {
   _aeUpdateSpots(S, ms);
   _aeUpdateMoonPath(ms);
   _aeUpdateSats(ms, sc);
-  if (typeof _asFrame === 'function') _asFrame(ms, sc);   // every active satellite (almanac-sats.js)
+  if (typeof _asSatFrame === 'function') _asSatFrame(ms, sc);   // every active satellite (almanac-sats.js)
   // The planets and probes before the camera: a probe framed from tens of metres moves hundreds in a frame (Voyager
   // 17 km/s), so the camera is placed on where it is now, not where it was (their sizes on screen use the last frame's
   // camera, which is near enough).

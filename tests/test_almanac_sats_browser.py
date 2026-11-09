@@ -152,11 +152,11 @@ def test_the_catalogue_draws_filters_and_answers_a_tap(browser, served):
         _shot(pg, "sats-on.png")
         on = _frame_ms(pg, 30)
         cost = pg.evaluate(
-            """() => new Promise(res => { var f = window._asFrame, n = 0, t = 0;
-              window._asFrame = function (ms, sc) { var a = performance.now(); f(ms, sc); t += performance.now() - a; n++; };
+            """() => new Promise(res => { var f = window._asSatFrame, n = 0, t = 0;
+              window._asSatFrame = function (ms, sc) { var a = performance.now(); f(ms, sc); t += performance.now() - a; n++; };
               var c = _as.cloud.geometry.attributes, r = { pos: new Float32Array(c.position.array), vel: new Float32Array(c.aVel.array) };
               var go = () => { if (n < 12) { _ae.dirty = true; _aeKick(); setTimeout(go, 100); return; }
-                window._asFrame = f;
+                window._asSatFrame = f;
                 var ms = _aeDisplayMs(), a2 = performance.now();
                 for (var j = 0; j < 20; j++) { c.position.array.set(r.pos); c.aVel.array.set(r.vel); _asAlphas(ms + j * 6000); }
                 res({ frame: t / n, copy: (performance.now() - a2) / 20, frames: n }); };
