@@ -332,3 +332,59 @@ def test_the_catalogue_draws_from_inside_the_almanac_zim_with_no_network(browser
         ctx.close()
         httpd.shutdown()
         srv.ZIM_DIR, srv.ZIMI_DATA_DIR = old
+DRAWN_SHARE = """() => { var a = _as.cloud.geometry.attributes.aAlpha.array, c = 0; for (var i = 0; i < a.length; i++) if (a[i] > 0) c++; return c / a.length; }"""
+
+
+def test_the_shipped_snapshot_draws_at_the_present_offline_however_old_it_is(
+    browser, served, monkeypatch
+):
+    """The layer was chosen before (the preference is set, nothing is clicked) on a server that never goes online: the
+    shipped snapshot draws. However old the snapshot is, the present is drawn as fresh as the data; moving the date
+    away from the present is what ages the elements out."""
+    monkeypatch.setenv("ZIMI_OFFLINE", "1")
+    ctx = browser.new_context(
+        viewport=VIEW,
+        device_scale_factor=2,
+        has_touch=True,
+        is_mobile=True,
+        service_workers="block",
+    )
+    ctx.add_init_script(
+        "try { localStorage.setItem('zimi_almanac_place', %r); localStorage.setItem('zimi_ae_sats_all', '1'); } catch (e) {}"
+        % PLACE
+    )
+    pg = ctx.new_page()
+    errors = []
+    pg.on("pageerror", lambda e: errors.append(str(e)))
+    try:
+        pg.goto(served + "/#almanac", wait_until="load")
+        pg.wait_for_function(
+            "() => typeof openAlmanacEarth === 'function'", timeout=READY_MS
+        )
+        pg.evaluate("openAlmanacEarth({ target: 'earth' })")
+        pg.wait_for_function(
+            "() => typeof _aeReady === 'function' && _aeReady() && _aeIsOpen",
+            timeout=READY_MS,
+            polling=250,
+        )
+        pg.wait_for_function(
+            "() => typeof _as !== 'undefined' && (_as.state === 'ready' || _as.state === 'failed') && _as.sampleMs > 0",
+            timeout=READY_MS,
+            polling=250,
+        )
+        assert pg.evaluate("_as.state") == "ready" and pg.evaluate("_as.on") is True
+        assert pg.evaluate(DRAWN_SHARE) > MIN_DRAWN_SHARE
+        # A snapshot sixty days old (its elements and its read date both): still all there at the present ...
+        pg.evaluate(
+            "() => { var d = _as.data, ms = 60 * 864e5; for (var i = 0; i < d.n; i++) d.epoch[i] -= 60;"
+            " d.fetched = new Date(Date.parse(d.fetched) - ms).toISOString(); _as.alphaAt = -Infinity; _asAlphas(Date.now()); }"
+        )
+        assert pg.evaluate(DRAWN_SHARE) > 0.5
+        # ... and a date three months away is not drawn, whatever the data's age.
+        pg.evaluate(
+            "() => { _as.alphaAt = -Infinity; _asAlphas(Date.now() + 90 * 864e5); }"
+        )
+        assert pg.evaluate(DRAWN_SHARE) < 0.05
+        assert not errors, errors
+    finally:
+        ctx.close()
