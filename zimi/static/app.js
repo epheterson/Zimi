@@ -8314,6 +8314,7 @@ var _ALMANAC_MODULES = [
   '/static/almanac-skygl.js?v=45',
   '/static/zone-places.js?v=45',
   '/static/almanac-skyfacts.js?v=45',
+  '/static/almanac-skyscene.js?v=45',
   '/static/almanac.js?v=45'
 ];
 // Its stylesheet comes with them, not on the home page's first paint; the
