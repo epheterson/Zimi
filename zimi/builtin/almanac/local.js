@@ -30,13 +30,16 @@
     }
     return files[path];
   }
-  // Almanac HD's state, asked once: present in the maxi flavour of this ZIM, absent (a 404) in the standard one.
+  // Almanac HD's state: present in the maxi flavour of this ZIM, absent (a 404) in the standard one. A 404 is the answer and is
+  // kept; a failed or slow-to-fail request is not an answer, so the next ask looks again.
   var hdState;
   function hd() {
     if (!hdState) {
-      hdState = realFetch(HD_FILE).then(function (r) {
-        return r.ok ? { installed: true, base: HD_BASE, mode: 'never', offer: null, downloading: null } : null;
-      }, function () { return null; });
+      var asked = hdState = realFetch(HD_FILE).then(function (r) {
+        if (r.ok) return { installed: true, base: HD_BASE, mode: 'never', offer: null, downloading: null };
+        if (r.status !== 404) hdState = undefined;
+        return null;
+      }, function () { if (hdState === asked) hdState = undefined; return null; });
     }
     return hdState;
   }
