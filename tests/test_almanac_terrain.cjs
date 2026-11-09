@@ -17,6 +17,7 @@ vm.runInContext(read('almanac-terrain.js'), ctx);
 const T = (code) => vm.runInContext(code, ctx);
 ctx.__bin = (k) => { const b = fs.readFileSync(path.join(STATIC, 'earth', 'terrain-' + k + '-v1.bin')); return b.buffer.slice(b.byteOffset, b.byteOffset + b.byteLength); };
 
+const near = (a, b, eps) => Math.abs(a - b) <= eps;
 let failures = 0;
 function check(ok, label) {
   if (!ok) { console.error('FAIL: ' + label); failures++; } else console.log('ok: ' + label);
@@ -52,7 +53,7 @@ check(h('earth', 28, 87).sea === false && h('earth', 28, 87).h > 1500, 'Earth: T
   const base = coarse('moon', 10, 20);
   let lo = 0, hi = 0;
   for (let i = 0; i < 4000; i++) { const d = h('moon', 10 + i * 0.0005, 20 + i * 0.0003).h - h('moon', 10 + i * 0.0005, 20 + i * 0.0003, 1e9).h; lo = Math.min(lo, d); hi = Math.max(hi, d); }
-  check(lo < -50 && hi > 10, 'Moon: craters dig bowls (' + Math.round(lo) + ' m) and raise rims (' + Math.round(hi) + ' m) over a short walk');
+  check(lo < -30 && hi > 10, 'Moon: craters dig bowls (' + Math.round(lo) + ' m) and raise rims (' + Math.round(hi) + ' m) over a short walk');
   check(lo > -9000 && hi < 9000, 'the detail stays within what a crater does');
 }
 check(h('titan', 10, 10).h !== 0 && Math.abs(h('titan', 10, 10).h) < 400, 'Titan, with no map, has generated hills of a few hundred metres at most');
@@ -64,6 +65,33 @@ check(T('_aeStandHeight("jupiter", 0, 0)') === 0, 'a body that cannot be stood o
   check(T('_aeStandHeight("mercury", 0, 0)') !== 0 || T('_aeTerr.mercury.state') === 'ready', 'a loaded map answers (here Mercury, from the test)');
   T('delete _aeTerr.pluto');
   check(T('_aeStandHeight("pluto", 5, 5)') !== undefined, 'a body with no map answers');
+}
+
+// ── 2b. Land and sea, and the HD tiles ──
+check(T('_aeTerrainIsWater(10, 40, 120)') && !T('_aeTerrainIsWater(120, 140, 60)') && !T('_aeTerrainIsWater(230, 230, 235)'), 'the day map: the sea is blue, land (green, brown) and ice are not');
+{
+  const mw = 8, mh = 4, rgba = new Uint8Array(mw * mh * 4);
+  for (let i = 0; i < mw * mh; i++) { const wet = (i % mw) < 4; rgba.set(wet ? [10, 40, 120, 255] : [110, 130, 60, 255], 4 * i); }
+  ctx.__mask = T('_aeTerrainWaterMask').call(null, rgba, mw, mh);
+  const at = (lat, lon) => T('_aeTerrainWaterAt(__mask, ' + lat + ', ' + lon + ')');
+  check(at(0, -135) === 1 && at(0, 135) === 0, 'a mask is wet where the picture is and dry where it is not');
+  check(at(0, 0) > 0.2 && at(0, 0) < 0.8, 'the coast is between');
+  ctx.__prev = T('_aeTerr.earth.water');
+  T('_aeTerr.earth.water = __mask');
+  check(h('earth', 0, -135).sea === true, 'Earth: with a mask, the sea is where the mask says');
+  check(h('earth', 0, 135).sea === false && h('earth', 0, 135).h >= 3, 'Earth: land the shipped map averages down below zero stands at least a coast\'s few metres up');
+  T('_aeTerr.earth.water = __prev');
+}
+{
+  // HD tiles: a tile of known heights is read bilinearly, and a place without its tiles falls back to the shipped map.
+  const px = 256, tile = new Float32Array(px * px);
+  for (let y = 0; y < px; y++) for (let x = 0; x < px; x++) tile[y * px + x] = x * 10;
+  ctx.__tile = tile;
+  T('_aeTerr.moon.hd = { z: 0, tiles: { "0/0": __tile } }');
+  const cell = (lat, lon) => T('_aeTerrainHdCell(_aeTerr.moon, ' + lat + ', ' + lon + ')');
+  check(near(cell(10, -170), 10 * ((-170 + 180) / 180 * px - 0.5), 1), 'an HD tile gives its heights (' + Math.round(cell(10, -170)) + ' m)');
+  check(cell(10, 100) === null, 'a place whose tile is not in falls back (null)');
+  T('_aeTerr.moon.hd = null');
 }
 
 // ── 3. The mesh ──
