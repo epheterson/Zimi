@@ -318,7 +318,7 @@ def test_the_saturn_v_stands_on_the_pad_and_a_launch_takes_it_away(page):
 
 def test_the_routes_rover_is_where_its_route_says(page):
     st = _visit(page, "mars", "Curiosity")
-    page.evaluate("() => document.getElementById('as-route').click()")
+    page.evaluate("() => document.getElementById('as-trailbtn').click()")
     page.wait_for_function("() => !!_ae.site.trail", timeout=60_000, polling=250)
     page.evaluate(
         "() => { var t = _ae.site.trail; t.playing = false; t.sol = 3000; _asTrailStep(_ae.site, 1 / 60); }"

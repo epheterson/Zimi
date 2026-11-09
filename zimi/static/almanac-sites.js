@@ -21,6 +21,7 @@ var AS_HIDE_SHARE = 0.9;                                   // the sphere is left
 var AS_NEAR_M = 0.05;                                      // the nearest thing drawn on the ground
 var AS_NEAR_PER_FOCUS = 0.012, AS_NEAR_MAX_M = 25;         // the near plane stands off this share of the way to what is looked at (depth precision), at most this far
 var AS_FOV_DEG = 62;
+var AS_NOW_TOL_MS = 120000;                                // a moment this near the real one is "now"
 var AS_DROP_MS = 2400;                                     // from the flight's end, down to the ground
 var AS_MIN_SUN_Z = 0.03;                                   // the Sun's sine over the horizon below which a visit starts at the landing instead
 var AS_SHADOW_MIN_SUN_Z = 0.05;                            // a Sun lower than this throws shadows twenty heights long, no longer
@@ -133,14 +134,13 @@ function _asNewState(def, body, row, drive) {
   var st = { def: def, body: body, row: row, lat: pad ? pad.lat : row[1], lon: pad ? pad.lon : row[2], drive: !!drive, info: info, phase: 'fly', siteParts: [], keepOut: [], radiusM: b ? b.r * AE_EARTH_RADIUS_KM * 1000 : 1737400,
     camera: { az: 3.5, el: 0.32, dist: 16 }, look: { yaw: 0, pitch: 0, touched: 0 }, input: { sx: 0, sy: 0, keys: {}, jump: false }, last: 0, t0: 0, from: null, fr: null, rate: 0 };
   st.terrain = _asTerrainFn(st);
-  // What the visit looks at: the middle of its parts, and a distance that holds them all.
-  var lo = [Infinity, Infinity], hi = [-Infinity, -Infinity];
-  (def ? def.parts : []).forEach(function (pd) {
-    var md = _asData.models[pd.m] || _asData.models[(_asData.rovers[pd.m] || {}).body], r = md ? Math.max.apply(null, md.size) / 2 : 1;
-    lo = [Math.min(lo[0], (pd.x || 0) - r), Math.min(lo[1], (pd.y || 0) - r)]; hi = [Math.max(hi[0], (pd.x || 0) + r), Math.max(hi[1], (pd.y || 0) + r)];
-  });
-  st.focusXY = lo[0] === Infinity ? [0, 0] : [(lo[0] + hi[0]) / 2, (lo[1] + hi[1]) / 2];
-  st.span = Math.max(6, lo[0] === Infinity ? 0 : Math.hypot(hi[0] - lo[0], hi[1] - lo[1]) / 2);
+  // What the visit looks at: its biggest part (the lander), and a distance that holds the rest too.
+  var size = function (pd) { var md = _asData.models[pd.m] || _asData.models[(_asData.rovers[pd.m] || {}).body]; return md ? Math.max.apply(null, md.size) : 1; };
+  var parts = def ? def.parts : [], main = parts.slice().sort(function (a, b) { return size(b) - size(a); })[0];
+  st.focusXY = main ? [main.x || 0, main.y || 0] : [0, 0];
+  var span = 0;
+  parts.forEach(function (pd) { span = Math.max(span, Math.hypot((pd.x || 0) - st.focusXY[0], (pd.y || 0) - st.focusXY[1]) + size(pd) / 2); });
+  st.span = Math.max(6, span, main ? size(main) / 2 : 0);
   st.camera.dist = Math.max(10, st.span * 1.8);
   if (def && def.flat) { st.flatFrom = def.flat[0]; st.flatTo = def.flat[1]; }
   if (def && def.view) { st.camera.dist = def.view.dist; st.camera.el = def.view.el; st.focusZ = def.view.focus; st.distMax = def.view.dist * 4; }
@@ -257,7 +257,7 @@ function _aeSiteStep(sc) {
     _ae.el.classList.add('ae-site');
     _asHud(true);
     // A site in the dark opens at the landing, the Sun up (the clock button goes back).
-    if (st.fr.sunLocal[2] < AS_MIN_SUN_Z && st.def && st.def.ms) { st.nowMs = sc.ms; _aeGoTo(st.def.ms); }
+    if (st.fr.sunLocal[2] < AS_MIN_SUN_Z && st.def && st.def.ms) { st.nowMs = sc.ms; st.atLanding = true; _aeGoTo(st.def.ms); }
   }
   if (!st.group) { _asGroupBuild(st); }
   if (st.phase === 'drop' && now - st.t0 >= AS_DROP_MS) { st.phase = 'stand'; st.from = null; }
@@ -386,7 +386,7 @@ function _asHud(on) {
     var routeL = _almEsc(_aeT('alm_site_trail')), leaveL = _almEsc(_aeT('alm_site_leave')), landL = _almEsc(_aeT('alm_site_landing')), rateL = _almEsc(_aeT('alm_site_pace')), jumpL = _almEsc(_aeT('alm_site_jump'));
     hud.innerHTML = '<div class="as-layer" id="as-layer"></div><div class="as-rest" id="as-rest" hidden></div><div class="as-stick" id="as-stick" hidden><i></i></div>' +
       '<div class="as-bar"><button type="button" class="ae-btn ae-round" id="as-exit" aria-label="' + leaveL + '" title="' + leaveL + '">' + AS_EXIT_SVG + '</button>' +
-      '<div class="as-bar-end"><button type="button" class="ae-btn ae-round" id="as-route" aria-label="' + routeL + '" title="' + routeL + '" hidden>' + AS_ROUTE_SVG + '</button><button type="button" class="ae-btn ae-round" id="as-landing" aria-label="' + landL + '" title="' + landL + '">' + AS_LANDING_SVG + '</button>' +
+      '<div class="as-bar-end"><button type="button" class="ae-btn ae-round" id="as-trailbtn" aria-label="' + routeL + '" title="' + routeL + '" hidden>' + AS_ROUTE_SVG + '</button><button type="button" class="ae-btn ae-round" id="as-landing" aria-label="' + landL + '" title="' + landL + '">' + AS_LANDING_SVG + '</button>' +
       '<button type="button" class="ae-btn ae-round as-rate" id="as-rate" aria-label="' + rateL + '" title="' + rateL + '">' + AS_CLOCK_SVG + '</button></div></div>' +
       '<div class="as-cap" id="as-cap"></div><div class="as-count" id="as-count" aria-hidden="true"></div>' +
       '<button type="button" class="ae-btn ae-round as-launch" id="as-launch" aria-label="' + _almEsc(_aeT('alm_site_launch')) + '" title="' + _almEsc(_aeT('alm_site_launch')) + '" hidden>' + AS_LAUNCH_SVG + '</button>' +
@@ -399,7 +399,7 @@ function _asHud(on) {
   _aeById('as-jump').hidden = !(_ae.site && _ae.site.drive);
   _aeById('as-landing').hidden = !(_ae.site && _ae.site.def && _ae.site.def.ms);
   _aeById('as-launch').hidden = !(_ae.site && _ae.site.def && _ae.site.def.launch);
-  _aeById('as-route').hidden = !(_ae.site && _ae.site.def && _ae.site.def.trail);
+  _aeById('as-trailbtn').hidden = !(_ae.site && _ae.site.def && _ae.site.def.trail);
   _asKeys(true);
   _asCaption(_ae.site);
 }
@@ -443,14 +443,18 @@ function _asBindHud(hud) {
   _aeById('as-landing').onclick = function () {
     var st = _ae.site;
     if (!st || !st.def || !st.def.ms) return;
-    if (st.atLanding) { _aeNow(); st.atLanding = false; } else { st.nowMs = _aeDisplayMs(); _aeGoTo(st.def.ms); st.atLanding = true; }
+    // The button goes between the landing and the moment the visit came from (now, when it came from now).
+    if (st.atLanding) {
+      if (Math.abs(st.nowMs - Date.now()) < AS_NOW_TOL_MS) _aeNow(); else _aeGoTo(st.nowMs);
+      st.atLanding = false;
+    } else { st.nowMs = _aeDisplayMs(); _aeGoTo(st.def.ms); st.atLanding = true; }
   };
   _aeById('as-rate').onclick = function () {
     var cur = typeof _almRate === 'number' ? _almRate : 1, i = 0;
     for (var k = 0; k < AS_CLOCK_RATES.length; k++) if (Math.abs(AS_CLOCK_RATES[k] - cur) < 1e-6) i = k + 1;
     if (typeof _almClockSetRate === 'function') _almClockSetRate(AS_CLOCK_RATES[i % AS_CLOCK_RATES.length]);
   };
-  _aeById('as-route').onclick = function () {
+  _aeById('as-trailbtn').onclick = function () {
     var st = _ae.site;
     if (!st || !st.def.trail) return;
     if (st.trail) { _asTrailStop(st); return; }

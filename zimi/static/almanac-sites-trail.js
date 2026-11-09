@@ -1,9 +1,9 @@
 // A rover's whole journey, played on the timeline (almanac-sites.js): Curiosity's drives from Bradbury Landing to where it
 // is now, Perseverance's from Jezero's floor, taken from NASA/JPL's waypoints (traverses-v1.json,
 // scripts/build_traverses.py). A slider is the sol, a play button runs it; the rover stands where it stood at the end of
-// that sol's drive, turned the way the route goes, the route drawn on the ground behind it and ahead of it, and the
+// that sol's drive, turned the way the track goes, the track drawn on the ground behind it and ahead of it, and the
 // Almanac's clock moves to that sol at the hour the rover landed, so the Sun and the shadows are the ones it had.
-// Loaded at the first press of the route button.
+// Loaded at the first press of the journey button.
 
 // ── Constants ──
 var AS_TRAVERSES_URL = '/static/earth/traverses-v1.json';
@@ -11,9 +11,9 @@ var AS_TRAIL_SECONDS = 70;                  // a replay from landing to now take
 var AS_TRAIL_SPEEDS = [1, 3, 10];           // times that
 var AS_TRAIL_CLOCK_MS = 450;                // the Almanac's clock moves to the sol at most this often
 var AS_TRAIL_VIEW = { dist: 140, el: 0.55, distMax: 120000 };
-var AS_TRAIL_LINE_UP_M = 0.8;               // the route lies this far over the ground
+var AS_TRAIL_LINE_UP_M = 0.8;               // the track lies this far over the ground
 var AS_TRAIL_LINE_COLORS = [0xff8f3a, 0x5fd0ff];   // ahead, behind
-var AS_TRAIL_TURN_K = 5;                    // 1/s: how fast the rover swings round to the way the route goes
+var AS_TRAIL_TURN_K = 5;                    // 1/s: how fast the rover swings round to the way the track goes
 
 var _asTraverses = null, _asTraversesLoading = null;
 function _asTraversesLoad(then) {
@@ -22,22 +22,22 @@ function _asTraversesLoad(then) {
   _asTraversesLoading = fetch(AS_TRAVERSES_URL).then(function (r) { if (!r.ok) throw new Error('traverses'); return r.json(); }).then(function (d) { _asTraverses = d; then(); }).catch(function () { _asTraversesLoading = null; });
 }
 
-// The route in the site's own frame: [sol, x, y] with x east and y north of the landing, metres.
+// The track in the site's own frame: [sol, x, y] with x east and y north of the landing, metres.
 function _asTrailLocal(st, pts) {
   var lat0 = st.lat, lon0 = st.lon, R = st.radiusM, k = Math.PI / 180, cosLat = Math.cos(lat0 * k);
   return pts.map(function (p) { return [p[0], (p[2] - lon0) * k * R * cosLat, (p[1] - lat0) * k * R]; });
 }
-// Where the rover is on its route at a sol (fractional): its place and the way it faces there.
-function _asTrailAt(route, sol) {
-  var lo = 0, hi = route.length - 1;
-  if (sol <= route[0][0]) return { x: route[0][1], y: route[0][2], dx: 0, dy: 1, i: 0 };
-  if (sol >= route[hi][0]) { var q = route[hi], p = route[Math.max(0, hi - 1)]; return { x: q[1], y: q[2], dx: q[1] - p[1], dy: q[2] - p[2], i: hi }; }
-  while (hi - lo > 1) { var mid = (lo + hi) >> 1; if (route[mid][0] <= sol) lo = mid; else hi = mid; }
-  var a = route[lo], b = route[hi], f = (sol - a[0]) / (b[0] - a[0]);
+// Where the rover is on its legs at a sol (fractional): its place and the way it faces there.
+function _asTrailAt(legs, sol) {
+  var lo = 0, hi = legs.length - 1;
+  if (sol <= legs[0][0]) return { x: legs[0][1], y: legs[0][2], dx: 0, dy: 1, i: 0 };
+  if (sol >= legs[hi][0]) { var q = legs[hi], p = legs[Math.max(0, hi - 1)]; return { x: q[1], y: q[2], dx: q[1] - p[1], dy: q[2] - p[2], i: hi }; }
+  while (hi - lo > 1) { var mid = (lo + hi) >> 1; if (legs[mid][0] <= sol) lo = mid; else hi = mid; }
+  var a = legs[lo], b = legs[hi], f = (sol - a[0]) / (b[0] - a[0]);
   return { x: a[1] + (b[1] - a[1]) * f, y: a[2] + (b[2] - a[2]) * f, dx: b[1] - a[1], dy: b[2] - a[2], i: lo };
 }
-function _asTrailLines(st, route) {
-  var THREE = _ae.gl.THREE, n = route.length, mk = function (color) {
+function _asTrailLines(st, legs) {
+  var THREE = _ae.gl.THREE, n = legs.length, mk = function (color) {
     var geo = new THREE.BufferGeometry(), pos = new Float32Array(n * 3);
     geo.setAttribute('position', new THREE.BufferAttribute(pos, 3));
     var line = new THREE.Line(geo, new THREE.LineBasicMaterial({ color: color }));
@@ -46,7 +46,7 @@ function _asTrailLines(st, route) {
     return { geo: geo, pos: pos, line: line };
   };
   var ahead = mk(AS_TRAIL_LINE_COLORS[0]), behind = mk(AS_TRAIL_LINE_COLORS[1]);
-  route.forEach(function (p, i) {
+  legs.forEach(function (p, i) {
     var z = _asGroundAt(st, p[1], p[2], true) + AS_TRAIL_LINE_UP_M;
     [ahead, behind].forEach(function (L) { L.pos[i * 3] = p[1]; L.pos[i * 3 + 1] = p[2]; L.pos[i * 3 + 2] = z; });
   });
@@ -58,10 +58,10 @@ function _asTrailLines(st, route) {
 function _asTrailStart(st) {
   var rover = st.siteParts.filter(function (p) { return p.hubs; })[0], data = _asTraverses && _asTraverses[st.def.trail];
   if (!rover || !data || st.trail) return;
-  var route = _asTrailLocal(st, data.points), first = route[0][0], last = route[route.length - 1][0];
-  var t = st.trail = { data: data, route: route, rover: rover, sol: first, sols: [first, last], playing: true, speed: 0, hdg: rover.hdg, spin: 0, lastX: route[0][1], lastY: route[0][2], clockAt: 0, clockSol: null,
-    lines: _asTrailLines(st, route) };
-  st.followPos = [route[0][1], route[0][2], 0];
+  var legs = _asTrailLocal(st, data.points), first = legs[0][0], last = legs[legs.length - 1][0];
+  var t = st.trail = { data: data, legs: legs, rover: rover, sol: first, sols: [first, last], playing: true, speed: 0, hdg: rover.hdg, spin: 0, lastX: legs[0][1], lastY: legs[0][2], clockAt: 0, clockSol: null,
+    lines: _asTrailLines(st, legs) };
+  st.followPos = [legs[0][1], legs[0][2], 0];
   st.camera.dist = AS_TRAIL_VIEW.dist; st.camera.el = AS_TRAIL_VIEW.el; st.distMax = AS_TRAIL_VIEW.distMax;
   st.cx = 1e9;
   _asTrailUi(st);
@@ -84,7 +84,7 @@ function _asTrailStep(st, dt) {
     t.sol += dt * span / AS_TRAIL_SECONDS * AS_TRAIL_SPEEDS[t.speed];
     if (t.sol >= t.sols[1]) { t.sol = t.sols[1]; t.playing = false; _asTrailUi(st); }
   }
-  var at = _asTrailAt(t.route, t.sol), moved = Math.hypot(at.x - t.lastX, at.y - t.lastY);
+  var at = _asTrailAt(t.legs, t.sol), moved = Math.hypot(at.x - t.lastX, at.y - t.lastY);
   var want = Math.hypot(at.dx, at.dy) > 1e-6 ? Math.atan2(-at.dx, at.dy) : t.hdg;
   t.hdg += _aeAngleDeltaRad(t.hdg, want) * (1 - Math.exp(-AS_TRAIL_TURN_K * dt));
   t.spin += moved / t.rover.rm.radius;
