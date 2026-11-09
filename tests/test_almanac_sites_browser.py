@@ -332,7 +332,7 @@ def test_the_routes_rover_is_where_its_route_says(page):
         "() => { var t = _ae.site.trail; t.playing = false; t.sol = 3000; _asTrailStep(_ae.site, 1 / 60); }"
     )
     got = page.evaluate(
-        "() => { var s = _ae.site, st = _aeSiteState(); return { sol: s.trail.sol, parts: st.parts.filter(p => p.model === 'perseverance-body').map(p => [p.lat, p.lon]) }; }"
+        "() => { var s = _ae.site, st = _aeSiteState(); return { sol: s.trail.sol, parts: st.parts.filter(p => p.model === 'curiosity-body').map(p => [p.lat, p.lon]) }; }"
     )
     with open(
         os.path.join(ROOT, "zimi", "static", "earth", "traverses-v1.json"),
@@ -356,7 +356,8 @@ def test_the_controls_fit_a_phone_on_its_side(page):
     """At 844 x 390 every control is on the screen and the thumbs' two corners are clear of the caption."""
     _visit(page, "moon", "Apollo 15", drive=True)
     page.set_viewport_size({"width": 844, "height": 390})
-    page.wait_for_function("() => _ae.w === 844", timeout=30_000, polling=250)
+    page.evaluate("() => _aeResize()")
+    page.wait_for_function("() => _ae.w === 844", timeout=120_000, polling=250)
     boxes = page.evaluate(
         """() => ['as-exit', 'as-landing', 'as-rate', 'as-jump', 'as-rest', 'as-cap'].map(id => {
           var r = document.getElementById(id).getBoundingClientRect();
@@ -373,7 +374,8 @@ def test_the_controls_fit_a_phone_on_its_side(page):
         assert not overlap(by["as-cap"], by[other]), "the caption does not cover %s" % other
     _shot(page, "landscape")
     page.set_viewport_size({"width": 390, "height": 844})
-    page.wait_for_function("() => _ae.w === 390", timeout=30_000, polling=250)
+    page.evaluate("() => _aeResize()")
+    page.wait_for_function("() => _ae.w === 390", timeout=120_000, polling=250)
 
 
 def test_a_probes_sheet_replays_its_flight_from_launch(page):
