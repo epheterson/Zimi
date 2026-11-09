@@ -59,7 +59,7 @@ function _asTrailStart(st) {
   var rover = st.siteParts.filter(function (p) { return p.hubs; })[0], data = _asTraverses && _asTraverses[st.def.trail];
   if (!rover || !data || st.trail) return;
   var legs = _asTrailLocal(st, data.points), first = legs[0][0], last = legs[legs.length - 1][0];
-  var t = st.trail = { data: data, legs: legs, rover: rover, sol: first, sols: [first, last], playing: true, speed: 0, hdg: rover.hdg, spin: 0, lastX: legs[0][1], lastY: legs[0][2], clockAt: 0, clockSol: null,
+  var t = st.trail = { data: data, legs: legs, rover: rover, sol: first, sols: [first, last], playing: true, speed: 0, hdg: rover.body.hdg, spin: 0, lastX: legs[0][1], lastY: legs[0][2], clockAt: 0, clockSol: null,
     lines: _asTrailLines(st, legs) };
   st.followPos = [legs[0][1], legs[0][2], 0];
   st.camera.dist = AS_TRAIL_VIEW.dist; st.camera.el = AS_TRAIL_VIEW.el; st.distMax = AS_TRAIL_VIEW.distMax;
