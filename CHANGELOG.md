@@ -58,6 +58,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 - A map for any place from every view: the 3D view, its Go to sheet, an article with coordinates and the Almanac's place open the installed map that covers it, or offer the right one to download (smallest region, newest, size shown).
 - Your installed map's roads and place names appear on the 3D Earth as you come down, and a quiet hint offers a map where none covers what you are looking at.
+### Highlights
+
+- **Stand where they landed:** in the Almanac's 3D view the Apollo, Luna, Chang'e, Viking, Mars rover, Venera and Huygens sites are models on their real ground with the Sun's real shadows; drive the Moon buggy or a Mars rover, watch a Saturn V leave its pad, and replay Curiosity's and Perseverance's whole journeys on the timeline.
 
 ## [1.15.4]
 
