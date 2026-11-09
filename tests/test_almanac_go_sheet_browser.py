@@ -155,6 +155,9 @@ def test_go_to_search_stands_on_the_keyboard_with_its_answers_in_view(
                 b["field"]["bottom"] <= b["vv"] + EDGE_PX
                 and b["field"]["top"] >= b["sheet"]["top"]
             ), b
+            # Put away with the field still focused: the foot comes back down (it stayed raised over a gone keyboard).
+            pg.evaluate("_aeShowGo(false)")
+            assert pg.evaluate("document.querySelector('.ae-bottom').style.bottom") == ""
             assert not errors, errors
             ctx.close()
         finally:

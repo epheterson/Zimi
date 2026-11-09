@@ -840,6 +840,7 @@ function _aeShowGo(on, group) {
   sheet.hidden = !on;
   if (btn) btn.setAttribute('aria-expanded', String(!!on));
   _ae.goGroup = on ? group || null : null;
+  if (!on) _aeFootDown();
   if (on) { _aeGoShell(sheet); _aeTracksLoad(); _aeLmLoad(); _aeGoRender(); }
 }
 var AE_SEARCH_SVG = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><circle cx="11" cy="11" r="7.5"/><path d="m21 21-4.3-4.3"/></svg>';
@@ -962,11 +963,14 @@ function _aeGoShell(sheet) {
     var foot = _ae.el.querySelector('.ae-bottom');
     if (foot && typeof _sheetAboveKeyboard === 'function' && !_ae.placeUnfit) _ae.placeUnfit = _sheetAboveKeyboard(foot);
   };
-  q.onblur = function () {
-    var foot = _ae.el.querySelector('.ae-bottom');
-    if (_ae.placeUnfit) { _ae.placeUnfit(); _ae.placeUnfit = null; }
-    if (foot) { foot.style.bottom = ''; foot.style.maxHeight = ''; }
-  };
+  q.onblur = _aeFootDown;
+}
+// The foot back at the bottom: the field left, or the sheet put away with the field still focused (a hidden field is
+// not always told it lost the focus, and the foot stayed raised over a keyboard that had gone).
+function _aeFootDown() {
+  var foot = _ae.el && _ae.el.querySelector('.ae-bottom');
+  if (_ae.placeUnfit) { _ae.placeUnfit(); _ae.placeUnfit = null; }
+  if (foot) { foot.style.bottom = ''; foot.style.maxHeight = ''; }
 }
 // A place picked: down over it, marked, its card up.
 function _aePlacePick(p) {
