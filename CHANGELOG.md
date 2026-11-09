@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Almanac
+
+- **Stand here:** tap a spot on the Earth, Moon, Mars, Venus, Mercury, Titan, Pluto or a big moon and choose Stand here: the camera flies down to the ground at eye height with the real terrain, that body's own sky (Mars's butterscotch day and blue sunset, Venus and Titan's haze, black skies with stars on the airless ones) and the Sun and planets where they truly are; drag to look around, Back returns to orbit.
+
 ## [1.15.4]
 
 ### Highlights

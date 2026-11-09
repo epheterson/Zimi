@@ -201,3 +201,18 @@ craft-<model>-v1.bin (scripts/build_craft_models.py)
     through NASA Moon Trek's tile service, to about 0.65 m a pixel.
   - Mercury, Venus, Mars, Jupiter and Saturn at 8192 px: Solar System Scope's
     8k maps, CC BY 4.0, credited on the view while drawn.
+
+terrain-<body>-v1.bin (scripts/build_terrain.py)
+  The heights Stand here (almanac-stand.js) walks on, 256 x 128 metres above the
+  body's mean radius, int16, about 64 KB each. Public domain:
+  earth: NOAA NCEI, ETOPO 2022 (60 arc-second surface), a U.S. Government work.
+  moon: NASA SVS CGI Moon Kit, LOLA elevation at 16 pixels a degree.
+  mars: USGS Astrogeology, MOLA DEM mosaic (463 m), NASA/MGS.
+  venus: USGS Astrogeology, Magellan topography (4641 m), NASA/JPL.
+  mercury: USGS Astrogeology, MESSENGER DEM (665 m), NASA/JHUAPL/CIW.
+  Titan, Pluto and the big moons have no global height map in the public domain
+  at a usable resolution: they stand on a sphere with generated detail. The
+  craters, hills and rock beneath what the maps hold are generated for every
+  body (seeded by the place, so the same spot is always the same ground) and the
+  view says so in the Almanac's Constants. The Almanac HD release adds the
+  same heights to 11 pixels a degree (terrain/<body>/ tiles).
