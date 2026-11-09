@@ -236,6 +236,12 @@ var AE_ST_BODY_FRAG = [
 ].join('\n');
 
 // ── The ground ──
+// The small sky stretched over the screen: device pixels over the screen's size.
+var AE_ST_BLIT_FRAG = [
+  'precision highp float;',
+  'uniform sampler2D tSky; uniform vec2 uRes;',
+  'void main() { gl_FragColor = vec4(texture2D(tSky, gl_FragCoord.xy / uRes).rgb, 1.0); }'
+].join('\n');
 var AE_ST_GROUND_VERT = [
   'attribute vec3 aDir; attribute vec3 aNrm; attribute float aH; attribute float aSea; attribute float aShade;',
   'varying vec3 vP, vN, vDir; varying float vH, vSea, vShade;',

@@ -61,7 +61,7 @@ function _aeHostSwap(site, h) {
     site.shared.metre.value = 1;   // the site's shaders measure distance in metres here
     S.renderer.setClearColor(0x000000, 1);
     st.prevRatio = S.renderer.getPixelRatio();
-    S.renderer.setPixelRatio(Math.min(S.dpr, AE_STAND_DPR_MAX));
+    S.renderer.setPixelRatio(Math.min(S.dpr, _aeStandDprCap));
     _aeResize();
     h.live = true;
     _ae.dirty = true; _aeKick();

@@ -157,7 +157,7 @@ function _aeStandEnter(st) {
   _aeFullStepIn();
   S.renderer.setClearColor(0x000000, 1);
   st.prevRatio = S.renderer.getPixelRatio();
-  S.renderer.setPixelRatio(Math.min(S.dpr, AE_STAND_DPR_MAX));
+  S.renderer.setPixelRatio(Math.min(S.dpr, _aeStandDprCap));
   _aeResize();
   var fr = _aeStFrame(st, _aeDisplayMs());
   st.yaw = fr.sunAlt > AE_STAND_SUN_FACE_DEG ? fr.sunAz : 0;
@@ -221,6 +221,7 @@ function _aeStandGl(st, pend) {
   };
   st.geo = [];
   scene.add(_aeStandSkyMesh(st, U, mat));
+  scene.add(st.skyBlit);
   // The stars: the Bright Star Catalogue as it arrives (the page's 518 first).
   st.starUni = { uRot: { value: [1, 0, 0, 0, 1, 0, 0, 0, 1] }, uLim: { value: 7 }, uExtinct: { value: 0 }, uDpr: { value: S.renderer.getPixelRatio() }, uStarScale: { value: 1 } };
   st.starMat = mat(AE_ST_STARS_VERT, AE_ST_STARS_FRAG, st.starUni, { depthTest: false, depthWrite: false, blending: THREE.AdditiveBlending });
@@ -255,6 +256,13 @@ function _aeStandSkyMesh(st, U, mat) {
   var sky = st.skyMesh = new THREE.Mesh(tri, mat(AE_ST_SKY_VERT, AE_ST_SKY_FRAG, uni, { depthTest: false, depthWrite: false }));
   sky.frustumCulled = false; sky.renderOrder = -3;
   st.geo.push(tri);
+  // The same sky drawn small into a target, and a triangle that stretches it back: the air is smooth, the ground stays sharp.
+  var low = new THREE.Mesh(tri, sky.material);
+  low.frustumCulled = false;
+  st.skyScene = new THREE.Scene(); st.skyScene.add(low);
+  var blit = st.skyBlit = new THREE.Mesh(tri, new THREE.ShaderMaterial({ uniforms: { tSky: { value: null }, uRes: { value: [1, 1] } }, vertexShader: AE_ST_SKY_VERT, fragmentShader: AE_ST_BLIT_FRAG, depthTest: false, depthWrite: false }));
+  blit.frustumCulled = false; blit.renderOrder = -3; blit.visible = false;
+  st.mats.push(blit.material);
   _aeLoadTexture(THREE, SG_MILKYWAY_URL).then(function (t) { uni.uMilky.value = t; st.dirty = true; if (_ae) { _ae.dirty = true; _aeKick(); } }, function () {});
   return sky;
 }
@@ -305,6 +313,10 @@ var AE_STAND_GREY_MAP = { moon: true };   // maps of one channel (the Moon's), r
 // What the ground's colour map is multiplied by (linear): the Mars map is a salmon grey where the ground is rust, Titan's is grey
 // under orange light and a darker ground than it.
 var AE_STAND_TINT = { mars: [1.9, 0.85, 0.34], titan: [4.2, 3.0, 1.6], earth: [2.2, 2.2, 2.2] };
+var AE_STAND_SKY_SCALE = 0.5;              // the sky is drawn at this share of the screen's size and stretched (the ground is not)
+var AE_STAND_DPR_STEPS = [1.5, 1.25, 1, 0.75];   // the pixel ratios the ground view steps down through if frames run long
+var AE_STAND_SLOW_MS = [20, 250], AE_STAND_SLOW_RUN = 3;   // a frame this slow (not an idle gap) three times running drops a step
+var _aeStandDprCap = AE_STAND_DPR_MAX;     // for the rest of the session: it goes down, never back up
 var AE_STAND_SLICE_MS = 8;                 // a slice of building between breaths of the page
 var AE_STAND_SHADE_LOD = 1.5;              // the shadow grids hold wavelengths down to this many cells
 var AE_STAND_SHADE_MOVE = 0.0044, AE_STAND_SHADE_EVERY_MS = 300, AE_STAND_SHADE_SLICE_MS = 5;   // the Sun has moved a quarter degree; not again sooner than this; the work a frame
@@ -337,6 +349,7 @@ function _aeStandDispose(st) {
   Object.keys(st.discMaps || {}).forEach(function (k) { var m = st.discMaps[k]; if (m && m !== true) m.dispose(); });
   if (st.craftHost && st.craftHost.parentNode) st.craftHost.parentNode.removeChild(st.craftHost);
   if (st.stars) st.stars.geometry.dispose();
+  if (st.skyRT) st.skyRT.dispose();
   st.geo = st.mats = null; st.scene = st.camera = null;
 }
 
@@ -536,9 +549,41 @@ function _aeStandPaint(st, now, moving, place) {
   _aeStandShadeTick(st, st.fr, now);
   _aeStandSprites(st, st.fr, st.photo, view.pixAng, view.pos[2]);
   _aeStandCraftMarks(st, st.fr, view);
+  _aeStandSkyPass(st);
   _ae.gl.renderer.render(st.scene, st.camera);
+  _aeStandBudget(st, now);
   st.dirty = false;
   if (st.hud && now - st.hudAt > AE_STAND_HUD_MS) { st.hudAt = now; _aeStandHudText(st); }
+}
+// The sky into its small target (or, with no way to make one, straight to the screen as before).
+function _aeStandSkyPass(st) {
+  var S = _ae.gl, r = S.renderer, THREE = S.THREE, use = AE_STAND_SKY_SCALE < 1 && !!st.skyBlit && typeof THREE.WebGLRenderTarget === 'function';
+  st.skyMesh.visible = !use; st.skyBlit.visible = use;
+  if (!use) return;
+  var ratio = r.getPixelRatio(), W = Math.max(1, Math.round(_ae.w * ratio)), H = Math.max(1, Math.round(_ae.h * ratio));
+  var w = Math.max(1, Math.round(W * AE_STAND_SKY_SCALE)), h = Math.max(1, Math.round(H * AE_STAND_SKY_SCALE));
+  if (!st.skyRT || st.skyRT.width !== w || st.skyRT.height !== h) {
+    if (st.skyRT) st.skyRT.dispose();
+    st.skyRT = new THREE.WebGLRenderTarget(w, h, { minFilter: THREE.LinearFilter, magFilter: THREE.LinearFilter, depthBuffer: false, stencilBuffer: false });
+  }
+  var u = st.skyBlit.material.uniforms;
+  u.tSky.value = st.skyRT.texture; u.uRes.value = [W, H];
+  r.setRenderTarget(st.skyRT); r.render(st.skyScene, st.camera); r.setRenderTarget(null);
+}
+// Frames that run long step the pixel ratio down, for good: a phone that cannot keep up is not asked to try again.
+function _aeStandBudget(st, now) {
+  var dt = now - (st.paintAt || now);
+  st.paintAt = now;
+  if (dt > AE_STAND_SLOW_MS[0] && dt < AE_STAND_SLOW_MS[1]) st.slow = (st.slow || 0) + 1; else st.slow = 0;
+  if (st.slow < AE_STAND_SLOW_RUN) return;
+  st.slow = 0;
+  var lower = AE_STAND_DPR_STEPS.filter(function (x) { return x < _aeStandDprCap; })[0];
+  if (!lower) return;
+  _aeStandDprCap = lower;
+  var S = _ae.gl;
+  S.renderer.setPixelRatio(Math.min(S.dpr, lower));
+  st.starUni.uDpr.value = S.renderer.getPixelRatio();
+  _aeResize();
 }
 // The camera at its height and heading: returns what the shaders want of it (height in metres, the view's axes, the tangent of
 // half the field, the angle a pixel covers).
