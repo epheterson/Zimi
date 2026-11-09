@@ -3699,5 +3699,8 @@
   "alm_site_landing": "انتقل إلى وقت الهبوط",
   "alm_site_pace": "سرّع الوقت",
   "alm_site_jump": "اقفز",
-  "alm_site_landed": "هبطت {date}"
+  "alm_site_landed": "هبطت {date}",
+  "alm_site_launched": "أُطلق {date}",
+  "alm_site_launch": "شاهد الإطلاق",
+  "alm_site_trail": "رحلة المركبة كاملة"
 }

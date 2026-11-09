@@ -3699,5 +3699,8 @@
   "alm_site_landing": "Zur Landezeit springen",
   "alm_site_pace": "Zeit beschleunigen",
   "alm_site_jump": "Springen",
-  "alm_site_landed": "Gelandet {date}"
+  "alm_site_landed": "Gelandet {date}",
+  "alm_site_launched": "Gestartet {date}",
+  "alm_site_launch": "Den Start ansehen",
+  "alm_site_trail": "Die ganze Reise des Rovers"
 }

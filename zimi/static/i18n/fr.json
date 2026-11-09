@@ -3699,5 +3699,8 @@
   "alm_site_landing": "Aller à l'heure de l'atterrissage",
   "alm_site_pace": "Accélérer le temps",
   "alm_site_jump": "Sauter",
-  "alm_site_landed": "Posé le {date}"
+  "alm_site_landed": "Posé le {date}",
+  "alm_site_launched": "Lancé le {date}",
+  "alm_site_launch": "Regarder le lancement",
+  "alm_site_trail": "Tout le voyage du rover"
 }

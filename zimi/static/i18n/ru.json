@@ -3699,5 +3699,8 @@
   "alm_site_landing": "К моменту посадки",
   "alm_site_pace": "Ускорить время",
   "alm_site_jump": "Прыжок",
-  "alm_site_landed": "Посадка: {date}"
+  "alm_site_landed": "Посадка: {date}",
+  "alm_site_launched": "Запуск: {date}",
+  "alm_site_launch": "Смотреть запуск",
+  "alm_site_trail": "Весь путь ровера"
 }

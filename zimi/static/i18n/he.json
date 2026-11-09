@@ -3699,5 +3699,8 @@
   "alm_site_landing": "לעבור לזמן הנחיתה",
   "alm_site_pace": "האצת הזמן",
   "alm_site_jump": "קפיצה",
-  "alm_site_landed": "נחתה {date}"
+  "alm_site_landed": "נחתה {date}",
+  "alm_site_launched": "שוגר {date}",
+  "alm_site_launch": "לצפות בשיגור",
+  "alm_site_trail": "כל מסעה של החללית הנודדת"
 }

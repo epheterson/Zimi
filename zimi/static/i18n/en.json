@@ -3699,5 +3699,8 @@
   "alm_site_landing": "Go to the landing time",
   "alm_site_pace": "Speed up time",
   "alm_site_jump": "Jump",
-  "alm_site_landed": "Landed {date}"
+  "alm_site_landed": "Landed {date}",
+  "alm_site_launched": "Launched {date}",
+  "alm_site_launch": "Watch the launch",
+  "alm_site_trail": "The rover's whole journey"
 }

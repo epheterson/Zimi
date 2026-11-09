@@ -3699,5 +3699,8 @@
   "alm_site_landing": "跳到着陆时刻",
   "alm_site_pace": "加快时间",
   "alm_site_jump": "跳跃",
-  "alm_site_landed": "着陆于 {date}"
+  "alm_site_landed": "着陆于 {date}",
+  "alm_site_launched": "发射于 {date}",
+  "alm_site_launch": "观看发射",
+  "alm_site_trail": "月球车的整个旅程"
 }

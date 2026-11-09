@@ -3699,5 +3699,8 @@
   "alm_site_landing": "Ir a la hora del alunizaje",
   "alm_site_pace": "Acelerar el tiempo",
   "alm_site_jump": "Saltar",
-  "alm_site_landed": "Aterrizó {date}"
+  "alm_site_landed": "Aterrizó {date}",
+  "alm_site_launched": "Lanzado {date}",
+  "alm_site_launch": "Ver el lanzamiento",
+  "alm_site_trail": "Todo el viaje del róver"
 }
