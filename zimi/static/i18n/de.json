@@ -3702,5 +3702,16 @@
   "alm_site_landed": "Gelandet {date}",
   "alm_site_launched": "Gestartet {date}",
   "alm_site_launch": "Den Start ansehen",
-  "alm_site_trail": "Die ganze Reise des Rovers"
+  "alm_site_trail": "Die ganze Reise des Rovers",
+  "tb_kn_site_models": "Lander und Rover: Herkunft der Modelle",
+  "tb_kn_site_sol": "Ein Marstag (ein Sol)",
+  "tb_kn_site_traverse": "Routen der Rover (Curiosity, Perseverance)",
+  "tb_kn_site_lrv_speed": "Geschwindigkeit des Mondfahrzeugs",
+  "tb_kn_site_mars_speed": "Tempo des Marsrovers beim Fahren",
+  "tb_kn_site_saturn_mass": "Masse der Saturn V beim Start",
+  "tb_kn_site_saturn_thrust": "Schub der ersten Stufe der Saturn V",
+  "tb_kn_site_saturn_burn": "Verbrauch der ersten Stufe der Saturn V",
+  "tb_kn_site_saturn_cutoff": "Brennschluss der ersten Stufe der Saturn V",
+  "tb_kn_site_azimuth": "Startazimut von Apollo 11",
+  "tb_kn_site_tower": "Turmhöhe am Startkomplex 39"
 }

@@ -3702,5 +3702,16 @@
   "alm_site_landed": "هبطت {date}",
   "alm_site_launched": "أُطلق {date}",
   "alm_site_launch": "شاهد الإطلاق",
-  "alm_site_trail": "رحلة المركبة كاملة"
+  "alm_site_trail": "رحلة المركبة كاملة",
+  "tb_kn_site_models": "المركبات الهابطة والجوّالة: مصدر النماذج",
+  "tb_kn_site_sol": "يوم مريخي (سول)",
+  "tb_kn_site_traverse": "مسارات المركبات الجوّالة (كيوريوسيتي، برسيفيرنس)",
+  "tb_kn_site_lrv_speed": "سرعة مركبة القمر",
+  "tb_kn_site_mars_speed": "سرعة مركبة المريخ عند القيادة",
+  "tb_kn_site_saturn_mass": "كتلة ساتورن 5 عند الإقلاع",
+  "tb_kn_site_saturn_thrust": "دفع المرحلة الأولى لساتورن 5",
+  "tb_kn_site_saturn_burn": "معدل احتراق المرحلة الأولى لساتورن 5",
+  "tb_kn_site_saturn_cutoff": "إيقاف المرحلة الأولى لساتورن 5",
+  "tb_kn_site_azimuth": "سمت إطلاق أبولو 11",
+  "tb_kn_site_tower": "ارتفاع برج مجمع الإطلاق 39"
 }

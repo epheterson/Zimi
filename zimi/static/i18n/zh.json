@@ -3702,5 +3702,16 @@
   "alm_site_landed": "着陆于 {date}",
   "alm_site_launched": "发射于 {date}",
   "alm_site_launch": "观看发射",
-  "alm_site_trail": "月球车的整个旅程"
+  "alm_site_trail": "漫游车的整个旅程",
+  "tb_kn_site_models": "着陆器和漫游车：模型的来源",
+  "tb_kn_site_sol": "火星日（一个太阳日）",
+  "tb_kn_site_traverse": "漫游车路线（好奇号、毅力号）",
+  "tb_kn_site_lrv_speed": "月球车速度",
+  "tb_kn_site_mars_speed": "驾驶时火星车的速度",
+  "tb_kn_site_saturn_mass": "土星五号起飞质量",
+  "tb_kn_site_saturn_thrust": "土星五号一级推力",
+  "tb_kn_site_saturn_burn": "土星五号一级燃料消耗率",
+  "tb_kn_site_saturn_cutoff": "土星五号一级关机",
+  "tb_kn_site_azimuth": "阿波罗11号发射方位角",
+  "tb_kn_site_tower": "39号发射场塔架高度"
 }

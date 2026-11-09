@@ -3702,5 +3702,16 @@
   "alm_site_landed": "उतरा {date}",
   "alm_site_launched": "प्रक्षेपित {date}",
   "alm_site_launch": "प्रक्षेपण देखें",
-  "alm_site_trail": "रोवर की पूरी यात्रा"
+  "alm_site_trail": "रोवर की पूरी यात्रा",
+  "tb_kn_site_models": "लैंडर और रोवर: मॉडल कहाँ से आए",
+  "tb_kn_site_sol": "मंगल का दिन (एक सोल)",
+  "tb_kn_site_traverse": "रोवर के रास्ते (क्यूरियोसिटी, परसिवरेंस)",
+  "tb_kn_site_lrv_speed": "चंद्र रोविंग वाहन की गति",
+  "tb_kn_site_mars_speed": "ड्राइव में मंगल रोवर की गति",
+  "tb_kn_site_saturn_mass": "टेकऑफ़ पर सैटर्न V का द्रव्यमान",
+  "tb_kn_site_saturn_thrust": "सैटर्न V के पहले चरण का थ्रस्ट",
+  "tb_kn_site_saturn_burn": "सैटर्न V के पहले चरण की ईंधन खपत",
+  "tb_kn_site_saturn_cutoff": "सैटर्न V के पहले चरण का कटऑफ़",
+  "tb_kn_site_azimuth": "अपोलो 11 का प्रक्षेपण दिगंश",
+  "tb_kn_site_tower": "प्रक्षेपण परिसर 39 के टावर की ऊँचाई"
 }

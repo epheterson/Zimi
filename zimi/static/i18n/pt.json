@@ -3702,5 +3702,16 @@
   "alm_site_landed": "Pousou {date}",
   "alm_site_launched": "Lançado {date}",
   "alm_site_launch": "Assistir ao lançamento",
-  "alm_site_trail": "Toda a viagem do rover"
+  "alm_site_trail": "Toda a viagem do rover",
+  "tb_kn_site_models": "Módulos e rovers: de onde vêm os modelos",
+  "tb_kn_site_sol": "Um dia marciano (um sol)",
+  "tb_kn_site_traverse": "Rotas dos rovers (Curiosity, Perseverance)",
+  "tb_kn_site_lrv_speed": "Velocidade do veículo lunar",
+  "tb_kn_site_mars_speed": "Velocidade do rover marciano ao conduzir",
+  "tb_kn_site_saturn_mass": "Massa do Saturno V na decolagem",
+  "tb_kn_site_saturn_thrust": "Empuxo do primeiro estágio do Saturno V",
+  "tb_kn_site_saturn_burn": "Consumo do primeiro estágio do Saturno V",
+  "tb_kn_site_saturn_cutoff": "Corte do primeiro estágio do Saturno V",
+  "tb_kn_site_azimuth": "Azimute de lançamento da Apollo 11",
+  "tb_kn_site_tower": "Altura da torre do Complexo 39"
 }

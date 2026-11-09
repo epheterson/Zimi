@@ -3702,5 +3702,16 @@
   "alm_site_landed": "Landed {date}",
   "alm_site_launched": "Launched {date}",
   "alm_site_launch": "Watch the launch",
-  "alm_site_trail": "The rover's whole journey"
+  "alm_site_trail": "The rover's whole journey",
+  "tb_kn_site_models": "Landers and rovers: where the models come from",
+  "tb_kn_site_sol": "A Mars day (a sol)",
+  "tb_kn_site_traverse": "Rover routes (Curiosity, Perseverance)",
+  "tb_kn_site_lrv_speed": "Lunar Roving Vehicle speed",
+  "tb_kn_site_mars_speed": "Mars rover speed in the drive",
+  "tb_kn_site_saturn_mass": "Saturn V mass at lift-off",
+  "tb_kn_site_saturn_thrust": "Saturn V first-stage thrust",
+  "tb_kn_site_saturn_burn": "Saturn V first-stage burn rate",
+  "tb_kn_site_saturn_cutoff": "Saturn V first-stage cut-off",
+  "tb_kn_site_azimuth": "Apollo 11 launch azimuth",
+  "tb_kn_site_tower": "Launch Complex 39 tower height"
 }
