@@ -90,6 +90,46 @@
     g.players.forEach(function (q) { delete q.known[i]; delete q.not[i]; });
   }
 
+  // What each card does when played: (game, event, the player, the rival or null, the named card).
+  var EFFECTS = {};
+  EFFECTS[SCOUT] = function (g, ev, p, q, guess) {
+    if (q.hand[0] === guess) { ev.out.push(ev.target); knockOut(g, ev.target); }
+    else g.players.forEach(function (o) { o.not[ev.target] = (o.not[ev.target] || []).concat(guess); });
+  };
+  EFFECTS[HERALD] = function (g, ev, p, q) { ev.peek = q.hand[0]; p.known[ev.target] = q.hand[0]; };
+  EFFECTS[CHAMPION] = function (g, ev, p, q) {
+    var mine = p.hand[0], theirs = q.hand[0];
+    if (mine > theirs) { ev.out.push(ev.target); knockOut(g, ev.target); }
+    else if (mine < theirs) { ev.out.push(ev.by); knockOut(g, ev.by); }
+    else { ev.tie = true; p.known[ev.target] = theirs; q.known[ev.by] = mine; }
+  };
+  EFFECTS[SENTINEL] = function (g, ev, p) { p.shield = true; };
+  EFFECTS[MAGISTER] = function (g, ev, p, q) {
+    var t = ev.target, dropped = q.hand[0];
+    ev.discard = dropped; ev.redraw = true;
+    g.players.forEach(function (o) { delete o.known[t]; delete o.not[t]; });
+    if (dropped === HEIR) { ev.out.push(t); knockOut(g, t); }
+    else { q.played.push(dropped); q.hand = [g.deck.length ? g.deck.pop() : g.aside]; }
+  };
+  EFFECTS[ENVOY] = function (g, ev, p, q) {
+    var by = ev.by, t = ev.target, mineBefore = p.hand[0], theirsBefore = q.hand[0];
+    p.hand = [theirsBefore]; q.hand = [mineBefore];
+    ev.swapped = true;
+    // Whoever held either card knows where it went; everyone else's notes on the two seats trade places.
+    var kb = g.players.map(function (o) { return [o.known[by], o.known[t]]; });
+    var nb = g.players.map(function (o) { return [o.not[by], o.not[t]]; });
+    g.players.forEach(function (o, oi) {
+      delete o.known[by]; delete o.known[t]; delete o.not[by]; delete o.not[t];
+      if (oi === by || oi === t) return;
+      if (kb[oi][1] !== undefined) o.known[by] = kb[oi][1];
+      if (kb[oi][0] !== undefined) o.known[t] = kb[oi][0];
+      if (nb[oi][1]) o.not[by] = nb[oi][1];
+      if (nb[oi][0]) o.not[t] = nb[oi][0];
+    });
+    p.known[t] = mineBefore; q.known[by] = theirsBefore;
+  };
+  EFFECTS[HEIR] = function (g, ev) { ev.out.push(ev.by); knockOut(g, ev.by); };
+
   // Play the card at idx. target: a seat or -1; guess: a rank (the Scout). Returns the event, or false when the move is not legal.
   function play(g, idx, target, guess) {
     if (!canPlay(g, idx)) return false;
@@ -104,45 +144,8 @@
     var q = t >= 0 ? g.players[t] : null;
     // What the table can learn first: a card played that the player had been known to hold is no longer known.
     g.players.forEach(function (o) { if (o.known[by] === rank) delete o.known[by]; delete o.not[by]; });
-    if (rank === SCOUT && q) {
-      if (q.hand[0] === guess) { ev.out.push(t); knockOut(g, t); }
-      else g.players.forEach(function (o) { o.not[t] = (o.not[t] || []).concat(guess); });
-    } else if (rank === HERALD && q) {
-      ev.peek = q.hand[0];
-      p.known[t] = q.hand[0];
-    } else if (rank === CHAMPION && q) {
-      var mine = p.hand[0], theirs = q.hand[0];
-      if (mine > theirs) { ev.out.push(t); knockOut(g, t); }
-      else if (mine < theirs) { ev.out.push(by); knockOut(g, by); }
-      else { ev.tie = true; p.known[t] = theirs; q.known[by] = mine; }
-    } else if (rank === SENTINEL) {
-      p.shield = true;
-    } else if (rank === MAGISTER && q) {
-      var dropped = q.hand[0];
-      ev.discard = dropped; ev.redraw = true;
-      g.players.forEach(function (o) { delete o.known[t]; delete o.not[t]; });
-      if (dropped === HEIR) { ev.out.push(t); knockOut(g, t); }
-      else { q.played.push(dropped); q.hand = [g.deck.length ? g.deck.pop() : g.aside]; }
-    } else if (rank === ENVOY && q) {
-      var mineBefore = p.hand[0], theirsBefore = q.hand[0];
-      p.hand = [theirsBefore]; q.hand = [mineBefore];
-      ev.swapped = true;
-      // Whoever held either card knows where it went; everyone else's notes on the two seats trade places.
-      var kb = g.players.map(function (o) { return [o.known[by], o.known[t]]; });
-      var nb = g.players.map(function (o) { return [o.not[by], o.not[t]]; });
-      g.players.forEach(function (o, oi) {
-        delete o.known[by]; delete o.known[t]; delete o.not[by]; delete o.not[t];
-        if (oi !== by && oi !== t) {
-          if (kb[oi][1] !== undefined) o.known[by] = kb[oi][1];
-          if (kb[oi][0] !== undefined) o.known[t] = kb[oi][0];
-          if (nb[oi][1]) o.not[by] = nb[oi][1];
-          if (nb[oi][0]) o.not[t] = nb[oi][0];
-        }
-      });
-      p.known[t] = mineBefore; q.known[by] = theirsBefore;
-    } else if (rank === HEIR) {
-      ev.out.push(by); knockOut(g, by);
-    }
+    var effect = EFFECTS[rank];
+    if (effect && (q || !needsTarget(rank))) effect(g, ev, p, q, guess);
     g.last = ev;
     g.log.push(ev); if (g.log.length > LOG_KEEP) g.log.shift();
     finishPlay(g);
