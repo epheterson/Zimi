@@ -291,43 +291,19 @@ class Ephemeris:
     """A body's place from a Horizons table by cubic Hermite interpolation; time is seconds from `t0_jd`."""
 
     def __init__(self, rows, t0_jd):
+        from scipy.interpolate import CubicHermiteSpline
+
         self.t = (rows[:, 0] - t0_jd) * 86400.0
         self.p = rows[:, 1:4]
         self.v = rows[:, 4:7]
+        self._spl = CubicHermiteSpline(self.t, self.p, self.v)
+        self._dspl = self._spl.derivative()
 
     def state(self, t):
-        i = int(np.clip(np.searchsorted(self.t, t) - 1, 0, len(self.t) - 2))
-        h = self.t[i + 1] - self.t[i]
-        u = (t - self.t[i]) / h
-        u2, u3 = u * u, u**3
-        h00, h10, h01, h11 = (
-            2 * u3 - 3 * u2 + 1,
-            u3 - 2 * u2 + u,
-            -2 * u3 + 3 * u2,
-            u3 - u2,
-        )
-        p = (
-            h00 * self.p[i]
-            + h10 * h * self.v[i]
-            + h01 * self.p[i + 1]
-            + h11 * h * self.v[i + 1]
-        )
-        dh00, dh10, dh01, dh11 = (
-            (6 * u2 - 6 * u) / h,
-            (3 * u2 - 4 * u + 1),
-            (-6 * u2 + 6 * u) / h,
-            (3 * u2 - 2 * u),
-        )
-        v = (
-            dh00 * self.p[i]
-            + dh10 * self.v[i]
-            + dh01 * self.p[i + 1]
-            + dh11 * self.v[i + 1]
-        )
-        return p, v
+        return self._spl(t), self._dspl(t)
 
     def pos(self, t):
-        return self.state(t)[0]
+        return self._spl(t)
 
 
 # ── Orbits ──

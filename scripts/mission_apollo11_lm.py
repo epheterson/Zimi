@@ -36,7 +36,7 @@ def lm_to_pdi(fl, y_csm_undock, kappa=1.0):
     t_d = EVENTS["doi"]
     ta, Ya = fl.run(y, t_u, t_d, (), step=20.0)
     thrust = LM_DPS_THRUST_DOI * kappa
-    b = Burn(t_d, t_d + DOI_S, thrust, burn_mdot(thrust, LM_DPS_ISP), sign=-1)
+    b = Burn(t_d, t_d + DOI_S, thrust, burn_mdot(thrust, LM_DPS_ISP), sign=-1, rel=fl.moon)
     tb, Yb = fl.run(Ya[-1], t_d, t_d + DOI_S, (b,), step=2.0)
     tc, Yc = fl.run(Yb[-1], t_d + DOI_S, EVENTS["pdi"], (), step=10.0)
     return (np.concatenate([ta, tb[1:], tc[1:]]), np.vstack([Ya, Yb[1:], Yc[1:]])), Yc[

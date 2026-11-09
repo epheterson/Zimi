@@ -24,13 +24,16 @@ class Burn:
         sign=1,
         pitch=(0.0, 0.0),
         yaw=(0.0, 0.0),
-        inertial=False,
+        rel=None,
     ):
         self.t0, self.t1, self.thrust, self.mdot, self.sign = t0, t1, thrust, mdot, sign
         self.pitch, self.yaw = pitch, yaw
-        self.dir0 = None  # inertial=True: the direction at ignition, held
+        self.rel = rel  # an Ephemeris: the burn is steered against the motion about that body, not the Earth
 
     def direction(self, t, r, v):
+        if self.rel is not None:
+            pm, vm = self.rel.state(t)
+            r, v = r - pm, v - vm
         tau = (t - self.t0) / (self.t1 - self.t0)
         a = self.pitch[0] + self.pitch[1] * tau
         b = self.yaw[0] + self.yaw[1] * tau

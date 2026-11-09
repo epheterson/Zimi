@@ -72,7 +72,7 @@ def burn_fit(fl, y0, t0, dur, sign, targets, x0=(1.0, 0.0, 0.0)):
 
     def burn(x):
         return Burn(
-            t0, t0 + dur, SPS_THRUST * x[0], SPS_MDOT, sign=sign, pitch=(x[1], x[2])
+            t0, t0 + dur, SPS_THRUST * x[0], SPS_MDOT, sign=sign, pitch=(x[1], x[2]), rel=fl.moon
         )
 
     def end(x):
@@ -108,7 +108,7 @@ def mcc_and_loi1(fl, y_mcc, t_mcc, verbose=True):
         t, Y = fl.run(y, t_mcc, t1, (), step=None)
         y_l = Y[-1].copy()
         y_l[6] = 96061.6 * 0.45359237  # the spacecraft's mass at ignition, MR table B-I
-        burn = Burn(t1, t1 + LOI1_S, SPS_THRUST * u[3], SPS_MDOT, sign=-1, pitch=(u[4], u[4]), yaw=(u[5], u[5]))
+        burn = Burn(t1, t1 + LOI1_S, SPS_THRUST * u[3], SPS_MDOT, sign=-1, pitch=(u[4], u[4]), yaw=(u[5], u[5]), rel=fl.moon)
         tb, Yb = fl.run(y_l, t1, t1 + LOI1_S, (burn,), step=None)
         return y, y_l, burn, Yb[-1]
 
@@ -133,7 +133,7 @@ def mcc_and_loi1(fl, y_mcc, t_mcc, verbose=True):
 
 SEP_AT = 100 * 3600 + 39 * 60 + 52.9  # the command module's separation manoeuvre
 CSM_SEP_DV = 0.82e-3  # km/s, the report's 2.7 ft/s, radial
-TEI_LON_E = 164.02  # MR table 7-II: trans-Earth injection ignition 0.16 S, 164.02 E, 52.4 nautical miles up
+TEI_LON_E = 169.2  # the report has 164.02 E at 135:23:42.3; the return fit starts its burn 104 s earlier, 5.2 degrees east on this orbit, so the orbit is trimmed to be there at the report time
 
 
 def csm_to_tei(fl, y0, t0):

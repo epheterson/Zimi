@@ -39,7 +39,7 @@ def descend(
     isp,
     lander_dry_kg=0.0,
     step=1.0,
-    rtol=1e-9,
+    rtol=1e-6,
 ):
     """Closed-loop guided descent. y0_fixed: [x, y, z (m), vx, vy, vz (m/s), mass (kg)] in the body-fixed frame.
     `segments`: dicts with t1 (mission seconds the segment ends) and rf, vf, af (the targets in the body-fixed frame, m).
@@ -73,7 +73,7 @@ def descend(
             )
         )
         sol = solve_ivp(
-            f, (t, T_end), y, method="DOP853", rtol=rtol, atol=1e-6, t_eval=grid
+            f, (t, T_end), y, method="DOP853", rtol=rtol, atol=1e-4, t_eval=grid
         )
         ts.append(sol.t[:-1])
         ys.append(sol.y.T[:-1])
