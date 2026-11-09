@@ -1,0 +1,71 @@
+/* Courtier: the court, the hand and the cards. Eight ranks, each its own hue, and also its number, its name and its drawing. */
+:root {
+  --cr-1: #5d8a3c; --cr-2: #2f7fa8; --cr-3: #b8471f; --cr-4: #6b6f7a; --cr-5: #7a4fb0; --cr-6: #1f8a7a; --cr-7: #b0407f; --cr-8: #b88a0e;
+  --cr-paper: #fdfcf8; --cr-ink: #26241f;
+}
+:root[data-theme="dark"] { --cr-1: #78ab52; --cr-2: #4a9fcb; --cr-3: #de6a3e; --cr-4: #9a9fab; --cr-5: #a07fd6; --cr-6: #3fb3a1; --cr-7: #d6639f; --cr-8: #e0b13a; }
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) { --cr-1: #78ab52; --cr-2: #4a9fcb; --cr-3: #de6a3e; --cr-4: #9a9fab; --cr-5: #a07fd6; --cr-6: #3fb3a1; --cr-7: #d6639f; --cr-8: #e0b13a; }
+}
+[data-rank="1"] { --rk: var(--cr-1); } [data-rank="2"] { --rk: var(--cr-2); } [data-rank="3"] { --rk: var(--cr-3); } [data-rank="4"] { --rk: var(--cr-4); }
+[data-rank="5"] { --rk: var(--cr-5); } [data-rank="6"] { --rk: var(--cr-6); } [data-rank="7"] { --rk: var(--cr-7); } [data-rank="8"] { --rk: var(--cr-8); }
+
+.cr-main { width: 100%; max-width: 440px; margin: 0 auto; }
+.cr-tablearea { width: 100%; display: flex; flex-direction: column; gap: var(--sp-2); }
+.cr-seats { display: flex; flex-direction: column; gap: 6px; }
+.cr-seat { padding: 6px 10px; border: 1px solid var(--line); border-radius: 10px; background: var(--surface); display: flex; flex-direction: column; gap: 4px; }
+.cr-seat.cr-turn { border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent); }
+.cr-seat.cr-outseat { opacity: 0.6; }
+.cr-seat.cr-pick { cursor: pointer; border-color: var(--accent); background: var(--accent-glow); animation: cr-pulse 1.2s ease-in-out infinite; }
+@keyframes cr-pulse { 50% { box-shadow: 0 0 0 3px var(--accent-line); } }
+html[data-anim="off"] .cr-seat.cr-pick { animation: none; }
+@media (prefers-reduced-motion: reduce) { html:not([data-anim="normal"]):not([data-anim="fast"]) .cr-seat.cr-pick { animation: none; } }
+.cr-seathead { display: flex; align-items: center; gap: 8px; min-height: 22px; }
+.cr-seathead b { font-size: var(--fs-small); flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.cr-pips { display: inline-flex; gap: 4px; }
+.cr-pips i { width: 10px; height: 10px; border-radius: 50%; border: 1.5px solid var(--ink2); box-sizing: border-box; }
+.cr-pips i.cr-on { background: var(--accent); border-color: var(--accent); }
+.cr-tag { font-size: var(--fs-caption); padding: 1px 8px; border-radius: 999px; border: 1px solid var(--line-strong); color: var(--ink); }
+.cr-tag-safe { background: var(--accent-glow); border-color: var(--accent-line); }
+.cr-tag-out { color: var(--ink2); }
+.cr-played { display: flex; align-items: center; gap: 4px; min-height: 28px; flex-wrap: wrap; }
+.cr-mini { display: inline-flex; align-items: center; justify-content: center; min-width: 22px; height: 26px; padding: 0 3px; box-sizing: border-box; border-radius: 5px; border: 2px solid var(--rk); background: var(--cr-paper); color: var(--cr-ink); font: 700 13px var(--mono); }
+.cr-deck, .cr-log { margin: 0; text-align: center; color: var(--ink2); font-size: var(--fs-small); }
+.cr-log { min-height: 2.6em; color: var(--ink); }
+.cr-faceup .cr-mini { margin-left: 2px; vertical-align: middle; }
+
+/* The cards: paper, a band in the rank's hue, the number, the drawing, the name. */
+.cr-card { position: relative; display: flex; flex-direction: column; align-items: center; justify-content: space-between; box-sizing: border-box; width: 104px; height: 144px; padding: 22px 6px 8px; border: 2px solid var(--card-edge, #c9c4b8); border-top: 0; border-radius: 12px; background: var(--cr-paper); color: var(--cr-ink); overflow: hidden; font: inherit; text-align: center; }
+.cr-card::before { content: ""; position: absolute; left: 0; right: 0; top: 0; height: 20px; background: var(--rk, var(--ink2)); }
+.cr-num { position: absolute; top: 0; left: 8px; z-index: 1; font: 800 15px/20px var(--mono); color: #fff; text-shadow: 0 1px 1px rgba(0, 0, 0, 0.45); }
+.cr-emblem { width: 58px; height: 58px; fill: color-mix(in srgb, var(--rk) 22%, transparent); stroke: var(--rk); stroke-width: 2.4; stroke-linecap: round; stroke-linejoin: round; }
+.cr-name { font-size: var(--fs-small); font-weight: 650; line-height: 1.15; overflow-wrap: anywhere; }
+button.cr-card { cursor: pointer; touch-action: manipulation; padding-top: 22px; transition: transform 0.12s ease-out; }
+button.cr-card:hover { border-color: var(--accent); }
+button.cr-card[aria-disabled="true"] { cursor: default; }
+button.cr-card[aria-pressed="true"] { transform: translateY(-14px); box-shadow: var(--select); }
+.cr-backcard { background: var(--felt, #285c43); border-color: var(--felt-deep, #1a4130); }
+.cr-backcard::before { display: none; }
+.cr-backcard { justify-content: center; padding: 0; }
+.cr-z { font: 800 34px var(--font); color: rgba(255, 255, 255, 0.85); }
+.cr-miniback { width: 18px; height: 26px; border-radius: 4px; border-width: 1px; }
+.cr-miniback .cr-z { font-size: 12px; }
+.cr-hand { display: flex; justify-content: center; gap: var(--sp-3); min-height: 160px; align-items: flex-end; padding-top: 14px; }
+.cr-handnote { color: var(--ink2); margin: 0; align-self: center; }
+.cr-actions { display: flex; gap: var(--sp-2); justify-content: center; }
+.cr-actions .ar-btn { min-height: 44px; min-width: 110px; }
+.cr-actions [hidden] { display: none; }
+
+.cr-ranks { display: grid; grid-template-columns: repeat(auto-fill, minmax(84px, 1fr)); gap: 8px; justify-items: center; }
+.cr-smallcard { width: 84px; height: 116px; padding-top: 20px; }
+.cr-smallcard .cr-emblem { width: 44px; height: 44px; }
+.cr-smallcard .cr-name { font-size: 12px; }
+.cr-peekcard { display: flex; justify-content: center; margin: var(--sp-3) 0; }
+.cr-reveal { display: flex; flex-direction: column; gap: 6px; margin-top: var(--sp-2); }
+.cr-revrow { display: flex; align-items: center; gap: 10px; padding: 6px 10px; border: 1px solid var(--line); border-radius: 10px; }
+.cr-revrow b { flex: 1 1 auto; font-size: var(--fs-small); }
+.cr-revrow.cr-won { border-color: var(--accent); background: var(--accent-glow); }
+.cr-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 8px; }
+.cr-guideitem { display: flex; gap: 10px; align-items: flex-start; }
+.cr-guideitem > div { display: flex; flex-direction: column; gap: 2px; font-size: var(--fs-small); }
+.cr-guideitem span:not(.cr-mini) { color: var(--ink2); }
