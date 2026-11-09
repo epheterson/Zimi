@@ -278,3 +278,23 @@ traverses-v1.json (scripts/build_traverses.py)
   Curiosity's and Perseverance's drives, a point per sol where the route turns:
   NASA/JPL's MMGIS waypoint files (mars.nasa.gov/mmgis-maps/MSL, /M20), public
   domain, credit "NASA/JPL-Caltech/MSL and Mars 2020 teams". 45 KB.
+
+terrain-<body>-v1.bin (scripts/build_terrain.py)
+  The heights Stand here (almanac-stand.js) walks on, 256 x 128 metres above the
+  body's mean radius, int16, about 64 KB each. Public domain:
+  earth: NOAA NCEI, ETOPO 2022 (60 arc-second surface), a U.S. Government work.
+  moon: NASA SVS CGI Moon Kit, LOLA elevation at 16 pixels a degree.
+  mars: USGS Astrogeology, MOLA DEM mosaic (463 m), NASA/MGS.
+  venus: USGS Astrogeology, Magellan topography (4641 m), NASA/JPL.
+  mercury: USGS Astrogeology, MESSENGER DEM (665 m), NASA/JHUAPL/CIW.
+  Titan, Pluto and the big moons have no global height map in the public domain
+  at a usable resolution: they stand on a sphere with generated detail. The
+  craters, hills and rock beneath what the maps hold are generated for every
+  body (seeded by the place, so the same spot is always the same ground) and the
+  view says so in the Almanac's Constants. The Almanac HD release adds the
+  same heights to 11 pixels a degree (terrain/<body>/ tiles).
+
+land-v1.bin (scripts/build_landmask.py)
+  Where the Earth's coasts are, for Stand here: Natural Earth 1:10 million land
+  polygons (ne_10m_land, public domain, naturalearthdata.com), rasterised to
+  8192 x 4096 and stored as runs (214 KB). The Great Lakes read as land.

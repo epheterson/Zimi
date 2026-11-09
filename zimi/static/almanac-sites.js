@@ -26,6 +26,7 @@ var AS_DROP_MS = 2400;                                     // from the flight's 
 var AS_MIN_SUN_Z = 0.03;                                   // the Sun's sine over the horizon below which a visit starts at the landing instead
 var AS_SHADOW_MIN_SUN_Z = 0.05;                            // a Sun lower than this throws shadows twenty heights long, no longer
 var AS_SHADOW_LIFT_M = 0.03;                               // a shadow lies this far over the ground, so the bumps do not hide it
+var AS_TERRAIN_LOD_PER_M = 0.0005;                         // km of the shortest wavelength a far vertex holds, per metre out (the ground's own mesh: almanac-terrain.js)
 var AS_FLAT_FROM_M = 10, AS_FLAT_TO_M = 45;                // the ground is level at the lander and gains its relief by here
 var AS_ROCK_CELL_M = 5, AS_ROCK_REACH_M = 70, AS_ROCK_MAX = 420;
 var AS_CRATER_CELL_M = 48;
@@ -155,14 +156,27 @@ function _aeSiteVisit(body, row, drive) {
   if (drive && typeof _asRoverBuild !== 'function') { _asDriveLoad(function () { _aeSiteVisit(body, row, drive); }); return; }
   if (_ae.site) _aeSiteLeave(true);
   var def = _asDefFor(body, row) || { name: row[0], body: body, parts: [] };
-  _ae.site = _asNewState(def, body, row, drive);
+  var st = _ae.site = _asNewState(def, body, row, drive);
   _aeLmFly(body, row);
+  // The ground's terrain (and the scripts that hold it) first: the parts are put down once it is in, never twice.
+  _aeSiteGround(body).then(function () {
+    if (_ae.site !== st) return;
+    st.terrain = _asTerrainFn(st);   // the ground's heights now that they are in (the first visit had no terrain scripts when it began)
+    st.groundReady = true;
+    if (typeof _aeHostPrepare === 'function') _aeHostPrepare(st);
+    _aeKick();
+  });
   _aeKick();
+}
+function _aeSiteGround(body) {
+  if (typeof _aeStandReady !== 'function') return Promise.resolve();
+  return _aeStandReady().then(function () { return typeof _aeTerrainLoad === 'function' ? _aeTerrainLoad(body) : null; }).catch(function () {});
 }
 function _aeSiteLeave(quiet) {
   var st = _ae && _ae.site;
   if (!st) return;
   _ae.site = null;
+  if (typeof _aeHostDrop === 'function') _aeHostDrop(st);
   _asDispose(st);
   _asHud(false);
   var S = _ae.gl;
@@ -251,6 +265,7 @@ function _aeSiteStep(sc) {
   if (st.phase === 'fly') {
     if (_ae.fly) return;
     if (_ae.target !== st.body) { _aeSiteLeave(); return; }
+    if (!st.groundReady) return;   // the terrain is still arriving
     var cam = S.camera;
     var look = new S.THREE.Vector3(0, 0, -1).applyQuaternion(cam.quaternion), upv = new S.THREE.Vector3(0, 1, 0).applyQuaternion(cam.quaternion);
     st.from = { pos: [cam.position.x, cam.position.y, cam.position.z], look: [cam.position.x + look.x, cam.position.y + look.y, cam.position.z + look.z], up: [upv.x, upv.y, upv.z] };
@@ -368,6 +383,8 @@ var AS_CSS = [
   '.as-launch{position:absolute;left:50%;transform:translateX(-50%);bottom:calc(76px + env(safe-area-inset-bottom));width:64px;height:64px;pointer-events:auto}',
   '.as-count{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;font-size:120px;font-weight:700;color:rgba(255,255,255,.85);text-shadow:0 2px 18px rgba(0,0,0,.6);pointer-events:none;font-variant-numeric:tabular-nums}'
 ].join('');
+var AS_EYE_SVG = '<svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="5.5" r="2.3"/><path d="M12 8.5v6M8.5 11.5l3.5-1 3.5 1M12 14.5l-2.5 5.5M12 14.5l2.5 5.5"/></svg>';
+var AS_PHONE_SVG = '<svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="7" y="3" width="10" height="18" rx="2"/><path d="M11 18h2"/></svg>';
 var AS_LAUNCH_SVG = '<svg viewBox="0 0 24 24" width="26" height="26" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3c3 2.5 4 6 4 9l-2 3h-4l-2-3c0-3 1-6.5 4-9z"/><circle cx="12" cy="9" r="1.4"/><path d="M10 15l-2 3.5M14 15l2 3.5M12 17v4"/></svg>';
 var AS_ROUTE_SVG = '<svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="6" cy="18" r="2"/><circle cx="18" cy="6" r="2"/><path d="M8 18h6a3 3 0 0 0 0-6h-4a3 3 0 0 1 0-6h6"/></svg>';
 var AS_EXIT_SVG = '<svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"/></svg>';
@@ -386,10 +403,10 @@ function _asHud(on) {
     if (!document.getElementById('as-css')) { var css = document.createElement('style'); css.id = 'as-css'; css.textContent = AS_CSS; document.head.appendChild(css); }
     hud = document.createElement('div');
     hud.className = 'as-hud'; hud.id = 'as-hud';
-    var routeL = _almEsc(_aeT('alm_site_trail')), leaveL = _almEsc(_aeT('alm_site_leave')), landL = _almEsc(_aeT('alm_site_landing')), rateL = _almEsc(_aeT('alm_site_pace')), jumpL = _almEsc(_aeT('alm_site_jump'));
+    var routeL = _almEsc(_aeT('alm_site_trail')), leaveL = _almEsc(_aeT('alm_site_leave')), landL = _almEsc(_aeT('alm_site_landing')), rateL = _almEsc(_aeT('alm_site_pace')), jumpL = _almEsc(_aeT('alm_site_jump')), eyeL = _almEsc(_aeT('alm_stand_eye')), motionL = _almEsc(_aeT('alm_stand_motion'));
     hud.innerHTML = '<div class="as-layer" id="as-layer"></div><div class="as-rest" id="as-rest" hidden></div><div class="as-stick" id="as-stick" hidden><i></i></div>' +
       '<div class="as-bar"><button type="button" class="ae-btn ae-round" id="as-exit" aria-label="' + leaveL + '" title="' + leaveL + '">' + AS_EXIT_SVG + '</button>' +
-      '<div class="as-bar-end"><button type="button" class="ae-btn ae-round" id="as-trailbtn" aria-label="' + routeL + '" title="' + routeL + '" hidden>' + AS_ROUTE_SVG + '</button><button type="button" class="ae-btn ae-round" id="as-landing" aria-label="' + landL + '" title="' + landL + '">' + AS_LANDING_SVG + '</button>' +
+      '<div class="as-bar-end"><button type="button" class="ae-btn ae-round" id="as-trailbtn" aria-label="' + routeL + '" title="' + routeL + '" hidden>' + AS_ROUTE_SVG + '</button><button type="button" class="ae-btn ae-round" id="as-eye" aria-label="' + eyeL + '" title="' + eyeL + '" hidden>' + AS_EYE_SVG + '</button><button type="button" class="ae-btn ae-round" id="as-motion" aria-label="' + motionL + '" title="' + motionL + '" aria-pressed="false" hidden>' + AS_PHONE_SVG + '</button><button type="button" class="ae-btn ae-round" id="as-landing" aria-label="' + landL + '" title="' + landL + '">' + AS_LANDING_SVG + '</button>' +
       '<button type="button" class="ae-btn ae-round as-rate" id="as-rate" aria-label="' + rateL + '" title="' + rateL + '">' + AS_CLOCK_SVG + '</button></div></div>' +
       '<div class="as-cap" id="as-cap"></div><div class="as-count" id="as-count" aria-hidden="true"></div>' +
       '<button type="button" class="ae-btn ae-round as-launch" id="as-launch" aria-label="' + _almEsc(_aeT('alm_site_launch')) + '" title="' + _almEsc(_aeT('alm_site_launch')) + '" hidden>' + AS_LAUNCH_SVG + '</button>' +
@@ -402,9 +419,23 @@ function _asHud(on) {
   _aeById('as-jump').hidden = !(_ae.site && _ae.site.drive);
   _aeById('as-landing').hidden = !(_ae.site && _ae.site.def && _ae.site.def.ms);
   _aeById('as-launch').hidden = !(_ae.site && _ae.site.def && _ae.site.def.launch);
+  _asEyeSync(_ae.site);
   _aeById('as-trailbtn').hidden = !(_ae.site && _ae.site.def && _ae.site.def.trail);
   _asKeys(true);
   _asCaption(_ae.site);
+}
+// Eye level and the phone: the buttons that belong to a visit with Stand here's ground under it (almanac-standhost.js).
+function _asEyeSync(st) {
+  var eye = _aeById('as-eye'), mot = _aeById('as-motion');
+  if (!eye || !mot) return;
+  var can = !!(st && st.host && st.host.live && !st.drive && !st.launch), on = can && _aeHostEyeOn(st);
+  if (eye.hidden === can) eye.hidden = !can;
+  eye.setAttribute('aria-pressed', on ? 'true' : 'false');
+  var label = _aeT(on ? 'alm_stand_orbit' : 'alm_stand_eye');
+  if (eye.title !== label) { eye.title = label; eye.setAttribute('aria-label', label); }
+  var showMot = on && typeof _aeMotionAvailable === 'function' && _aeMotionAvailable() && ('ontouchstart' in window || navigator.maxTouchPoints > 0);
+  if (mot.hidden === showMot) mot.hidden = !showMot;
+  mot.setAttribute('aria-pressed', st && st.eye && st.eye.motion ? 'true' : 'false');
 }
 function _asCaption(st) {
   var cap = _aeById('as-cap');
@@ -420,6 +451,7 @@ function _asCaption(st) {
   }
 }
 function _asHudTick(st, sc) {
+  _asEyeSync(st);
   var rate = _aeById('as-rate');
   if (rate && typeof _almRate !== 'undefined') {
     var txt = _almRate > 1.5 ? '×' + (_almRate >= 1000 ? Math.round(_almRate / 3600) + 'h' : Math.round(_almRate)) : '';
@@ -443,6 +475,8 @@ function _asTapPart(st, x, y) {
 }
 function _asBindHud(hud) {
   _aeById('as-exit').onclick = function () { _aeSiteLeave(); _aePreset(_ae.site ? _ae.site.body : _ae.target); };
+  _aeById('as-eye').onclick = function () { _aeHostEyeToggle(_ae.site); _asEyeSync(_ae.site); };
+  _aeById('as-motion').onclick = function () { _aeHostMotionToggle(_ae.site).then(function () { _asEyeSync(_ae.site); }); };
   _aeById('as-landing').onclick = function () {
     var st = _ae.site;
     if (!st || !st.def || !st.def.ms) return;
@@ -506,6 +540,8 @@ function _asBindHud(hud) {
       pinch.span = span;
     } else if (st.drive) {
       st.look.yaw -= dx * 0.006; st.look.pitch = _aeClamp(st.look.pitch + dy * 0.004, -0.25, 1.0); st.look.touched = performance.now();
+    } else if (typeof _aeHostEyeOn === 'function' && _aeHostEyeOn(st)) {
+      _aeHostEyeLook(st, dx, dy);   // at eye level a drag turns the head
     } else {
       st.camera.az -= dx * 0.006; st.camera.el = _aeClamp(st.camera.el + dy * 0.005, AS_ORBIT_EL[0], AS_ORBIT_EL[1]);
     }
@@ -516,7 +552,7 @@ function _asBindHud(hud) {
     if (!p) return;
     delete ptrs[e.pointerId];
     if (p.role === 'stick' && st) { st.input.sx = st.input.sy = 0; stickEl.hidden = true; }
-    else if (st && !st.drive && e.type === 'pointerup' && Math.hypot(p.x - p.x0, p.y - p.y0) < AS_TAP_SLOP_PX) _asTapPart(st, p.x, p.y);
+    else if (st && !st.drive && !(typeof _aeHostEyeOn === 'function' && _aeHostEyeOn(st)) && e.type === 'pointerup' && Math.hypot(p.x - p.x0, p.y - p.y0) < AS_TAP_SLOP_PX) _asTapPart(st, p.x, p.y);
     if (Object.keys(ptrs).length < 2) pinch = null;
   };
   layer.addEventListener('pointerup', end);

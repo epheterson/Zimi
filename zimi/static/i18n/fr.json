@@ -3815,5 +3815,19 @@
   "tb_kn_sat_lone_starlinks": "Nombre maximal de Starlink isolés listés",
   "tb_kn_sat_train_gap": "Des Starlink plus proches dans le temps forment un train",
   "tb_kn_sat_train_plane": "Des Starlink plus proches par le plan orbital forment un train",
-  "tb_kn_sat_gps_el": "Un satellite GPS est au-dessus de l’horizon à partir d’une hauteur de"
+  "tb_kn_sat_gps_el": "Un satellite GPS est au-dessus de l’horizon à partir d’une hauteur de",
+  "alm_stand_here": "Se tenir ici",
+  "alm_stand_back": "Retour en orbite",
+  "alm_stand_aria": "Sur {body}. Faites glisser pour regarder autour de vous.",
+  "alm_stand_motion": "Regarder avec le téléphone",
+  "alm_stand_eye": "Se tenir sur le sol",
+  "alm_stand_orbit": "Voir le site de l'extérieur",
+  "tb_kn_stand_eye": "Se tenir ici : hauteur des yeux au-dessus du sol",
+  "tb_kn_stand_terrain": "Se tenir ici : les altitudes du sol",
+  "tb_kn_stand_detail": "Se tenir ici : cratères, collines et roches",
+  "tb_kn_stand_dust": "Mars : poussière dans l'air (épaisseur optique)",
+  "tb_kn_stand_haze": "Vénus, Titan : portée de la vue à travers la brume",
+  "tb_kn_stand_charon": "Pluton : distance de Charon (il reste au-dessus d'un seul lieu)",
+  "tb_kn_stand_coast": "Terre : où se trouve la côte",
+  "tb_kn_stand_shadow": "Se tenir ici : ombres du relief (grilles autour de l'observateur)"
 }

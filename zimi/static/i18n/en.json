@@ -3815,5 +3815,19 @@
   "tb_kn_sat_lone_starlinks": "Single Starlinks listed at most",
   "tb_kn_sat_train_gap": "Starlinks closer in time than this are one train",
   "tb_kn_sat_train_plane": "Starlinks closer in orbital plane than this are one train",
-  "tb_kn_sat_gps_el": "A GPS satellite is overhead above elevation"
+  "tb_kn_sat_gps_el": "A GPS satellite is overhead above elevation",
+  "alm_stand_here": "Stand here",
+  "alm_stand_back": "Back to orbit",
+  "alm_stand_aria": "Standing on {body}. Drag to look around.",
+  "alm_stand_motion": "Look with the phone",
+  "alm_stand_eye": "Stand on the ground",
+  "alm_stand_orbit": "See the site from outside",
+  "tb_kn_stand_eye": "Stand here: eye height above the ground",
+  "tb_kn_stand_terrain": "Stand here: the ground's heights",
+  "tb_kn_stand_detail": "Stand here: craters, hills and rock",
+  "tb_kn_stand_dust": "Mars: dust in the air (optical depth)",
+  "tb_kn_stand_haze": "Venus, Titan: how far one sees through the haze",
+  "tb_kn_stand_charon": "Pluto: Charon's distance (it stays over one place)",
+  "tb_kn_stand_coast": "Earth: where the coast is",
+  "tb_kn_stand_shadow": "Stand here: shadows the relief casts (grids round the viewer)"
 }

@@ -46,6 +46,9 @@ own pixel size, or at what a phone can use where the mosaic is far finer:
                Horizons), Vesta and Ceres (Dawn; Ceres as shaded relief of its
                elevation model, there being no albedo mosaic in the public
                domain), Phobos (Viking). Jupiter and Saturn: Solar System Scope.
+  terrain/<body>  The heights Stand here walks on (almanac-stand.js): the Earth (NOAA ETOPO 2022), Moon (LOLA), Mars
+               (MOLA), Venus (Magellan) and Mercury (MESSENGER), as 16-bit heights in red and green, lossless, down to
+               level 3. scripts/build_terrain.py reads the sources, pins them and writes the tiles.
 
 Reproducible: every source is fetched into the cache and checked against the
 pins below (one SHA-256 over a layer's source tiles in order, one per file).
@@ -66,6 +69,9 @@ import urllib.request
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, ROOT)
+
+sys.path.insert(0, os.path.join(ROOT, "scripts"))
+import build_terrain  # noqa: E402  (the terrain layers: heights for Stand here)
 
 TILE = 512
 WEBP_Q = 80
@@ -146,6 +152,8 @@ LAYERS = {
             ("ceres", "Ceres_Dawn_FC_HAMO_DTM_DLR_Global_60ppd_Oct2016.tif", "L", {"max": 4, "derive": "shade", "radius_m": 470000}),
         )
     },
+    # Heights for Stand here, 256 px tiles of 16-bit heights; the sources and their pins are build_terrain.py's.
+    **{"terrain/%s" % k: {"terrain": k, "max": build_terrain.TERRAIN_MAX, "mode": "RGB"} for k in build_terrain.SOURCES},
     "moon/relief": {
         "file": "https://svs.gsfc.nasa.gov/vis/a000000/a004700/a004720/ldem_64_uint.tif",
         "max": 4,
@@ -553,6 +561,8 @@ def file_source(layer, spec, cache, top, update):
 def build_layer(layer, cache, out, update, max_level=None, procs=None):
     spec = LAYERS[layer]
     top = spec["max"] if max_level is None else min(max_level, spec["max"])
+    if "terrain" in spec:
+        return build_terrain.terrain_tiles(spec["terrain"], cache, out, update, top)
     if "gibs" in spec:
         folder = gibs_sources(layer, cache, update)
         kind, src = "gibs", (folder, spec["src_level"], spec["ext"])
@@ -616,6 +626,7 @@ INDEX = """<!doctype html><html lang="en"><head><meta charset="utf-8"><title>Alm
 <li>Ceres: shaded relief of the Dawn HAMO elevation model (NASA/JPL-Caltech/UCLA/MPS/DLR/IDA, DLR, through USGS Astrogeology). Public domain.</li>
 <li>Phobos: Viking mosaic, DLR control (NASA/JPL/DLR, through USGS Astrogeology). Public domain.</li>
 <li>Jupiter, Saturn: Solar System Scope (INOVE), CC BY 4.0, https://www.solarsystemscope.com/textures/.</li>
+<li>Heights for standing on the ground: Earth, NOAA NCEI ETOPO 2022; Moon, LOLA (NASA SVS); Mars, MOLA (USGS Astrogeology); Venus, Magellan (USGS); Mercury, MESSENGER (USGS). Public domain.</li>
 </ul></body></html>
 """
 

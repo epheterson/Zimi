@@ -3815,5 +3815,19 @@
   "tb_kn_sat_lone_starlinks": "列表最多显示的单颗星链数",
   "tb_kn_sat_train_gap": "时间间隔小于此值的星链算作一列",
   "tb_kn_sat_train_plane": "轨道面间隔小于此值的星链算作一列",
-  "tb_kn_sat_gps_el": "GPS 卫星高度角高于此值即在头顶"
+  "tb_kn_sat_gps_el": "GPS 卫星高度角高于此值即在头顶",
+  "alm_stand_here": "站在这里",
+  "alm_stand_back": "返回轨道",
+  "alm_stand_aria": "站在{body}上。拖动环顾四周。",
+  "alm_stand_motion": "用手机环顾四周",
+  "alm_stand_eye": "站在地面上",
+  "alm_stand_orbit": "从外面看这个地点",
+  "tb_kn_stand_eye": "站在这里：眼睛离地面的高度",
+  "tb_kn_stand_terrain": "站在这里：地面的高度",
+  "tb_kn_stand_detail": "站在这里：陨石坑、山丘和岩石",
+  "tb_kn_stand_dust": "火星：空气中的尘埃（光学厚度）",
+  "tb_kn_stand_haze": "金星、土卫六：薄雾中的能见距离",
+  "tb_kn_stand_charon": "冥王星：卡戎的距离（它始终在同一处上空）",
+  "tb_kn_stand_coast": "地球：海岸在哪里",
+  "tb_kn_stand_shadow": "站在这里：地形投下的阴影（观察者周围的网格）"
 }

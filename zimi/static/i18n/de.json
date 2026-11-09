@@ -3815,5 +3815,19 @@
   "tb_kn_sat_lone_starlinks": "Höchstens so viele einzelne Starlinks in der Liste",
   "tb_kn_sat_train_gap": "Starlinks mit geringerem Zeitabstand sind ein Zug",
   "tb_kn_sat_train_plane": "Starlinks mit geringerem Bahnebenenabstand sind ein Zug",
-  "tb_kn_sat_gps_el": "Ein GPS-Satellit gilt als über dem Horizont ab einer Höhe von"
+  "tb_kn_sat_gps_el": "Ein GPS-Satellit gilt als über dem Horizont ab einer Höhe von",
+  "alm_stand_here": "Hier stehen",
+  "alm_stand_back": "Zurück in die Umlaufbahn",
+  "alm_stand_aria": "Auf {body}. Ziehen, um sich umzusehen.",
+  "alm_stand_motion": "Mit dem Handy umsehen",
+  "alm_stand_eye": "Auf dem Boden stehen",
+  "alm_stand_orbit": "Den Ort von außen ansehen",
+  "tb_kn_stand_eye": "Hier stehen: Augenhöhe über dem Boden",
+  "tb_kn_stand_terrain": "Hier stehen: die Höhen des Bodens",
+  "tb_kn_stand_detail": "Hier stehen: Krater, Hügel und Gestein",
+  "tb_kn_stand_dust": "Mars: Staub in der Luft (optische Dicke)",
+  "tb_kn_stand_haze": "Venus, Titan: Sichtweite durch den Dunst",
+  "tb_kn_stand_charon": "Pluto: Abstand des Charon (er bleibt über einem Ort)",
+  "tb_kn_stand_coast": "Erde: wo die Küste liegt",
+  "tb_kn_stand_shadow": "Hier stehen: Schatten des Reliefs (Raster um den Betrachter)"
 }

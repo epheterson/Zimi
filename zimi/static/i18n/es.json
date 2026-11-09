@@ -3815,5 +3815,19 @@
   "tb_kn_sat_lone_starlinks": "Máximo de Starlink sueltos en la lista",
   "tb_kn_sat_train_gap": "Starlink más cercanos en el tiempo que esto son un tren",
   "tb_kn_sat_train_plane": "Starlink más cercanos en el plano orbital que esto son un tren",
-  "tb_kn_sat_gps_el": "Un satélite GPS está sobre el horizonte por encima de una elevación de"
+  "tb_kn_sat_gps_el": "Un satélite GPS está sobre el horizonte por encima de una elevación de",
+  "alm_stand_here": "Estar aquí",
+  "alm_stand_back": "Volver a la órbita",
+  "alm_stand_aria": "En {body}. Arrastra para mirar alrededor.",
+  "alm_stand_motion": "Mirar con el teléfono",
+  "alm_stand_eye": "Ponerse en el suelo",
+  "alm_stand_orbit": "Ver el lugar desde fuera",
+  "tb_kn_stand_eye": "Estar aquí: altura de los ojos sobre el suelo",
+  "tb_kn_stand_terrain": "Estar aquí: las alturas del terreno",
+  "tb_kn_stand_detail": "Estar aquí: cráteres, colinas y rocas",
+  "tb_kn_stand_dust": "Marte: polvo en el aire (profundidad óptica)",
+  "tb_kn_stand_haze": "Venus y Titán: hasta dónde se ve a través de la bruma",
+  "tb_kn_stand_charon": "Plutón: distancia de Caronte (se queda sobre un lugar)",
+  "tb_kn_stand_coast": "Tierra: dónde está la costa",
+  "tb_kn_stand_shadow": "Estar aquí: sombras del relieve (mallas alrededor del observador)"
 }
