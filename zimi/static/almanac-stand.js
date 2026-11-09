@@ -18,7 +18,7 @@ var AE_STAND_FRAME_MS = 1500;              // the sky is worked out again when t
 var AE_STAND_HUD_MS = 400;
 var AE_STAND_SUN_FACE_DEG = -6;            // the view faces the Sun when it is above this
 var AE_STAND_GROUND_AMBIENT_SHARE = 0.8;   // the ground takes this much of the sky's light at its brightest
-var AE_STAND_NEAR_SUN_SHARE = 0.5;        // the exposure is set by the brightest sky short of the Sun's own glare: this much of the sky a little over it
+var AE_STAND_NEAR_SUN_SHARE = 0.2;        // the exposure is set by the brightest sky short of the Sun's own glare: this much of the sky a little over it
 var AE_STAND_NEAR_SUN_ABOVE_DEG = 8, AE_STAND_NEAR_SUN_MIN_DEG = 6;
 var AE_STAND_AMBIENT_GAIN = 1.6;
 var AE_STAND_BOUNCE = 0.03;                // an airless ground in shadow, over the Sun-lit ground's radiance (alb x this): light from the terrain round it             // the sky's light on the ground, over its light overhead (it comes from the whole dome and the ground)
@@ -466,6 +466,11 @@ function _aeStPhoto(st, fr) {
     var lcd = Math.max(zen[0], zen[1], zen[2]) * AE_ST_LUX_PER_UNIT;
     p.lim = _aeClamp(AE_ST_LM_DARK - AE_ST_LM_PER_DECADE * Math.log10((lcd + AE_ST_DARK_LUM) / AE_ST_DARK_LUM), AE_ST_LM_MIN, AE_ST_LM_MAX);
     p.extinct = 0.2;
+  }
+  // No air: the eye is set by the sunlit ground it sees, not by the black sky, so with the Sun up the stars are lost (as the Apollo crews found).
+  if (!a) {
+    var dayLoss = _smoothstep(AE_STAND_AIRLESS_DAY_MU[0], AE_STAND_AIRLESS_DAY_MU[1], mu);
+    p.lim = AE_ST_LM_MAX - (AE_ST_LM_MAX - AE_STAND_AIRLESS_DAY_LIM) * dayLoss; p.mw = 1 - dayLoss;
   }
   // Light of other bodies as a second sun for the ground.
   var ref = Math.max(AE_ST_GROUND_ALBEDO_REF * ((directG + e2) / Math.PI + AE_STAND_GROUND_AMBIENT_SHARE * Math.max(p.amb[0], p.amb[1], p.amb[2])),

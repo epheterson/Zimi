@@ -8,6 +8,8 @@
 // the bodies whose air is a thick haze (Venus, Titan) are lit as an overcast, the airless ones have no sky at all.
 
 var AE_ST_PI = '3.14159265';
+var AE_ST_SUN_DISC_GAIN = 6e4;     // the Sun's disc against the sky's glow: stays a distinct disc where thick dust dims and blues it (Mars at sunset)
+var AE_ST_ROCK_FADE_M = [14, 90];  // stones thin out with distance into plain ground (a pixel of them at range is noise, not stone)
 var AE_ST_STEPS_SKY = 14, AE_ST_STEPS_GROUND = 8, AE_ST_STEPS_SUN = 5;
 var AE_ST_GAMMA = '2.2';
 
@@ -189,7 +191,7 @@ var AE_ST_BODY_FRAG = [
   '      vec3 n = uRight * q.x + uUp * q.y - uDir * sqrt(1.0 - r2);',
   '      if (uEmit > 0.5) {',
   '        float limb = 1.0 - 0.45 * (1.0 - sqrt(1.0 - r2)), kept = (uRho * uRho) / (R * R);',
-  '        col = tone(uTrans * (' + (1.4e4).toExponential(2) + ' * uE * limb * kept), uK);',
+  '        col = tone(uTrans * (' + AE_ST_SUN_DISC_GAIN.toExponential(2) + ' * uE * limb * kept), uK);',
   '      } else {',
   '        float lam = smoothstep(-0.02, 0.1, dot(n, uSunFrom)) * max(dot(n, uSunFrom), 0.0);',
   '        col = tone(discAlbedo(n) * uE * lam / PI * uTrans, uK);',
@@ -290,7 +292,7 @@ var AE_ST_GROUND_FRAG = [
   '  float mott = 0.0, wm = 1.0;',
   '  for (int i = 0; i < 4; i++) { float s = 0.4 * pow(4.0, float(i)); wm = 1.0 - smoothstep(0.3, 1.0, 3.0 * foot / s); if (wm > 0.0) mott += vnoise(vP / s + 31.0 * float(i)) * 0.18 * wm; }',
   '  alb *= (1.0 + mott);',
-  '  vec2 rk = vSea > 0.5 ? vec2(0.0) : rocks(vP, foot); float hb = vSea > 0.5 ? 0.0 : fine(vP, foot) + rk.x; alb *= clamp(1.0 + 0.5 * rk.y, 0.35, 1.8);',
+  '  vec2 rk = vSea > 0.5 ? vec2(0.0) : rocks(vP, foot) * (1.0 - smoothstep(' + AE_ST_ROCK_FADE_M[0].toFixed(1) + ', ' + AE_ST_ROCK_FADE_M[1].toFixed(1) + ', dist)); float hb = vSea > 0.5 ? 0.0 : fine(vP, foot) + rk.x; alb *= clamp(1.0 + 0.5 * rk.y, 0.35, 1.8);',
   '  vec3 dpx = dFdx(vP), dpy = dFdy(vP); float hx = dFdx(hb), hy = dFdy(hb);',
   '  vec3 r1 = cross(dpy, N), r2 = cross(N, dpx); float det = dot(dpx, r1);',
   '  vec3 gr = sign(det) * (hx * r1 + hy * r2) * smoothstep(0.03, 0.3, dot(N, V)), Nb = abs(det) * N + gr; if (dot(Nb, Nb) > 0.0) N = normalize(Nb);',

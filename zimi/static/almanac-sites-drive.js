@@ -10,6 +10,7 @@ var AS_TURN_RATE = 1.5;                                    // rad/s at the stick
 var AS_ACCEL = 5;                                          // m/s^2: full speed in under a second, so a touch is answered at once
 var AS_BOUNCE_MIN_MS = 1.2, AS_BOUNCE_KEEP = 0.3;          // a landing harder than this (m/s) rebounds with this share of its speed
 var AS_SPEED_SHOW_MS = 120;                                // the speed readout's refresh
+var AS_LAMP_LEN_M = 18, AS_LAMP_WIDE_M = 9, AS_LAMP_AHEAD_M = 2.2, AS_LAMP_LIFT_M = 0.12;   // the headlights' pool of light on the ground: its length, its far width, where it starts, over the ground
 var AS_KMH_PER_MS = 3.6, AS_MPH_PER_MS = 2.23694;
 var AS_JUMP_COOLDOWN_MS = 250;
 var AS_TRACK_MAX = 1400, AS_TRACK_STEP_M = 0.45;
@@ -38,6 +39,49 @@ var AS_DUST_FRAG = [
   '  gl_FragColor = vec4(sqrt(min(col, vec3(1.0))), fade * vLife * (1.0 - r) * 0.6);',
   '}'
 ].join('\n');
+
+// Headlights: a soft cone of warm light on the ground ahead, on when the Sun is low or down (added to what is there).
+var AS_LAMP_VERT = 'varying vec2 vUv; void main() { vUv = uv; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }';
+var AS_LAMP_FRAG = [
+  'uniform float k; varying vec2 vUv;',
+  'void main() {',
+  '  float d = vUv.y, w = abs(vUv.x - 0.5) * 2.0;',
+  '  float cone = 1.0 - smoothstep(0.0, 1.0, w / (0.25 + 0.75 * d));',
+  '  float a = cone * pow(1.0 - d, 1.4) * k * 0.6;',
+  '  if (a < 0.002) discard;',
+  '  gl_FragColor = vec4(vec3(1.0, 0.93, 0.78) * a, a);',
+  '}'
+].join('\n');
+function _asLampBuild(st) {
+  var THREE = _ae.gl.THREE, geo = new THREE.PlaneGeometry(AS_LAMP_WIDE_M, AS_LAMP_LEN_M);
+  geo.translate(0, AS_LAMP_LEN_M / 2, 0);
+  var mat = new THREE.ShaderMaterial({ uniforms: { k: { value: 0 } }, vertexShader: AS_LAMP_VERT, fragmentShader: AS_LAMP_FRAG, transparent: true, depthWrite: false, blending: AE_THREE_ADDITIVE_BLENDING });
+  var mesh = new THREE.Mesh(geo, mat);
+  mesh.frustumCulled = false; mesh.visible = false;
+  st.group.add(mesh);
+  st.lamp = mesh;
+}
+function _asLampStep(st) {
+  var r = st.rover;
+  if (!st.lamp) _asLampBuild(st);
+  var k = 1 - _smoothstep(AE_SITE_LAMP_SUN[0], AE_SITE_LAMP_SUN[1], st.fr.sunLocal[2]);
+  st.lamp.visible = k > 0.01;
+  if (!st.lamp.visible) return;
+  st.lamp.material.uniforms.k.value = k;
+  var x = r.x - Math.sin(r.hdg) * AS_LAMP_AHEAD_M, y = r.y + Math.cos(r.hdg) * AS_LAMP_AHEAD_M;
+  st.lamp.position.set(x, y, _asGroundAt(st, x - Math.sin(r.hdg) * AS_LAMP_LEN_M / 3, y + Math.cos(r.hdg) * AS_LAMP_LEN_M / 3, false) + AS_LAMP_LIFT_M);
+  st.lamp.rotation.z = r.hdg;
+}
+// Back to the lander's side, stopped and upright.
+function _asRoverReset(st) {
+  var r = st.rover;
+  if (!r) return;
+  var ground = _asGroundAt(st, AS_ROVER_START.x, AS_ROVER_START.y, false);
+  r.x = AS_ROVER_START.x; r.y = AS_ROVER_START.y; r.hdg = _aeRad(-AS_ROVER_START.hdg); r.v = 0; r.vz = 0; r.z = ground; r.mean = ground;
+  r.airborne = false; r.pitch = r.roll = 0; r.lastTrack = [r.x, r.y]; r.odo = 0;
+  st.camera.az = r.hdg + Math.PI; st.focus = [r.x, r.y, ground + 1]; st.look.yaw = 0; st.look.pitch = 0;
+  _ae.dirty = true; _aeKick();
+}
 
 // ── The rover ──
 function _asRoverBuild(st) {
@@ -87,6 +131,8 @@ function _asRoverStep(st, dt) {
   _asRoverPlace(st, r, r.x, r.y, r.hdg, r.z, r.pitch, r.roll, r.spin, gnd, r.airborne);
   _asTrackStep(st);
   _asDustStep(st, dt);
+  r.odo = (r.odo || 0) + Math.abs(r.v) * dt;
+  _asLampStep(st);
   _asSpeedShow(st);
 }
 // The speed, as a number and its unit, in the corner of the picture.
@@ -94,8 +140,8 @@ function _asSpeedShow(st) {
   var el = _aeById('as-speed'), now = performance.now();
   if (!el || now - (st.speedAt || 0) < AS_SPEED_SHOW_MS) return;
   st.speedAt = now;
-  var mi = _aeImperial(), v = Math.abs(st.rover.v);
-  el.textContent = _orrNum(v * (mi ? AS_MPH_PER_MS : AS_KMH_PER_MS), mi ? 'mile-per-hour' : 'kilometer-per-hour', 1);
+  var mi = _aeImperial(), r = st.rover, az = ((-_aeDeg(r.hdg) % 360) + 360) % 360;
+  el.textContent = _orrNum(Math.abs(r.v) * (mi ? AS_MPH_PER_MS : AS_KMH_PER_MS), mi ? 'mile-per-hour' : 'kilometer-per-hour', 1) + '  ' + _orrNum(az, 'degree', 0) + '  ' + _aeStHeightText(r.odo || 0);
 }
 // Tracks: a dark mark every AS_TRACK_STEP_M under the wheels on each side, the oldest forgotten past AS_TRACK_MAX.
 function _asTrackInit(st) {

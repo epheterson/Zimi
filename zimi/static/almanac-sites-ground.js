@@ -236,7 +236,6 @@ function _asGroupBuild(st) {
   st.models = {};
   st.tracks = null;
 }
-var AE_THREE_BACK_SIDE = 1;
 // The 12 corners and 20 faces of the icosahedron a rock is made from.
 var AS_ICO_T = (1 + Math.sqrt(5)) / 2;
 var AS_ICO_V = [[-1, AS_ICO_T, 0], [1, AS_ICO_T, 0], [-1, -AS_ICO_T, 0], [1, -AS_ICO_T, 0], [0, -1, AS_ICO_T], [0, 1, AS_ICO_T],

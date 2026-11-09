@@ -1904,7 +1904,7 @@ function _aeBuildGl(THREE, canvas) {
     new THREE.SphereGeometry(AE_ATMOSPHERE_SCALE, AE_ATMO_SEGMENTS[0], AE_ATMO_SEGMENTS[1]),
     _aeAddLight(new THREE.ShaderMaterial({
       uniforms: { sunPos: shared.sunPos }, vertexShader: AE_SPHERE_VERT, fragmentShader: AE_ATMO_FRAG,
-      side: THREE.BackSide, transparent: true, depthWrite: false
+      transparent: true, depthWrite: false
     })));
   scene.add(atmo);
 
@@ -1937,7 +1937,7 @@ function _aeBuildGl(THREE, canvas) {
     new THREE.SphereGeometry(AE_SUN_SHOW_R * AE_SUN_GLOW_SCALE, AE_SUN_SEGMENTS[0], AE_SUN_SEGMENTS[1]),
     _aeAddLight(new THREE.ShaderMaterial({
       uniforms: sunGlowUni, vertexShader: AE_SPHERE_VERT, fragmentShader: AE_SUN_GLOW_FRAG,
-      side: THREE.BackSide, transparent: true, depthWrite: false
+      transparent: true, depthWrite: false
     }))));
   scene.add(sun);
 
@@ -2389,7 +2389,10 @@ var AE_PLANET_MAP_MIN_PX = 3;          // a disc smaller than this (radius) is i
 var AE_PLANET_CREDIT_PX = 12;          // a map is credited once its disc shows it (a few pixels of Saturn is not Saturn's map)
 var AE_PLANET_MIN_RADII = 1.3, AE_PLANET_FIT = 1.5;
 var AE_RING_SEGMENTS = 160;
-var AE_THREE_DOUBLE_SIDE = 2;          // three's DoubleSide, not exported by name by the tree-shaken build
+var AE_THREE_DOUBLE_SIDE = 2;          // three's DoubleSide and BackSide, not exported by name by the tree-shaken build
+var AE_THREE_BACK_SIDE = 1;
+var AE_THREE_ADDITIVE_BLENDING = 2;
+var AE_SITE_LAMP_SUN = [0, 0.12];       // the rover headlights fade out as the Sun's sine of height goes over this
 // IAU WGCCRE 2015 poles and turning (J2000 equatorial; W0 at J2000 and Wd a day, degrees).
 var AE_PLANETS = [
   { key: 'mercury', eph: 'Mercury', ccHd: true, km: 2439.7, map: 'mercury', color: [0.69, 0.63, 0.56], pole: [281.0103, 61.4155, 329.5988, 6.1385108] },
@@ -4128,6 +4131,8 @@ function _aeRefAxesRows() {
   add('stand.charon', _aeT('tb_kn_stand_charon'), AE_STAND_CHARON_KM, 'km', 'NASA/JPL (New Horizons)');
   add('stand.coast', _aeT('tb_kn_stand_coast'), 'Natural Earth 1:10m land · 8192 × 4096', '', 'Natural Earth (public domain)');
   add('stand.shadow', _aeT('tb_kn_stand_shadow'), AE_STAND_SHADE_GRIDS, 'm', 'Zimi');
+  add('stand.stars', _aeT('tb_kn_stand_stars'), 'none with the Sun above ' + Math.round(_aeDeg(Math.asin(AE_STAND_AIRLESS_DAY_MU[1]))) + '° (fading from ' + Math.round(_aeDeg(Math.asin(AE_STAND_AIRLESS_DAY_MU[0]))) + '°)', '', 'Zimi, after the Apollo crews');
+  add('site.lamps', _aeT('tb_kn_site_lamps'), 'Sun below ' + Math.round(_aeDeg(Math.asin(AE_SITE_LAMP_SUN[1]))) + '° (fading out from 0°)', '', 'Zimi');
   // The landing sites: where the models, the sol and the Saturn V's flight come from.
   add('site.models', _aeT('tb_kn_site_models'), 'NASA 3D Resources · scripts/build_site_models.py', '', 'NASA (public domain); the rest written for Zimi');
   add('site.sol', _aeT('tb_kn_site_sol'), AE_SITE_FACTS.solSeconds, 's', 'NASA/JPL');
@@ -4729,6 +4734,7 @@ var AE_STAND_KEYS = ['earth', 'moon', 'mercury', 'venus', 'mars', 'io', 'europa'
 var AE_STAND_SRCS = ['/static/almanac-terrain.js', '/static/almanac-terrainshade.js', '/static/almanac-standlook.js', '/static/almanac-standgl.js', '/static/almanac-stand.js', '/static/almanac-standhost.js'];
 var AE_STAND_FIGURE_SVG = '<svg class="ae-tool-svg" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="5.5" r="2.3"/><path d="M12 8.5v6M8.5 11.5l3.5-1 3.5 1M12 14.5l-2.5 5.5M12 14.5l2.5 5.5"/></svg>';
 var AE_STAND_EYE_M = 1.7;                      // an eye above the ground
+var AE_STAND_AIRLESS_DAY_MU = [-0.05, 0.12], AE_STAND_AIRLESS_DAY_LIM = 0.5;   // the Sun's sine of height where the stars go (-3 to 7 degrees), and the faintest star left
 var AE_STAND_MARS_TAU = 0.47;                  // the dust in Mars's air, optical depth straight up (red light); Lemmon et al. 2015 find 0.3 to 1 outside storms
 var AE_STAND_HAZE_VIS_KM = { venus: 28, titan: 18 };
 var AE_STAND_CHARON_KM = 19591;                  // Charon's circular orbit about Pluto (and its radius is in almanac-stand.js)
@@ -5834,7 +5840,7 @@ function _aeCraftBuild(S, model) {
     earthLight: { value: 0 }, fade: { value: 1 },
     albedo: { value: pal.map(function (l) { return new THREE.Vector3(l[0][0], l[0][1], l[0][2]); }) },
     shine: { value: pal.map(function (l) { return new THREE.Vector3(l[1], l[2], 0); }) } };   // (the build has no Vector2)
-  var mat = new THREE.ShaderMaterial({ uniforms: uni, vertexShader: AE_CRAFT_VERT, fragmentShader: AE_CRAFT_FRAG, transparent: true, side: THREE.DoubleSide });
+  var mat = new THREE.ShaderMaterial({ uniforms: uni, vertexShader: AE_CRAFT_VERT, fragmentShader: AE_CRAFT_FRAG, transparent: true, side: AE_THREE_DOUBLE_SIDE });
   var root = new THREE.Group(), pivot = new THREE.Group(), body = [], turning = [];
   // The ISS's main arrays (class 2) turn about the truss to the Sun; a probe is one rigid body.
   for (var t = 0; t < d.idx.length; t += 3) (d.axis && d.cls[d.idx[t]] === 2 ? turning : body).push(d.idx[t], d.idx[t + 1], d.idx[t + 2]);
@@ -5883,7 +5889,7 @@ function _aeRecordMesh(THREE, d, rec, craftUni) {
   gg.setAttribute('uv', new THREE.BufferAttribute(new Float32Array([0, 0, 1, 0, 1, 1, 0, 1]), 2));
   gg.setIndex(new THREE.BufferAttribute(new Uint16Array([0, 1, 2, 0, 2, 3]), 1));
   var uni = { map: { value: null }, mapped: { value: 0 }, lit: craftUni.lit, fill: craftUni.fill, fade: craftUni.fade };
-  var mesh = new THREE.Mesh(gg, new THREE.ShaderMaterial({ uniforms: uni, vertexShader: AE_RECORD_VERT, fragmentShader: AE_RECORD_FRAG, transparent: true, side: THREE.DoubleSide }));
+  var mesh = new THREE.Mesh(gg, new THREE.ShaderMaterial({ uniforms: uni, vertexShader: AE_RECORD_VERT, fragmentShader: AE_RECORD_FRAG, transparent: true, side: AE_THREE_DOUBLE_SIDE }));
   mesh.frustumCulled = false;
   mesh.userData.at = c; mesh.userData.metres = rec.r;
   _aeLoadTexture(THREE, AE_RECORD_IMG).then(function (tx) { uni.map.value = tx; uni.mapped.value = 1; if (_ae) { _ae.dirty = true; _aeKick(); } }).catch(function () {});

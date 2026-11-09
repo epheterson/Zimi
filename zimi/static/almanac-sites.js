@@ -37,6 +37,7 @@ var AS_FOCUS_EASE = 5, AS_TAP_PX = 56, AS_TAP_SLOP_PX = 8;   // a tap on a part 
 var AS_STICK_R_PX = 56;
 var AS_CAM_FOLLOW = { pos: 6, az: 2.2, yawBack: 0.7 };    // 1/s
 var AS_CHASE_EL = 0.36;
+var AS_CAM_PULL = 0.35, AS_CAM_PULL_EASE = 2.5;   // the chase camera's drop back at full speed (a share of its distance), and how fast it follows the speed
 var AS_CLOCK_RATES = [1, 300, 3600, 21600];
 var AS_KEYS = { ArrowUp: 'f', w: 'f', W: 'f', ArrowDown: 'b', s: 'b', S: 'b', ArrowLeft: 'l', a: 'l', A: 'l', ArrowRight: 'r', d: 'r', D: 'r' };
 // Per body: the ground's colour, gravity (m/s^2), how rough it is (relief amplitude, m), how many craters and rocks, the
@@ -213,6 +214,9 @@ function _asCameraLocal(st, dt) {
     c.az += _aeAngleDeltaRad(c.az, back) * (1 - Math.exp(-AS_CAM_FOLLOW.az * dt));
     az = c.az; el = _aeClamp(AS_CHASE_EL + st.look.pitch, AS_ORBIT_EL[0], AS_ORBIT_EL[1]);
     focus = st.focus;
+    // The camera drops back with speed and comes forward at rest, so going fast looks it.
+    st.pull = (st.pull || 0) + (Math.min(1, Math.abs(r.v) / st.info.rover.vmax) - (st.pull || 0)) * (1 - Math.exp(-AS_CAM_PULL_EASE * dt));
+    dist = c.dist * (1 + AS_CAM_PULL * st.pull);
   } else {
     // The middle of what is looked at eases to a new one (a tap on a part), the distance with it.
     var want2 = st.followPos ? [st.followPos[0], st.followPos[1], st.followPos[2] + AS_ORBIT_FOCUS_Z_M] : [st.focusXY[0], st.focusXY[1], st.focusZ || AS_ORBIT_FOCUS_Z_M];
@@ -378,6 +382,7 @@ var AS_CSS = [
   '.as-stick i{position:absolute;left:50%;top:50%;width:46px;height:46px;margin:-23px 0 0 -23px;border-radius:50%;background:rgba(245,158,11,.55);border:2px solid rgba(255,255,255,.6)}',
   '.as-rest{position:absolute;left:calc(14px + env(safe-area-inset-left));bottom:calc(14px + env(safe-area-inset-bottom));width:' + (AS_STICK_R_PX * 2) + 'px;height:' + (AS_STICK_R_PX * 2) + 'px;border-radius:50%;border:2px dashed rgba(255,255,255,.18);pointer-events:none}',
   '.as-speed{position:absolute;left:50%;bottom:calc(22px + env(safe-area-inset-bottom));transform:translateX(-50%);font-size:22px;font-weight:600;color:rgba(255,255,255,.9);text-shadow:0 1px 8px rgba(0,0,0,.7);pointer-events:none;font-variant-numeric:tabular-nums;white-space:nowrap}',
+  '.as-reset{position:absolute;right:calc(21px + env(safe-area-inset-right));bottom:calc(86px + env(safe-area-inset-bottom));width:46px;height:46px;pointer-events:auto}',
   '.as-jump{position:absolute;right:calc(14px + env(safe-area-inset-right));bottom:calc(14px + env(safe-area-inset-bottom));width:60px;height:60px;pointer-events:auto}',
   '.as-hud.as-driving .as-cap{bottom:auto;top:calc(env(safe-area-inset-top) + 66px)}',
   '.as-rate{font-size:12px;min-width:44px}',
@@ -391,6 +396,7 @@ var AS_ROUTE_SVG = '<svg viewBox="0 0 24 24" width="18" height="18" fill="none" 
 var AS_EXIT_SVG = '<svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"/></svg>';
 var AS_LANDING_SVG = '<svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3v6M9 6l3-3 3 3"/><path d="M7 14h10l2 7H5z"/></svg>';
 var AS_CLOCK_SVG = '<svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" aria-hidden="true"><circle cx="12" cy="12" r="8.5"/><path d="M12 7v5l3 2"/></svg>';
+var AS_RESET_SVG = '<svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 12a8 8 0 1 0 2.5-5.8"/><path d="M4 4v5h5"/></svg>';
 var AS_JUMP_SVG = '<svg viewBox="0 0 24 24" width="26" height="26" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 17c3-1 5-6 7-12 2 6 4 11 7 12"/><path d="M4 21h16"/></svg>';
 var AS_DRIVE_SVG = '<svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="5" y="8" width="14" height="6" rx="1.5"/><circle cx="7.5" cy="17" r="2.2"/><circle cx="16.5" cy="17" r="2.2"/><path d="M12 8V4h3"/></svg>';
 var AS_VISIT_SVG = '<svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 20h18"/><path d="M7 20l2-8h6l2 8"/><path d="M10 12V8h4v4"/><path d="M12 8V4"/></svg>';
@@ -404,13 +410,14 @@ function _asHud(on) {
     if (!document.getElementById('as-css')) { var css = document.createElement('style'); css.id = 'as-css'; css.textContent = AS_CSS; document.head.appendChild(css); }
     hud = document.createElement('div');
     hud.className = 'as-hud'; hud.id = 'as-hud';
-    var routeL = _almEsc(_aeT('alm_site_trail')), leaveL = _almEsc(_aeT('alm_site_leave')), landL = _almEsc(_aeT('alm_site_landing')), rateL = _almEsc(_aeT('alm_site_pace')), jumpL = _almEsc(_aeT('alm_site_jump')), eyeL = _almEsc(_aeT('alm_stand_eye')), motionL = _almEsc(_aeT('alm_stand_motion'));
+    var routeL = _almEsc(_aeT('alm_site_trail')), leaveL = _almEsc(_aeT('alm_site_leave')), landL = _almEsc(_aeT('alm_site_landing')), rateL = _almEsc(_aeT('alm_site_pace')), jumpL = _almEsc(_aeT('alm_site_jump')), resetL = _almEsc(_aeT('alm_site_reset')), eyeL = _almEsc(_aeT('alm_stand_eye')), motionL = _almEsc(_aeT('alm_stand_motion'));
     hud.innerHTML = '<div class="as-layer" id="as-layer"></div><div class="as-rest" id="as-rest" hidden></div><div class="as-stick" id="as-stick" hidden><i></i></div>' +
       '<div class="as-bar"><button type="button" class="ae-btn ae-round" id="as-exit" aria-label="' + leaveL + '" title="' + leaveL + '">' + AS_EXIT_SVG + '</button>' +
       '<div class="as-bar-end"><button type="button" class="ae-btn ae-round" id="as-trailbtn" aria-label="' + routeL + '" title="' + routeL + '" hidden>' + AS_ROUTE_SVG + '</button><button type="button" class="ae-btn ae-round" id="as-eye" aria-label="' + eyeL + '" title="' + eyeL + '" hidden>' + AS_EYE_SVG + '</button><button type="button" class="ae-btn ae-round" id="as-motion" aria-label="' + motionL + '" title="' + motionL + '" aria-pressed="false" hidden>' + AS_PHONE_SVG + '</button><button type="button" class="ae-btn ae-round" id="as-landing" aria-label="' + landL + '" title="' + landL + '">' + AS_LANDING_SVG + '</button>' +
       '<button type="button" class="ae-btn ae-round as-rate" id="as-rate" aria-label="' + rateL + '" title="' + rateL + '">' + AS_CLOCK_SVG + '</button></div></div>' +
       '<div class="as-speed" id="as-speed" hidden></div><div class="as-cap" id="as-cap"></div><div class="as-count" id="as-count" aria-hidden="true"></div>' +
       '<button type="button" class="ae-btn ae-round as-launch" id="as-launch" aria-label="' + _almEsc(_aeT('alm_site_launch')) + '" title="' + _almEsc(_aeT('alm_site_launch')) + '" hidden>' + AS_LAUNCH_SVG + '</button>' +
+      '<button type="button" class="ae-btn ae-round as-reset" id="as-reset" aria-label="' + resetL + '" title="' + resetL + '" hidden>' + AS_RESET_SVG + '</button>' +
       '<button type="button" class="ae-btn ae-round as-jump" id="as-jump" aria-label="' + jumpL + '" title="' + jumpL + '" hidden>' + AS_JUMP_SVG + '</button>';
     el.appendChild(hud);
     _asBindHud(hud);
@@ -418,6 +425,7 @@ function _asHud(on) {
   hud.classList.toggle('as-driving', !!(_ae.site && _ae.site.drive));
   _aeById('as-rest').hidden = !(_ae.site && _ae.site.drive);
   _aeById('as-jump').hidden = !(_ae.site && _ae.site.drive);
+  _aeById('as-reset').hidden = !(_ae.site && _ae.site.drive);
   _aeById('as-speed').hidden = !(_ae.site && _ae.site.drive);
   _aeById('as-landing').hidden = !(_ae.site && _ae.site.def && _ae.site.def.ms);
   _aeById('as-launch').hidden = !(_ae.site && _ae.site.def && _ae.site.def.launch);
@@ -506,6 +514,7 @@ function _asBindHud(hud) {
     if (typeof _asLaunchStart !== 'function') { _asLoadScript(AS_LAUNCH_JS, function () { _asLaunchStart(st); }); return; }
     _asLaunchStart(st);
   };
+  _aeById('as-reset').onpointerdown = function (e) { e.stopPropagation(); if (_ae.site && typeof _asRoverReset === 'function') _asRoverReset(_ae.site); };
   _aeById('as-jump').onpointerdown = function (e) { e.stopPropagation(); if (_ae.site) _ae.site.input.jump = true; };
   var layer = _aeById('as-layer'), ptrs = {}, pinch = null;
   var stickEl = _aeById('as-stick');
