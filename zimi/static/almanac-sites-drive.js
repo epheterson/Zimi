@@ -47,9 +47,9 @@ var AS_LAMP_FRAG = [
   'void main() {',
   '  float d = vUv.y, w = abs(vUv.x - 0.5) * 2.0;',
   '  float cone = 1.0 - smoothstep(0.0, 1.0, w / (0.25 + 0.75 * d));',
-  '  float a = cone * pow(1.0 - d, 1.4) * k * 0.6;',
+  '  float a = cone * pow(1.0 - d, 1.2) * k;',
   '  if (a < 0.002) discard;',
-  '  gl_FragColor = vec4(vec3(1.0, 0.93, 0.78) * a, a);',
+  '  gl_FragColor = vec4(vec3(1.0, 0.93, 0.78) * a * 0.9, 1.0);',   // added to the ground: the colour alone carries the light
   '}'
 ].join('\n');
 function _asLampBuild(st) {
@@ -143,7 +143,7 @@ function _asSpeedShow(st) {
   if (!el || now - (st.speedAt || 0) < AS_SPEED_SHOW_MS) return;
   st.speedAt = now;
   var mi = _aeImperial(), r = st.rover, az = ((-_aeDeg(r.hdg) % 360) + 360) % 360;
-  el.textContent = _orrNum(Math.abs(r.v) * (mi ? AS_MPH_PER_MS : AS_KMH_PER_MS), mi ? 'mile-per-hour' : 'kilometer-per-hour', 1) + '  ' + _orrNum(az, 'degree', 0) + '  ' + _aeStHeightText(r.odo || 0);
+  el.textContent = _orrNum(Math.abs(r.v) * (mi ? AS_MPH_PER_MS : AS_KMH_PER_MS), mi ? 'mile-per-hour' : 'kilometer-per-hour', 1) + '  ' + Math.round(az) + '°  ' + _aeStHeightText(r.odo || 0);
 }
 // Tracks: a dark mark every AS_TRACK_STEP_M under the wheels on each side, the oldest forgotten past AS_TRACK_MAX.
 function _asTrackInit(st) {
