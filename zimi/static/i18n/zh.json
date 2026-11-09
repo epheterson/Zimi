@@ -2656,6 +2656,7 @@
   "alm_sky_aurora": "极光",
   "alm_sky_aurora_line": "地磁纬度 {g}：黑暗的夜晚这里常能看到极光。图为示意。",
   "alm_sky_iss_line": "在 {km} 高处经过，{where}：地面已暗，它仍被阳光照亮。",
+  "alm_sky_sat_line": "高度 {km}，{where}：被太阳照亮，而下方的地面一片漆黑。",
   "alm_sky_body_line": "{where} · 星等 {m}",
   "alm_sky_set": "天空设置",
   "alm_sky_set_dark": "光污染",

@@ -2656,6 +2656,7 @@
   "alm_sky_aurora": "Aurore polaire",
   "alm_sky_aurora_line": "Latitude géomagnétique {g} : les nuits noires, l'aurore se voit souvent ici. Dessin illustratif.",
   "alm_sky_iss_line": "Passe à {km} d'altitude, {where} : éclairée par le Soleil alors qu'en bas il fait nuit.",
+  "alm_sky_sat_line": "À {km} d’altitude, {where} : éclairé par le Soleil alors que le sol dessous est dans l’obscurité.",
   "alm_sky_body_line": "{where} · magnitude {m}",
   "alm_sky_set": "Réglages du ciel",
   "alm_sky_set_dark": "Pollution lumineuse",

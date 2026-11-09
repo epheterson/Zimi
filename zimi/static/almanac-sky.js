@@ -3184,7 +3184,7 @@ function _skySegDist(px, py, x0, y0, x1, y1) {
 }
 // What a tap at (x, y) CSS px lands on: the nearest body within reach of its
 // edge, the Sun, Moon and planets before the stars.
-var SKY_TAP_RANK = { sun: 0, moon: 0, planet: 0, iss: 0, plane: 1, birds: 1, meteor: 1, boat: 1, whale: 1, star: 2, dso: 2, aurora: 3, sea: 4 };
+var SKY_TAP_RANK = { sun: 0, moon: 0, planet: 0, iss: 0, sat: 0, plane: 1, birds: 1, meteor: 1, boat: 1, whale: 1, star: 2, dso: 2, aurora: 3, sea: 4 };
 function _skyHitTest(x, y) {
   var s = _skyState;
   if (!s) return null;
@@ -3222,6 +3222,7 @@ function _skyBodyName(b) {
     return b.desig ? b.desig + ' ' + (con ? con.gen : b.con) : t('alm_star');
   }
   if (b.type === 'dso') return b.desig;
+  if (b.type === 'sat') return b.name;   // a satellite from the all-satellites layer (almanac-sats.js)
   return t(SKY_NAME_KEYS[b.type]);
 }
 // The lines under the name for what lives on the horizon, or null.
@@ -3240,6 +3241,7 @@ function _skyLifeLines(b) {
     return [r.shower ? t('alm_sky_meteor_shower', { name: _showerName(r.shower.sh), n: n }) : r.perHour < 1 ? t('alm_sky_meteor_few') : t('alm_sky_meteor_line', { n: n })];
   }
   if (b.type === 'aurora') return [t('alm_sky_aurora_line', { g: _skyDeg(Math.abs(b.mag)) })];
+  if (b.type === 'sat') return [t('alm_sky_sat_line', { km: _orrNum(Math.round(b.km), 'kilometer', 0), where: _skyDeg(b.alt) + ' ' + _azCompass(b.az) })];
   if (b.type === 'iss') return [t('alm_sky_iss_line', { km: _orrNum(Math.round(b.km), 'kilometer', 0), where: _skyDeg(b.alt) + ' ' + _azCompass(b.az) })];
   return null;
 }

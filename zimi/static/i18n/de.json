@@ -2656,6 +2656,7 @@
   "alm_sky_aurora": "Polarlicht",
   "alm_sky_aurora_line": "Geomagnetische Breite {g}: In dunklen Nächten ist hier oft Polarlicht zu sehen. Illustrativ gezeichnet.",
   "alm_sky_iss_line": "Zieht in {km} Höhe vorbei, {where}: von der Sonne beleuchtet, während es am Boden dunkel ist.",
+  "alm_sky_sat_line": "{km} hoch, {where}: von der Sonne beschienen, während der Boden darunter dunkel ist.",
   "alm_sky_body_line": "{where} · Helligkeit {m}",
   "alm_sky_set": "Himmelseinstellungen",
   "alm_sky_set_dark": "Lichtverschmutzung",

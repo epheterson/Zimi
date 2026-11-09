@@ -2656,6 +2656,7 @@
   "alm_sky_aurora": "Aurora",
   "alm_sky_aurora_line": "Geomagnetic latitude {g}: aurora is often seen here on dark nights. Drawn for illustration.",
   "alm_sky_iss_line": "Passing over at {km} up, {where}: lit by the Sun while the ground below is dark.",
+  "alm_sky_sat_line": "{km} up, {where}: lit by the Sun while the ground below is dark.",
   "alm_sky_body_line": "{where} · magnitude {m}",
   "alm_sky_set": "Sky settings",
   "alm_sky_set_dark": "Light pollution",

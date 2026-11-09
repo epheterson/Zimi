@@ -2656,6 +2656,7 @@
   "alm_sky_aurora": "Aurora",
   "alm_sky_aurora_line": "Latitude geomagnética {g}: em noites escuras a aurora vê-se muitas vezes aqui. Desenho ilustrativo.",
   "alm_sky_iss_line": "Passa a {km} de altitude, {where}: iluminada pelo Sol enquanto cá em baixo já é noite.",
+  "alm_sky_sat_line": "A {km} de altura, {where}: iluminado pelo Sol enquanto o chão abaixo está escuro.",
   "alm_sky_body_line": "{where} · magnitude {m}",
   "alm_sky_set": "Ajustes do céu",
   "alm_sky_set_dark": "Poluição luminosa",

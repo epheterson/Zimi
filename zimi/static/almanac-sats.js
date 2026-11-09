@@ -54,6 +54,7 @@ var AS_PASS_LEO_MM = 11;                              // revolutions a day: a pa
 var AS_TRAIN_GAP_S = AE_SATS_REF.trainGapS, AS_TRAIN_MIN = 3, AS_TRAIN_RAAN_DEG = AE_SATS_REF.trainRaanDeg;
 var AS_ISS_NORAD = 25544, AS_ISS_MODULE = /^ISS \(/;
 var AS_PASS_SKY_FRAME_MS = 500;
+var AS_TRAIL_STEPS = 8, AS_TRAIL_STEP_S = 4, AS_TRAIL_ALPHA = 0.7;   // the sky's trail behind a satellite: eight steps of four seconds, fading
 var AS_GPS_MIN_EL = AE_SATS_REF.gpsMinEl;
 
 var _as = {
@@ -867,6 +868,24 @@ function _asGpsNow(ms, place) {
   });
   return out;
 }
+// The path a satellite has just flown, a short fading line behind its point.
+function _asSkyTrail(ctx, s, i, ms, place, x, y, near) {
+  var px = x, py = y;
+  ctx.lineCap = 'round';
+  for (var k = 1; k <= AS_TRAIL_STEPS; k++) {
+    var at = ms - k * AS_TRAIL_STEP_S * 1000, st = _asStateAt(i, at);
+    if (!st) return;
+    var lk = _asLook(st.pos, at, place);
+    if (lk.el < 0) return;
+    var qx = _skyX(s, lk.az), qy = _skyY(s, lk.el);
+    if (Math.abs(qx - px) > s.W / 2) return;   // across the panorama's seam
+    ctx.strokeStyle = 'rgba(255,250,235,' + (AS_TRAIL_ALPHA * near * (1 - (k - 1) / AS_TRAIL_STEPS)).toFixed(3) + ')';
+    ctx.lineWidth = s.dpr * 1.4 * (1 - 0.6 * (k - 1) / AS_TRAIL_STEPS);
+    ctx.beginPath(); ctx.moveTo(px, py); ctx.lineTo(qx, qy); ctx.stroke();
+    px = qx; py = qy;
+  }
+}
+function _asAltKm(i, ms) { var st = _asStateAt(i, ms); return st ? st.alt : 0; }
 function _skyKickNow() { if (typeof _skyKick === 'function' && typeof _skyState !== 'undefined' && _skyState) _skyKick(); }
 // The live sky: called from almanac-sky.js _skyPaintActors after the ISS. Passes under way now are drawn as moving points
 // at the sky's own positions, with the GPS satellites overhead as small rings when asked for. Panorama only, like the ISS.
@@ -886,7 +905,9 @@ function _asSkyPaint(ctx, s) {
         var x = _skyX(s, lk.az);
         if (!_skyInView(s, x, 4)) return;
         var y = _skyY(s, lk.el), near = _aeClamp(1 - (p.mag - 0) / 6, 0.25, 1);
+        _asSkyTrail(ctx, s, i, ms, place, x, y, near);
         _skyLight(ctx, x, y, (1.4 + 2 * near) * dpr, [255, 250, 235], 0.6 + 0.4 * near);
+        if (_as.data.norad[i] !== AS_ISS_NORAD) s.bodies.push({ type: 'sat', name: _as.data.name[i], x: x / dpr, y: y / dpr, r: 4, alt: lk.el, az: lk.az, km: _asAltKm(i, ms) });
         if (p.members.length < AS_TRAIN_MIN || k === 0) {
           ctx.fillStyle = 'rgba(255,250,235,.8)';
           ctx.font = (11 * dpr) + 'px sans-serif';
