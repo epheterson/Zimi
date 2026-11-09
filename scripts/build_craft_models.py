@@ -83,11 +83,11 @@ CRAFT = {
         ("part", "ribs:gold_mesh"),
     ),
     "cassini": (
-        "Cassini-Huygens (A)/Cassini-Huygens (A).glb",
-        "NASA/JPL/Solar System Simulator",
+        "Cassini Assembly/Cassini Assembly.glb",
+        "NASA 3D Resources (no individual credit listed)",
         10000,
-        ("part", "dish_AO", 4.0),  # the high-gain antenna's diameter
-        ("part", "dish_AO"),
+        ("part", "white", 4.0),  # the high-gain antenna's diameter
+        ("part", "white"),
     ),
 }
 MAX_PALETTE = 12  # the viewer's AE_CRAFT_PAL
@@ -96,9 +96,13 @@ MAX_PALETTE = 12  # the viewer's AE_CRAFT_PAL
 RECOLOUR = {
     "galileo": {"bus:black": (0.01, 0.01, 0.012)},
     "parker": {"black matte": (0.7, 0.7, 0.66)},
+    # aluminised Kapton with a doped-silicon coating: silver with a magenta cast
+    "webb": {"shld_silv": (0.74, 0.66, 0.76), "shld_pink": (0.72, 0.42, 0.62)},
 }
 # Parts that stay whole (their triangles are what the craft is known by: Webb's gold mirror segments): key -> material substrings.
 KEEP_WHOLE = {"webb": ("mirror_blinn", "omnimirror")}
+# Materials simplified one primitive at a time, so layers kept apart in the file stay apart (Webb's five sunshield layers).
+PER_PRIM = {"webb": ("shld_",)}
 SIMPLIFY_PASSES = (4, 8, 12)  # fast_simplification's aggressiveness (its default is 7): gentler first keeps rims and edges
 WELD_STEPS = 1e5  # vertices closer than the model's span over this are one
 
@@ -112,9 +116,16 @@ def material_looks(j, blob, recolour=None):
         if "baseColorTexture" in pbr:
             rgb = rgb * cm.texture_mean(j, blob, pbr["baseColorTexture"])
         name = m.get("name", "")
+        full = None
         for sub, real in (recolour or {}).items():
             if sub.lower() in name.lower():
-                rgb = np.array(real, dtype=np.float64)
+                if len(real) == 4:  # (rgb, roughness, metalness, kind): the material is this, whatever its name
+                    full = (np.array(real[0], dtype=np.float64), real[1], real[2], real[3])
+                else:
+                    rgb = np.array(real, dtype=np.float64)
+        if full:
+            out.append(full)
+            continue
         look = cm.look_of(name, rgb, pbr.get("roughnessFactor"), pbr.get("metallicFactor", 0.0))
         out.append(look + (cm.kind_of(name),))
     return out
@@ -251,12 +262,13 @@ def dropped_specks(v, f):
     return v, f[keep[lab[f[:, 0]]]]
 
 
-def craft(glb, tris, size, aim, recolour=None, keep=()):
+def craft(glb, tris, size, aim, recolour=None, keep=(), per_prim=()):
     j, blob, ps = cm.read_parts(glb)
     names = [m.get("name", "") for m in j.get("materials", [])]
     looks = material_looks(j, blob, recolour)
-    by_mat, faces_of = {}, {}
+    by_mat, faces_of, prims_of = {}, {}, {}
     for p in ps:
+        prims_of.setdefault(p["mat"], []).append(p)
         vs, fs = by_mat.setdefault(p["mat"], []), faces_of.setdefault(p["mat"], [])
         fs.append(p["faces"] + sum(len(a) for a in vs))
         vs.append(p["pos"])
@@ -294,6 +306,14 @@ def craft(glb, tris, size, aim, recolour=None, keep=()):
             continue
         parts = []
         for group, whole_group in (([i for i in mats if i not in whole], False), ([i for i in mats if i in whole], True)):
+            if not group:
+                continue
+            layered = [i for i in group if any(w.lower() in names[i].lower() for w in per_prim)]
+            for i in layered:  # each primitive on its own share: loose layers stay layers
+                for p in prims_of[i]:
+                    v, f = simplified(p["pos"], p["faces"], max(48, int(pool * len(p["faces"]) / total)), nd)
+                    parts.append(cm.creased(v, f))
+            group = [i for i in group if i not in layered]
             if not group:
                 continue
             vs, fs = [], []
@@ -340,12 +360,13 @@ ISS_CLASS_OF = {
 }
 ISS_SHARE = {STRUCTURE: 0.5, TRUSS: 0.3, ARRAY: 0.08, RADIATOR: 0.06, ARRAY_FIXED: 0.06}
 # (rgb linear, roughness, metalness): module shell, truss, cell side of the arrays, radiator panels, fixed arrays.
+ISS_CELL = (0.018, 0.028, 0.09)  # the cell side of an array: blue-black, the glint does the rest
 ISS_LOOK = [
     ((0.78, 0.77, 0.74), 0.5, 0.05),
     ((0.62, 0.62, 0.6), 0.42, 0.3),
-    (cm.SOLAR_BLUE, 0.22, 0.25),
+    (ISS_CELL, 0.2, 0.1),
     ((0.92, 0.92, 0.94), 0.55, 0.0),
-    (cm.SOLAR_BLUE, 0.22, 0.25),
+    (ISS_CELL, 0.2, 0.1),
 ]
 ISS_ARRAY_FLAGS = cm.MAT_DOUBLE_SIDED | cm.MAT_AMBER_BACK
 ISS_KIND = [cm.KIND_QUILT, cm.KIND_METAL, cm.KIND_CELLS, cm.KIND_RADIATOR, cm.KIND_CELLS]  # a procedural surface per class
@@ -451,7 +472,7 @@ def main():
         else:
             path, _credit, tris, size, aim = CRAFT[key]
             glb = _fetch(REPO + urllib.parse.quote(path), a.src, os.path.basename(path))
-            data = craft(glb, tris, size, aim, RECOLOUR.get(key), KEEP_WHOLE.get(key, ()))
+            data = craft(glb, tris, size, aim, RECOLOUR.get(key), KEEP_WHOLE.get(key, ()), PER_PRIM.get(key, ()))
             out = os.path.join(a.out, "craft-%s-v1.bin" % key)
         with open(out, "wb") as fh:
             fh.write(data)
