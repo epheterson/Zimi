@@ -401,7 +401,7 @@
     'superbowlsunday':       { q: 'Q32096',     en: 'Super Bowl' },
     'presidentsday':         { q: 'Q744159',    en: "Presidents' Day" },
     'memorialday':           { q: 'Q371781',    en: 'Memorial Day' },
-    'laborday':              { q: 'Q848352',    en: 'Labor Day' },
+    'laborday':              { q: 'Q848352',    en: 'Labor Day (United States)' },
     'indigenouspeoplesday':  { q: 'Q6024620', en: "Indigenous Peoples' Day (United States)" },
     // Canada
     'canadaday':                 { q: 'Q639756',   en: 'Canada Day' },
