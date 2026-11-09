@@ -461,7 +461,7 @@ const courtCard = (rank) => {
 ART.courtier = () => defs(lin('court', [[0, '#3a2c5c'], [1, '#1d1530']], 0, 0, 0, 1)) +
   rect(0, 0, 320, 180, 'url(#court)') +
   ell(160, 160, 120, 10, 'rgba(0,0,0,0.3)') +
-  at(76, 40, -12, courtCard(1)) + at(182, 30, 14, courtCard(8)) + at(126, 34, 0, courtCard(5));
+  at(46, 44, -12, courtCard(1)) + at(204, 34, 12, courtCard(8)) + at(125, 36, 0, courtCard(5));
 
 // Odd One Out: five players' discs, four showing the same picture (a star) and one a question mark.
 ART.oddone = () => defs(lin('oddbg', [[0, '#2c3a5a'], [1, '#161c2c']], 0, 0, 0, 1), lin('odddisc', [[0, '#fffdf6'], [1, '#e2dcc8']])) +
