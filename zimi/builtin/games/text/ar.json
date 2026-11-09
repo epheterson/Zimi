@@ -823,6 +823,8 @@
  "cards.result.you": "تفوز، {a} مقابل {b}.",
  "cards.seat.east": "شرق",
  "cards.seat.north": "شمال",
+ "cards.seat.northeast": "شمال شرق",
+ "cards.seat.northwest": "شمال غرب",
  "cards.seat.west": "غرب",
  "cards.seatsAtTable": "المقاعد حول الطاولة",
  "cards.selected": "محددة",
