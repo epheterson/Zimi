@@ -15,18 +15,20 @@
 // how opaque; how many clouds a day of full cover draws.
 var SKY_CLOUD_LAYERS = [
   { key: 'cumulus', h: [1.2, 2.4], d: [2.5, 60], r: [0.3, 0.8], puffs: [5, 9], span: 2.4, flat: 0.55, alpha: 0.92, n: [4, 9] },
-  { key: 'alto', h: [3.2, 5.6], d: [15, 160], r: [0.6, 1.4], puffs: [6, 11], span: 2.8, flat: 0.38, alpha: 0.62, n: [3, 7] },
-  { key: 'cirrus', h: [8.5, 11], d: [35, 330], r: [1.4, 3.2], puffs: [3, 6], span: 3.2, flat: 0.12, alpha: 0.34, n: [2, 5] }
+  { key: 'alto', h: [3.2, 5.6], d: [4, 160], r: [0.8, 1.9], puffs: [6, 11], span: 2.8, flat: 0.38, alpha: 0.7, n: [4, 8] },
+  { key: 'cirrus', h: [8.5, 11], d: [6, 330], r: [2, 4.8], puffs: [4, 7], span: 3.4, flat: 0.14, alpha: 0.6, n: [3, 6] }
 ];
 var SKY_CLOUD_COVER_POW = 1.3;        // the day's cover is a random number to this power: more clear days than overcast ones
-var SKY_CLOUD_MIN_SHARE = 0.4;        // a clear day still draws this share of the fewest
+var SKY_CLOUD_MIN_SHARE = 0.75;        // a clear day still draws this share of the fewest
 var SKY_CLOUD_CLEAR_DEG = 4;          // the clouds part this far round the Sun and the Moon: the sky stays the real one
 var SKY_CLOUD_MIN_ALT = -0.5;         // a puff whose centre is lower than this is under the horizon
 var SKY_CLOUD_SEED_PLACE = 10;        // the place enters the day's seed to this many parts of a degree
 var SKY_CLOUD_LIT_FROM = -0.25, SKY_CLOUD_LIT_TO = 0.6;   // the Sun's apparent height at the cloud over which it goes from in shade to in full light
 var SKY_CLOUD_FULL_SUN_DEG = 12;      // and the height at which it is as bright as the cloud will be
-var SKY_CLOUD_SHADE_DAY = [118, 128, 146], SKY_CLOUD_SHADE_NIGHT_MIX = 0.45;   // a cloud's shade by day; by night the sky's horizon colour this much darker
+var SKY_CLOUD_SHADE_DAY = [118, 128, 146], SKY_CLOUD_SHADE_NIGHT_MIX = 0.6;   // a cloud's shade by day; by night the sky's horizon colour this much darker
+var SKY_CLOUD_SHADE_NIGHT = [30, 34, 62];   // the cool dark an unlit cloud sinks toward
 var SKY_CLOUD_MOONLIT = [205, 215, 235], SKY_CLOUD_MOON_SHARE = 0.55;          // a bright Moon's light on the cloud
+var SKY_CLOUD_GLOW_MIN = 0.85;         // how much of its light's colour a cloud takes with the Sun at the horizon: the evening glow
 var SKY_CLOUD_HIGHLIGHT = 0.32;       // how far toward the light the bright part sits, in puff radii
 var SKY_CLOUD_SIDE_SPREAD = 0.3;      // and sideways
 var SKY_CLOUD_LIGHT_FULL_DEG = 20;    // the Sun this far above or below the cloud's own height puts the bright part fully top or bottom
@@ -85,11 +87,11 @@ function _skyCloudLight(s, az, rho, h) {
   var e = s.eph, sunAlt = _skyCloudSunAlt(e.sunGeoAlt, e.sun.az, az, rho, h);
   var lit = _skySmooth(sunAlt, SKY_CLOUD_LIT_FROM, SKY_CLOUD_LIT_TO);
   var tone = _skyTone(e.sunGeoAlt), day = _skyDaylight(e.sunGeoAlt);
-  var shade = _skyMix(_skyMix(tone.hor, [0, 0, 0], SKY_CLOUD_SHADE_NIGHT_MIX), SKY_CLOUD_SHADE_DAY, day);
+  var shade = _skyMix(_skyMix(tone.hor, SKY_CLOUD_SHADE_NIGHT, SKY_CLOUD_SHADE_NIGHT_MIX), SKY_CLOUD_SHADE_DAY, day);
   var moonUp = e.moon.altitude > 0 ? s.moonData.phase.illumination / 100 : 0;
   shade = _skyMix(shade, SKY_CLOUD_MOONLIT, SKY_CLOUD_MOON_SHARE * moonUp * (1 - day) * (1 - lit));
   var tint = _skySunTint(Math.max(sunAlt, -0.5)).map(function (v) { return 255 * v; });
-  var strength = 0.25 + 0.75 * _skyClamp(sunAlt / SKY_CLOUD_FULL_SUN_DEG, 0, 1);
+  var strength = SKY_CLOUD_GLOW_MIN + (1 - SKY_CLOUD_GLOW_MIN) * _skyClamp(sunAlt / SKY_CLOUD_FULL_SUN_DEG, 0, 1);
   return { sunAlt: sunAlt, lit: lit, shade: shade, direct: _skyMix(shade, tint, strength), strength: strength };
 }
 
