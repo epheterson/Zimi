@@ -15,7 +15,7 @@
   // rows), a tapped card lifts 14 px
   // (a card you can play stands 6 px proud when others cannot be played). An opponent's face-down hand of more than
   // five cards is one back and a count chip.
-  var COUNT_AT = 0.86, STATUS_MAX = 44, MIN_STRIP_PX = 22, LIFT_PX = 14, PLAYABLE_LIFT_PX = 6, COLLAPSE_FROM = 6;
+  var NORTH_GAP_PX = 6, COUNT_AT = 0.86, STATUS_MAX = 44, MIN_STRIP_PX = 22, LIFT_PX = 14, PLAYABLE_LIFT_PX = 6, COLLAPSE_FROM = 6;
   // Games that play a card on its second tap: the first tap lifts it (amber outline), the second plays it.
   var LIFT_THEN_PLAY = { spades: 1, euchre: 1, belote: 1, crazyeights: 1, durak: 1 };
   // SCORE_BAR_H: the chips' row (28 px, cardtable.css .ct-chip) and air under it for the ring round whoever is to play.
@@ -38,8 +38,10 @@
   var MIN_STEP_SHARE = 0.42, ROW_STEP_SHARE = 0.5, FLASH_MS = 1800, PANEL_GAP = 8;
   // The slot a card is dropped on to play it: this many cards wide and tall either side of the table's middle.
   var FELT_X = 1.6, FELT_Y = 1.1;
-  // Where each seat sits on the table, by the number of players: 0 south, 1 west, 2 north, 3 east.
-  var SEAT_POS = { 2: [0, 2], 3: [0, 1, 3], 4: [0, 1, 2, 3] };
+  // Where each seat sits on the table, by the number of players: 0 south, 1 west, 2 north, 3 east. With five, the north is shared
+  // by two hands: 4 (north-west) and 5 (north-east).
+  var SEAT_POS = { 2: [0, 2], 3: [0, 1, 3], 4: [0, 1, 2, 3], 5: [0, 1, 4, 5, 3] };
+  var NORTH_TRICK_DX = 0.45;   // the two north plays of a five-seat trick lean this many card widths off the middle
   var SUIT_ORDER = [0, 1, 3, 2]; // clubs, diamonds, spades, hearts: alternating colours in a hand
   var SUIT_GLYPH = ['♣', '♦', '♥', '♠']; // by ZimiCards suit: clubs, diamonds, hearts, spades
 
@@ -95,10 +97,15 @@
   // A card's corner in the middle for each position's play, and where a position's cards sit.
   function trickSpot(g, pos) {
     var x = g.cx - g.cw / 2, y = g.cy - g.ch / 2;
-    return [{ x: x, y: y + g.ch * TRICK_DY }, { x: x - g.cw * TRICK_DX, y: y }, { x: x, y: y - g.ch * TRICK_DY }, { x: x + g.cw * TRICK_DX, y: y }][pos];
+    return [{ x: x, y: y + g.ch * TRICK_DY }, { x: x - g.cw * TRICK_DX, y: y }, { x: x, y: y - g.ch * TRICK_DY }, { x: x + g.cw * TRICK_DX, y: y },
+      { x: x - g.cw * NORTH_TRICK_DX, y: y - g.ch * TRICK_DY }, { x: x + g.cw * NORTH_TRICK_DX, y: y - g.ch * TRICK_DY }][pos];
   }
+  // A north hand's room across the table and the middle of it: the whole width for the one north, a half each for two.
+  function northRoom(g, pos) { return pos === 2 ? g.W - 2 * g.pad : (g.W - 2 * g.pad) / 2 - NORTH_GAP_PX; }
+  function northCx(g, pos) { return pos === 2 ? g.cx : pos === 4 ? g.pad + (g.W - 2 * g.pad) / 4 : g.W - g.pad - (g.W - 2 * g.pad) / 4; }
   function seatSpot(g, pos) {
-    return [{ x: g.cx - g.cw / 2, y: g.southY }, { x: g.westX, y: g.yTop }, { x: g.cx - g.cw / 2, y: g.northY }, { x: g.eastX, y: g.yTop }][pos];
+    return [{ x: g.cx - g.cw / 2, y: g.southY }, { x: g.westX, y: g.yTop }, { x: g.cx - g.cw / 2, y: g.northY }, { x: g.eastX, y: g.yTop },
+      { x: northCx(g, 4) - g.cw / 2, y: g.northY }, { x: northCx(g, 5) - g.cw / 2, y: g.northY }][pos];
   }
   function posOf(seat, players) { return SEAT_POS[players][seat]; }
   // Where a seat sits for the person looking (a ZimiSeats object): the viewer is south.
@@ -135,14 +142,13 @@
     var cards = [], n = ids.length, p = 'p' + pos;
     if (!up && n >= COLLAPSE_FROM) {
       // One back and a count: every card sits in the same place (so a played card still flies from the hand).
-      var ax = pos === 2 ? Math.round(g.cx - g.cw / 2) : pos === 1 ? g.westX : g.eastX, ay = pos === 2 ? g.northY : g.yTop;
+      var north = pos === 2 || pos >= 4, ax = north ? Math.round(northCx(g, pos) - g.cw / 2) : pos === 1 ? g.westX : g.eastX, ay = north ? g.northY : g.yTop;
       ids.forEach(function (id, k) { cards.push({ id: id, pile: p, idx: k, x: ax, y: ay, up: false }); });
       counts.push({ x: ax + g.cw / 2, y: ay + g.ch * COUNT_AT, n: n });   // low on the back: the Z stays clear
       return cards;
     }
-    if (pos === 2) {
-      var nx = g.cx - (g.cw + (n - 1) * g.topStep) / 2, ts = Math.min(g.topStep, n > 1 ? (g.W - 2 * g.pad - g.cw) / (n - 1) : 0);
-      nx = g.cx - (g.cw + (n - 1) * ts) / 2;
+    if (pos === 2 || pos >= 4) {
+      var ts = Math.min(g.topStep, n > 1 ? (northRoom(g, pos) - g.cw) / (n - 1) : 0), nx = northCx(g, pos) - (g.cw + (n - 1) * ts) / 2;
       ids.forEach(function (id, k) { cards.push({ id: id, pile: p, idx: k, x: Math.round(nx + k * ts), y: g.northY, up: !!up }); });
     } else {
       var sx = pos === 1 ? g.westX : g.eastX, st = sideStep(g, n);

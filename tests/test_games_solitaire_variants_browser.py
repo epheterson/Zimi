@@ -114,18 +114,23 @@ def test_opens_inside_the_phone_with_no_errors(browser, site, page, game, scheme
     pg.context.close()
 
 
-@pytest.mark.parametrize("page,game", VARIANTS)
-def test_a_tap_moves_a_card_and_undo_takes_it_back(browser, site, page, game):
-    pg = _open(browser, site, page)
+def _a_tap_with_a_move(pg, game):
+    """A card to tap that goes somewhere; when the first deal has none (the stock is the move), the same deal from a fixed shuffle."""
     at = pg.evaluate(FIND_TAP, game)
-    if (
-        at is None
-    ):  # no card has a place to go from the first deal: the stock is the move
+    if at is None:
         pg.evaluate(
             "(g) => window[g].session.reset(window[g].newState(window.ZimiSolKit.shuffledDecks(g === 'ZimiFortyThieves' ? 2 : 1, () => 0.25)))",
             game,
         )
+        pg.wait_for_timeout(1500)
         at = pg.evaluate(FIND_TAP, game)
+    return at
+
+
+@pytest.mark.parametrize("page,game", VARIANTS)
+def test_a_tap_moves_a_card_and_undo_takes_it_back(browser, site, page, game):
+    pg = _open(browser, site, page)
+    at = _a_tap_with_a_move(pg, game)
     if at is not None:
         before = pg.evaluate(
             "(g) => JSON.stringify(window[g].session.state.piles)", game
@@ -161,7 +166,7 @@ def test_won_from_one_move_away_with_the_end_sheet(browser, site, page, game):
 @pytest.mark.parametrize("page,game", VARIANTS)
 def test_a_game_left_comes_back_as_it_was(browser, site, page, game):
     pg = _open(browser, site, page)
-    at = pg.evaluate(FIND_TAP, game)
+    at = _a_tap_with_a_move(pg, game)
     if at is not None:
         pg.touchscreen.tap(at["x"], at["y"])
         pg.wait_for_timeout(500)

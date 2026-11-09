@@ -1,4 +1,4 @@
-/* ZimiGames: Oh Hell, three or four players: you (south) against the computer players. Each hand deals the same number of cards to
+/* ZimiGames: Oh Hell, three to five players: you (south) against the computer players. Each hand deals the same number of cards to
    everyone (five down to one and back up, or seven down to one and back up) and turns one more card for trump. Everyone bids how many
    tricks they will take, the dealer last, and the dealer may not bid what makes the bids add up to the number of tricks, so someone
    always misses. You must follow the suit led if you can; the highest trump wins the trick, else the highest card of the suit led.
@@ -12,7 +12,8 @@
   var Z = root.ZimiCards, T = root.ZimiTable, Seats = root.ZimiSeats, TX = root.ZimiCards.T;
 
   var LADDERS = { short: [5, 4, 3, 2, 1, 2, 3, 4, 5], full: [7, 6, 5, 4, 3, 2, 1, 2, 3, 4, 5, 6, 7] };
-  var EXACT_BONUS = 10, LADDER_KEY = 'ohhell.length', DEFAULT_LADDER = 'short', PLAYERS_KEY = 'ohhell.players', DEFAULT_PLAYERS = 3;
+  var EXACT_BONUS = 10, LADDER_KEY = 'ohhell.length', DEFAULT_LADDER = 'short', PLAYERS_KEY = 'ohhell.players', DEFAULT_PLAYERS = 3, TABLE_SIZES = [3, 4, 5];
+  var validSize = function (n) { return TABLE_SIZES.indexOf(n) >= 0; };
   var high = T.rankHigh;
 
   // ── Rules ───────────────────────────────────────────────────────────────
@@ -104,7 +105,7 @@
     hand.forEach(function (c) {
       var r = high(c);
       if (Z.suit(c) === trump) est += TRUMP_VALUE[r] !== undefined ? TRUMP_VALUE[r] : 0.18 + 0.02 * r / 14;
-      else est += (SIDE_VALUE[r] || 0) * (players <= 3 ? 1 : 0.9);
+      else est += (SIDE_VALUE[r] || 0) * (players <= 3 ? 1 : players === 4 ? 0.9 : 0.8);
     });
     return est + Math.max(0, trumps - 3) * 0.15;
   }
@@ -157,12 +158,12 @@
 
   // ── The page ────────────────────────────────────────────────────────────
   var AI_MS = 560, HOLD_MS = 1000, SWEEP_MS = 380;
-  // The seats at the table are made once, so a change to three or four applies when the page is next opened: a kept game keeps its own.
+  // The seats at the table are made once, so a change to the number applies when the page is next opened: a kept game keeps its own.
   function tableSize() {
     var kept = root.ZimiShell && root.ZimiShell.saved ? root.ZimiShell.saved() : null;
-    if (kept && kept.id === 'ohhell' && kept.state && (kept.state.players === 3 || kept.state.players === 4)) return kept.state.players;
+    if (kept && kept.id === 'ohhell' && kept.state && validSize(kept.state.players)) return kept.state.players;
     var n = Z.store.get(PLAYERS_KEY, DEFAULT_PLAYERS);
-    return n === 4 ? 4 : DEFAULT_PLAYERS;
+    return validSize(n) ? n : DEFAULT_PLAYERS;
   }
   function boot() {
     var t, board, session, view = { sweep: null, flash: '' }, tg, seats, mine, SEATS = tableSize();
@@ -189,7 +190,8 @@
       if (st.phase === 'bid') {
         if (seats.person(st.turn) && st.turn === V) {
           var bad = forbiddenBid(st, V);
-          out.text = TX(seats.hotseat() ? 'ohhell.yourBid.name' : 'ohhell.yourBid', { name: nm(V) }) + (bad >= 0 ? ' ' + TX('ohhell.notBid', { n: bad }) : '');
+          out.text = TX(seats.hotseat() ? 'ohhell.yourBid.name' : 'ohhell.yourBid', { name: nm(V) });
+          if (bad >= 0) out.text = TX('cards.then', { first: out.text, then: TX('ohhell.notBid', { n: bad }) });
           out.choices = [];
           for (var n = 0; n <= st.sizes[st.handNo]; n++) out.choices.push(bidChoice(n, n === bad));
           out.lines = [{ text: TX('ohhell.estimate', { n: Math.round(estimate(st.hands[V], st.trump, st.players)) }) }];
@@ -229,7 +231,7 @@
     // A new game at a different table size starts the page over, since the seats are made once.
     function newGame() {
       var want = Z.store.get(PLAYERS_KEY, DEFAULT_PLAYERS);
-      if ((want === 3 || want === 4) && want !== SEATS && root.ZimiShell && root.ZimiShell.forget) { root.ZimiShell.forget(); root.location.reload(); return; }
+      if (validSize(want) && want !== SEATS && root.ZimiShell && root.ZimiShell.forget) { root.ZimiShell.forget(); root.location.reload(); return; }
       deal();
     }
 
@@ -246,7 +248,7 @@
       cascadeOrder: function (st) { return st.played.map(function (id) { return { id: id }; }); },
       winLines: function (sec, st) { return finalLines(st); },
       menuExtra: function () {
-        return [T.choiceRow(TX('cards.seatsAtTable'), PLAYERS_KEY, [{ value: 3, label: '3' }, { value: 4, label: '4' }], DEFAULT_PLAYERS, function () {}),
+        return [T.choiceRow(TX('cards.seatsAtTable'), PLAYERS_KEY, TABLE_SIZES.map(function (n) { return { value: n, label: String(n) }; }), DEFAULT_PLAYERS, function () {}),
           T.choiceRow(TX('ohhell.length'), LADDER_KEY, [{ value: 'short', label: TX('ohhell.short') }, { value: 'full', label: TX('ohhell.full') }], DEFAULT_LADDER, function () {}),
           Z.h('p', { class: 'zc-note', text: TX('ce.seatsNote') })];
       },
