@@ -1046,6 +1046,7 @@
   "map_offer_all": "الفهرس",
   "map_offer_started": "يتم تنزيل {map}. تابعه في التنزيلات.",
   "map_offer_overlaps": "يتداخل مع {maps}",
+  "map_newer": "يتوفر {map} أحدث في الفهرس",
   "map_where_i_am": "حدد موقعي",
   "map_location_unavailable": "موقعك غير متاح هنا.",
   "map_location_off_map": "أنت خارج هذه الخريطة. اختر خريطة لهذا المكان من القائمة.",

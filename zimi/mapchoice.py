@@ -178,6 +178,29 @@ def mark_overlaps(offers, zims):
         ]
 
 
+def newer_than_installed(items, installed):
+    """The catalog's newer edition of the best installed map, or None: the same map (by name) with a later date, so a
+    person who has France from June is told of the one from October, quietly, and is never offered what they hold."""
+    for held in installed:
+        if held.get("world"):
+            continue
+        for it in items or ():
+            if it.get("name") != held["name"] or not it.get("download_url"):
+                continue
+            if date_key(it.get("date")) > date_key(held.get("date")):
+                return {
+                    "name": it["name"],
+                    "title": it.get("title") or it["name"],
+                    "source": _source(it),
+                    "size_bytes": it.get("size_bytes") or 0,
+                    "date": it.get("date") or "",
+                    "download_url": it["download_url"],
+                    "newer_than": held.get("date") or "",
+                }
+        return None  # only the best installed map is asked about
+    return None
+
+
 def catalog_maps():
     """Every map the catalogs Zimi holds list, without touching the network."""
     from zimi import library, streetzim
@@ -195,10 +218,11 @@ def answer(zims, lat, lng, catalog=None):
     """The whole answer for a point: ``installed`` (best first); when no regional map is installed,
     ``offers`` (regions to download) and ``world`` (the planet, last resort)."""
     installed = installed_maps(zims, lat, lng)
-    out = {"installed": installed, "offers": [], "world": []}
-    if any(not m["world"] for m in installed):
-        return out
+    out = {"installed": installed, "offers": [], "world": [], "update": None}
     items = catalog_maps() if catalog is None else catalog
+    if any(not m["world"] for m in installed):
+        out["update"] = newer_than_installed(items, installed)
+        return out
     out["offers"], out["world"] = offered_maps(
         items, {z.get("name") for z in zims or ()}, lat, lng
     )

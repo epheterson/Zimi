@@ -125,11 +125,19 @@ var ZimiMapHere = (function () {
     return sheet;
   }
 
+  // A newer edition of the map just opened, said once a session in a quiet toast (the Catalog has it).
+  var toldNewer = {};
+  function noteNewer(update) {
+    if (!update || toldNewer[update.name] || typeof _showToast !== 'function') return;
+    toldNewer[update.name] = true;
+    _showToast(tH('map_newer', { map: update.title }));
+  }
+
   // The whole flow for a place: open its map, or offer one, or (nothing to open, nothing to offer) say so.
   function go(lat, lng, label) {
     return lookup(lat, lng).then(function (answer) {
       var what = outcome(answer);
-      if (what === 'open') openMap(answer.installed[0], lat, lng, label);
+      if (what === 'open') { openMap(answer.installed[0], lat, lng, label); noteNewer(answer.update); }
       else if (what === 'offer') showOffers(answer);
       else if (typeof _showToast === 'function') _showToast(tr('map_none_here'));
       return what;

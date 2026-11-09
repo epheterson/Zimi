@@ -1046,6 +1046,7 @@
   "map_offer_all": "Catálogo",
   "map_offer_started": "A transferir {map}. Acompanhe em Transferências.",
   "map_offer_overlaps": "Sobrepõe-se a {maps}",
+  "map_newer": "Há um {map} mais recente no catálogo",
   "map_where_i_am": "Localizar-me",
   "map_location_unavailable": "A sua localização não está disponível aqui.",
   "map_location_off_map": "Está fora deste mapa. Escolha um mapa daqui na lista.",

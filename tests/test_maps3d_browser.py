@@ -317,6 +317,40 @@ def test_low_over_a_map_its_roads_and_names_are_on_the_globe_and_far_out_they_ar
             br.close()
 
 
+def test_low_over_a_place_the_camera_rides_the_ground_while_the_clock_runs_and_jumps(
+    maplib,
+):
+    """The planet turns under a camera fixed in space: low down the view stays on the place (the terminator still sweeps)."""
+    from playwright.sync_api import sync_playwright
+
+    with sync_playwright() as pw:
+        br = pw.chromium.launch(args=GL_ARGS)
+        try:
+            ctx, pg, errors = _open(br, maplib)
+            _go_low(pg, PARIS[0], PARIS[1], 1.04)
+            _settled(pg)
+            centre = (
+                "() => { var c = AlmanacMaps._state().centre; return [c.lat, c.lon]; }"
+            )
+            sun = "() => _aeSubsolarPoint(_ae.scene).lon"
+            lat0, lon0 = pg.evaluate(centre)
+            sun0 = pg.evaluate(sun)
+            # A jump of six hours: the Sun's overhead point moves a quarter of the way round, the view does not.
+            pg.evaluate("() => _aeGoTo(_aeDisplayMs() + 6 * 3600 * 1000)")
+            pg.wait_for_timeout(2500)
+            lat1, lon1 = pg.evaluate(centre)
+            moved = abs(((pg.evaluate(sun) - sun0 + 540) % 360) - 180)
+            assert abs(lat1 - lat0) < 0.3 and abs(lon1 - lon0) < 0.3, (
+                (lat0, lon0),
+                (lat1, lon1),
+            )
+            assert moved > 60, moved
+            assert not errors, errors
+            ctx.close()
+        finally:
+            br.close()
+
+
 def test_low_over_ground_no_installed_map_holds_a_quiet_chip_offers_the_map_to_get(
     maplib,
 ):

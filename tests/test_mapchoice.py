@@ -174,3 +174,19 @@ def test_an_offer_says_which_installed_maps_it_overlaps():
     assert (
         mapchoice.overlap_fraction([170, -20, -170, -10], [175, -18, 180, -12]) == 1.0
     )
+
+
+def test_a_newer_edition_of_the_installed_map_is_told_once_and_never_offered_as_a_new_map():
+    box = [-5, 41, 10, 52]
+    france = _zim("maps_en_france", box, file="maps_en_france_2026-06.zim")
+    france["date"] = "2026-06-02"
+    newer = _offer("maps_en_france", box, 9, date="2026-10-01")
+    older = _offer("maps_en_france", box, 9, date="2026-01-01")
+    other = _offer("maps_en_spain", [-10, 35, 4, 44], 5, date="2026-10-01")
+    got = mapchoice.answer([france], *PARIS, catalog=[newer, other])
+    assert got["offers"] == [] and got["update"]["name"] == "maps_en_france"
+    assert got["update"]["newer_than"] == "2026-06-02"
+    # Nothing newer on offer, or the same date: nothing to say.
+    assert mapchoice.answer([france], *PARIS, catalog=[older, other])["update"] is None
+    # No map of France installed: the ordinary offers, no update line.
+    assert mapchoice.answer([], *PARIS, catalog=[newer])["update"] is None

@@ -1046,6 +1046,7 @@
   "map_offer_all": "कैटलॉग",
   "map_offer_started": "{map} डाउनलोड हो रहा है। डाउनलोड में देखें।",
   "map_offer_overlaps": "{maps} से मेल खाता है",
+  "map_newer": "कैटलॉग में {map} का नया संस्करण है",
   "map_where_i_am": "मुझे ढूँढें",
   "map_location_unavailable": "आपका स्थान यहाँ उपलब्ध नहीं है।",
   "map_location_off_map": "आप इस नक्शे से बाहर हैं। सूची से यहाँ का नक्शा चुनें।",
