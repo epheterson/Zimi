@@ -130,7 +130,29 @@ const PLAIN_ROWS = {
   sat_train_plane: 'a limit this layer chose, not a named thing',
   sat_gps_el: 'a limit this layer chose, not a named thing',
   sat_pass_max: 'a limit this layer chose, not a named thing',
-  sat_lone_starlinks: 'a limit this layer chose, not a named thing'
+  sat_lone_starlinks: 'a limit this layer chose, not a named thing',
+  launch_min_el: 'a figure the launch pages chose or took from a flight, not a named thing',
+  launch_dark_sun: 'a figure the launch pages chose or took from a flight, not a named thing',
+  launch_plume_km: 'a figure the launch pages chose or took from a flight, not a named thing',
+  launch_coast: 'a figure the launch pages chose or took from a flight, not a named thing',
+  launch_insertion: 'a figure the launch pages chose or took from a flight, not a named thing',
+  launch_burn_typical: 'a figure the launch pages chose or took from a flight, not a named thing',
+  launch_burn_shuttle: 'a figure the launch pages chose or took from a flight, not a named thing',
+  launch_burn_saturn: 'a figure the launch pages chose or took from a flight, not a named thing',
+  launch_falcon_maxq: 'a figure the launch pages chose or took from a flight, not a named thing',
+  launch_falcon_meco: 'a figure the launch pages chose or took from a flight, not a named thing',
+  launch_falcon_fairing: 'a figure the launch pages chose or took from a flight, not a named thing',
+  launch_falcon_entry: 'a figure the launch pages chose or took from a flight, not a named thing',
+  launch_falcon_land: 'a figure the launch pages chose or took from a flight, not a named thing',
+  launch_azimuth: 'a figure the launch pages chose or took from a flight, not a named thing',
+  launch_j2: 'a figure the launch pages chose or took from a flight, not a named thing',
+  launch_earth_rate: 'a figure the launch pages chose or took from a flight, not a named thing',
+  launch_mean_radius: 'a figure the launch pages chose or took from a flight, not a named thing',
+  launch_checkout: 'a figure the launch pages chose or took from a flight, not a named thing',
+  launch_raise: 'a figure the launch pages chose or took from a flight, not a named thing',
+  launch_spread: 'a figure the launch pages chose or took from a flight, not a named thing',
+  launch_release: 'a figure the launch pages chose or took from a flight, not a named thing',
+  launch_shells: 'a figure the launch pages chose or took from a flight, not a named thing'
 };
 const rowsSrc = grab(tbSrc, /var TB_CONST_ROWS = \{[\s\S]*?\n\};/, 'TB_CONST_ROWS');
 const rowKeys = [...rowsSrc.matchAll(/^\s+\['([a-z0-9_]+)', /gm)].map((m) => m[1]);

@@ -37,6 +37,12 @@ satellites-all-snapshot.json.gz (zimi/assets), the satellites' elements
   fetched when the release was cut and, where the Satellite data setting allows, again at runtime. Credited in the
   3D view as CelesTrak.
 
+launches-snapshot.json.gz (zimi/assets), the launch history
+  Jonathan C. McDowell, GCAT: General Catalog of Artificial Space Objects (planet4589.org/space/gcat), CC BY 4.0. Every
+  orbital launch with its pad, vehicle, payloads and orbit, and each batch's separation time and first orbit, from
+  launch.tsv, sites.tsv, lp.tsv, psatcat.tsv and satcat.tsv (python3 scripts/build_launches.py). Fetched when the
+  release was cut and, where the Satellite data setting allows, again at runtime. Credited in the Launches list.
+
 satellite-7.1.0.min.js (satellite.js-LICENSE.txt)
   satellite.js 7.1.0, MIT License: SGP4/SDP4 only. The build line is in the
   file's first comment.

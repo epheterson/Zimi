@@ -11,6 +11,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 - **Every satellite:** a button in the 3D Earth draws all 17,000 active satellites from CelesTrak's data (a snapshot ships; fresher data follows the Satellite data setting), filtered by Starlink, OneWeb, Iridium, GNSS, orbit and owner, with a card for each (owner, launch, altitude, speed) and the visible passes over your place, in the live sky too.
 
+- **The sky you remember:** a Launches button in the 3D Earth lists every orbital launch since 1957 by year, site and rocket (Jonathan McDowell's GCAT), opens one at its pad at lift-off, draws its ascent and the satellites it left (reconstructed from the launch's orbit, or exact with your own Space-Track login), and says whether you could have seen it from your place, in the live sky too.
+
 ## [1.15.4]
 
 ### Highlights

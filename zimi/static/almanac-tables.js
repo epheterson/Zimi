@@ -1942,7 +1942,30 @@ var TB_CONST_ROWS = {
       ['sat_min_rcs', AE_SATS_REF.minRcsM2, 0, 'm²', 'Zimi'],
       ['sat_train_gap', AE_SATS_REF.trainGapS, 0, 's', 'Zimi'],
       ['sat_train_plane', AE_SATS_REF.trainRaanDeg, 0, '°', 'Zimi'],
-      ['sat_gps_el', AE_SATS_REF.gpsMinEl, 0, '°', 'Zimi']
+      ['sat_gps_el', AE_SATS_REF.gpsMinEl, 0, '°', 'Zimi'],
+      // Launches (almanac-launches.js, almanac-launchflight.js): what a launch's ascent and the batch it leaves are drawn by.
+      ['launch_min_el', AE_LAUNCH_REF.minElDeg, 0, '°', 'Zimi'],
+      ['launch_dark_sun', AE_LAUNCH_REF.darkSunAlt, 0, '°', 'USNO'],
+      ['launch_plume_km', AE_LAUNCH_REF.plumeMinKm, 0, 'km', 'Zimi'],
+      ['launch_coast', AE_LAUNCH_REF.coastS, 0, 's', 'Zimi'],
+      ['launch_insertion', AE_LAUNCH_REF.insertionKm.join('–'), 0, 'km', 'Zimi'],
+      ['launch_burn_typical', AE_LAUNCH_REF.typicalBurnS.typical, 0, 's', 'Zimi (typical low-orbit ascents)'],
+      ['launch_burn_shuttle', AE_LAUNCH_REF.typicalBurnS.shuttle, 0, 's', 'Space Shuttle press kit'],
+      ['launch_burn_saturn', AE_LAUNCH_REF.typicalBurnS.saturn, 0, 's', 'Apollo 11 Mission Report'],
+      ['launch_falcon_maxq', AE_LAUNCH_REF.falcon.maxQS, 0, 's', 'SpaceX launch webcasts'],
+      ['launch_falcon_meco', AE_LAUNCH_REF.falcon.mecoS, 0, 's', 'SpaceX launch webcasts'],
+      ['launch_falcon_fairing', AE_LAUNCH_REF.falcon.fairingS, 0, 's', 'SpaceX launch webcasts'],
+      ['launch_falcon_entry', AE_LAUNCH_REF.falcon.entryBurnS.join('–'), 0, 's', 'SpaceX launch webcasts'],
+      ['launch_falcon_land', AE_LAUNCH_REF.falcon.landS, 0, 's', 'SpaceX launch webcasts'],
+      ['launch_azimuth', 'sin A = cos i / cos φ', 0, '', 'Sutton, Rocket Propulsion Elements'],
+      ['launch_j2', AE_LAUNCH_REF.j2.toExponential(5), 0, '', 'Earth Gravitational Model 1996'],
+      ['launch_earth_rate', AE_LAUNCH_REF.earthRateRadS.toExponential(7), 0, 'rad/s', 'IERS'],
+      ['launch_mean_radius', AE_LAUNCH_REF.meanRadiusKm, 4, 'km', 'IUGG'],
+      ['launch_checkout', AE_LAUNCH_REF.checkoutDays, 0, 'd', 'Zimi'],
+      ['launch_raise', AE_LAUNCH_REF.raiseKmPerDay, 0, 'km/d', 'Zimi'],
+      ['launch_spread', AE_LAUNCH_REF.spreadKm, 1, 'km', 'Zimi'],
+      ['launch_release', AE_LAUNCH_REF.releaseGapDeg, 3, '°', 'Zimi'],
+      ['launch_shells', Object.keys(AE_LAUNCH_REF.starlinkShells).filter(function (k) { return k !== 'other'; }).map(function (k) { return k + '° ' + AE_LAUNCH_REF.starlinkShells[k]; }).join(', '), 0, 'km', 'SpaceX regulatory filings']
     ];
   },
   k_physics: function () {
