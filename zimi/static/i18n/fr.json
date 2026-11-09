@@ -1045,6 +1045,7 @@
   "map_offer_world": "Monde entier",
   "map_offer_all": "Catalogue",
   "map_offer_started": "Téléchargement de {map}. À suivre dans Téléchargements.",
+  "map_offer_overlaps": "Recoupe {maps}",
   "map_where_i_am": "Me localiser",
   "map_location_unavailable": "Votre position n’est pas disponible ici.",
   "map_location_off_map": "Vous êtes en dehors de cette carte. Choisissez une carte d’ici dans la liste.",

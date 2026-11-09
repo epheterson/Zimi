@@ -24,6 +24,7 @@ from zimi import mapregions
 SAME_SIZE_RATIO = 1.3
 MAX_OFFERS = 3
 MAX_WORLD_OFFERS = 1
+OVERLAP_SHARE = 0.5  # an offer and an installed map share this much of the smaller one's ground: say so
 
 _DIGITS = re.compile(r"\d+")
 
@@ -48,6 +49,25 @@ def area(box):
     return abs(math.sin(math.radians(n)) - math.sin(math.radians(s))) * math.radians(
         span
     )
+
+
+def _spans(w, e):
+    """A box's longitudes as one or two plain intervals (the antimeridian splits one in two)."""
+    return [(w, e)] if w <= e else [(w, 180.0), (-180.0, e)]
+
+
+def overlap_fraction(a, b):
+    """The share of box ``b`` that box ``a`` covers, 0 to 1."""
+    sa, na, sb, nb = a[1], a[3], b[1], b[3]
+    lat = max(0.0, min(na, nb) - max(sa, sb))
+    if lat <= 0:
+        return 0.0
+    total = 0.0
+    for wa, ea in _spans(a[0], a[2]):
+        for wb, eb in _spans(b[0], b[2]):
+            total += max(0.0, min(ea, eb) - max(wa, wb))
+    whole = sum(e - w for w, e in _spans(b[0], b[2])) * (nb - sb)
+    return min(1.0, total * lat / whole) if whole > 0 else 0.0
 
 
 def size_tier(box):
@@ -120,7 +140,7 @@ def offered_maps(
         if not name or name in installed_names or not it.get("download_url"):
             continue
         box = it.get("bounds") or mapregions.bounds_for(name)
-        if not box:
+        if not box or mapregions.excludes(name, lat, lng):
             continue
         row = {
             "name": name,
@@ -139,6 +159,23 @@ def offered_maps(
     here.sort(key=lambda r: r[0])
     world.sort(key=lambda r: (r[1]["size_bytes"], r[0]))
     return [r[1] for r in here[:limit]], [r[1] for r in world[:world_limit]]
+
+
+def mark_overlaps(offers, zims):
+    """Say which installed maps an offer would mostly repeat or contain, so the offer is honest about what it adds:
+    ``overlaps`` is the titles of the installed maps (not of the whole planet) that share most of their ground with it."""
+    held = [z for z in zims or () if z.get("kind") == "map" and z.get("map_bounds")]
+    for row in offers:
+        row["overlaps"] = [
+            z.get("title") or z["name"]
+            for z in held
+            if not mapregions.is_world(z["map_bounds"])
+            and max(
+                overlap_fraction(row["bounds"], z["map_bounds"]),
+                overlap_fraction(z["map_bounds"], row["bounds"]),
+            )
+            >= OVERLAP_SHARE
+        ]
 
 
 def catalog_maps():
@@ -167,4 +204,5 @@ def answer(zims, lat, lng, catalog=None):
     )
     if installed:  # the planet is already here: no second planet on offer
         out["world"] = []
+    mark_overlaps(out["offers"] + out["world"], zims)
     return out

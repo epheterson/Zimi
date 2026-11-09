@@ -41,6 +41,26 @@ def _load():
         return table
 
 
+# Ground inside a map's rectangle that is not the map's: a country's box takes in the sea and the neighbours round it
+# (Japan's holds Vladivostok and Seoul, New Zealand's holds Fiji). Offers skip a map for a spot in one of these.
+# Boxes are [W, S, E, N], W > E across the antimeridian; deliberately coarse, to stop the wrong country being offered.
+NOT_COVERED = {
+    "osm-japan": [[122.0, 33.8, 129.2, 46.0], [129.2, 36.0, 138.0, 46.0]],
+    "maps_en_new-zealand": [[160.0, -29.0, -160.0, -5.0]],
+    "osm-australia-nz": [[154.0, -29.0, 180.0, -9.0]],
+    "maps_en_china": [[130.6, 42.0, 135.0, 45.2]],
+    "osm-china": [[130.6, 42.0, 135.0, 45.2]],
+}
+
+
+def excludes(name, lat, lng):
+    """True when a spot inside the map's rectangle is known not to be the map's ground."""
+    for w, s, e, n in NOT_COVERED.get(name, ()):
+        if s <= lat <= n and ((w <= lng <= e) if w <= e else (lng >= w or lng <= e)):
+            return True
+    return False
+
+
 def bounds_for(name):
     """``[W, S, E, N]`` for a catalog map name, or None."""
     return _load().get(name)

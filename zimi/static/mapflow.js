@@ -28,7 +28,7 @@ var ZimiMapHere = (function () {
     '@media (hover:hover){.mh-row:hover{background:rgba(255,255,255,.06)}}' +
     '.mh-name{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}' +
     '.mh-tag{margin-inline-start:8px;font-size:11px;color:var(--text3)}' +
-    '.mh-meta{display:inline-flex;align-items:center;gap:6px;color:var(--text3);font-size:12px;white-space:nowrap}' +
+    '.mh-note{display:block;font-size:11px;color:var(--text3);overflow:hidden;text-overflow:ellipsis}' +    '.mh-meta{display:inline-flex;align-items:center;gap:6px;color:var(--text3);font-size:12px;white-space:nowrap}' +
     '.mh-row.mh-busy{opacity:.5;pointer-events:none}';
   var cache = {};
 
@@ -82,8 +82,9 @@ var ZimiMapHere = (function () {
 
   function offerRow(o) {
     var source = o.source === 'streetzim' ? 'StreetZim' : 'Kiwix';
+    var overlaps = (o.overlaps || []).length ? '<span class="mh-note">' + esc(tH('map_offer_overlaps', { maps: o.overlaps.join(', ') })) + '</span>' : '';
     return '<button type="button" class="mh-row" data-mh-url="' + esc(o.download_url) + '" data-mh-title="' + esc(o.title) + '">' +
-      '<span class="mh-name">' + esc(o.title) + '<span class="mh-tag">' + source + '</span></span>' +
+      '<span class="mh-name">' + esc(o.title) + '<span class="mh-tag">' + source + (o.date ? ' &middot; ' + esc(String(o.date).slice(0, 7)) : '') + '</span>' + overlaps + '</span>' +
       '<span class="mh-meta">' + (o.size_bytes && typeof fmtBytes === 'function' ? esc(fmtBytes(o.size_bytes)) : '') + DOWN_SVG + '</span></button>';
   }
 

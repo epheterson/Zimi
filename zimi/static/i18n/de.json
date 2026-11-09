@@ -1045,6 +1045,7 @@
   "map_offer_world": "Weltweit",
   "map_offer_all": "Katalog",
   "map_offer_started": "{map} wird geladen. Zu sehen unter Downloads.",
+  "map_offer_overlaps": "Überschneidet sich mit {maps}",
   "map_where_i_am": "Mich orten",
   "map_location_unavailable": "Dein Standort ist hier nicht verfügbar.",
   "map_location_off_map": "Du bist außerhalb dieser Karte. Wähle eine Karte von hier aus der Liste.",

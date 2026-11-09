@@ -1045,6 +1045,7 @@
   "map_offer_world": "Worldwide",
   "map_offer_all": "Catalog",
   "map_offer_started": "Downloading {map}. Watch it in Downloads.",
+  "map_offer_overlaps": "Overlaps {maps}",
   "map_where_i_am": "Locate me",
   "map_location_unavailable": "Your location is not available here.",
   "map_location_off_map": "You are outside this map. Pick a map of here from the list.",

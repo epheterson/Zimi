@@ -135,3 +135,42 @@ def test_countries_across_the_antimeridian_hold_their_own_ground_and_not_the_far
         o["name"]
         for o in mapchoice.offered_maps(catalog, set(), 61.2, -149.9, limit=20)[0]
     }
+
+
+def _names(lat, lng):
+    return [
+        o["name"]
+        for o in mapchoice.offered_maps(mapchoice.catalog_maps(), set(), lat, lng)[0]
+    ]
+
+
+def test_no_wrong_country_is_offered_near_a_border_or_across_the_sea():
+    # Rectangles take in sea and neighbours: Japan's holds Vladivostok and Seoul, New Zealand's holds Fiji, China's Primorye.
+    vladivostok = _names(43.12, 131.89)
+    assert not {"osm-japan", "maps_en_china", "osm-china"} & set(vladivostok)
+    assert {"osm-russia", "maps_en_russia"} & set(vladivostok)
+    assert "osm-japan" not in _names(37.57, 126.98)  # Seoul
+    suva = _names(-18.14, 178.44)
+    assert suva[0] == "maps_en_fiji"
+    assert not {"maps_en_new-zealand", "osm-australia-nz"} & set(suva)
+    assert _names(35.68, 139.69)[0] == "osm-japan"  # Tokyo keeps its own
+    assert _names(-36.85, 174.76)[0] == "maps_en_new-zealand"  # Auckland
+    assert _names(61.22, -149.9)[0] == "osm-alaska"  # Anchorage
+
+
+def test_an_offer_says_which_installed_maps_it_overlaps():
+    belgium = _zim("belgium", [2.5, 49.5, 6.4, 51.5])
+    belgium["title"] = "Belgium"
+    catalog = [
+        _offer("maps_en_europe", [-25, 34, 45, 72], 5),
+        _offer("maps_en_netherlands", [3.3, 50.7, 7.3, 53.6], 1),
+        _offer("maps_en_japan", [122, 24, 146, 45.8], 1),
+    ]
+    got = mapchoice.answer([belgium], 52.37, 4.9, catalog=catalog)  # Amsterdam
+    rows = {o["name"]: o["overlaps"] for o in got["offers"]}
+    assert rows["maps_en_europe"] == ["Belgium"]  # holds the whole installed map
+    assert rows["maps_en_netherlands"] == []  # beside it, not over it
+    assert "maps_en_japan" not in rows
+    assert (
+        mapchoice.overlap_fraction([170, -20, -170, -10], [175, -18, 180, -12]) == 1.0
+    )

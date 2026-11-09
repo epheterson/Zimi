@@ -1045,6 +1045,7 @@
   "map_offer_world": "כל העולם",
   "map_offer_all": "קטלוג",
   "map_offer_started": "מוריד את {map}. אפשר לעקוב בהורדות.",
+  "map_offer_overlaps": "חופף ל־{maps}",
   "map_where_i_am": "אתרו אותי",
   "map_location_unavailable": "המיקום שלך אינו זמין כאן.",
   "map_location_off_map": "אתם מחוץ למפה הזו. בחרו מפה של כאן מהרשימה.",
