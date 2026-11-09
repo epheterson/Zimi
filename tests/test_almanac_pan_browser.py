@@ -134,6 +134,8 @@ def test_the_picture_does_not_flip_looking_straight_down_at_the_earth(station):
 
 def test_two_fingers_slide_the_view_across_the_station_and_pinch_zooms(station):
     pg, cdp, errors = station
+    # Landed first: a flight still under way sets the distance itself, and a pinch mid-flight zooms the flight, not the view.
+    pg.wait_for_function("() => { _ae.dirty = true; _aeKick(); return !_ae.fly; }", timeout=60_000, polling=200)
     pg.evaluate(
         "() => { _ae.pan = null; _ae.dist = AE_TARGETS.iss.min * 1.2; _ae.dirty = true; _aeKick(); }"
     )
