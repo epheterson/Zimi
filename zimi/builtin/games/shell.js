@@ -748,8 +748,10 @@
   // A loss is dignified: no motion over the board, the sheet settles in softly. A draw is plain. A tap, a key or the
   // sheet being asked for early skips the beat; under reduced motion there is none and the sheet is there at once.
   var BEAT_MS = 1800, LOSS_BEAT_MS = 1100, COUNT_MS = 600, MOMENT_OUT_MS = 300, SKIP_SETTLE_MS = 250, SKIP_GRACE_MS = 450, SCATTER = 14, SCATTER_REACH = 120, CONFETTI = 44, CONFETTI_COLOURS = 5, GOLDEN = 2.399963, HAPTIC = { win: [14, 70, 26], lose: [30] };
+  // A game that comes back to its end sheet on reload has had no tap yet: the browser refuses a buzz then and logs an error, so none is tried.
+  function touched() { var ua = root.navigator && root.navigator.userActivation; return !ua || ua.hasBeenActive; }
   function haptic(result) {
-    try { if (HAPTIC[result] && root.navigator && root.navigator.vibrate && !reducedMotion()) root.navigator.vibrate(HAPTIC[result]); } catch (e) { /* no haptics here */ }
+    try { if (HAPTIC[result] && root.navigator && root.navigator.vibrate && touched() && !reducedMotion()) root.navigator.vibrate(HAPTIC[result]); } catch (e) { /* no haptics here */ }
   }
   Shell.haptic = haptic;
   // A note, only when the player has turned Sound on (Settings), made only after a tap: one shared context, a soft sine with a short attack.

@@ -180,7 +180,7 @@
   Play.tone = function (freq, ms, gain) { if (window.ZimiShell && window.ZimiShell.tone) window.ZimiShell.tone(freq, ms, gain); };
   // A buzz for a hit (a number of ms or a pattern); phones that cannot buzz, and reduced motion, stay still.
   Play.haptic = function (pattern) {
-    try { if (navigator.vibrate && !Play.reducedMotion()) navigator.vibrate(pattern); } catch (e) { /* no haptics here */ }
+    try { if (navigator.vibrate && (!navigator.userActivation || navigator.userActivation.hasBeenActive) && !Play.reducedMotion()) navigator.vibrate(pattern); } catch (e) { /* no haptics here */ }
   };
 
   // Saved games (ZimiShell.persist): a state as plain JSON (functions such as a game's random source are dropped), and a
