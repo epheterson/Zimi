@@ -14,6 +14,10 @@ BAKE=${BAKE_BRANCH:-bake/1.16}
 BUILT='^zimi/builtin/[^/]+\.(zim|source)$'
 export ZIMI_COMMIT_OWN_ZIMS=1  # the bake commits the ZIMs it builds; topic branches may not
 
+# Editors and status lines leave .git/index.lock behind now and then: wait for a live one, clear one a minute old.
+LOCKF="$(git rev-parse --git-dir)/index.lock"
+for _ in $(seq 30); do [ -e "$LOCKF" ] || break; sleep 1; done
+[ -e "$LOCKF" ] && [ -n "$(find "$LOCKF" -mmin +1)" ] && rm -f "$LOCKF"
 [ -z "$(git status --porcelain --untracked-files=no)" ] || { echo "commit or stash first" >&2; exit 1; }
 git fetch -q --prune origin
 git config rerere.enabled true
