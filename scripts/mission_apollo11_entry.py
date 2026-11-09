@@ -62,11 +62,11 @@ def fit(y_entry, verbose=True):
 
     s = least_squares(
         resid,
-        [250.0, 2.0, 1.0],
-        bounds=([20.0, -3.2, 0.7], [600.0, 3.2, 1.3]),
+        [95.0, 3.0, 1.0],
+        bounds=([60.0, 0.0, 0.7], [130.0, 3.2, 1.3]),
         diff_step=1e-3,
         x_scale=[20.0, 0.2, 0.05],
-        max_nfev=60,
+        max_nfev=25,
     )
     if verbose:
         print(
