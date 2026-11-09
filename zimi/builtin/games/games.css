@@ -140,9 +140,9 @@ body:not(:has(> .ar-bar)) .ar-sheet-card h2::before { content: ""; display: inli
 .gs-row, .zc-row { display: flex; flex-wrap: nowrap; align-items: center; justify-content: space-between; gap: var(--sp-3); min-height: var(--target); }
 .gs-row > label, .zc-row > label { flex: 1 1 auto; font-size: var(--fs-small); font-weight: 600; color: var(--ink2); text-transform: none; letter-spacing: 0; }
 .gs-seg, .zc-seg { display: inline-flex; flex: 0 0 auto; }
-.gs-seg .ar-btn, .zc-seg .ar-btn { min-height: var(--target); padding: 0 var(--sp-3) 1px; border-radius: 0; margin-left: -1px; }
-.gs-seg .ar-btn:first-child, .zc-seg .ar-btn:first-child { border-radius: var(--radius) 0 0 var(--radius); margin-left: 0; }
-.gs-seg .ar-btn:last-child, .zc-seg .ar-btn:last-child { border-radius: 0 var(--radius) var(--radius) 0; }
+.gs-seg .ar-btn, .zc-seg .ar-btn { min-height: var(--target); padding: 0 var(--sp-3) 1px; border-radius: 0; margin-inline-start: -1px; }   /* logical: the first segment is at the right in Hebrew and Arabic */
+.gs-seg .ar-btn:first-child, .zc-seg .ar-btn:first-child { border-start-start-radius: var(--radius); border-end-start-radius: var(--radius); margin-inline-start: 0; }
+.gs-seg .ar-btn:last-child, .zc-seg .ar-btn:last-child { border-start-end-radius: var(--radius); border-end-end-radius: var(--radius); }
 .gs-seg .ar-btn:only-child, .zc-seg .ar-btn:only-child { border-radius: var(--radius); }
 /* A chosen segment is a selection, not the screen's one amber button: accent glow, accent line, ink text. */
 .gs-seg .ar-btn[aria-pressed="true"], .zc-seg .ar-btn[aria-pressed="true"] { background: var(--accent-glow); border-color: var(--accent); color: var(--ink); font-weight: 650; position: relative; z-index: 1; }
@@ -152,7 +152,7 @@ body:not(:has(> .ar-bar)) .ar-sheet-card h2::before { content: ""; display: inli
 .gs-row .gs-seg .ar-btn { min-width: 0; padding: 0 var(--sp-3); }
 .gs-seg.is-wrap { flex-wrap: wrap; gap: var(--sp-2); }
 .gs-seg.is-wrap .ar-btn { flex: 0 0 auto; }
-.gs-seg.is-wrap .ar-btn, .gs-seg.is-wrap .ar-btn:first-child, .gs-seg.is-wrap .ar-btn:last-child { margin-left: 0; border-radius: var(--radius); }
+.gs-seg.is-wrap .ar-btn, .gs-seg.is-wrap .ar-btn:first-child, .gs-seg.is-wrap .ar-btn:last-child { margin-inline-start: 0; border-radius: var(--radius); }
 
 /* A select or a search box in the New game pane: the row's label above, a 44px control, tokens only. */
 .gs-field { display: grid; grid-template-columns: minmax(0, 1fr); gap: var(--sp-2); }

@@ -13,7 +13,7 @@
 .oo-big { width: min(220px, 56vw); height: min(220px, 56vw); }
 .oo-mid { width: 96px; height: 96px; }
 .oo-qmark { font: 800 min(150px, 38vw)/1 var(--font); color: var(--accent); }
-.oo-order { list-style: decimal inside; margin: 0; padding: 0; display: grid; gap: 4px; width: 100%; text-align: left; }
+.oo-order { list-style: decimal inside; margin: 0; padding: 0; display: grid; gap: 4px; width: 100%; text-align: start; }
 .oo-order li { padding: 8px 12px; border: 1px solid var(--line); border-radius: 10px; font-size: var(--fs-body); }
 .oo-order .oo-now { border-color: var(--accent); background: var(--accent-glow); font-weight: 650; }
 .oo-order .oo-spoken { color: var(--ink2); text-decoration: line-through; text-decoration-color: var(--line-strong); }
@@ -24,15 +24,15 @@
 .oo-choice[aria-pressed="true"] { border-color: var(--accent); background: var(--accent-glow); box-shadow: var(--select); }
 .oo-options { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; width: 100%; box-sizing: border-box; }
 .oo-option { aspect-ratio: 1; padding: 10px; border: 1px solid var(--line); border-radius: 12px; background: var(--surface); cursor: pointer; touch-action: manipulation; }
-.oo-option:hover { border-color: var(--accent); }
+@media (hover: hover) { .oo-option:hover { border-color: var(--accent); } }
 .oo-option .oo-pic { width: 100%; height: 100%; }
 .oo-reveal { display: flex; flex-direction: column; align-items: center; gap: 4px; font-weight: 650; }
 .oo-win { color: var(--ink) !important; font-weight: 650; }
-.oo-scores { list-style: none; margin: 0; padding: 0; display: grid; gap: 4px; width: 100%; text-align: left; }
+.oo-scores { list-style: none; margin: 0; padding: 0; display: grid; gap: 4px; width: 100%; text-align: start; }
 .oo-scores li { display: grid; grid-template-columns: 1fr auto auto 2.4em; gap: 10px; align-items: center; padding: 6px 10px; border: 1px solid var(--line); border-radius: 10px; font-size: var(--fs-small); }
 .oo-scores b { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .oo-scores .oo-oddrow { border-color: var(--accent); background: var(--accent-glow); }
-.oo-scores .oo-pts { color: var(--ink2); }
-.oo-scores .oo-total { text-align: right; font: 700 var(--fs-body) var(--mono); }
+.oo-scores .oo-pts { color: var(--ink2); direction: ltr; unicode-bidi: isolate; }
+.oo-scores .oo-total { text-align: end; font: 700 var(--fs-body) var(--mono); }
 .oo-names { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin: var(--sp-2) 0; }
 .oo-names input { min-width: 0; }

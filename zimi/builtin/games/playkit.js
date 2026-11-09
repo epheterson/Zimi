@@ -61,7 +61,7 @@
     opener = document.activeElement;
     sheet.hidden = false;
     var f = sheet.querySelector(focusSel || 'button, input');
-    if (f) f.focus();
+    if (f) f.focus({ preventScroll: true });   // a tall sheet opens at its top: focus must not scroll its title away
   };
   Play.closeSheet = function (sheet) {
     sheet.hidden = true;
