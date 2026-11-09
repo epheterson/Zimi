@@ -3847,5 +3847,9 @@
   "alm_blurb_iapetus": "A moon with one dark side and one bright side, and a ridge round its equator.",
   "alm_blurb_triton": "Neptune's big moon, which orbits backwards and has geysers of nitrogen.",
   "alm_blurb_charon": "Pluto's giant moon, about half its size, locked face to face with Pluto.",
-  "alm_blurb_phobos": "A tiny, lumpy moon that circles Mars three times a day and is slowly falling toward it."
+  "alm_blurb_phobos": "A tiny, lumpy moon that circles Mars three times a day and is slowly falling toward it.",
+  "tb_kn_craft_models": "Spacecraft models",
+  "tb_kn_craft_sun": "Sun's light on a spacecraft (irradiance)",
+  "tb_kn_craft_shine": "Planetshine on a spacecraft (share of a facing surface)",
+  "alm_earth_webb_lit": "The mirror side is always in the sunshield's shade: it is shown lit."
 }

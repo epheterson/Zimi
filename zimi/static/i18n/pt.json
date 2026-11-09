@@ -3847,5 +3847,9 @@
   "alm_blurb_iapetus": "Uma lua com um lado escuro e outro brilhante, e uma crista em volta do equador.",
   "alm_blurb_triton": "A grande lua de Neptuno, que orbita ao contrário e tem géiseres de azoto.",
   "alm_blurb_charon": "A lua gigante de Plutão, com metade do seu tamanho, sempre de frente para ele.",
-  "alm_blurb_phobos": "Uma lua minúscula e irregular que dá três voltas por dia a Marte e cai lentamente para ele."
+  "alm_blurb_phobos": "Uma lua minúscula e irregular que dá três voltas por dia a Marte e cai lentamente para ele.",
+  "tb_kn_craft_models": "Modelos de naves",
+  "tb_kn_craft_sun": "Luz do Sol numa nave (irradiância)",
+  "tb_kn_craft_shine": "Luz planetária numa nave (parte de uma superfície virada para ele)",
+  "alm_earth_webb_lit": "O lado do espelho está sempre na sombra do protetor solar: aqui aparece iluminado."
 }

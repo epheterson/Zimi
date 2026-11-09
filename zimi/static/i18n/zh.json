@@ -3847,5 +3847,9 @@
   "alm_blurb_iapetus": "一颗一面暗、一面亮的卫星，赤道一圈还有一道山脊。",
   "alm_blurb_triton": "海王星的大卫星，逆向公转，还有氮气喷泉。",
   "alm_blurb_charon": "冥王星的巨大卫星，大小约为冥王星的一半，与冥王星始终面对面。",
-  "alm_blurb_phobos": "一颗小而凹凸不平的卫星，每天绕火星三圈，正缓缓坠向火星。"
+  "alm_blurb_phobos": "一颗小而凹凸不平的卫星，每天绕火星三圈，正缓缓坠向火星。",
+  "tb_kn_craft_models": "航天器模型",
+  "tb_kn_craft_sun": "太阳照在航天器上的光（辐照度）",
+  "tb_kn_craft_shine": "行星反照光（正对表面所受光的比例）",
+  "alm_earth_webb_lit": "镜面一侧始终处于遮阳罩的阴影中：此处以被照亮的样子呈现。"
 }

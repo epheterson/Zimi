@@ -3847,5 +3847,9 @@
   "alm_blurb_iapetus": "Ein Mond mit einer dunklen und einer hellen Seite und einem Grat rund um den Äquator.",
   "alm_blurb_triton": "Neptuns großer Mond, der rückwärts kreist und Geysire aus Stickstoff hat.",
   "alm_blurb_charon": "Plutos riesiger Mond, etwa halb so groß wie Pluto, der ihm immer dasselbe Gesicht zeigt.",
-  "alm_blurb_phobos": "Ein winziger, knolliger Mond, der Mars dreimal am Tag umkreist und langsam auf ihn zufällt."
+  "alm_blurb_phobos": "Ein winziger, knolliger Mond, der Mars dreimal am Tag umkreist und langsam auf ihn zufällt.",
+  "tb_kn_craft_models": "Raumfahrzeug-Modelle",
+  "tb_kn_craft_sun": "Sonnenlicht auf einem Raumfahrzeug (Bestrahlungsstärke)",
+  "tb_kn_craft_shine": "Planetenlicht auf einem Raumfahrzeug (Anteil einer zugewandten Fläche)",
+  "alm_earth_webb_lit": "Die Spiegelseite liegt immer im Schatten des Sonnenschilds: hier ist sie beleuchtet dargestellt."
 }

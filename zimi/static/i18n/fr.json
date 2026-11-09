@@ -3847,5 +3847,9 @@
   "alm_blurb_iapetus": "Une lune avec une face sombre et une face brillante, et une crête autour de l'équateur.",
   "alm_blurb_triton": "La grande lune de Neptune, qui tourne à l'envers et a des geysers d'azote.",
   "alm_blurb_charon": "La lune géante de Pluton, d'environ la moitié de sa taille, toujours face à lui.",
-  "alm_blurb_phobos": "Une minuscule lune bosselée qui tourne trois fois par jour autour de Mars et tombe lentement vers lui."
+  "alm_blurb_phobos": "Une minuscule lune bosselée qui tourne trois fois par jour autour de Mars et tombe lentement vers lui.",
+  "tb_kn_craft_models": "Modèles d'engins",
+  "tb_kn_craft_sun": "Lumière du Soleil sur un engin (éclairement)",
+  "tb_kn_craft_shine": "Lumière planétaire sur un engin (part d'une surface qui lui fait face)",
+  "alm_earth_webb_lit": "Le côté du miroir est toujours à l'ombre du pare-soleil : il est montré éclairé."
 }
