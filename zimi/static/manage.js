@@ -2527,7 +2527,7 @@ async function _setupSubmit(opts) {
   if (user && body.username) user.defaultValue = user.value;
   if (d.token) { _manageUser = body.username || 'admin'; _manageToken = d.token; _saveManageToken(d.token, true); }
   if (quiet) return true;
-  if (setup) { location.reload(); return true; }
+  if (setup) { _openAddonsStep(); return true; }
   var was = _manageAccess;
   _manageAccess = d.access || _manageAccess;
   _showToast(t('saved'));
@@ -4515,6 +4515,7 @@ var _NET_ID = 'ms-net';
 var _NET_CONTROLS = {
   update_check: _APP_UPDATE_CHECK_ID,
   voices: 'ms-voices',
+  addons: 'ms-addons',
   sharing: 'ms-mirror-status',
   auto_update: 'library'
 };
@@ -4576,6 +4577,118 @@ async function _renderNetSection() {
   var open = !!el.querySelector('details[open]');
   el.innerHTML = _netHtml(d);
   if (open) el.querySelector('details').open = true;
+}
+
+// ── Add-ons (addons.py) ──
+// What is fetched once, after setup, instead of riding in the image: one row each, an icon, a name, one line, its
+// size and Add. The same list is the second step of the first-run card and a block in Settings > Server. Rows are
+// painted from /manage/addons; while one installs the list polls once a second and the row shows its bar.
+var _ADDON_ICONS = {
+  browser: '<circle cx="12" cy="12" r="9"/><path d="M3 12h18M12 3c3 3.4 3 14.6 0 18M12 3c-3 3.4-3 14.6 0 18"/>',
+  singlefile: '<path d="M6 3h8l4 4v14H6z"/><path d="M14 3v4h4"/>',
+  video: '<rect x="3" y="5" width="18" height="14" rx="2"/><path d="M10 9l5 3-5 3z"/>',
+  warc2zim: '<path d="M4 8h16v12H4zM3 4h18v4H3zM10 12h4"/>',
+  voices: '<path d="M4 9v6h4l5 4V5L8 9zM16.5 8.5a5 5 0 010 7"/>'
+};
+var _ADDONS_HOST_ID = 'ms-addons';
+var _addonsTimer = null;
+var _addonsOpts = null;
+function _addonProgress(p) {
+  return p.total ? Math.min(99, Math.round(100 * p.done / p.total)) : 0;
+}
+function _addonIconHtml(key) {
+  return '<span class="set-row-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">' + _ADDON_ICONS[key] + '</svg></span>';
+}
+function _addonActHtml(a, st) {
+  var p = a.progress;
+  if (p && p.active) {
+    return '<span class="addon-act"><span class="addon-pct">' + _addonProgress(p) + '%</span>' +
+      '<button class="lang-banner-btn" onclick="_addonCancel()">' + tH('cancel') + '</button></span>';
+  }
+  if (a.ready) {
+    return '<span class="addon-act addon-ready">' + tH('addon_ready') +
+      (a.own ? ' <button class="lang-banner-btn" onclick="_addonRemove(\'' + a.key + '\')">' + tH('addon_remove') + '</button>' : '') + '</span>';
+  }
+  var busy = st.addons.some(function(x) { return x.progress && x.progress.active; });
+  var blocked = st.mode === 'never' || !st.supported;
+  return '<span class="addon-act"><button class="lang-banner-btn"' + (busy || blocked ? ' disabled' : '') +
+    ' onclick="_addonInstall(\'' + a.key + '\')">' + tH('addon_add') + ' · ' + esc(fmtBytes(a.size)) + '</button></span>';
+}
+function _addonRowHtml(a, st) {
+  var p = a.progress, failed = p && !p.active && p.error && p.error !== 'cancelled';
+  var needs = a.requires.length && !a.ready
+    ? '<span class="share-row-desc">' + tH('addon_needs', { name: a.requires.map(function(k) { return t('addon_' + k); }).join(', ') }) + '</span>' : '';
+  return '<div class="share-row set-row addon-row" data-addon="' + a.key + '">' + _addonIconHtml(a.key) +
+    '<span class="share-row-text"><span class="share-row-title">' + tH('addon_' + a.key) + '</span>' +
+    '<span class="share-row-desc">' + tH('addon_' + a.key + '_d') + '</span>' + needs +
+    (failed ? '<span class="share-row-desc addon-failed">' + tH('addon_failed') + '</span>' : '') + '</span>' +
+    _addonActHtml(a, st) +
+    (p && p.active ? '<div class="dl-progress" role="progressbar" aria-valuemin="0" aria-valuemax="100"><div class="dl-progress-bar" style="width:' + _addonProgress(p) + '%"></div></div>' : '') + '</div>';
+}
+// The Dictionary's voices keep their own download and setting: this row only leads to them.
+function _addonVoicesRowHtml() {
+  return '<div class="share-row set-row addon-row">' + _addonIconHtml('voices') +
+    '<span class="share-row-text"><span class="share-row-title">' + tH('addon_voices') + '</span>' +
+    '<span class="share-row-desc">' + tH('addon_voices_d') + '</span></span>' +
+    '<span class="addon-act"><button class="lang-banner-btn" onclick="_openSettingsAt(\'ms-voices\')">' + tH('net_change') + '</button></span></div>';
+}
+function _addonsModeHtml(st) {
+  var opts = st.choices.map(function(m) { return _appUpdateOption(m, t('addon_mode_' + m), m === st.mode); }).join('');
+  var note = st.locked ? (st.locked === 'offline' ? t('net_offline') : t('env_controlled', { v: st.env })) : '';
+  return '<div class="voice-foot"><label for="addons-mode">' + tH('addon_mode') + '</label>' +
+    '<select id="addons-mode"' + (st.locked ? ' disabled' : '') + ' onchange="_addonsSetMode(this.value)">' + opts + '</select></div>' +
+    (note ? '<div class="ms-hint">' + esc(note) + '</div>' : '');
+}
+// opts.setup: the first-run step (only what is missing; no setting, no voices row, no remove).
+function _addonsListHtml(st, opts) {
+  var setup = !!(opts && opts.setup);
+  var rows = st.addons.filter(function(a) { return !setup || !a.ready; });
+  return rows.map(function(a) { return _addonRowHtml(a, st); }).join('') +
+    (setup ? '' : _addonVoicesRowHtml() + _addonsModeHtml(st));
+}
+async function _addonsFetch(body) {
+  var res = await manageFetch('/manage/addons', body
+    ? { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) } : {});
+  var d = await res.json().catch(function() { return {}; });
+  if (!res.ok) throw new Error(d.error || 'failed');
+  return d;
+}
+// Paint into the host element and keep polling while one installs.
+async function _renderAddons(opts) {
+  _addonsOpts = opts;
+  var hostId = (opts && opts.host) || _ADDONS_HOST_ID;
+  var st = null;
+  try { st = await _addonsFetch(); } catch (e) {}
+  var host = document.getElementById(hostId);
+  if (!host || !st) return st;
+  host.innerHTML = st.supported ? _addonsListHtml(st, opts) : '<div class="ms-hint">' + tH('net_unavailable') + '</div>';
+  clearTimeout(_addonsTimer);
+  if (st.addons.some(function(a) { return a.progress && a.progress.active; })) {
+    _addonsTimer = setTimeout(function() { _renderAddons(opts); }, 1000);
+  }
+  return st;
+}
+async function _addonInstall(key) {
+  try { await _addonsFetch({ install: key }); } catch (e) { _showToast(t('addon_failed')); }
+  _renderAddons(_addonsOpts);
+}
+async function _addonCancel() { try { await _addonsFetch({ cancel: true }); } catch (e) {} _renderAddons(_addonsOpts); }
+async function _addonRemove(key) { try { await _addonsFetch({ remove: key }); } catch (e) {} _renderAddons(_addonsOpts); }
+async function _addonsSetMode(mode) {
+  try { await _addonsFetch({ mode: mode }); } catch (e) { _showToast(t('env_controlled', { v: 'ZIMI_ADDONS' })); }
+  _renderAddons(_addonsOpts);
+}
+// First run, after who-can-manage: what else can be added right now. Nothing to offer (the host has it all, or
+// this install gets no add-ons) goes straight on. Done reloads into the library.
+async function _openAddonsStep() {
+  var st = null;
+  try { st = await _addonsFetch(); } catch (e) {}
+  if (!st || !st.supported || !st.addons.some(function(a) { return !a.ready; })) { location.reload(); return; }
+  var card = document.getElementById('setup-card');
+  card.innerHTML = '<h2>' + tH('addons_title') + '</h2><p class="subtitle">' + tH('addons_hint') + '</p>' +
+    '<div id="setup-addons"></div><div class="btn-row"><button class="btn-primary" onclick="location.reload()">' + tH('done') + '</button></div>';
+  document.getElementById('setup-overlay').classList.add('open');
+  _renderAddons({ host: 'setup-addons', setup: true });
 }
 
 // The server-wide apps switch. The element is looked up after the fetch
@@ -4752,15 +4865,18 @@ function _msServerHtml() {
 
   // Internet use, last on the tab: everything this server can fetch, and
   // which of it happens without anyone asking.
+  var addonsSec = '<div class="ms-section-label">' + tH('addons_title') + '</div>' +
+    '<div id="' + _ADDONS_HOST_ID + '">' + tH('loading') + '</div>';
   var netSec = '<div class="ms-section-label">' + tH('net_section') + '</div>' +
     '<div id="' + _NET_ID + '">' + tH('loading') + '</div>';
 
   // Sharing, Downloads, Storage, My Data / Server Backups, App Updates, Hot
   // ZIMs + cache, the environment, and Internet use last. Who can manage
   // Zimi and the API token are under Access.
-  var h = [sharingSec, downloadsSec, storageSec, backupSec, updatesSec, hotSec, envSec, netSec].join(sep);
+  var h = [sharingSec, downloadsSec, storageSec, backupSec, updatesSec, hotSec, addonsSec, envSec, netSec].join(sep);
   _renderEnvSection();
   _renderNetSection();
+  _renderAddons();
   // These populate elements by id, so they must run AFTER this HTML is in
   // the DOM — not mid-string. Deferring one tick also lets the cached
   // sharing rows paint first, so the section never flashes empty.

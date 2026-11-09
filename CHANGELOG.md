@@ -53,6 +53,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 - The beach scene has clouds that glow after sunset where the Sun still reaches them, and a helicopter with blinking lights.
 - A magnifier on a planet's tip in the solar system opens the sky aimed at it.
+- **Lighter Docker image:** under 1 GB compressed (was about 2.3 GB unpacked, now about 0.7 GB). The browser, SingleFile, video tools and warc2zim are add-ons, added once from the first-run list or Settings > Server > Add-ons (Ask first, Automatically or Never).
 
 ## [1.15.4]
 

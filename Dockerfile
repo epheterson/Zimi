@@ -1,19 +1,11 @@
-# The warc2zim SIDECAR (the alive engine's conversion step) requires Python
-# >=3.14,<3.15 while the app itself must stay on 3.11 — libtorrent's wheels
-# stop at cp313. Two interpreters, one image: 3.14 rides along in /opt/py314
-# via a stage copy (same debian/glibc base, ABI-compatible), and the importer
-# finds it as python3.14 on PATH. It exists ONLY for the sidecar venv.
-FROM python:3.14-slim AS py314
-
-FROM python:3.11-slim
-COPY --from=py314 /usr/local /opt/py314
-# END of PATH, never a symlink: a venv records its creating interpreter's
-# directory as `home`, and a symlink in /usr/local/bin would point that at a
-# directory with no 3.14 stdlib — every venv python then dies at 'encodings'.
-# Appending keeps python3 = 3.11 (the app) while python3.14 resolves to the
-# real binary, whose venvs find their stdlib where it actually is.
-ENV PATH="${PATH}:/opt/py314/bin"
-RUN python3.14 --version && python3 --version
+# Zimi's image is the lean part: search, reading, the Almanac, Games, MCP and the library. Everything
+# bigger and optional is an ADD-ON (zimi/addons.py) fetched once into the /config volume, under the
+# Ask first / Automatically / Never setting, with its checksum checked: the browser for Create
+# (Playwright + Chromium), SingleFile (Node), video (yt-dlp + ffmpeg) and warc2zim (uv + Python 3.14).
+# The Dictionary's Piper and Kokoro voices install themselves into /config on the first voice download
+# (zimi/voices.py). The 1.15.4 image was ~2.3 GB; CI fails this one over 1 GB compressed.
+# Pinned to trixie: the Chromium libraries below are named for it (the t64 names).
+FROM python:3.11-slim-trixie
 
 COPY requirements.txt .
 # requirements.txt pins libtorrent 2.0 (the in-process BT engine, ON by
@@ -22,133 +14,22 @@ COPY requirements.txt .
 # no apt/dist-packages games and no separate install step.
 RUN pip install --no-cache-dir -r requirements.txt
 
-# The rendered capture engine: Playwright plus a real headless Chromium, run as
-# a CHILD PROCESS of the server — never a second container, and never through a
-# docker socket. It is its own layer, before the source is copied, so editing
-# Zimi's code does not re-download a browser; it costs roughly 400MB in the
-# image, which is the price of capturing pages that build themselves in
-# JavaScript.
-#
-# PLAYWRIGHT_BROWSERS_PATH matters: the default install location is the
-# INSTALLING user's home (root's), and this container runs as `zimi`. A
-# world-readable path is what makes the browser findable at runtime.
-#
-# --with-deps is the apt half — the fonts and shared libraries Chromium needs
-# on a slim base. Inside the container Chromium cannot use its own sandbox
-# (Docker's seccomp profile blocks the user namespaces it needs); the renderer
-# detects that and steps down for exactly that launch, saying so in the log.
-# --only-shell: Chromium's headless build, which is all capture ever runs (no window is
-# shown); the full browser was half the image.
-ENV PLAYWRIGHT_BROWSERS_PATH=/ms-playwright
-RUN pip install --no-cache-dir "playwright>=1.49" \
- && playwright install --with-deps --only-shell chromium \
- && chmod -R a+rx /ms-playwright \
- && rm -rf /var/lib/apt/lists/*
-
-# Node, and the SingleFile CLI that needs it (AGPL, so installed here as a
-# separate program Zimi calls as a subprocess, exactly as warc2zim and zimit
-# already are).
-#
-#   single-file-cli  the reference "save this page as one file". Its output is
-#                    the sturdiest capture Zimi can make: every asset a data:
-#                    URI, so nothing can lazy-load, re-fetch, or fail to
-#                    resolve.
-#
-# browsertrix-behaviors is not installed here: Zimi ships its unmodified 0.15.0
-# in zimi/assets/browsertrix-behaviors/ (see THIRD_PARTY_NOTICES.md).
-#
-# Its own layer, before the source copy, so editing Zimi does not reinstall
-# Node. Chromium comes from the Playwright layer above.
-#
-# From the official tarball at a pinned version, verified against the checksum
-# Node publishes. The version is not arbitrary and both bounds were learned the
-# hard way: Debian's own package is 20.19.2 and the SingleFile CLI refuses to
-# import below 22.4.0 ("WebSocket is not available"); at 22.20.0 it imports and
-# then dies mid-capture on "CloseEvent is not defined", which is a global that
-# arrives in 24. 24.19.0 is the current LTS and the floor that actually works.
-# Pinning also means a rebuild lands on the version that was tested rather than
-# whatever is current.
-ARG NODE_VERSION=24.19.0
+# What the add-ons need from the system, which cannot be apt-installed at runtime (the server runs as
+# the unprivileged `zimi`): the shared libraries and fonts of Playwright's headless Chromium (its
+# `--with-deps` list for debian13, minus xvfb and the fonts a headless shell never draws), libmagic1
+# (warc2zim's python-magic), espeak-ng (the Dictionary's voice with no download), ca-certificates
+# (add-on downloads over https). About 120 MB unpacked; the browser itself (285 MB) is the add-on.
 RUN apt-get update \
- && apt-get install -y --no-install-recommends ca-certificates curl xz-utils \
- && rm -rf /var/lib/apt/lists/*
-RUN set -eux; \
-    arch="$(dpkg --print-architecture)"; \
-    case "$arch" in \
-      amd64) node_arch=x64 ;; \
-      arm64) node_arch=arm64 ;; \
-      *) echo "unsupported arch: $arch" >&2; exit 1 ;; \
-    esac; \
-    tarball="node-v${NODE_VERSION}-linux-${node_arch}.tar.xz"; \
-    base="https://nodejs.org/dist/v${NODE_VERSION}"; \
-    curl -fsSLO "${base}/${tarball}"; \
-    curl -fsSL "${base}/SHASUMS256.txt" -o SHASUMS256.txt; \
-    grep " ${tarball}\$" SHASUMS256.txt | sha256sum -c -; \
-    tar -xJf "${tarball}" -C /usr/local --strip-components=1 \
-        --exclude=CHANGELOG.md --exclude=LICENSE --exclude=README.md; \
-    rm -f "${tarball}" SHASUMS256.txt; \
-    node --version; \
-    npm install -g single-file-cli; \
-    npm cache clean --force
-
-# yt-dlp is the video engine, and in the image it is not optional. It is a soft
-# dependency in the package — a laptop install of Zimi that never captures a
-# video should not carry it — but the Create page in THIS container offers
-# "Video" as a mode, and a mode the server cannot honour is a form that lies.
-# Absent, every video capture died with "yt-dlp is not installed"; a few
-# megabytes of pure Python is the whole cost of the offer being true. Its own
-# layer, and the last of the dependency layers, because it is also the one that
-# will be bumped most often: extractors break when sites change.
-RUN pip install --no-cache-dir "yt-dlp>=2024.1.1"
-
-# The warc2zim sidecar (Create: import WARC/WACZ, and the alive engine's exit),
-# built here instead of on the first import, so those engines work with no
-# network. It lives outside the /config volume (zimi/importer.py looks in
-# /opt/zimi-sidecars when the data folder has none of its own), under Python
-# 3.14 (the one warc2zim needs), owned by `zimi` so the one-time script patches
-# Zimi applies to it can write. The version is pinned to the one the patches
-# were written against; the marker is what makes Zimi treat it as installed.
-# Its own layer, before the source copy: a code deploy never rebuilds it.
-ARG WARC2ZIM_VERSION=2.3.1
-RUN useradd -m -u 1000 zimi \
- && python3.14 -m venv /opt/zimi-sidecars/warc2zim \
- && /opt/zimi-sidecars/warc2zim/bin/pip install --no-cache-dir "warc2zim==${WARC2ZIM_VERSION}" \
- && printf '{"warc2zim": "%s", "python": "3.14"}\n' "${WARC2ZIM_VERSION}" \
-      > /opt/zimi-sidecars/warc2zim/.zimi-sidecar.json \
- && chown -R zimi:zimi /opt/zimi-sidecars
-
-# libmagic1 is the warc2zim sidecar's one system dependency (python-magic
-# binds it at import). Without it every WARC conversion — the alive engine's
-# exit — dies before reading a byte. Its own layer, after the browser layer,
-# so it never invalidates the 400MB Chromium download above.
-# ffmpeg rides in the same layer: without it yt-dlp cannot merge YouTube's
-# split video and audio (everything above 360p) and cannot move a fragmented
-# file's index to the front, which is what lets a browser play it from the
-# first byte range instead of after a full download (2026-09-03).
-RUN apt-get update \
- && apt-get install -y --no-install-recommends libmagic1 ffmpeg \
+ && apt-get install -y --no-install-recommends \
+      ca-certificates libmagic1 espeak-ng \
+      libasound2t64 libatk-bridge2.0-0t64 libatk1.0-0t64 libatspi2.0-0t64 libcairo2 libcups2t64 \
+      libdbus-1-3 libdrm2 libgbm1 libglib2.0-0t64 libnspr4 libnss3 libpango-1.0-0 libx11-6 libxcb1 \
+      libxcomposite1 libxdamage1 libxext6 libxfixes3 libxkbcommon0 libxrandr2 \
+      fonts-liberation fonts-noto-color-emoji fonts-wqy-zenhei \
  && rm -rf /var/lib/apt/lists/*
 
-# The Dictionary's Say (zimi/voices.py): espeak-ng is the voice every language
-# has with no download, and Piper the clearer one, for the languages someone
-# fetches a voice for. Both are separate programs Zimi runs as children
-# (espeak-ng and Piper are GPL-3, kept beside Zimi as ffmpeg is). piper-tts
-# brings onnxruntime and numpy: about 170 MB installed, espeak-ng about 20 MB.
-# Their own layer, before the source copy, so a code deploy stays fast.
-RUN apt-get update \
- && apt-get install -y --no-install-recommends espeak-ng \
- && rm -rf /var/lib/apt/lists/*
-RUN pip install --no-cache-dir "piper-tts>=1.8,<2"
-# Kokoro (kokoro-onnx, MIT; the Kokoro-82M weights are Apache-2.0 and a
-# download), the natural voices for English, Spanish, French, Italian,
-# Portuguese, Hindi and Chinese, with misaki's phonemes for Chinese and
-# English (Apache-2.0). Run by zimi/voicehelper.py as a child like Piper,
-# never imported (its phonemizer loads espeak-ng). It shares onnxruntime and
-# numpy with Piper: about 125 MB more, mostly jieba's and pypinyin's
-# dictionaries. English takes misaki's lexicon and num2words (LGPL, 1.4 MB),
-# not misaki[en]: that extra brings spaCy and torch, 776 MB, for a tagger a
-# dictionary's lone word does not need.
-RUN pip install --no-cache-dir "kokoro-onnx>=0.6,<0.7" "misaki[zh]>=0.9.4,<0.10" "num2words>=0.5.14,<0.6"
+# The user that runs the server; /config is its data folder, where the add-ons live.
+RUN useradd -m -u 1000 zimi
 
 WORKDIR /app
 # Owned by zimi as it lands: a chown -R afterwards wrote the whole package again as a second layer.

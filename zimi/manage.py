@@ -3464,12 +3464,16 @@ def _create_engine(value):
     # a form that lies.
     if name == "rendered" and not _create_browser_ready():
         raise ValueError(
-            "the rendered engine needs a browser this server does not have " "installed"
+            _addon_refusal(
+                "the rendered engine needs a browser this server does not have installed", "browser"
+            )
         )
     if name == "singlefile" and not _create_singlefile_ready():
         raise ValueError(
-            "the singlefile engine needs the SingleFile CLI, and this server "
-            "does not have it installed"
+            _addon_refusal(
+                "the singlefile engine needs the SingleFile CLI, and this server does not have it installed",
+                "singlefile",
+            )
         )
     if name == "zimit" and not _create_allows_private():
         # Its browser is in Docker, out of the capture proxy's reach.
@@ -3483,10 +3487,28 @@ def _create_engine(value):
         )
     if name == "alive" and not _create_alive_ready():
         raise ValueError(
-            "the alive engine needs both a browser and the warc2zim sidecar, "
-            "and this server is missing at least one of them"
+            _addon_refusal(
+                "the alive engine needs both a browser and the warc2zim sidecar, "
+                "and this server is missing at least one of them",
+                "browser",
+                "warc2zim",
+            )
         )
     return name
+
+
+def _addon_refusal(message, *keys):
+    """Words for a capture mode this server lacks. When an add-on supplies it: under Automatically the first missing
+    one starts installing now (the job is refused, not held for a download), otherwise the words say where to add it."""
+    from zimi import addons, outbound
+
+    missing = [k for k in keys if not addons.available(k)]
+    if not missing or not addons.supported() or addons.POLICY.mode()[0] == outbound.NEVER:
+        return message
+    if addons.POLICY.mode()[0] == outbound.AUTO:
+        addons.install(missing[0], None)
+        return message + "; adding it now, try again when it is ready"
+    return message + "; add it in Settings > Server > Add-ons"
 
 
 def _create_blocking_engine(engine):
@@ -5955,6 +5977,12 @@ def handle_manage_get(handler, parsed, params):
 
         return handler._json(200, _sats.setting())
 
+    elif parsed.path == "/manage/addons":
+        # Add-ons (addons.py): what can be added, what is there, the install under way, the setting.
+        from zimi import addons as _addons
+
+        return handler._json(200, _addons.status())
+
     elif parsed.path == "/manage/voices":
         # "Voices for Dictionary": the setting and every pinned Piper voice.
         from zimi import voices as _voices
@@ -7392,6 +7420,36 @@ def handle_manage_post(handler, parsed, data):
         if err:
             return handler._json(500, {"error": "Could not save the setting"})
         return handler._json(200, _hd.status())
+
+    elif parsed.path == "/manage/addons":
+        # {"mode": "ask"|"auto"|"never"} saves the setting (ZIMI_ADDONS or ZIMI_OFFLINE wins); {"install": key}
+        # starts one in the background; {"cancel": true} stops it; {"remove": key} takes one away.
+        from zimi import addons as _addons
+
+        if data.get("install"):
+            ok, err = _addons.install(str(data["install"]), activity_actor(handler))
+            if err == "unknown":
+                return handler._json(404, {"error": "No such add-on"})
+            if err in ("never", "unsupported", "busy"):
+                return handler._json(409, {"error": "Cannot add it here" if err != "busy" else "Another add-on is installing"})
+            return handler._json(200, _addons.status())
+        if data.get("cancel"):
+            _addons.cancel()
+            return handler._json(200, _addons.status())
+        if data.get("remove"):
+            if not _addons.remove(str(data["remove"])):
+                return handler._json(409, {"error": "Nothing to remove"})
+            return handler._json(200, _addons.status())
+        _mode, err = _addons.POLICY.set(data.get("mode"))
+        if err == "invalid":
+            return handler._json(400, {"error": "mode is ask, auto or never"})
+        if err == outbound.LOCKED_OFFLINE:
+            return handler._json(403, {"error": "Zimi is offline (ZIMI_OFFLINE)"})
+        if err == outbound.LOCKED_ENV:
+            return handler._json(403, {"error": "Add-ons are controlled by the %s env var" % _addons.ENV})
+        if err:
+            return handler._json(500, {"error": "Could not save the setting"})
+        return handler._json(200, _addons.status())
 
     elif parsed.path == "/manage/satellites/refresh":
         # The Earth view's "Get fresh data": one CelesTrak fetch, waited for,

@@ -1554,6 +1554,10 @@ def _init():
         global _auto_update_enabled, _auto_update_freq, _auto_update_skips
         _auto_update_enabled, _auto_update_freq = _load_auto_update_config()
         _auto_update_skips = _load_auto_update_skips()
+    if bundled("addons"):  # installed add-ons (browser, SingleFile, video) onto PATH / sys.path
+        from zimi import addons
+
+        addons.activate()
 
 
 def _migrate_data_files():
