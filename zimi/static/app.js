@@ -20766,6 +20766,7 @@ function _prefTake(d) {
 }
 // Settings that changed underneath this page (the account's, or another tab's):
 // what shows them is drawn again.
+var PREF_APPLIED_EVENT = 'zimi-pref-applied';
 function _prefApplied(keys) {
   var has = function (k) { return keys.indexOf(k) >= 0; };
   if (has(SK.UI_LANG)) {
@@ -20802,6 +20803,8 @@ function _prefApplied(keys) {
   // The Almanac, if it is loaded, draws what changed (almanac.js _almPrefsApplied; in the ZIM it hears the
   // same change as a storage event instead).
   if (typeof _almPrefsApplied === 'function') try { _almPrefsApplied(keys); } catch (e) {}
+  // Scripts loaded on first use (manage.js) hear it as an event.
+  document.dispatchEvent(new CustomEvent(PREF_APPLIED_EVENT, { detail: keys }));
   if (has(SK.PREF_FLAVOR)) {
     var fl = document.getElementById('ms-flavor-seg');
     if (fl) fl.innerHTML = _flavorSegInner();

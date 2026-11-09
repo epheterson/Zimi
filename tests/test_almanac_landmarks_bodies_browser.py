@@ -153,15 +153,13 @@ def test_landmarks_on_every_body_and_a_flight_to_a_rover(served):
             )
             pg.evaluate("_aePreset('mars')")
             pg.wait_for_function(
-                "() => { _ae.dirty = true; _aeKick(); return !_ae.fly && !!_ae.gl.planets.mars.pos; }",
+                "() => { _ae.dirty = true; _aeKick(); return !_ae.fly && !!_ae.gl.planets.mars.pos && !!_ae.gl.planets.ceres.pos; }",
                 timeout=60_000,
                 polling=200,
-            )
+            )  # Ceres is placed once its table has come, so the grid check stands on it like on the others
             got = pg.evaluate(VERTEX_VS_LANDMARK, {"bodies": BODIES, "grid": GRID})
             for key in BODIES:
                 g = got[key]
-                if key == "ceres" and not isinstance(g, dict):
-                    continue  # Ceres has no table to stand on before its date's data is in
                 assert isinstance(g, dict), (key, g)
                 assert g["off"] < 1e-6, (key, g)  # the grid is on the sphere's vertices
                 assert g["worst"] < 1e-5, (key, g)
@@ -256,11 +254,11 @@ def test_landmarks_on_every_body_and_a_flight_to_a_rover(served):
             )
             card = pg.inner_text("#ae-card")
             assert (
-                "Olympus Mons" in card
-                and "Mountains" in card
-                and "km across" in card
+                "Olympus Mons" in card and "Mountains" in card and "km across" in card
             ), card
-            assert not pg.query_selector("#ae-lm-fly")  # a site's card has no way there of its own
+            assert not pg.query_selector(
+                "#ae-lm-fly"
+            )  # a site's card has no way there of its own
             pg.evaluate("_aeLmFly(_ae.lm.body, _ae.lm.row)")
             pg.wait_for_function(
                 "() => { _ae.dirty = true; _aeKick(); return !_ae.fly; }",

@@ -61,14 +61,28 @@ var STR = strings({ title: 'Reddot', all: 'All', more: 'More', top: 'Top', new: 
 var _zims = [], _zim = '', _sub = '', _sort = 'top', _page = 1, _pages = 0, _q = '', _busy = false, _home = false;
 // The subreddits you follow, kept in this browser: "zim|subreddit" each.
 // Your home is their top posts in one list.
+var FOLLOW_KEY = 'reddot_follow';
 var _follow = [];
-try { _follow = JSON.parse(localStorage.getItem('reddot_follow') || '[]'); if (!Array.isArray(_follow)) _follow = []; } catch (e) { _follow = []; }
+try { _follow = JSON.parse(localStorage.getItem(FOLLOW_KEY) || '[]'); if (!Array.isArray(_follow)) _follow = []; } catch (e) { _follow = []; }
 function followKey(zim, sub) { return zim + '|' + sub; }
 function isFollowed(zim, sub) { return _follow.indexOf(followKey(zim, sub)) >= 0; }
 function toggleFollow(zim, sub) {
   var k = followKey(zim, sub), i = _follow.indexOf(k);
   if (i >= 0) _follow.splice(i, 1); else _follow.push(k);
-  prefWrite('reddot_follow', JSON.stringify(_follow));
+  prefWrite(FOLLOW_KEY, JSON.stringify(_follow));
+  followChanged();
+}
+// Another window changed who is followed: this one shows it.
+var followWatch = {};
+followWatch[FOLLOW_KEY] = function(v) {
+  var next = [];
+  try { next = JSON.parse(v || '[]'); } catch (e) {}
+  if (!Array.isArray(next) || JSON.stringify(next) === JSON.stringify(_follow)) return;
+  _follow = next;
+  followChanged();
+};
+prefWatch(followWatch);
+function followChanged() {
   if (_home && !_follow.length) { openHome(); return; }
   renderChips();
   if (_home) renderHomeFeed(); else if (_sub) paintFollowButton(); else renderHome({ zims: _zims });

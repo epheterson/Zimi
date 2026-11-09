@@ -522,14 +522,19 @@ def _fetch(name, words):
     """Candidate rows for typed ``words``, the largest places first. The
     longest word that few rows begin with is read from the index and ordered
     (every name has it, so the rest are filtered); when every word is a common
-    start, the best places of the longest one's prefix, from the table of them."""
+    start, the best places of the longest one's prefix, from the table of them.
+    A word longer than the table's prefixes is never answered from it: its
+    prefix may be heavy while the word itself is not, and the table keeps only
+    the best few of that prefix."""
     ordered = sorted(set(words), key=len, reverse=True)
     for word in ordered:
-        rows = _query(
-            name,
-            f"SELECT {_SELECT} FROM top WHERE prefix = ? ORDER BY weight DESC",
-            (word[:PREFIX_MAX],),
-        )
+        rows = []
+        if len(word) <= PREFIX_MAX:
+            rows = _query(
+                name,
+                f"SELECT {_SELECT} FROM top WHERE prefix = ? ORDER BY weight DESC",
+                (word,),
+            )
         if not rows:  # not a common start: few places begin so
             rows = _query(
                 name,

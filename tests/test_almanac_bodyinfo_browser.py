@@ -110,6 +110,7 @@ def served(tmp_path_factory):
     yield "http://127.0.0.1:%d" % httpd.server_address[1]
     httpd.shutdown()
     srv.ZIM_DIR, srv.ZIMI_DATA_DIR = old
+    srv.load_cache(force=True)  # the library cache was built from the temporary folder
 
 
 def open_view(pg, served):
@@ -466,9 +467,10 @@ def test_the_iss_label_is_only_its_name(page):
     """The age of the orbital data is not written on the Earth: the status line and the station's sheet carry it."""
     page.evaluate("_aePreset('earth'); _ae.dirty = true; _aeUpdate(_aeDisplayMs()); _aeUpdateLabels()")
     assert page.evaluate("document.querySelector('#ae-lbl-iss .ae-label-sub')") is None
+    page.wait_for_function("() => !!_ae.issPos", timeout=60_000, polling=100)   # the shipped orbital snapshot puts the station in view
     rows = sheet(page, "iss")
-    if rows:   # the shipped orbital snapshot has put the station in view
-        assert "data" in rows and "Orbital" not in rows["data"] and re.search(r"\d{4}", rows["data"]), rows
+    assert rows, "the station's sheet has no rows"
+    assert "data" in rows and "Orbital" not in rows["data"] and re.search(r"\d{4}", rows["data"]), rows
 
 
 def test_the_body_is_framed_above_the_sheet(page):

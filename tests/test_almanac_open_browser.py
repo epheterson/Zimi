@@ -108,10 +108,11 @@ def opened(served):
         pg = ctx.new_page()
         errors = []
         pg.on("pageerror", lambda e: errors.append(str(e)))
-        pg.goto(served + "/#almanac", wait_until="domcontentloaded")
+        # Throttled before the page is asked for, so the cold open is the one measured.
         ctx.new_cdp_session(pg).send(
             "Emulation.setCPUThrottlingRate", {"rate": THROTTLE}
         )
+        pg.goto(served + "/#almanac", wait_until="domcontentloaded")
         pg.wait_for_function(
             "() => window.__reveal !== null", timeout=120_000, polling=100
         )

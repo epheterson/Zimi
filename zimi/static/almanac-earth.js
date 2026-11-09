@@ -510,7 +510,7 @@ var AE_PROBE_HEX = '#6ee7d8', AE_AMBER_HEX = '#f5c16c';
 // show through what is being read.
 var AE_PANEL_BG = '#0e0e10', AE_PANEL_BG_RED = '#000';
 var AE_CSS = [
-  '.ae-view{position:absolute;inset:0;z-index:40;background:#000;display:none;overflow:hidden;color:var(--text);touch-action:none;-webkit-user-select:none;user-select:none;-webkit-tap-highlight-color:transparent}',
+  '.ae-view{position:absolute;inset:0;z-index:40;background:#000;display:none;overflow:hidden;overflow:clip;color:var(--text);touch-action:none;-webkit-user-select:none;user-select:none;-webkit-tap-highlight-color:transparent}',
   '.ae-view.open{display:block}',
   '.almanac-view.ae-covered>.almanac-content{visibility:hidden}',
   // Mid-swap with the hero: the page shows through, dimming as the view
@@ -544,9 +544,11 @@ var AE_CSS = [
   '.ae-set-choice{display:flex;gap:10px;align-items:flex-start;padding:7px 4px;border-radius:8px;cursor:pointer}',
   '.ae-set-choice:hover{background:rgba(255,255,255,.04)}',
   '.ae-set-choice input{margin:3px 0 0;flex:0 0 auto;accent-color:var(--amber)}',
-  '.ae-set-choice b{display:block;font-weight:500;color:var(--text)}',
-  '.ae-set-choice small a{color:var(--amber);text-decoration:none}',
-  '.ae-set-choice small{display:block;font-size:11.5px;color:var(--text2)}',
+  '.ae-set-choice{align-items:center}',
+  '.ae-set-choice b{font-weight:500;color:var(--text)}',
+  '.ae-set-choice input{margin:0}',
+  '.ae-set-ico{flex:none;color:var(--text2)}',
+  '.ae-set-why a{color:var(--amber);text-decoration:none}',
   '.ae-set-choice.ae-off{cursor:default}',
   '.ae-set-choice.ae-off:hover{background:none}',
   '.ae-set-why{margin:6px 4px 0;font-size:11.5px;color:var(--text2)}',
@@ -5431,12 +5433,17 @@ function _aeSettingsWhy(m) {
   if (!m.canChange) return _aeT('alm_earth_sat_admin_only');
   return _ae.setError;
 }
-// A choice's hint; where it names the source, the name links to it.
-var AE_SAT_SOURCE_URL = 'https://celestrak.org/';
-function _aeSetHint(key) {
-  var mark = '\u0001';
-  return _almEsc(_aeT(key, { src: mark })).replace(mark,
-    '<a href="' + AE_SAT_SOURCE_URL + '" target="_blank" rel="noopener">CelesTrak</a>');
+// A choice's hint is its tooltip, in words with the source's name; the source is credited once, as a link, under the choices.
+var AE_SAT_SOURCE_URL = 'https://celestrak.org/', AE_SAT_SOURCE_NAME = 'CelesTrak';
+function _aeSetHint(key) { return _aeT(key, { src: AE_SAT_SOURCE_NAME }); }
+// One small picture for each way (the label beside it says it): ask is a question, automatic is the two arrows, offline is the disc with a bar through it.
+var AE_SAT_MODE_ICONS = {
+  ask: '<circle cx="12" cy="12" r="9.5"/><path d="M9.5 9.5a2.6 2.6 0 1 1 3.6 2.4c-.7.4-1.1.9-1.1 1.7"/><path d="M12 17v.1"/>',
+  auto: '<path d="M20 11a8 8 0 0 0-14-4.5L4 9"/><path d="M4 4v5h5"/><path d="M4 13a8 8 0 0 0 14 4.5l2-2.5"/><path d="M20 20v-5h-5"/>',
+  never: '<circle cx="12" cy="12" r="9.5"/><path d="M5.3 18.7l13.4-13.4"/>',
+};
+function _aeSatIcon(mode) {
+  return '<svg class="ae-set-ico" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">' + AE_SAT_MODE_ICONS[mode] + '</svg>';
 }
 // The two round switches: pressed shows the layer. Neither does anything in the Planets view or Side by side (their
 // orbits always show, and no body is near enough to name its places), so there they stand aside.
@@ -5474,12 +5481,12 @@ function _aeRenderSettings() {
     '<div role="radiogroup" aria-labelledby="ae-set-title">';
   AE_SAT_MODES.forEach(function (mode) {
     var key = AE_SAT_MODE_KEY + mode;
-    html += '<label class="ae-set-choice' + (editable ? '' : ' ae-off') + '">' +
+    html += '<label class="ae-set-choice' + (editable ? '' : ' ae-off') + '" title="' + _almEsc(_aeSetHint(key + '_hint')) + '">' +
       '<input type="radio" name="ae-sat-mode" value="' + mode + '"' +
         (m.mode === mode ? ' checked' : '') + (editable ? '' : ' disabled') + '>' +
-      '<span><b>' + _almEsc(_aeT(key)) + '</b><small>' + _aeSetHint(key + '_hint') + '</small></span></label>';
+      _aeSatIcon(mode) + '<b>' + _almEsc(_aeT(key)) + '</b></label>';
   });
-  html += '</div>';
+  html += '</div><p class="ae-set-why"><a href="' + AE_SAT_SOURCE_URL + '" target="_blank" rel="noopener">' + AE_SAT_SOURCE_NAME + '</a></p>';
   var why = _aeSettingsWhy(m);
   if (why) html += '<p class="ae-set-why">' + _almEsc(why) + '</p>';
   panel.innerHTML = html;
