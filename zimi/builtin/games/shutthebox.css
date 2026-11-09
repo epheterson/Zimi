@@ -6,7 +6,7 @@
 .st-die.st-tumble { animation: st-tumble 320ms ease-out; }
 .st-box { display: grid; grid-template-columns: repeat(3, 1fr); gap: var(--sp-2); width: 100%; padding: var(--sp-2); background: #6b4423; border-radius: var(--radius); box-shadow: inset 0 2px 6px rgba(0, 0, 0, 0.45); }
 .st-tile { min-height: 64px; padding: 0; border: 1px solid #a8763f; border-radius: 8px; background: linear-gradient(#d9a566, #c28845); color: #2a1a0a; font: 700 28px/1 var(--font); font-variant-numeric: tabular-nums; box-shadow: 0 3px 0 #8a5a2b; cursor: pointer; touch-action: manipulation; transition: transform 0.14s ease-out; }
-.st-tile:hover { border-color: var(--accent); }
+@media (hover: hover) { .st-tile:hover { border-color: var(--accent); } }
 .st-tile.st-sel { transform: translateY(-3px); outline: 3px solid var(--accent); outline-offset: 1px; box-shadow: 0 6px 0 #8a5a2b; }
 .st-tile.st-shut { background: #3a2713; border-color: #2a1b0c; color: #c9a77a; box-shadow: none; transform: translateY(2px); cursor: default; text-decoration: line-through; text-decoration-thickness: 3px; }
 .st-results { display: flex; gap: var(--sp-3); justify-content: center; margin: 0; font-size: var(--fs-small); color: var(--ink2); min-height: 1.2em; }

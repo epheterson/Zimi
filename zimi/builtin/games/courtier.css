@@ -41,7 +41,7 @@ html[data-anim="off"] .cr-seat.cr-pick { animation: none; }
 .cr-emblem { width: 58px; height: 58px; fill: color-mix(in srgb, var(--rk) 22%, transparent); stroke: var(--rk); stroke-width: 2.4; stroke-linecap: round; stroke-linejoin: round; }
 .cr-name { font-size: var(--fs-small); font-weight: 650; line-height: 1.15; overflow-wrap: anywhere; }
 button.cr-card { cursor: pointer; touch-action: manipulation; padding-top: 22px; transition: transform 0.12s ease-out; }
-button.cr-card:hover { border-color: var(--accent); }
+@media (hover: hover) { button.cr-card:hover { border-color: var(--accent); } }
 button.cr-card[aria-disabled="true"] { cursor: default; }
 button.cr-card[aria-pressed="true"] { transform: translateY(-14px); box-shadow: var(--select); }
 .cr-backcard { background: var(--felt, #285c43); border-color: var(--felt-deep, #1a4130); }
