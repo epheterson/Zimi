@@ -9,6 +9,7 @@
 
 var AE_ST_PI = '3.14159265';
 var AE_ST_SUN_DISC_GAIN = 6e4;     // the Sun's disc against the sky's glow: stays a distinct disc where thick dust dims and blues it (Mars at sunset)
+var AE_ST_FINE_SLOPE = 0.045;   // the ground's fine relief: its height over its own wavelength (about 3 degrees), at every scale
 var AE_ST_FILL = 0.12;   // a slope turned from the Sun keeps this share of the flat ground's light (backscatter off the regolith round it)
 var AE_ST_BACKSCATTER = 0.07, AE_ST_SURGE = 0.9, AE_ST_SURGE_WIDTH = 0.14;   // the share of the Sun a regolith shadow keeps; the opposition surge round the antisolar point (Apollo's heiligenschein)
 var AE_ST_ROCK_FADE_M = [8, 45];  // stones thin out with distance into plain ground (a pixel of them at range is noise, not stone)
@@ -266,7 +267,7 @@ var AE_ST_GROUND_FRAG = [
   '  float h = 0.0;',
   '  for (int i = 0; i < 7; i++) {',
   '    float s = 0.05 * pow(3.1, float(i)), w = 1.0 - smoothstep(0.08, 0.35, 2.2 * foot / s);',
-  '    if (w > 0.0) h += vnoise(p / s + float(i) * 7.3) * 0.2 * s * w;',
+  '    if (w > 0.0) h += vnoise(p / s + float(i) * 7.3) * ' + AE_ST_FINE_SLOPE.toFixed(3) + ' * s * w;',
   '  }',
   '  return h * uRough;',
   '}',
