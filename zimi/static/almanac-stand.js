@@ -813,9 +813,15 @@ function _aeStandMotionButton(st, hud) {
 function _aeStandHudText(st) {
   var el = _aeById('ae-stand-text'), fr = st.fr;
   if (!el) return;
-  var line2 = (fr ? '☀ ' + Math.round(fr.sunAlt) + '°' : '') + ' · ' + Math.round(((st.yaw + st.userYaw) * 180 / Math.PI % 360 + 360) % 360) + '°';
+  var head = ((st.yaw + st.userYaw) * 180 / Math.PI % 360 + 360) % 360;   // where the view faces; the Sun's own bearing follows its height
+  var line2 = (fr ? '☀ ' + Math.round(fr.sunAlt) + '° ' + _aeCompassPoint(fr.sunAz) + '  ·  ' : '') + Math.round(head) + '° ' + _aeCompassPoint(head);
   var html = '<b>' + _almEsc(_aeInfoName(st.key)) + '</b><span>' + _almEsc(_aeFmtLatLon({ lat: st.lat, lon: st.lon })) + ' · ' + _almEsc(_aeStHeightText(st.h0)) + '</span><span>' + _almEsc(line2) + '</span>';
   if (el._html !== html) { el._html = html; el.innerHTML = html; }
+}
+// The eight points of the compass, from the app's own cardinal letters (NE = N then E).
+var AE_POINT_KEYS = ['n', 'ne', 'e', 'se', 's', 'sw', 'w', 'nw'];
+function _aeCompassPoint(az) {
+  return AE_POINT_KEYS[Math.round(((az % 360) + 360) % 360 / 45) % 8].split('').map(function (c) { return _aeT('alm_dir_' + c); }).join('');
 }
 // A height above the mean radius, short: metres under a kilometre.
 function _aeStHeightText(m) {
