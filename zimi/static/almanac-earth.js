@@ -5723,11 +5723,13 @@ function _aeCraftBuild(S, model) {
   S.scene.add(root);
   return { root: root, pivot: pivot, uni: uni, model: model, record: record };
 }
-// Voyager's Golden Record where it is on the craft: on the face of the bus beside its plate, 30 cm across, facing out
-// (+x in NASA's model; the plate is the white panel there, the record the gilded disc on it). Its face is the
+// Voyager's Golden Record where it is on the craft: on the face of the bus, filling its round white plate, facing out
+// (+x in NASA's model; the plate is a disc 0.234 m in radius centred at y -1.961, z -2.372, its face at x 1.252: a circle
+// fitted to the model's own vertices). Its face is the
 // Almanac's own picture of the record's cover (static/golden-record/cover.jpg); a tap on it opens that section.
-var AE_CRAFT_RECORD = { voyager: { at: [1.257, -1.95, -2.33], r: 0.155 } };   // metres in the model's frame
-var AE_RECORD_IMG = '/static/golden-record/cover.jpg', AE_RECORD_IMG_R = 0.47;   // the disc's radius in the picture (of its width)
+var AE_CRAFT_RECORD = { voyager: { at: [1.2535, -1.961, -2.372], r: 0.234 } };   // metres in the model's frame
+var AE_RECORD_IMG = '/static/golden-record/cover.jpg', AE_RECORD_IMG_R = 0.445;   // the disc's radius in the picture (of its width)
+var AE_RECORD_IMG_C = [0.501, 0.51];   // and its centre (u, v), measured on the picture: a little right of the middle and above it
 var AE_RECORD_VERT = [
   'varying vec2 vUv;',
   'void main() { vUv = uv; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }'
@@ -5736,18 +5738,19 @@ var AE_RECORD_FRAG = [
   'uniform sampler2D map; uniform float mapped; uniform float lit; uniform float fill; uniform float fade;',
   'varying vec2 vUv;',
   'void main() {',
-  '  vec2 q = vUv - 0.5;',
+  '  vec2 q = vUv - vec2(' + AE_RECORD_IMG_C[0] + ', ' + AE_RECORD_IMG_C[1] + ');',
   '  if (dot(q, q) > ' + (AE_RECORD_IMG_R * AE_RECORD_IMG_R).toFixed(4) + ') discard;',
   '  vec3 c = mapped > 0.5 ? texture2D(map, vUv).rgb : vec3(0.78, 0.58, 0.24);',   // gold until its picture is in
   '  gl_FragColor = vec4(min(c * 1.3, vec3(1.0)) * min(1.0, 0.35 + 0.65 * lit + fill), fade);',
   '}'
 ].join('\n');
 function _aeRecordMesh(THREE, d, rec, craftUni) {
-  var u = 1 / d.metres, half = rec.r / AE_RECORD_IMG_R * 0.5 * u, c = rec.at.map(function (x) { return x * u; });
+  var u = 1 / d.metres, half = rec.r * u, c = rec.at.map(function (x) { return x * u; });
   var gg = new THREE.BufferGeometry();
   gg.setAttribute('position', new THREE.BufferAttribute(new Float32Array([
     c[0], c[1] - half, c[2] - half, c[0], c[1] + half, c[2] - half, c[0], c[1] + half, c[2] + half, c[0], c[1] - half, c[2] + half]), 3));
-  gg.setAttribute('uv', new THREE.BufferAttribute(new Float32Array([0, 0, 1, 0, 1, 1, 0, 1]), 2));
+  var u0 = AE_RECORD_IMG_C[0] - AE_RECORD_IMG_R, u1 = AE_RECORD_IMG_C[0] + AE_RECORD_IMG_R, v0 = AE_RECORD_IMG_C[1] - AE_RECORD_IMG_R, v1 = AE_RECORD_IMG_C[1] + AE_RECORD_IMG_R;
+  gg.setAttribute('uv', new THREE.BufferAttribute(new Float32Array([u0, v0, u1, v0, u1, v1, u0, v1]), 2));   // the quad is the disc's own box
   gg.setIndex(new THREE.BufferAttribute(new Uint16Array([0, 1, 2, 0, 2, 3]), 1));
   var uni = { map: { value: null }, mapped: { value: 0 }, lit: craftUni.lit, fill: craftUni.fill, fade: craftUni.fade };
   var mesh = new THREE.Mesh(gg, new THREE.ShaderMaterial({ uniforms: uni, vertexShader: AE_RECORD_VERT, fragmentShader: AE_RECORD_FRAG, transparent: true, side: THREE.DoubleSide }));
