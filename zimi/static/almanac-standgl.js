@@ -304,8 +304,8 @@ var AE_ST_GROUND_FRAG = [
   // (grass leans green, dry ground and sand lighter, rock and snow keep their tone).
   '  if (uDetail > 0.5 && vSea < 0.5) {',
   '    float gr = 0.0, grass = smoothstep(0.0, 0.07, map.g - max(map.r, map.b));',
-  '    for (int i = 0; i < 4; i++) { float s = 0.04 * pow(5.0, float(i)), wg = 1.0 - smoothstep(0.3, 1.0, 2.5 * foot / s); if (wg > 0.0) gr += (vnoise(vP / s + 17.0 * float(i)) - 0.5) * wg * (i == 0 ? 0.9 : 0.6); }',
-  '    alb *= 1.0 + gr * 0.9;',
+  '    for (int i = 0; i < 3; i++) { float s = 0.2 * pow(5.0, float(i)), wg = 1.0 - smoothstep(0.3, 1.0, 2.5 * foot / s); if (wg > 0.0) gr += (vnoise(vP / s + 17.0 * float(i)) - 0.5) * wg * 0.5; }',
+  '    alb *= clamp(1.0 + gr * 0.8, 0.6, 1.4);',
   '    alb.g *= 1.0 + 0.3 * gr * grass; alb.r *= 1.0 - 0.18 * gr * grass;',
   '  }',
   '  vec2 rk = (vSea > 0.5 || dist > ' + AE_ST_ROCK_FADE_M[1].toFixed(1) + ') ? vec2(0.0) : rocks(vP, foot) * (1.0 - smoothstep(' + AE_ST_ROCK_FADE_M[0].toFixed(1) + ', ' + AE_ST_ROCK_FADE_M[1].toFixed(1) + ', dist)); float hb = vSea > 0.5 ? 0.0 : fine(vP, foot) + rk.x; alb *= clamp(1.0 + 0.5 * rk.y, 0.5, 1.35);',
