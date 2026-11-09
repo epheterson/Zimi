@@ -73,26 +73,32 @@ def zimi(tmp_path_factory):
 
 
 @pytest.fixture(scope="module")
-def browser():
+def playwright_driver():
+    """One Playwright driver for the module: a second sync_playwright() started while the first is still open (the WebKit and the
+    Chromium fixtures each held one) fails with "Sync API inside the asyncio loop"."""
     with sync_playwright() as p:
-        try:
-            b = p.webkit.launch()
-        except Exception as e:
-            pytest.skip("WebKit is not installed: %s" % e)
-        yield b
-        b.close()
+        yield p
 
 
 @pytest.fixture(scope="module")
-def chromium():
+def browser(playwright_driver):
+    try:
+        b = playwright_driver.webkit.launch()
+    except Exception as e:
+        pytest.skip("WebKit is not installed: %s" % e)
+    yield b
+    b.close()
+
+
+@pytest.fixture(scope="module")
+def chromium(playwright_driver):
     """The Sky Detective checks need no WebKit quirk, so they run wherever Chromium does (CI has no WebKit)."""
-    with sync_playwright() as p:
-        try:
-            b = p.chromium.launch(args=["--use-angle=swiftshader", "--enable-unsafe-swiftshader"])
-        except Exception as e:
-            pytest.skip("Chromium is not installed: %s" % e)
-        yield b
-        b.close()
+    try:
+        b = playwright_driver.chromium.launch(args=["--use-angle=swiftshader", "--enable-unsafe-swiftshader"])
+    except Exception as e:
+        pytest.skip("Chromium is not installed: %s" % e)
+    yield b
+    b.close()
 
 
 def _open(browser, zimi, path, viewport=PHONE, scheme="dark", touch=True):
@@ -341,7 +347,7 @@ def test_a_family_opens_with_a_count_and_a_chevron(browser, zimi):
     tag = card.locator(".sh-fam-tag")
     n = len([r for r in _rows() if r["path"].startswith("puzzles/")])
     shelf_n = f.evaluate("() => document.querySelectorAll('.sh-fam:has(.sh-fam-card) a.ar-game').length")
-    assert tag.locator("b").inner_text() == str(int(tag.locator("b").inner_text())) and int(tag.locator("b").inner_text()) > 20 <= n
+    assert tag.locator("b").text_content() == str(int(tag.locator("b").text_content())) and int(tag.locator("b").text_content()) > 20 <= n
     assert tag.locator("svg").count() == 1 and card.get_attribute("aria-expanded") == "false"
     assert f.locator(".sh-fam-panel:visible").count() == 0
     card.click()
