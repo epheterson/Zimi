@@ -66,8 +66,13 @@ def test_every_site_is_a_landing_in_the_landmarks_at_its_coordinates(sites, land
         assert len(rows) == 1, "%s is one landing of %s" % (s["name"], s["body"])
         assert rows[0][3] in ("landing", "launch")
         pad = s.get("pad")
-        if pad:  # a launch pad is within a few kilometres of the place the landmarks name
-            assert abs(pad["lat"] - rows[0][1]) < 0.3 and abs(pad["lon"] - rows[0][2]) < 0.3
+        if (
+            pad
+        ):  # a launch pad is within a few kilometres of the place the landmarks name
+            assert (
+                abs(pad["lat"] - rows[0][1]) < 0.3
+                and abs(pad["lon"] - rows[0][2]) < 0.3
+            )
 
 
 def test_the_sites_the_brief_names_are_all_there(sites):
@@ -163,14 +168,26 @@ def test_the_stage_carries_the_files_and_the_server_versions_them():
         stage = fh.read()
     with open(os.path.join(ROOT, "zimi", "http.py"), encoding="utf-8") as fh:
         http = fh.read()
-    for f in ("almanac-sites.js", "almanac-sites-ground.js", "almanac-sites-drive.js", "almanac-sites-launch.js", "almanac-sites-trail.js"):
+    for f in (
+        "almanac-sites.js",
+        "almanac-sites-ground.js",
+        "almanac-sites-drive.js",
+        "almanac-sites-launch.js",
+        "almanac-sites-trail.js",
+    ):
         assert '"%s"' % f in stage, f
         assert '_static_hash("%s")' % f in http, f
 
 
 def test_the_strings_the_code_reads_are_in_every_language():
     src = ""
-    for f in ("almanac-sites.js", "almanac-sites-ground.js", "almanac-sites-drive.js", "almanac-sites-launch.js", "almanac-sites-trail.js"):
+    for f in (
+        "almanac-sites.js",
+        "almanac-sites-ground.js",
+        "almanac-sites-drive.js",
+        "almanac-sites-launch.js",
+        "almanac-sites-trail.js",
+    ):
         with open(os.path.join(STATIC, f), encoding="utf-8") as fh:
             src += fh.read()
     keys = set(re.findall(r"'(alm_site_[a-z_]+)'", src))
@@ -209,3 +226,33 @@ def test_the_voyagers_real_paths_start_at_their_launches_and_run_to_today():
         assert abs(t["jd0"] - ev[0]) <= 16, "%s: the table begins at the launch" % key
         assert t["jd1"] > _jd(2026, 11, 1), "%s: and runs past today" % key
         assert any(e[1] == "flyby" and e[2] == "Jupiter" for e in t["events"]), key
+
+
+def test_a_rovers_route_begins_at_its_landing_and_reaches_where_it_is_now(sites):
+    """The route replay (almanac-sites-trail.js): Curiosity's and Perseverance's drives from NASA's waypoints."""
+    with open(os.path.join(EARTH, "traverses-v1.json"), encoding="utf-8") as fh:
+        routes = json.load(fh)
+    by_name = {s["name"]: s for s in sites["sites"]}
+    with open(os.path.join(EARTH, "landmarks-v1.json"), encoding="utf-8") as fh:
+        mars = {r[0]: r for r in json.load(fh)["mars"]}
+    for key, name, last_sol in (
+        ("msl", "Curiosity", 5000),
+        ("m20", "Perseverance", 2000),
+    ):
+        r = routes[key]
+        assert by_name[name]["trail"] == key
+        pts = r["points"]
+        assert pts == sorted(pts, key=lambda p: p[0]), "in order of sol"
+        assert (
+            abs(pts[0][1] - mars[name][1]) < 0.01
+            and abs(pts[0][2] - mars[name][2]) < 0.01
+        ), "it begins at the landing"
+        assert pts[-1][0] > last_sol, "and runs to the present"
+        assert len(pts) > 300
+        assert (
+            abs(r["landingMs"] - by_name[name]["ms"]) < 120_000
+        ), "the same landing instant as the site's"
+        far = max(abs(p[1] - pts[0][1]) + abs(p[2] - pts[0][2]) for p in pts)
+        assert (
+            0.1 < far < 3
+        ), "a route of tens of kilometres, not a point and not a planet"

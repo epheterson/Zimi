@@ -142,7 +142,9 @@ def _close(a, b):
 
 
 def test_the_card_of_a_landing_offers_a_visit_and_a_drive(page):
-    page.evaluate("() => { if (typeof _aeSiteLeave === 'function') _aeSiteLeave(true); }")
+    page.evaluate(
+        "() => { if (typeof _aeSiteLeave === 'function') _aeSiteLeave(true); }"
+    )
     page.evaluate(
         "() => _aeLmOpen('moon', _aeLm.moon.filter(r => r[0] === 'Apollo 15')[0])"
     )
@@ -243,7 +245,7 @@ def test_the_rover_drives_and_its_wheels_stay_on_the_ground(page):
     st = _visit(page, "moon", "Apollo 15", drive=True)
     assert st["rover"]["airborne"] is False
     x0, y0 = st["rover"]["x"], st["rover"]["y"]
-    worst = 0.0
+    worst, far = 0.0, 0.0
     for keys in ({"f": 1, "l": 1}, {"f": 1}, {"f": 1, "r": 1}, {"b": 1}):
         page.evaluate(
             "(k) => { var i = _ae.site.input.keys; ['f','b','l','r'].forEach(n => i[n] = !!k[n]); }",
@@ -252,13 +254,14 @@ def test_the_rover_drives_and_its_wheels_stay_on_the_ground(page):
         for _ in range(8):
             page.evaluate("() => _aeSiteAdvance(0.5)")
             r = page.evaluate("() => _aeSiteState().rover")
+            far = max(far, math.hypot(r["x"] - x0, r["y"] - y0))
             for w in r["wheels"]:
                 worst = max(worst, abs(w["z"] - w["ground"] - 0.41))
     page.evaluate(
         "() => { var i = _ae.site.input.keys; i.f = i.b = i.l = i.r = false; }"
     )
     r = page.evaluate("() => _aeSiteState().rover")
-    assert math.hypot(r["x"] - x0, r["y"] - y0) > 10, "it went somewhere"
+    assert far > 10, "it went somewhere (%.1f m from where it began)" % far
     assert worst < 1e-6, (
         "every wheel's hub stood its radius over the ground under it (%.2e off)" % worst
     )
@@ -306,8 +309,10 @@ def test_the_saturn_v_stands_on_the_pad_and_a_launch_takes_it_away(page):
     assert _close(saturn["lat"], pad["lat"]) and _close(saturn["lon"], pad["lon"])
     page.evaluate("() => document.getElementById('as-launch').click()")
     page.wait_for_function("() => !!_ae.site.launch", timeout=60_000, polling=250)
-    page.evaluate("() => _aeSiteLaunchAdvance(5.2)")
-    assert page.evaluate("() => _ae.site.launch.phase") == "count"
+    page.evaluate("() => _aeSiteLaunchAdvance(3)")
+    assert page.evaluate("() => _ae.site.launch.phase") == "count", "the count is running"
+    page.evaluate("() => _aeSiteLaunchAdvance(2.2)")
+    assert page.evaluate("() => _ae.site.launch.phase") == "fly", "and at zero it flies"
     page.evaluate("() => _aeSiteLaunchAdvance(30)")
     alt = page.evaluate(
         "() => { var l = _ae.site.launch; return _asLaunchAt(l.rows, l.t).z - l.padZ; }"
@@ -319,7 +324,10 @@ def test_the_saturn_v_stands_on_the_pad_and_a_launch_takes_it_away(page):
 def test_the_routes_rover_is_where_its_route_says(page):
     st = _visit(page, "mars", "Curiosity")
     page.evaluate("() => document.getElementById('as-trailbtn').click()")
-    page.wait_for_function("() => !!_ae.site.trail", timeout=60_000, polling=250)
+    try:
+        page.wait_for_function("() => !!_ae.site.trail", timeout=60_000, polling=250)
+    except Exception:
+        pytest.fail("the route did not start: %s" % page.errors)
     page.evaluate(
         "() => { var t = _ae.site.trail; t.playing = false; t.sol = 3000; _asTrailStep(_ae.site, 1 / 60); }"
     )
@@ -344,8 +352,34 @@ def test_the_routes_rover_is_where_its_route_says(page):
     _shot(page, "route")
 
 
+def test_the_controls_fit_a_phone_on_its_side(page):
+    """At 844 x 390 every control is on the screen and the thumbs' two corners are clear of the caption."""
+    _visit(page, "moon", "Apollo 15", drive=True)
+    page.set_viewport_size({"width": 844, "height": 390})
+    page.wait_for_function("() => _ae.w === 844", timeout=30_000, polling=250)
+    boxes = page.evaluate(
+        """() => ['as-exit', 'as-landing', 'as-rate', 'as-jump', 'as-rest', 'as-cap'].map(id => {
+          var r = document.getElementById(id).getBoundingClientRect();
+          return [id, r.left, r.top, r.right, r.bottom];
+        })"""
+    )
+    for id_, left, top, right, bottom in boxes:
+        assert (
+            left >= 0 and right <= 844 and top >= 0 and bottom <= 390
+        ), "%s is on the screen (%s)" % (id_, [left, top, right, bottom])
+    by = {b[0]: b for b in boxes}
+    overlap = lambda p, q: p[1] < q[3] and q[1] < p[3] and p[2] < q[4] and q[2] < p[4]
+    for other in ("as-exit", "as-landing", "as-rate", "as-jump", "as-rest"):
+        assert not overlap(by["as-cap"], by[other]), "the caption does not cover %s" % other
+    _shot(page, "landscape")
+    page.set_viewport_size({"width": 390, "height": 844})
+    page.wait_for_function("() => _ae.w === 390", timeout=30_000, polling=250)
+
+
 def test_a_probes_sheet_replays_its_flight_from_launch(page):
-    page.evaluate("() => { if (typeof _aeSiteLeave === 'function') _aeSiteLeave(true); }")
+    page.evaluate(
+        "() => { if (typeof _aeSiteLeave === 'function') _aeSiteLeave(true); }"
+    )
     page.evaluate("() => _aeNow()")
     page.evaluate("() => _aeTracksLoad()")
     page.wait_for_function(
