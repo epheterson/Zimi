@@ -111,6 +111,25 @@ def _running(pid_path):
         return None
 
 
+def _clear_left_behind(pid_path):
+    """Remove the pid file a server that is gone left. A file that is locked but empty is a server a moment
+    into its start (it locks, then writes its pid): that one is left alone, and this start stops."""
+    import fcntl
+
+    try:
+        fd = os.open(pid_path, os.O_RDONLY)
+    except OSError:
+        return  # none to clear
+    try:
+        try:
+            fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        except OSError:
+            sys.exit("zimi: a background start is already under way")
+        os.remove(pid_path)  # still locked by us: nothing can claim this file while it goes
+    finally:
+        os.close(fd)
+
+
 def _wait_ready(pid_path, host, port, log_path):
     """The first parent's wait: until the server is listening, or has died, or a few seconds have passed (a big
     library takes longer to load, and the person is told where the log is). Returns a line to print.
@@ -169,8 +188,7 @@ def daemonize(data_dir, host="0.0.0.0", port=8899):
         sys.exit(
             f"zimi: already running in the background (pid {other}); stop it with: kill {other}"
         )
-    if os.path.exists(pid_path):
-        os.remove(pid_path)  # left behind by a server that is gone
+    _clear_left_behind(pid_path)
     if _port_taken(host, port):
         sys.exit(
             f"zimi: port {port} is already in use; stop what is on it or pass --port"

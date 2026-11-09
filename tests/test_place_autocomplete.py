@@ -103,11 +103,12 @@ def _map_files():
 # Every test runs twice: with the prefix table holding every prefix more than
 # two rows begin with (so the table answers), and with the real threshold (so
 # nothing is in it and the index is read).
-@pytest.fixture(scope="module", params=[2, mapplaces.SCAN_MAX], ids=["table", "scan"])
-def library(request, tmp_path_factory, monkeypatch_module):
+def _library(tmp_path_factory, monkeypatch_module, **limits):
+    """The fixture map read into an index under ``limits`` (mapplaces constants)."""
     from conftest_zim import build_fixture_zim
 
-    monkeypatch_module.setattr(mapplaces, "SCAN_MAX", request.param)
+    for k, v in limits.items():
+        monkeypatch_module.setattr(mapplaces, k, v)
 
     root = tmp_path_factory.mktemp("places")
     zdir = root / "zims"
@@ -121,6 +122,15 @@ def library(request, tmp_path_factory, monkeypatch_module):
     mapplaces._reset_for_tests()
     srv.load_cache(force=True)
     mapplaces.build_all()
+    return saved
+
+
+# Every test runs twice: with the prefix table holding every prefix more than
+# two rows begin with (so the table answers), and with the real threshold (so
+# nothing is in it and the index is read).
+@pytest.fixture(scope="module", params=[2, mapplaces.SCAN_MAX], ids=["table", "scan"])
+def library(request, tmp_path_factory, monkeypatch_module):
+    saved = _library(tmp_path_factory, monkeypatch_module, SCAN_MAX=request.param)
     yield MAP
     srv.ZIM_DIR, srv.ZIMI_DATA_DIR = saved
     mapplaces._reset_for_tests()
@@ -333,3 +343,21 @@ def test_regions_locate_the_cities_everyone_knows():
     assert regions.locate(21.31, -157.86)["region"] == "Hawaii"
     # Open sea is nowhere.
     assert regions.locate(30.0, -140.0) is None
+
+
+def test_a_word_longer_than_the_table_prefixes_is_not_cut_to_them(
+    tmp_path_factory,
+):
+    """"springfield" is eleven letters; its four-letter prefix is common and the table keeps
+    two places of it. The whole word is rare enough to be read from the index, so every
+    Springfield is offered, not the two the prefix kept."""
+    with pytest.MonkeyPatch.context() as mp:
+        saved = _library(tmp_path_factory, mp, SCAN_MAX=2, PREFIX_MAX=4, PREFIX_KEEP=2)
+        try:
+            regions_of = {p["region"] for p in mapplaces.suggest(MAP, "Springfield")}
+            assert regions_of == {"Illinois", "Missouri", "Massachusetts", "Oregon"}, regions_of
+            got = mapplaces.search(MAP, "Springfield, Oregon")
+            assert got and got[0]["region"] == "Oregon"
+        finally:
+            srv.ZIM_DIR, srv.ZIMI_DATA_DIR = saved
+            mapplaces._reset_for_tests()

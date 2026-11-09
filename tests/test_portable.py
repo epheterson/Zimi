@@ -127,3 +127,11 @@ def test_portable_flag_is_a_boot_flag():
         cwd=ROOT,
     )
     assert "--portable" in out.stdout
+
+
+def test_the_frozen_build_has_pillow_for_what_the_spec_imports():
+    """The spec names PIL as a hidden import, which freezes nothing unless it is installed in the build."""
+    spec = open(os.path.join(ROOT, "desktop", "zimi_portable.spec"), encoding="utf-8").read()
+    reqs = open(os.path.join(ROOT, "desktop", "requirements-portable.txt"), encoding="utf-8").read()
+    assert "'PIL'" in spec
+    assert any(line.lower().startswith("pillow") for line in reqs.splitlines())
