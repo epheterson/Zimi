@@ -204,6 +204,7 @@ def test_every_model_stands_at_the_latitude_and_longitude_of_its_landing(
 def test_the_ground_is_lit_by_the_suns_real_direction(page):
     """At Apollo 11's touchdown the Sun stood about 14 degrees up in the east: the sine of that, from the scene itself."""
     st = _visit(page, "moon", "Apollo 11", at=_site("Apollo 11")["ms"])
+    page.wait_for_function("() => !!_ae.site.shadowSun", timeout=60_000, polling=250)   # the shadows' direction is set a frame or so after the visit
     sc = page.evaluate(
         "() => { var s = _ae.site; return { sun: s.fr.sunLocal, now: _ae.scene.ms, landing: s.def.ms, shadow: s.shadowSun }; }"
     )
