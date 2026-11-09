@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Fixed
+
+- Games: Tri Peaks and Blast open the right encyclopedia article from their About link, and Net no longer links to a page that does not exist.
+
 ## [1.15.4]
 
 ### Highlights

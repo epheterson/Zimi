@@ -110,8 +110,8 @@
   "computer": false
  },
  {
-  "qid": "Q27792408",
-  "wiki": "Tri Peaks",
+  "qid": "Q7839847",
+  "wiki": "Tri Peaks (game)",
   "path": "tripeaks.html",
   "title": "TriPeaks",
   "blurb": "Three peaks, wrap around, keep a streak",
@@ -1673,7 +1673,7 @@
   "computer": false
  },
  {
-  "qid": "Q2583040",
+  "qid": "Q3444160",
   "wiki": "Bomberman",
   "path": "blast.html",
   "title": "Blast",
@@ -2064,8 +2064,6 @@
   "computer": false
  },
  {
-  "qid": "Q4045246",
-  "wiki": "NetWalk",
   "path": "puzzles/net.html",
   "title": "Net",
   "blurb": "Turn the tiles until the network joins up",
