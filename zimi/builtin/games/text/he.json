@@ -4,10 +4,12 @@
  "babel.choosing": "בוחרים מילים…",
  "babel.clues": "רמזים",
  "babel.fieldLabel": "המילה באנגלית",
+ "babel.gotIt": "צדקתם.",
  "babel.guess": "ניחוש",
  "babel.hiddenClue": "רמז {n}",
  "babel.how": "כתבו את המילה באנגלית. ניחוש שגוי חושף שפה נוספת.",
  "babel.itWas": "התשובה: {word}",
+ "babel.missed": "החמצתם: אין נקודות על המילה הזו.",
  "babel.more": "רמז נוסף",
  "babel.notThat": "לא {word}",
  "babel.placeholder": "המילה באנגלית",
@@ -164,8 +166,8 @@
  "bj.bet": "הימור {n}",
  "bj.chips": {
   "one": "צ'יפים: {n}",
-  "two": "צ'יפים: {n}",
-  "other": "צ'יפים: {n}"
+  "other": "צ'יפים: {n}",
+  "two": "צ'יפים: {n}"
  },
  "bj.dealBet": "חלוקה {n}",
  "bj.dealer": "המחלק",
@@ -178,13 +180,13 @@
  "bj.empty": "ריק",
  "bj.fact": {
   "one": "צ'יפים: {n}",
-  "two": "צ'יפים: {n}",
-  "other": "צ'יפים: {n}"
+  "other": "צ'יפים: {n}",
+  "two": "צ'יפים: {n}"
  },
  "bj.fact.name": {
   "one": "{name}, צ'יפים: {n}",
-  "two": "{name}, צ'יפים: {n}",
-  "other": "{name}, צ'יפים: {n}"
+  "other": "{name}, צ'יפים: {n}",
+  "two": "{name}, צ'יפים: {n}"
  },
  "bj.finish": "סיום",
  "bj.handN": "יד {n}",
@@ -259,6 +261,7 @@
  "blast.took.range": "{name}: להבה גדולה יותר",
  "blast.took.speed": "{name}: מהירות",
  "blast.won": "ניצחונות",
+ "board.allTime": "התוצאות הטובות ביותר",
  "board.black": "שחור",
  "board.blue": "כחול",
  "board.chooseWhere": "בחרו לאן לזוז",
@@ -269,28 +272,44 @@
  "board.full": "הלוח מלא.",
  "board.green": "ירוק",
  "board.hint": "רמז",
+ "board.house": "שיאי הבית ממלאים את הטבלה עד שמישהו שובר אותם.",
+ "board.leads": "{name} מוביל · {n} שיחקו",
  "board.level": "רמה",
  "board.level.easy": "קל",
  "board.level.hard": "קשה",
  "board.level.medium": "בינוני",
+ "board.nameFirst": "בחר שם בעמוד הסטטיסטיקה כדי להופיע כאן.",
  "board.next": "הבא",
  "board.noHint": "אין רמז.",
+ "board.noneToday": "אף אחד כאן עוד לא שיחק את האתגר של היום.",
+ "board.open": "טבלת שיאים",
  "board.opponent": "יריב",
  "board.pass": "דילוג",
+ "board.r.draw": "תיקו",
+ "board.r.lose": "לא נפתר",
+ "board.r.over": "הסתיים",
+ "board.r.win": "נפתר",
  "board.record": "{level}: ניצחונות {won}, הפסדים {lost}",
  "board.record.draws": "{level}: ניצחונות {won}, הפסדים {lost}, תיקו {drawn}",
  "board.red": "אדום",
  "board.second": "שני",
+ "board.serverToday": "היום בשרת",
+ "board.showMe": "הצג אותי בטבלאות השיאים של השרת",
+ "board.signIn": "התחבר ל-Zimi כדי לראות את טבלאות השיאים של השרת.",
  "board.thinkingHint": "חושב…",
  "board.timeUp": "הזמן נגמר. שוחק מהלך במקומכם.",
+ "board.title": "{game}: טבלת שיאים",
  "board.toMove": "התור של {name}",
+ "board.today": "האתגר של היום",
  "board.twoPlayers": "שני שחקנים",
  "board.undo": "ביטול",
+ "board.unreachable": "אין גישה לטבלת השיאים כרגע.",
  "board.watch.done": "{text} זה היה המשחק כולו. לחצו על סיום כדי לשחק בעצמכם.",
  "board.watching": "צפייה",
  "board.white": "לבן",
  "board.yellow": "צהוב",
  "board.you": "אתם",
+ "board.youMark": "(את/ה)",
  "board.youPlay": "אתם משחקים",
  "board.yourTurn": "התור שלכם",
  "board.zimi": "Zimi",
@@ -388,8 +407,8 @@
  "canasta.err.oneRank": "הניחו קלפי ווילד דרגה אחת בכל פעם",
  "canasta.err.pick": "בחרו קלפים להנחה",
  "canasta.err.pileEmpty": "ערימת ההשלכה ריקה",
- "canasta.err.stockEmpty": "הקופה ריקה: עליך לקחת את ערימת ההשלכה",
  "canasta.err.reds": "3 אדומים מונחים עבורכם אוטומטית",
+ "canasta.err.stockEmpty": "הקופה ריקה: עליך לקחת את ערימת ההשלכה",
  "canasta.err.tapMeld": "הקישו על שילוב, ואז הוסיפו לו קלפי ווילד",
  "canasta.err.tooWild": "יותר מדי קלפי ווילד עבור {rank}",
  "canasta.err.twoNat": "שני קלפי {rank} טבעיים (או אחד וקלף ווילד) מתאימים לקלף העליון",
@@ -696,6 +715,7 @@
  "cards.stats.time": "זמן",
  "cards.stats.won": "ניצחונות",
  "cards.stats.wonOf": "{won} מתוך {played}",
+ "cards.stuck": "בטלו כמה מהלכים כדי לנסות דרך אחרת.",
  "cards.suit.clubs": "תלתן",
  "cards.suit.diamonds": "יהלום",
  "cards.suit.hearts": "לב",
@@ -1004,6 +1024,7 @@
  "city.cl.deg": "+{n} °C",
  "city.cl.heatNone": "אין גל חום",
  "city.cl.heatNow": "גל חום",
+ "city.cl.kept": "החשמל של היום לא מוסיף חום; ההתחממות שכבר קרתה נשארת.",
  "city.cl.mostlyCoal": "רוב החשמל של העיר נשרף מפחם, וכל שנה כזו מחממת עוד קצת.",
  "city.cl.noCoal": "אף חלק מהחשמל של העיר לא נשרף מפחם, ולכן ההתחממות כבר לא גדלה.",
  "city.cl.noPower": "לעיר עדיין אין חשמל, ולכן היא לא מוסיפה התחממות.",
@@ -1058,16 +1079,16 @@
  "city.goal.label": "יעד: {goal}",
  "city.goal.months": {
   "one": "נותר חודש",
-  "two": "נותרו חודשיים",
-  "other": "נותרו {n} חודשים"
+  "other": "נותרו {n} חודשים",
+  "two": "נותרו חודשיים"
  },
  "city.goal.score": "ציון מעל {n}",
  "city.goal.status": "כעת {now} · {left}",
  "city.goal.traffic": "עומס תנועה מתחת ל-{n}",
  "city.goal.years": {
   "one": "נותרה שנה",
-  "two": "נותרו שנתיים",
-  "other": "נותרו {n} שנים"
+  "other": "נותרו {n} שנים",
+  "two": "נותרו שנתיים"
  },
  "city.held": "{tool}: {cost}",
  "city.how.drag": "גרירה: הזזה",
@@ -1217,8 +1238,8 @@
  "city.pct": "{n}%",
  "city.people": {
   "one": "תושב אחד",
-  "two": "{n} תושבים",
-  "other": "{n} תושבים"
+  "other": "{n} תושבים",
+  "two": "{n} תושבים"
  },
  "city.q.crime": "פשיעה",
  "city.q.density": "צפיפות",
@@ -1476,15 +1497,16 @@
  "daily.doneToday": "הושלם היום",
  "daily.share": "המשחק היומי של ZimiGames · {game} · {day}",
  "daily.shareIt": "שיתוף",
+ "daily.shareName": "הוספת השם שלי",
  "daily.streak": {
   "one": "יום אחד ברצף",
-  "two": "יומיים ברצף",
-  "other": "{n} ימים ברצף"
+  "other": "{n} ימים ברצף",
+  "two": "יומיים ברצף"
  },
  "daily.streakDays": {
   "one": "יום אחד",
-  "two": "יומיים",
-  "other": "{n} ימים"
+  "other": "{n} ימים",
+  "two": "יומיים"
  },
  "daily.streakLabel": "רצף",
  "daily.tag": "האתגר של היום",
@@ -1640,8 +1662,8 @@
  "durak.beaten": "נוצח. הקלפים יצאו מהמשחק",
  "durak.cap": {
   "one": "לא יותר מקלף אחד בסיבוב הזה",
-  "two": "לא יותר מ־{n} קלפים בסיבוב הזה",
-  "other": "לא יותר מ־{n} קלפים בסיבוב הזה"
+  "other": "לא יותר מ־{n} קלפים בסיבוב הזה",
+  "two": "לא יותר מ־{n} קלפים בסיבוב הזה"
  },
  "durak.def": "מגן",
  "durak.done": "סיום",
@@ -1961,7 +1983,6 @@
  "fc.play": "שחקו",
  "fc.random": "חלוקה אקראית",
  "fc.restart": "התחלה מחדש",
- "cards.stuck": "בטלו כמה מהלכים כדי לנסות דרך אחרת.",
  "fc.why.cell": "תא חופשי מחזיק קלף אחד.",
  "fc.why.cells": "כל התאים החופשיים מלאים.",
  "fc.why.limit": "כרגע אפשר להזיז רק {cards}.",
@@ -2311,6 +2332,7 @@
  "game.minesweeper.title": "שולה מוקשים",
  "game.minesweeper.why": "אהוב ב-Windows מאז תחילת שנות ה־90.",
  "game.minicrossword.blurb": "תשבץ קטן עם הגדרות מהוויקימילון שלכם",
+ "game.minicrossword.short": "תשבץ",
  "game.minicrossword.title": "תשבץ קטן",
  "game.minicrossword.why": "התשבץ העיתונאי הראשון התפרסם בניו יורק ב־1913. התשבץ הקטן הזה לוקח את ההגדרות מהפירושים בוויקימילון שלכם.",
  "game.morris.blurb": "צרו טחנות, עופו כשיש לכם שלוש",
@@ -2613,23 +2635,23 @@
  "gin.bonus.you": "בונוס משחק 100.",
  "gin.deadwood": {
   "one": "{name}: עודף {n}.",
-  "two": "{name}: עודף {n}.",
-  "other": "{name}: עודף {n}."
+  "other": "{name}: עודף {n}.",
+  "two": "{name}: עודף {n}."
  },
  "gin.deadwood.you": {
   "one": "{name}: עודף {n}.",
-  "two": "{name}: עודף {n}.",
-  "other": "{name}: עודף {n}."
+  "other": "{name}: עודף {n}.",
+  "two": "{name}: עודף {n}."
  },
  "gin.deadwoodLaid": {
   "one": "{name}: עודף {n}, {after} אחרי הצמדת {cards}.",
-  "two": "{name}: עודף {n}, {after} אחרי הצמדת {cards}.",
-  "other": "{name}: עודף {n}, {after} אחרי הצמדת {cards}."
+  "other": "{name}: עודף {n}, {after} אחרי הצמדת {cards}.",
+  "two": "{name}: עודף {n}, {after} אחרי הצמדת {cards}."
  },
  "gin.deadwoodLaid.you": {
   "one": "{name}: עודף {n}, {after} אחרי הצמדת {cards}.",
-  "two": "{name}: עודף {n}, {after} אחרי הצמדת {cards}.",
-  "other": "{name}: עודף {n}, {after} אחרי הצמדת {cards}."
+  "other": "{name}: עודף {n}, {after} אחרי הצמדת {cards}.",
+  "two": "{name}: עודף {n}, {after} אחרי הצמדת {cards}."
  },
  "gin.discard": "השלכת {card}",
  "gin.discardEmpty": "ערימת השלכה, ריקה",
@@ -2649,13 +2671,13 @@
  "gin.knock": "דפיקה ({n})",
  "gin.knockWith": {
   "one": "{name}: דפיקה עם עודף {n}.",
-  "two": "{name}: דפיקה עם עודף {n}.",
-  "other": "{name}: דפיקה עם עודף {n}."
+  "other": "{name}: דפיקה עם עודף {n}.",
+  "two": "{name}: דפיקה עם עודף {n}."
  },
  "gin.knockWith.you": {
   "one": "{name}: דפיקה עם עודף {n}.",
-  "two": "{name}: דפיקה עם עודף {n}.",
-  "other": "{name}: דפיקה עם עודף {n}."
+  "other": "{name}: דפיקה עם עודף {n}.",
+  "two": "{name}: דפיקה עם עודף {n}."
  },
  "gin.note.discarded": "{name}: השלכת {card}.",
  "gin.note.drew": "{name}: שליפה מהקופה.",
@@ -3427,6 +3449,8 @@
  "hex.cell.red": "אדום",
  "hex.chain": "השרשרת מחברת בין שני הצדדים.",
  "hex.hint": "רמז: נסו את התא המסומן.",
+ "hex.rules.two": "כל שחקן מחבר את שני הצדדים שלו, אדום וכחול. השרשרת הראשונה מנצחת.",
+ "hex.rules.you": "חברו את שני הצדדים בצבע {color} לפני ש־Zimi יחבר את אלה בצבע {other}.",
  "hex.side.blue": "כחול (שני)",
  "hex.side.red": "אדום (ראשון)",
  "hex.swap": "כלל ההחלפה: השחקן השני רשאי להשתלט על המהלך הראשון",
@@ -3632,8 +3656,8 @@
  "holdem.deal": "חלוקה",
  "holdem.fact": {
   "one": "{n} צ'יפ אחד",
-  "two": "{n} צ'יפים",
-  "other": "{n} צ'יפים"
+  "other": "{n} צ'יפים",
+  "two": "{n} צ'יפים"
  },
  "holdem.fold": "קיפול",
  "holdem.handsPlayed": "שוחקו: {hands}. {text}.",
@@ -4065,6 +4089,7 @@
  "ludo.rollDie": "הטלת הקובייה",
  "ludo.rollTurn": "{name}: הטלת קובייה",
  "ludo.rolling": "{name}: הקובייה מוטלת",
+ "ludo.rollsAgain": "{name} זורק שוב.",
  "ludo.seat": "תור {color}",
  "ludo.sent": "{name}: {list} נשלחו הביתה",
  "ludo.sent.you": "שלחתם את {list} הביתה",
@@ -5005,6 +5030,7 @@
  "quizzical.verdict.veryGood": "טוב מאוד.",
  "race.another": "מרוץ נוסף",
  "race.arrived": "הגעתם אל {target}",
+ "race.beatRoute": "ניצחתם את המסלול הידוע של {n}.",
  "race.bestClicks": "הכי פחות הקשות במרוץ יומי",
  "race.builtIn": "הערכים המובנים",
  "race.clicks": {
@@ -5038,6 +5064,8 @@
  "race.hot.same": "אותו מרוץ: {start} אל {end}. קישורים בלבד.",
  "race.hot.turn": "תור שחקן {n}",
  "race.looking": "מחפשים את Wikipedia שלכם…",
+ "race.matchedRoute": "השגתם את המסלול הידוע: {n}.",
+ "race.matchedShortest": "השגתם את המסלול הקצר ביותר: {n}.",
  "race.missing": "הדף הזה לא נמצא ב-Wikipedia שלכם",
  "race.new": "מרוץ חדש",
  "race.noLinks": "ב-Wikipedia שלכם צריכים להיות קישורים בין הערכים. נסו שוב, או שחקו עם הערכים המובנים.",
@@ -5395,6 +5423,10 @@
  "shogi.hand.piece": "{side}, ביד: {piece}, {n}",
  "shogi.handBottom": "כלים ביד, השחקן התחתון",
  "shogi.handTop": "כלים ביד, השחקן העליון",
+ "shogi.hint.drop": "הניחו {piece} על {to}",
+ "shogi.hint.move": "הזיזו {piece} מ־{from} אל {to}",
+ "shogi.hint.promote": "{move} וקדמו",
+ "shogi.hint.take": "הזיזו {piece} מ־{from} אל {to} ואכלו",
  "shogi.noPromote": "בלי קידום",
  "shogi.piece.1": "פיון",
  "shogi.piece.10": "רומח מקודם",
@@ -5621,8 +5653,8 @@
  "spades.chip.bid": "הכרזה {bid}",
  "spades.estimate": {
   "one": "היד שלכם נראית כמו לקיחה אחת בערך.",
-  "two": "היד שלכם נראית כמו כ־{n} לקיחות.",
-  "other": "היד שלכם נראית כמו כ־{n} לקיחות."
+  "other": "היד שלכם נראית כמו כ־{n} לקיחות.",
+  "two": "היד שלכם נראית כמו כ־{n} לקיחות."
  },
  "spades.line.bid": "{team}: הכרזה {bid}, נלקחו {tricks}",
  "spades.line.none": "{team}: אין חוזה",
@@ -5670,32 +5702,36 @@
  "stacker.well": "הבור",
  "stats.a.firstDaily": "אתגר יומי ראשון",
  "stats.a.firstWin": "ניצחון ראשון",
- "stats.a.fiveInDay": "חמישה אתגרים יומיים ביום אחד",
- "stats.a.fiveKinds": "חמישה משחקים שונים",
- "stats.a.hundred": "מאה משחקים שהסתיימו",
- "stats.a.month": "חודש ברצף",
- "stats.a.tenGames": "עשרה משחקים שהסתיימו",
- "stats.a.week": "שבוע ברצף",
+ "stats.a.fiveInDay": "5 אתגרים יומיים ביום אחד",
+ "stats.a.fiveKinds": "5 משחקים שונים",
+ "stats.a.hundred": "100 משחקים שהסתיימו",
+ "stats.a.month": "30 ימים ברצף",
+ "stats.a.tenGames": "10 משחקים שהסתיימו",
+ "stats.a.week": "7 ימים ברצף",
  "stats.all": "כל המשחקים",
  "stats.best": "הרצף הארוך ביותר",
+ "stats.changeName": "שינוי",
  "stats.dailies": "אתגרים יומיים שהושלמו",
- "stats.earned": "אבני דרך",
+ "stats.earned": "הושג",
  "stats.finished": "משחקים שהסתיימו",
  "stats.kinds": "משחקים שונים",
  "stats.most": "שוחקו הכי הרבה",
+ "stats.noName": "השם שלך בטבלאות המובילים:",
  "stats.notYet": "{name}, עדיין לא",
  "stats.played": {
   "one": "שוחק {n}",
-  "two": "{n} שוחקו",
-  "other": "{n} שוחקו"
+  "other": "{n} שוחקו",
+  "two": "{n} שוחקו"
  },
  "stats.playedWon": "{played} · {won}",
+ "stats.playingAs": "משחק בשם {name}",
+ "stats.setName": "הגדרה",
  "stats.title": "סטטיסטיקה",
  "stats.wins": "ניצחונות",
  "stats.wonCount": {
   "one": "ניצחון אחד",
-  "two": "{n} ניצחונות",
-  "other": "{n} ניצחונות"
+  "other": "{n} ניצחונות",
+  "two": "{n} ניצחונות"
  },
  "sudoku.bestRow": "הזמן הטוב ביותר, {level}",
  "sudoku.board": "לוח סודוקו",
@@ -5812,14 +5848,14 @@
  "tp.cluePlaceholder": "תארו אותו בלי לומר את שמו",
  "tp.costAria": {
   "one": "{label}, צ'יפים: {n}",
-  "two": "{label}, צ'יפים: {n}",
-  "other": "{label}, צ'יפים: {n}"
+  "other": "{label}, צ'יפים: {n}",
+  "two": "{label}, צ'יפים: {n}"
  },
  "tp.counter": "{n} מתוך {max}",
  "tp.fact": {
   "one": "{n} צ'יפ אחד",
-  "two": "{n} צ'יפים",
-  "other": "{n} צ'יפים"
+  "other": "{n} צ'יפים",
+  "two": "{n} צ'יפים"
  },
  "tp.found": "נמצא בניחוש {n}: ‎+{points}",
  "tp.giveFor": "{name}: כתבו רמז לערך הזה",
@@ -6106,41 +6142,5 @@
  "yacht.row.twos": "שתיות",
  "yacht.rowAria": "{row}: {n} נקודות",
  "yacht.top": "שש העליונות ({at} מזכה ב-{bonus})",
- "yacht.total": "סה״כ",
- "stats.playingAs": "משחק בשם {name}",
- "stats.changeName": "שינוי",
- "daily.shareName": "הוספת השם שלי",
- "board.title": "{game}: טבלת שיאים",
- "board.open": "טבלת שיאים",
- "board.today": "האתגר של היום",
- "board.allTime": "התוצאות הטובות ביותר",
- "board.noneToday": "אף אחד כאן עוד לא שיחק את האתגר של היום.",
- "board.house": "שיאי הבית ממלאים את הטבלה עד שמישהו שובר אותם.",
- "board.nameFirst": "בחר שם בעמוד הסטטיסטיקה כדי להופיע כאן.",
- "board.showMe": "הצג אותי בטבלאות השיאים של השרת",
- "board.signIn": "התחבר ל-Zimi כדי לראות את טבלאות השיאים של השרת.",
- "board.unreachable": "אין גישה לטבלת השיאים כרגע.",
- "board.serverToday": "היום בשרת",
- "board.leads": "{name} מוביל · {n} שיחקו",
- "board.r.win": "נפתר",
- "board.r.draw": "תיקו",
- "board.r.over": "הסתיים",
- "board.r.lose": "לא נפתר",
- "stats.setName": "הגדרה",
- "stats.noName": "השם שלך בטבלאות המובילים:",
- "board.youMark": "(את/ה)",
- "city.cl.kept": "החשמל של היום לא מוסיף חום; ההתחממות שכבר קרתה נשארת.",
- "game.minicrossword.short": "תשבץ",
- "babel.missed": "החמצתם: אין נקודות על המילה הזו.",
- "babel.gotIt": "צדקתם.",
- "shogi.hint.drop": "הניחו {piece} על {to}",
- "shogi.hint.move": "הזיזו {piece} מ־{from} אל {to}",
- "shogi.hint.take": "הזיזו {piece} מ־{from} אל {to} ואכלו",
- "shogi.hint.promote": "{move} וקדמו",
- "ludo.rollsAgain": "{name} זורק שוב.",
- "hex.rules.you": "חברו את שני הצדדים בצבע {color} לפני ש־Zimi יחבר את אלה בצבע {other}.",
- "hex.rules.two": "כל שחקן מחבר את שני הצדדים שלו, אדום וכחול. השרשרת הראשונה מנצחת.",
- "race.matchedShortest": "השגתם את המסלול הקצר ביותר: {n}.",
- "race.matchedRoute": "השגתם את המסלול הידוע: {n}.",
- "race.beatRoute": "ניצחתם את המסלול הידוע של {n}."
+ "yacht.total": "סה״כ"
 }
