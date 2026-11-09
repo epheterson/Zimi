@@ -74,6 +74,15 @@ QIDS = {
     "ganymede": "Q3169",
     "callisto": "Q3134",
     "titan": "Q2565",
+    "vesta": "Q3030",
+    "enceladus": "Q3303",
+    "tethys": "Q15047",
+    "dione": "Q15040",
+    "rhea": "Q15050",
+    "iapetus": "Q17958",
+    "triton": "Q3359",
+    "charon": "Q6604",
+    "phobos": "Q7547",
 }
 # IAU north poles (RA, Dec, degrees, J2000): what the maps are placed by, and the axis drawn.
 POLES = {"earth": (0.0, 90.0), "uranus": (257.311, -15.175), "venus": (272.76, 67.16)}

@@ -417,7 +417,7 @@ var AE_ISS_FADED_ALPHA = 0.45;
 // three times its true width, so it can be seen, and flown to, from here.
 // Its light on the Earth and the Moon comes from the real Sun (sunPos).
 var AE_SUN_SHOW_DIST = 3000;
-var AE_SUN_SHOW_R = 40;               // ~0.76 degrees as seen from the Earth (real: 0.27)
+var AE_SUN_SHOW_R = 40;               // ~0.76 degrees as seen from the Earth (real: 0.27); the Sun's true radius is 109 Earth radii (AE_SUN_RADIUS_RE): drawn at this size until decided
 var AE_SUN_SEGMENTS = [48, 24];
 var AE_SUN_GLOW_SCALE = 7;            // the glow's width, in the disc's radii
 var AE_GRANULES_PER_RADIUS = 160;     // the granulation's cells (real: ~700, too fine to draw)
@@ -2073,8 +2073,8 @@ var AE_HD_MIN_SEG = 8;
 var AE_HD_SKIRT = 0.002;         // each tile's edges hang this far below the surface (of its radius): no crack shows where levels meet
 var AE_HD_TILE_REACH = 0.75;     // a tile's angular radius, as a share of its side (half its diagonal, and a margin)
 // With HD, the Earth's closest approach: its 610 m texels are then about two CSS pixels on a phone (three device
-// pixels at 2x); nearer, the picture only blurs. The Moon's 670 m texels already reach that at its own closest
-// approach (AE_MIN_DIST_MOON), so it keeps it: the Blue Marble and LRO mosaics, not the view, are the limit.
+// pixels at 2x); nearer, the picture only blurs. Every other body's is worked out the same way from its deepest level
+// (_aeHdTexelMin), so the Moon's 166 m texels let the camera come four times nearer than its map alone did.
 var AE_HD_MIN_ALT_KM = 400;
 // A place on a body (latitude, longitude in degrees) as a unit vector in the body's own frame.
 function _aeLatLonVec(lat, lon) { return _aeEqVec(_aeRad(lon), _aeRad(lat), 1); }
@@ -2247,19 +2247,21 @@ function _aeHdKeepAbove(S, b) {
   if (_ae.dist < min) { _ae.dist = min; _ae.dirty = true; }
 }
 // How near the camera may come over a place: the closest at which the deepest tile there is still two or three device
-// pixels a texel, or the body's own limit where there is no insert.
+// pixels a texel (the body's own deepest level where there is no insert), never nearer than the body's own limit.
 var AE_HD_TEXEL_PX = 2.5, AE_HD_INSERT_MIN_ALT_KM = 0.5;
+function _aeHdTexelMin(b, level) {
+  var texelKm = _aeRad(180 / Math.pow(2, level) / AE_HD_TILE_PX) * b.radius * AE_EARTH_RADIUS_KM;
+  var cam = _ae.gl.camera, hPx = _ae.h * _ae.gl.dpr;
+  var altKm = Math.max(AE_HD_INSERT_MIN_ALT_KM, texelKm * hPx / (AE_HD_TEXEL_PX * _aeRad(cam.fov)));
+  return Math.min(b.minDist, b.radius + altKm / AE_EARTH_RADIUS_KM);
+}
 function _aeHdMinOver(b, lat, lon) {
-  var m = b.maps[0], deepest = -1;
+  var m = b.maps[0], deepest = m.max;
   for (var z in m.ins) {
     var span = 180 / Math.pow(2, +z), x = Math.floor((lon + 180) / span), y = Math.floor((90 - lat) / span);
     if (+z > deepest && _aeHdInInsert(m, +z, x, y)) deepest = +z;
   }
-  if (deepest < 0) return b.minDist;
-  var texelKm = _aeRad(180 / Math.pow(2, deepest) / AE_HD_TILE_PX) * b.radius * AE_EARTH_RADIUS_KM;
-  var cam = _ae.gl.camera, hPx = _ae.h * _ae.gl.dpr;
-  var altKm = Math.max(AE_HD_INSERT_MIN_ALT_KM, texelKm * hPx / (AE_HD_TEXEL_PX * _aeRad(cam.fov)));
-  return Math.min(b.minDist, b.radius + altKm / AE_EARTH_RADIUS_KM);
+  return _aeHdTexelMin(b, deepest);
 }
 function _aeHdTileUrl(m, n) { return _aeHdBase() + m.layer + '/' + n.z + '/' + n.x + '/' + n.y + '.webp'; }
 function _aeHdReady(b, n) {
@@ -2451,7 +2453,7 @@ var AE_THREE_DOUBLE_SIDE = 2;          // three's DoubleSide, not exported by na
 // IAU WGCCRE 2015 poles and turning (J2000 equatorial; W0 at J2000 and Wd a day, degrees).
 var AE_PLANETS = [
   { key: 'mercury', eph: 'Mercury', km: 2439.7, map: 'mercury', color: [0.69, 0.63, 0.56], pole: [281.0103, 61.4155, 329.5988, 6.1385108] },
-  { key: 'venus', eph: 'Venus', ccHd: true, km: 6051.8, map: 'venus', color: [0.91, 0.78, 0.48], atmo: [1, 0.82, 0.5], pole: [272.76, 67.16, 160.20, -1.4813688] },
+  { key: 'venus', eph: 'Venus', km: 6051.8, map: 'venus', color: [0.91, 0.78, 0.48], atmo: [1, 0.82, 0.5], pole: [272.76, 67.16, 160.20, -1.4813688] },
   { key: 'mars', eph: 'Mars', km: 3396.2, flat: 0.00589, map: 'mars', color: [0.77, 0.38, 0.25], atmo: [0.9, 0.55, 0.4], pole: [317.269202, 54.432516, 176.049863, 350.891982443297] },
   { key: 'jupiter', eph: 'Jupiter', ccHd: true, km: 71492, flat: 0.06487, map: 'jupiter', color: [0.77, 0.6, 0.41], pole: [268.056595, 64.495303, 284.95, 870.536] },
   { key: 'saturn', eph: 'Saturn', ccHd: true, km: 60268, flat: 0.09796, map: 'saturn', color: [0.83, 0.72, 0.47], pole: [40.589, 83.537, 38.90, 810.7939024], rings: [74500, 140220], cc: true },
@@ -2459,14 +2461,24 @@ var AE_PLANETS = [
   { key: 'neptune', eph: 'Neptune', km: 24764, flat: 0.0171, map: 'neptune', color: [0.22, 0.41, 0.78], atmo: [0.3, 0.45, 1], pole: [299.36, 43.46, 249.978, 541.1397757], cc: true },
   // The dwarf planets the probes visited, from the Horizons table (space-tracks-v1.json) while it covers the date.
   { key: 'pluto', eph: 'Pluto', track: 'planets', km: 1188.3, map: 'pluto', color: [0.78, 0.72, 0.66], pole: [132.993, -6.163, 302.695, 56.3625225] },
-  { key: 'ceres', eph: 'Ceres', track: 'tracks', trackKey: 'ceres', km: 469.7, color: [0.63, 0.6, 0.56], pole: [291.418, 66.764, 170.65, 952.1532] },
+  { key: 'ceres', eph: 'Ceres', track: 'tracks', trackKey: 'ceres', km: 469.7, map: 'ceres', color: [0.63, 0.6, 0.56], pole: [291.418, 66.764, 170.65, 952.1532] },
+  { key: 'vesta', eph: 'Vesta', track: 'tracks', trackKey: 'vesta', km: 262.7, map: 'vesta', color: [0.6, 0.58, 0.55], pole: [309.031, 42.235, 285.39, 1617.3331] },
   // The big moons' mean circular orbits (scripts/fit_moon_orbits.py, against JPL Horizons 1990-2060): radius km,
   // longitude in the planet's equator at J2000 from the node of that equator on the ecliptic, degrees a day.
   { key: 'io', parent: 'jupiter', km: 1821.6, map: 'io', color: [0.91, 0.85, 0.44], orbit: [421769, 40.361, 203.488958] },
   { key: 'europa', parent: 'jupiter', km: 1560.8, map: 'europa', color: [0.85, 0.81, 0.75], orbit: [671090, 234.918, 101.374724] },
   { key: 'ganymede', parent: 'jupiter', km: 2634.1, map: 'ganymede', color: [0.66, 0.63, 0.58], orbit: [1070432, 242.196, 50.317608] },
   { key: 'callisto', parent: 'jupiter', km: 2410.3, map: 'callisto', color: [0.49, 0.45, 0.41], orbit: [1882794, 101.383, 21.571073] },
-  { key: 'titan', parent: 'saturn', km: 2574.7, map: 'titan', color: [0.85, 0.65, 0.31], atmo: [1, 0.65, 0.2], orbit: [1222375, 327.598, 22.576976] }
+  { key: 'titan', parent: 'saturn', km: 2574.7, map: 'titan', color: [0.85, 0.65, 0.31], atmo: [1, 0.65, 0.2], orbit: [1222375, 327.598, 22.576976] },
+  // The small moons, with the same fit (scripts/fit_moon_orbits.py; worst miss in degrees over 1990-2060 beside each).
+  { key: 'enceladus', parent: 'saturn', km: 252.1, map: 'enceladus', color: [0.92, 0.94, 0.96], orbit: [238038, 142.287, 262.731899] },   // 1.0
+  { key: 'tethys', parent: 'saturn', km: 531.1, map: 'tethys', color: [0.8, 0.8, 0.78], orbit: [294673, 148.408, 190.697916] },   // 2.2
+  { key: 'dione', parent: 'saturn', km: 561.4, map: 'dione', color: [0.78, 0.78, 0.76], orbit: [377416, 136.952, 131.53493] },   // 0.3
+  { key: 'rhea', parent: 'saturn', km: 763.8, map: 'rhea', color: [0.74, 0.74, 0.72], orbit: [527068, 12.214, 79.690046] },   // 0.1
+  { key: 'iapetus', parent: 'saturn', km: 734.5, map: 'iapetus', color: [0.55, 0.5, 0.45], orbit: [3562324, 49.952, 4.537947] },   // 4.2
+  { key: 'triton', parent: 'neptune', km: 1353.4, map: 'triton', color: [0.78, 0.74, 0.7], orbit: [354759, 94.748, -61.25726] },   // 2.4, retrograde
+  { key: 'charon', parent: 'pluto', km: 606, map: 'charon', color: [0.62, 0.6, 0.58], orbit: [19596, 321.235, 56.362531] },   // 0.0
+  { key: 'phobos', parent: 'mars', km: 11.1, map: 'phobos', color: [0.42, 0.38, 0.35], orbit: [9376, 172.311, 1128.844929] }   // 2.8
 ];
 // Saturn's rings outward from the planet (km): alpha and brightness. C ring faint, B bright, the Cassini Division
 // nearly empty, the A ring between, the Encke gap near its edge.
@@ -3504,7 +3516,7 @@ function _aeTracksLoad() {
   if (_aeTracks || _aeTracksLoading || typeof fetch !== 'function') return;
   _aeTracksLoading = fetch(AE_TRACKS_URL).then(function (r) { if (!r.ok) throw new Error('tracks'); return r.json(); }).then(function (d) {
     _aeTracks = { tracks: d.tracks || {}, planets: d.planets || {}, probes: [] };
-    _aeTracks.probes = Object.keys(_aeTracks.tracks).filter(function (k) { return k !== 'ceres'; });
+    _aeTracks.probes = Object.keys(_aeTracks.tracks).filter(function (k) { return !_aePlanetBody(k); });
     _aeTracks.probes.forEach(function (k) {
       AE_TARGETS[k] = { min: AE_PROBE_SURFACE * 2, max: AE_PROBE_FRAME_MAX, surface: AE_PROBE_SURFACE };
       var m = { body: k, name: function () { return _aeTracks.tracks[k].name; } };
@@ -3668,7 +3680,7 @@ function _aeUpdateProbes(jd, place, near) {
   });
   _aeCommitPoints(out.cloud, n);
 }
-function _aeIsProbe(key) { return !!(_aeTracks && _aeTracks.tracks[key] && key !== 'ceres'); }
+function _aeIsProbe(key) { return !!(_aeTracks && _aeTracks.tracks[key] && !_aePlanetBody(key)); }
 // The card a flight arrives with, the same for every destination: its name, one line of what it is (its size and how
 // long it takes to go round), and where it is from here (how far, and how long light takes). A probe adds where it is
 // from the Sun and the last things it did; the ISS, whether it is in the Earth's shadow and when the Sun comes back.
@@ -3791,7 +3803,16 @@ var AE_BODY_FACTS = {
   europa: { mass: 4.8e22, gravity: 1.31, escape: 2.02, tempC: -170, atmo: 'thin_o2', found: { by: 'Galileo Galilei', year: 1610 } },
   ganymede: { mass: 1.482e23, gravity: 1.43, escape: 2.74, tempC: -160, atmo: 'thin_o2', found: { by: 'Galileo Galilei', year: 1610 } },
   callisto: { mass: 1.076e23, gravity: 1.24, escape: 2.44, tempC: -155, atmo: 'thin_co2', found: { by: 'Galileo Galilei', year: 1610 } },
-  titan: { mass: 1.345e23, gravity: 1.35, escape: 2.64, tempC: -179, atmo: 'thick_n2', found: { by: 'Christiaan Huygens', year: 1655 } }
+  titan: { mass: 1.345e23, gravity: 1.35, escape: 2.64, tempC: -179, atmo: 'thick_n2', found: { by: 'Christiaan Huygens', year: 1655 } },
+  vesta: { mass: 2.59e20, gravity: 0.25, escape: 0.36, periKm: 322000000, apoKm: 384500000, tilt: 29, yearDays: 1325.5, atmo: 'exo', found: { by: 'Heinrich Olbers', year: 1807 } },
+  enceladus: { mass: 1.08e20, gravity: 0.113, escape: 0.239, tempC: -198, atmo: 'exo', found: { by: 'William Herschel', year: 1789 } },
+  tethys: { mass: 6.18e20, gravity: 0.145, escape: 0.394, tempC: -187, atmo: 'exo', found: { by: 'Giovanni Cassini', year: 1684 } },
+  dione: { mass: 1.095e21, gravity: 0.232, escape: 0.51, tempC: -186, atmo: 'exo', found: { by: 'Giovanni Cassini', year: 1684 } },
+  rhea: { mass: 2.306e21, gravity: 0.264, escape: 0.635, tempC: -174, atmo: 'exo', found: { by: 'Giovanni Cassini', year: 1672 } },
+  iapetus: { mass: 1.806e21, gravity: 0.223, escape: 0.573, tempC: -143, atmo: 'exo', found: { by: 'Giovanni Cassini', year: 1671 } },
+  triton: { mass: 2.14e22, gravity: 0.779, escape: 1.455, tempC: -235, atmo: 'thin_n2', found: { by: 'William Lassell', year: 1846 } },
+  charon: { mass: 1.586e21, gravity: 0.288, escape: 0.58, tempC: -220, atmo: 'exo', found: { by: 'James Christy', year: 1978 } },
+  phobos: { mass: 1.0659e16, gravity: 0.0057, escape: 0.0114, tempC: -4, atmo: 'exo', found: { by: 'Asaph Hall', year: 1877 } }
 };
 var AE_KM_PER_MILE = 1.609344, AE_G0 = 9.80665, AE_EARTH_MASS_KG = 5.9722e24;
 var AE_ISS_LAUNCH_MS = Date.UTC(1998, 10, 20, 12);   // Zarya, the first module (a day is told at its noon, so it reads the same in every zone)
@@ -4071,8 +4092,8 @@ function _aeSyncInfo() {
 // every constant the axes are drawn from, each with its source: rows [name key, value, digits, unit, source, name, id].
 // _aeInfoRefNeeds says, for each row of a sheet, which listed rows it stands on; the test fails on a row it cannot place or
 // a need the pages do not list.
-var AE_REF_ORDER = ['sun', 'mercury', 'venus', 'earth', 'moon', 'mars', 'jupiter', 'saturn', 'uranus', 'neptune', 'pluto', 'ceres',
-  'io', 'europa', 'ganymede', 'callisto', 'titan'];
+var AE_REF_ORDER = ['sun', 'mercury', 'venus', 'earth', 'moon', 'mars', 'jupiter', 'saturn', 'uranus', 'neptune', 'pluto', 'ceres', 'vesta',
+  'io', 'europa', 'ganymede', 'callisto', 'titan', 'enceladus', 'tethys', 'dione', 'rhea', 'iapetus', 'triton', 'charon', 'phobos'];
 var AE_REF_SRC_FACTS = 'NASA fact sheet', AE_REF_SRC_MOONCOUNT = 'NASA Science, read 2026-11-06', AE_REF_SRC_POLE = 'IAU WGCCRE 2015';
 var AE_REF_SRC_ELEMENTS = 'JPL (Standish) mean motion', AE_REF_SRC_MOONS = 'JPL Horizons fit';
 function _aeRefMass(kg) { var e = Math.floor(Math.log10(kg)); return (kg / Math.pow(10, e)).toFixed(3) + ' × 10^' + e; }

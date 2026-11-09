@@ -104,10 +104,68 @@ def test_a_grey_picture_takes_its_colour_from_the_small_map_and_keeps_its_own_br
     assert 0.299 * r + 0.587 * g + 0.114 * b == pytest.approx(DARK, abs=6)
 
 
-def test_the_new_worlds_have_a_pinned_public_domain_source():
-    for key in ("mercury", "io", "europa", "ganymede", "callisto", "titan", "pluto"):
+def test_a_mosaic_finer_than_the_deepest_level_is_reduced_once_and_cut_from_that(
+    monkeypatch, tmp_path
+):
+    layer, out, _ = _build(monkeypatch, tmp_path, {"max": 0, "prescale": True})
+    # The cache holds the reduced picture (the deepest level's width), and the tiles come from it.
+    reduced = [
+        f
+        for f in os.listdir(tmp_path / "cache" / "files")
+        if f.startswith("testworld-")
+    ]
+    assert len(reduced) == 1
+    with Image.open(tmp_path / "cache" / "files" / reduced[0]) as r:
+        assert r.size == (hd.TILE * 2, hd.TILE)
+    assert _mean(out, layer, 0, 0, 0) == pytest.approx(LIGHT, abs=3)
+
+
+def test_an_elevation_model_becomes_shaded_relief_grey_where_flat(tmp_path):
+    tifffile = pytest.importorskip("tifffile")
+    dem = np.zeros((64, 128), dtype=np.int16)
+    dem[:, 60:68] = np.arange(8, dtype=np.int16) * 100  # a ramp facing east
+    path = tmp_path / "dem.tif"
+    tifffile.imwrite(str(path), dem)
+    out = hd.shaded_map(str(path), str(tmp_path / "shade.png"), 128, 470000)
+    with Image.open(out) as im:
+        a = np.asarray(im, dtype=float)
+    flat = a[10, 10]
+    assert flat == pytest.approx(255 * hd.SHADE_BASE, abs=2)
+    assert abs(a[32, 63] - flat) > 5  # the ramp reads as a slope, not as flat ground
+
+
+def test_every_world_has_a_pinned_public_domain_source():
+    for key in (
+        "mercury",
+        "venus",
+        "mars",
+        "io",
+        "europa",
+        "ganymede",
+        "callisto",
+        "titan",
+        "pluto",
+        "charon",
+        "triton",
+        "enceladus",
+        "tethys",
+        "dione",
+        "rhea",
+        "iapetus",
+        "vesta",
+        "phobos",
+        "ceres",
+    ):
         layer = "planets/" + key
         assert layer in hd.PINS and len(hd.PINS[layer]) == 64
         assert hd.LAYERS[layer]["file"].startswith(
             "https://planetarymaps.usgs.gov/mosaic/"
         )
+    assert hd.LAYERS["moon/albedo"]["file"].startswith(
+        "https://planetarymaps.usgs.gov/mosaic/"
+    )
+    # Only the gas giants come from elsewhere, and are credited.
+    elsewhere = {
+        k for k, v in hd.LAYERS.items() if "solarsystemscope" in v.get("file", "")
+    }
+    assert elsewhere == {"planets/jupiter", "planets/saturn"}

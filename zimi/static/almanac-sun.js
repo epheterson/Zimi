@@ -152,7 +152,7 @@ var AE_SUNFX_GLSL = {
     '    for (int i = 0; i < ' + AE_SUNFX_PROMS + '; i++) {',
     '      vec4 A = uPromA[i], B = uPromB[i];',
     '      if (A.w <= 0.0) continue;',
-    '      float sig = 0.016 + 0.07 * A.w, sum = 0.0;',
+    '      float sig = 0.02 + 0.09 * A.w, sum = 0.0;',
     '      for (int k = 0; k <= ' + AE_SUNFX_ARCH_STEPS + '; k++) {',
     '        float t = float(k) / ' + AE_SUNFX_ARCH_STEPS + '.0;',
     '        vec3 p = normalize(mix(A.xyz, B.xyz, t)) * (1.0 + A.w * sin(3.14159265 * t)) - cam;',
@@ -162,7 +162,7 @@ var AE_SUNFX_GLSL = {
     '      if (B.w > 0.0) cool += sum * B.w; else hot += sum * -B.w;',
     '    }',
     '  }',
-    '  col += vec3(1.0, 0.34, 0.28) * (1.0 - exp(-0.5 * cool)) + vec3(1.0, 0.85, 0.75) * (1.0 - exp(-0.35 * hot));'
+    '  col += vec3(1.0, 0.3, 0.26) * 1.5 * (1.0 - exp(-1.4 * cool)) + vec3(1.0, 0.85, 0.75) * 1.5 * (1.0 - exp(-0.8 * hot));'
   ].join('\n')
 };
 
