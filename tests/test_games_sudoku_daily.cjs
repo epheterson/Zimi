@@ -43,7 +43,7 @@ check(/ZimiShell\.daily \? 'medium'/.test(fs.readFileSync(path.join(dir, 'sudoku
 
 const css = fs.readFileSync(path.join(dir, 'sudoku.css'), 'utf8');
 const pop = /@keyframes su-key-pop \{([^@]*?)\}\s*\n/.exec(css)[1], scales = (pop.match(/scale:\s*([\d.]+)/g) || []).map((s) => parseFloat(s.replace(/scale:\s*/, '')));
-check(Math.max.apply(null, scales) <= 1.05, 'the key pop is at most 5% (' + scales.join(',') + '): its ring stays between its neighbours');
+check(scales.length > 0 && Math.max.apply(null, scales) <= 1.05, 'the key pop is at most 5% (' + scales.join(',') + '): its ring stays between its neighbours');
 
 if (failures) { console.error(failures + ' failed'); process.exit(1); }
 console.log('sudoku daily: all passed');

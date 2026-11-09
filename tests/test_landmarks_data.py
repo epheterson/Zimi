@@ -203,7 +203,7 @@ def _patch(a, lat, lon, half=3):
 
 
 def test_places_sit_on_their_own_maps(data):
-    np = pytest.importorskip("numpy")
+    import numpy as np
     Image = pytest.importorskip("PIL.Image")
     for body, name, kind in ON_THE_MAP:
         a = np.asarray(
@@ -229,7 +229,7 @@ def test_places_sit_on_their_own_maps(data):
 
 
 def test_earth_places_are_on_land_in_the_blue_marble(data):
-    np = pytest.importorskip("numpy")
+    import numpy as np
     Image = pytest.importorskip("PIL.Image")
     im = np.asarray(
         Image.open(os.path.join(EARTH_DIR, "earth-day-v1.webp")).convert("RGB"),
