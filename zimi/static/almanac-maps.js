@@ -35,14 +35,12 @@ var AlmanacMaps = (function () {
     ['#ffb347', 6, 9], ['#ffd27f', 5, 8], ['#fff1c9', 4, 6.5], ['#ffffff', 3.2, 5], ['rgba(255,255,255,.82)', 2.2, 3.6], ['rgba(255,255,255,.6)', 1.4, 2.6]
   ];
   var CASING = 'rgba(10,14,24,.72)';
-  var LABEL_FILL = '#ffffff', LABEL_HALO = 'rgba(8,12,20,.88)';
   // Place classes drawn, the zoom range each shows in and its type size in canvas px.
   var PLACE_STYLE = {
     country: { z0: 0, z1: 5, px: 24, w: 700 }, state: { z0: 4, z1: 8, px: 19, w: 500 }, city: { z0: 3, z1: 99, px: 23, w: 700 },
     town: { z0: 7, z1: 99, px: 19, w: 600 }, village: { z0: 9, z1: 99, px: 16, w: 500 }, suburb: { z0: 11, z1: 99, px: 15, w: 500 },
     hamlet: { z0: 11, z1: 99, px: 14, w: 500 }, neighbourhood: { z0: 12, z1: 99, px: 14, w: 500 }, island: { z0: 6, z1: 12, px: 17, w: 500 }
   };
-  var PLACE_ORDER = ['country', 'state', 'city', 'town', 'island', 'village', 'suburb', 'hamlet', 'neighbourhood'];
 
   var MAX_ANISOTROPY = 4;
   // The canvas as it is, straight onto the globe: the page's colours are the screen's, so no colour-space step.
@@ -274,13 +272,13 @@ var AlmanacMaps = (function () {
       loads--;
       if (m !== map) { t.state = 'new'; return; }
       t.data = data;
+      t.places = data ? data.places : null;
       t.state = data && (data.roads.length || data.places.length) ? 'drawn' : 'empty';
       if (t.state === 'drawn') drawQueue.push(t);
       _ae.dirty = true;
       _aeKick();
     }).catch(function () { loads--; t.state = 'empty'; });
   }
-  function labelFont(st) { return st.w + ' ' + st.px + 'px -apple-system,system-ui,"Segoe UI",Roboto,sans-serif'; }
   // The roads and names of one tile, on a canvas.
   function paint(t) {
     var cv = document.createElement('canvas');
@@ -306,32 +304,6 @@ var AlmanacMaps = (function () {
         ctx.stroke();
       }
     }
-    // Names: the biggest kinds first, the first to claim a spot keeps it.
-    var boxes = [], margin = 4;
-    var places = d.places.filter(function (p) { var st = PLACE_STYLE[p[1]]; return st && t.z >= st.z0 && t.z <= st.z1 && p[3] >= 0 && p[3] < 1 && p[4] >= 0 && p[4] < 1; });
-    places.sort(function (a, b) { return PLACE_ORDER.indexOf(a[1]) - PLACE_ORDER.indexOf(b[1]) || a[2] - b[2]; });
-    ctx.textBaseline = 'middle';
-    ctx.lineWidth = 4;
-    ctx.strokeStyle = LABEL_HALO;
-    places.forEach(function (p) {
-      var st = PLACE_STYLE[p[1]], dot = p[1] !== 'country' && p[1] !== 'state' && p[1] !== 'island';
-      ctx.font = labelFont(st);
-      var w = ctx.measureText(p[0]).width, h = st.px, x = p[3] * S2, y = p[4] * S2, tx = dot ? x + 8 : x - w / 2;
-      tx = clamp(tx, margin, S2 - margin - w);
-      y = clamp(y, h / 2 + margin, S2 - h / 2 - margin);   // a name whole inside its tile: a point sits in one tile only
-      var box = [tx - margin, y - h / 2 - margin, tx + w + margin, y + h / 2 + margin];
-      if (boxes.some(function (b) { return box[0] < b[2] && box[2] > b[0] && box[1] < b[3] && box[3] > b[1]; })) return;
-      boxes.push(box);
-      if (dot) {
-        ctx.fillStyle = LABEL_HALO;
-        ctx.beginPath(); ctx.arc(x, y, 5, 0, 2 * Math.PI); ctx.fill();
-        ctx.fillStyle = LABEL_FILL;
-        ctx.beginPath(); ctx.arc(x, y, 3, 0, 2 * Math.PI); ctx.fill();
-      }
-      ctx.strokeText(p[0], tx, y);
-      ctx.fillStyle = LABEL_FILL;
-      ctx.fillText(p[0], tx, y);
-    });
     if (!TexClass) TexClass = _aeTextureClass(THREE);
     var tex = new TexClass(cv);   // the build exports no CanvasTexture, Texture or MeshBasicMaterial
     tex.needsUpdate = true;
@@ -347,6 +319,7 @@ var AlmanacMaps = (function () {
     t.data = null;
   }
   function free(t) {
+    t.places = null;
     if (t.mesh) { group.remove(t.mesh); t.mesh.geometry.dispose(); t.mat.dispose(); t.tex.dispose(); }
     t.mesh = t.mat = t.tex = null;
     t.live = false;
@@ -401,6 +374,88 @@ var AlmanacMaps = (function () {
       }).catch(function () {});
     }
     return m.maxz;
+  }
+
+  // ── the names: upright text over the globe, one spot each, however the globe is tilted ──
+  var NAME_PX = { country: 15, state: 13, city: 15, town: 13, island: 12, village: 12, suburb: 11.5, hamlet: 11, neighbourhood: 11 };
+  var NAME_PRIORITY = ['city', 'town', 'island', 'village', 'suburb', 'hamlet', 'neighbourhood', 'state', 'country'];   // who keeps a spot
+  var NAME_MAX = 44, NAME_MARGIN = 5, NAME_DOT_PX = 8, NAME_CHAR_PX = 0.56;
+  var layer = null, spans = {}, nameMeasure = null;
+  function nameLayer() {
+    if (layer) return layer;
+    var anchor = document.getElementById('ae-lbl-place');
+    if (!anchor || !anchor.parentNode) return null;
+    if (!document.getElementById('ae-maps-names-style')) {
+      var st = document.createElement('style');
+      st.id = 'ae-maps-names-style';
+      st.textContent = '.ae-maps-names{position:absolute;left:0;top:0;width:0;height:0;pointer-events:none;z-index:1}' +
+        '.ae-maps-name{position:absolute;left:0;top:0;white-space:nowrap;font:600 12px -apple-system,system-ui,"Segoe UI",Roboto,sans-serif;color:#fff;' +
+        'text-shadow:0 0 3px rgba(8,12,20,.95),0 0 3px rgba(8,12,20,.95),0 1px 5px rgba(8,12,20,.9);will-change:transform}' +
+        '.ae-maps-name.dot::before{content:"";display:inline-block;width:5px;height:5px;border-radius:50%;background:#fff;margin-inline-end:4px;vertical-align:middle;box-shadow:0 0 0 1.5px rgba(8,12,20,.85)}';
+      document.head.appendChild(st);
+    }
+    layer = document.createElement('div');
+    layer.className = 'ae-maps-names';
+    layer.setAttribute('aria-hidden', 'true');
+    anchor.parentNode.appendChild(layer);
+    return layer;
+  }
+  function nameWidth(text, px) {
+    if (!nameMeasure) nameMeasure = document.createElement('canvas').getContext('2d');
+    nameMeasure.font = '600 ' + px + 'px -apple-system,system-ui,sans-serif';
+    return nameMeasure.measureText(text).width + NAME_DOT_PX;
+  }
+  // The names of the tiles in view, nearest to the screen's middle first among equals of one kind; those that would
+  // run into one already placed, or off the screen, are left out.
+  function placeNames(on) {
+    var el = nameLayer();
+    if (!el) return;
+    el.style.opacity = on ? String(Math.max(0, opacity)) : '0';
+    if (!on || opacity <= 0) { for (var k0 in spans) spans[k0].hidden = true; return; }
+    var cand = [], n, W = _ae.w, H = _ae.h, cx = W / 2, cy = H / 2;
+    for (var key in tiles) {
+      var t = tiles[key];
+      if (!t.places || !t.mesh || !t.mesh.visible) continue;
+      n = Math.pow(2, t.z);
+      t.places.forEach(function (p) {
+        var st = PLACE_STYLE[p[1]];
+        if (!st || t.z < st.z0 || t.z > st.z1 || p[3] < 0 || p[3] >= 1 || p[4] < 0 || p[4] >= 1) return;
+        var v = _aeLatLonVec(latOfY((t.y + p[4]) / n), -WORLD_DEG / 2 + (t.x + p[3]) / n * WORLD_DEG, AE_EARTH_FLATTENING);
+        var w = new THREE.Vector3(v[0], v[1], v[2]).applyMatrix4(S.earth.matrixWorld), a = [w.x, w.y, w.z];
+        if (!_aeFacing(a)) return;
+        var sc = _aeProject(a);
+        if (!sc || sc.x < 0 || sc.y < 0 || sc.x > W || sc.y > H) return;
+        cand.push({ id: t.key + '|' + p[0] + '|' + p[3].toFixed(3), name: p[0], cls: p[1], rank: p[2], x: sc.x, y: sc.y, d: Math.abs(sc.x - cx) + Math.abs(sc.y - cy) });
+      });
+    }
+    cand.sort(function (a, b) { return NAME_PRIORITY.indexOf(a.cls) - NAME_PRIORITY.indexOf(b.cls) || a.rank - b.rank || a.d - b.d; });
+    var boxes = [], used = {}, shown = 0;
+    for (var i = 0; i < cand.length && shown < NAME_MAX; i++) {
+      var c = cand[i], px = NAME_PX[c.cls] || 12, dot = c.cls !== 'country' && c.cls !== 'state' && c.cls !== 'island';
+      var w2 = nameWidth(c.name, px), h2 = px * 1.25, left = c.x - (dot ? NAME_DOT_PX / 2 : w2 / 2);
+      if (left < 2 || left + w2 > W - 2) continue;
+      var box = [left - NAME_MARGIN, c.y - h2 / 2 - NAME_MARGIN, left + w2 + NAME_MARGIN, c.y + h2 / 2 + NAME_MARGIN];
+      if (boxes.some(function (b) { return box[0] < b[2] && box[2] > b[0] && box[1] < b[3] && box[3] > b[1]; })) continue;
+      boxes.push(box);
+      shown++;
+      var sp = spans[c.id];
+      if (!sp) {
+        sp = spans[c.id] = document.createElement('span');
+        sp.className = 'ae-maps-name' + (dot ? ' dot' : '');
+        sp.style.fontSize = px + 'px';
+        sp.textContent = c.name;
+        el.appendChild(sp);
+      }
+      sp.hidden = false;
+      sp.style.transform = 'translate(' + Math.round(left) + 'px,' + Math.round(c.y - h2 / 2) + 'px)';
+      used[c.id] = true;
+    }
+    for (var id in spans) {
+      if (used[id]) continue;
+      // Gone for good when its tile is, hidden while it merely has no room.
+      var gone = !tiles[id.split('|')[0]];
+      if (gone) { spans[id].remove(); delete spans[id]; } else spans[id].hidden = true;
+    }
   }
 
   // ── the chip ──
@@ -462,6 +517,7 @@ var AlmanacMaps = (function () {
     var alt = (_ae.dist - 1) * AE_EARTH_RADIUS_KM, c = cfg();
     if (_ae.target !== 'earth' || _ae.spin || alt > c.startKm) {
       if (group) setOpacity(0);
+      if (layer) layer.style.opacity = '0';
       if (chip) chip.hidden = true;
       restSince = 0;
       return;
@@ -498,6 +554,7 @@ var AlmanacMaps = (function () {
       pump();
     }
     setOpacity(fade);
+    placeNames(!!map);
     // The chip, after the camera has rested.
     var rested = now - restSince >= HINT_QUIET_MS && alt <= c.hintKm;
     if (!rested) { if (chip) chip.hidden = true; }
@@ -510,6 +567,7 @@ var AlmanacMaps = (function () {
     if (drawQueue.length || queue.length || loads) { _ae.dirty = true; _aeKick(); }
   }
   function release() {
+    if (layer) { layer.style.opacity = '0'; layer.textContent = ''; spans = {}; }
     for (var k in tiles) free(tiles[k]);
     queue = []; drawQueue = []; visibleZ = -1;
     if (group) { setOpacity(0); }
