@@ -310,7 +310,7 @@ function _alLaunchHtml() {
     '<p class="al-sight' + (sight.no ? ' no' : '') + '">' + _almEsc(sight.text) + '</p>' +
     '<div class="al-acts">' +
       _alAct('al-pad', 'pad', 'alm_launch_pad') + _alAct('al-here', 'eye', 'alm_launch_from_here') + _alAct('al-frompad', 'stand', 'alm_launch_from_pad') +
-      (typeof _aeStandAt === 'function' ? _alAct('al-ground', 'stand', 'alm_launch_on_ground') : '') +
+      _alAct('al-ground', 'stand', 'alm_launch_on_ground') +
     '</div>' + (_alHintSeen() ? '' : '<p class="al-note">' + _almEsc(_aeT('alm_launch_hint')) + '</p>');
   if (_al.dep) html += _alBatchHtml();
   return html;
