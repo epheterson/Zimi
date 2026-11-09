@@ -87,6 +87,26 @@ GIBS_DIMS = {
     7: (160, 80),
 }
 
+# The large-scale tone of the Cassini moons and Phobos, laid back under their mosaics' detail ("tone" in LAYERS). The
+# mosaics are high-pass filtered or contrast-stretched: every crater is there, the albedo is not. A moon's tone runs
+# from "dark" to "light" as the mosaic's own large-scale brightness (the picture blurred about 8 degrees, ``lp``) runs
+# from ``lo`` to ``hi``, so the boundaries are the mosaic's; the levels follow the moons' published geometric albedos
+# (Enceladus 1.0, Tethys 0.8, Dione 0.7, Rhea 0.65, Iapetus 0.03 on its leading side to 0.6 trailing, Phobos 0.07), in the
+# grey a lit texture reads at on this view's other worlds. Iapetus's dark material is a red-brown.
+TONES = {
+    "enceladus": {
+        "lo": 120,
+        "hi": 140,
+        "dark": (216, 223, 231),
+        "light": (216, 223, 231),
+    },
+    "tethys": {"lo": 105, "hi": 146, "dark": (196, 196, 194), "light": (220, 220, 218)},
+    "dione": {"lo": 110, "hi": 165, "dark": (184, 182, 178), "light": (206, 204, 200)},
+    "rhea": {"lo": 90, "hi": 136, "dark": (184, 182, 178), "light": (206, 204, 200)},
+    "iapetus": {"lo": 92, "hi": 114, "dark": (74, 52, 40), "light": (212, 210, 204)},
+    "phobos": {"lo": 120, "hi": 140, "dark": (112, 104, 98), "light": (112, 104, 98)},
+}
+
 LAYERS = {
     "earth/day": {
         "gibs": "BlueMarble_NextGeneration",
@@ -122,28 +142,120 @@ LAYERS = {
     #   tint    a greyscale mosaic's colour comes from the small colour map shipped with the view (zimi/static/earth/),
     #           so the sharp tiles keep the world's colour
     #   derive  "shade": an elevation model drawn as shaded relief
+    #   tone    the large-scale brightness put back under a flat mosaic's detail (TONES)
+    #   fill    the unmapped black grown over from the mapped colour nearby (Triton's unseen north)
     **{
         "planets/%s" % k: dict(spec, file=USGS % f, mode=mode)
         for k, f, mode, spec in (
-            ("venus", "Venus_Magellan_C3-MDIR_Colorized_Global_Mosaic_4641m.tif", "RGB", {"max": 3}),
-            ("mars", "Mars_Viking_MDIM21_ClrMosaic_global_232m.tif", "RGB", {"max": 5, "prescale": True}),
-            ("mercury", "Mercury_MESSENGER_MDIS_Basemap_BDR_Mosaic_Global_166m.tif", "L", {"max": 5, "prescale": True, "tint": "mercury-v1.webp"}),
-            ("io", "Io_GalileoSSI-Voyager_Global_Mosaic_ClrMerge_1km.tif", "RGB", {"max": 3}),
-            ("europa", "Europa_Voyager_GalileoSSI_global_mosaic_500m.tif", "L", {"max": 4, "roll": True}),
-            ("ganymede", "Ganymede_Voyager_GalileoSSI_global_mosaic_1km.tif", "L", {"max": 4, "roll": True, "tint": "ganymede-v1.webp"}),
-            ("callisto", "Callisto_Voyager_GalileoSSI_global_mosaic_1km.tif", "L", {"max": 4, "roll": True}),
-            ("titan", "Titan_ISS_P19658_Mosaic_Global_4km.tif", "L", {"max": 2, "roll": True}),
-            ("pluto", "Pluto_NewHorizons_Global_Mosaic_300m_Jul2017_8bit.tif", "L", {"max": 4, "roll": True, "tint": "pluto-v1.webp"}),
-            ("charon", "Charon_NewHorizons_Global_Mosaic_300m_Jul2017_8bit.tif", "L", {"max": 4}),
-            ("triton", "Triton_Voyager2_ClrMosaic_GlobalFill_600m.tif", "RGB", {"max": 4}),
-            ("enceladus", "Enceladus_Cassini_ISS_Global_Mosaic_100m_HPF.tif", "L", {"max": 4}),
-            ("tethys", "Tethys_Cassini_mosaic_global_293m.tif", "L", {"max": 3}),
-            ("dione", "Dione_Cassini_Voyager_mosaic_global_154m.tif", "L", {"max": 4}),
-            ("rhea", "Rhea_Cassini_Voyager_mosaic_global_417m.tif", "L", {"max": 3}),
-            ("iapetus", "Iapetus_Cassini_Voyager_mosaic_global_783m.tif", "L", {"max": 3}),
+            (
+                "venus",
+                "Venus_Magellan_C3-MDIR_Colorized_Global_Mosaic_4641m.tif",
+                "RGB",
+                {"max": 3},
+            ),
+            (
+                "mars",
+                "Mars_Viking_MDIM21_ClrMosaic_global_232m.tif",
+                "RGB",
+                {"max": 5, "prescale": True},
+            ),
+            (
+                "mercury",
+                "Mercury_MESSENGER_MDIS_Basemap_BDR_Mosaic_Global_166m.tif",
+                "L",
+                {"max": 5, "prescale": True, "tint": "mercury-v1.webp"},
+            ),
+            (
+                "io",
+                "Io_GalileoSSI-Voyager_Global_Mosaic_ClrMerge_1km.tif",
+                "RGB",
+                {"max": 3},
+            ),
+            (
+                "europa",
+                "Europa_Voyager_GalileoSSI_global_mosaic_500m.tif",
+                "L",
+                {"max": 4, "roll": True},
+            ),
+            (
+                "ganymede",
+                "Ganymede_Voyager_GalileoSSI_global_mosaic_1km.tif",
+                "L",
+                {"max": 4, "roll": True, "tint": "ganymede-v1.webp"},
+            ),
+            (
+                "callisto",
+                "Callisto_Voyager_GalileoSSI_global_mosaic_1km.tif",
+                "L",
+                {"max": 4, "roll": True},
+            ),
+            (
+                "titan",
+                "Titan_ISS_P19658_Mosaic_Global_4km.tif",
+                "L",
+                {"max": 2, "roll": True},
+            ),
+            (
+                "pluto",
+                "Pluto_NewHorizons_Global_Mosaic_300m_Jul2017_8bit.tif",
+                "L",
+                {"max": 4, "roll": True, "tint": "pluto-v1.webp"},
+            ),
+            (
+                "charon",
+                "Charon_NewHorizons_Global_Mosaic_300m_Jul2017_8bit.tif",
+                "L",
+                {"max": 4},
+            ),
+            (
+                "triton",
+                "Triton_Voyager2_ClrMosaic_GlobalFill_600m.tif",
+                "RGB",
+                {"max": 4, "fill": True},
+            ),
+            (
+                "enceladus",
+                "Enceladus_Cassini_ISS_Global_Mosaic_100m_HPF.tif",
+                "L",
+                {"max": 4, "tone": TONES["enceladus"]},
+            ),
+            (
+                "tethys",
+                "Tethys_Cassini_mosaic_global_293m.tif",
+                "L",
+                {"max": 3, "tone": TONES["tethys"]},
+            ),
+            (
+                "dione",
+                "Dione_Cassini_Voyager_mosaic_global_154m.tif",
+                "L",
+                {"max": 4, "tone": TONES["dione"]},
+            ),
+            (
+                "rhea",
+                "Rhea_Cassini_Voyager_mosaic_global_417m.tif",
+                "L",
+                {"max": 3, "tone": TONES["rhea"]},
+            ),
+            (
+                "iapetus",
+                "Iapetus_Cassini_Voyager_mosaic_global_783m.tif",
+                "L",
+                {"max": 3, "tone": TONES["iapetus"]},
+            ),
             ("vesta", "Vesta_Dawn_FC_HAMO_Mosaic_Global_74ppd.tif", "L", {"max": 4}),
-            ("phobos", "Phobos_Viking_Mosaic_40ppd_DLRcontrol.tif", "L", {"max": 3}),
-            ("ceres", "Ceres_Dawn_FC_HAMO_DTM_DLR_Global_60ppd_Oct2016.tif", "L", {"max": 4, "derive": "shade", "radius_m": 470000}),
+            (
+                "phobos",
+                "Phobos_Viking_Mosaic_40ppd_DLRcontrol.tif",
+                "L",
+                {"max": 3, "tone": TONES["phobos"]},
+            ),
+            (
+                "ceres",
+                "Ceres_Dawn_FC_HAMO_DTM_DLR_Global_60ppd_Oct2016.tif",
+                "L",
+                {"max": 4, "derive": "shade", "radius_m": 470000},
+            ),
         )
     },
     "moon/relief": {
@@ -305,9 +417,20 @@ class GibsMosaic:
         )
 
 
-CHROMA_FLOOR = 8.0  # a base-map pixel darker than this has no colour to lend (an unmapped pole)
+CHROMA_FLOOR = (
+    8.0  # a base-map pixel darker than this has no colour to lend (an unmapped pole)
+)
 CHROMA_MAX = 2.0
 LUMA = (0.299, 0.587, 0.114)
+FINISH_MAP_W = (
+    1024  # the helper maps of a finished layer (FileMosaic._aux): a globe this wide
+)
+FINISH_LP_SIGMA_PX = (
+    24  # the large-scale brightness: the globe blurred this far (about 8 degrees)
+)
+FILL_BLACK = 3  # a pixel this dark in every channel is unmapped
+FILL_BLUR_PX = 40
+FILL_DIM = 0.9  # the invented fill sits a little under the colour it grows from: it is a guess, kept quiet
 EARTH_DIR = os.path.join(ROOT, "zimi", "static", "earth")
 
 
@@ -316,7 +439,7 @@ class FileMosaic:
     degrees east, rolled here to -180..180. ``tint``: a small colour map (-180..180) whose colours, not brightness,
     are laid on a greyscale picture's windows."""
 
-    def __init__(self, path, mode, roll=False, tint=None):
+    def __init__(self, path, mode, roll=False, tint=None, finish=None):
         from PIL import Image
 
         Image.MAX_IMAGE_PIXELS = None
@@ -330,6 +453,8 @@ class FileMosaic:
         self.im = im
         self.res = 360.0 / self.im.width
         self.tint = Image.open(tint).convert("RGB") if tint else None
+        self.finish = finish or {}
+        self._aux_maps = None
 
     def _chroma(self, lon0, lat_top, span):
         """The tint map's colour over a window as ratios to its own brightness (1 where it has none), a tile wide."""
@@ -339,10 +464,97 @@ class FileMosaic:
         res = 360.0 / self.tint.width
         x0, y0, px = (lon0 + 180.0) / res, (90.0 - lat_top) / res, span / res
         box = (x0, y0, x0 + px, y0 + px)
-        rgb = np.asarray(self.tint.resize((TILE, TILE), Image.BICUBIC, box=box), dtype=np.float32)
+        rgb = np.asarray(
+            self.tint.resize((TILE, TILE), Image.BICUBIC, box=box), dtype=np.float32
+        )
         lum = (rgb @ np.array(LUMA, dtype=np.float32))[..., None]
         ratio = np.where(lum > CHROMA_FLOOR, rgb / np.maximum(lum, 1.0), 1.0)
         return np.clip(ratio, 0.0, CHROMA_MAX)
+
+    def _aux(self):
+        """The two helper maps a finished layer reads, both a globe 1024 wide: ``lp`` (the picture's large-scale
+        brightness, for "tone") and ``fill`` (the picture's unmapped black replaced by its nearest mapped colour,
+        smoothed, for "fill"). None for a layer that asks for neither."""
+        import numpy as np
+        from PIL import Image, ImageFilter
+
+        if self._aux_maps is None:
+            small = self.im.resize((FINISH_MAP_W, FINISH_MAP_W // 2), Image.BOX)
+            lp = fill = None
+            if "tone" in self.finish:
+                lp = small.convert("L").filter(
+                    ImageFilter.GaussianBlur(FINISH_LP_SIGMA_PX)
+                )
+            if self.finish.get("fill"):
+                a = np.asarray(small.convert("RGB"), dtype=np.float32)
+                valid = a.max(axis=2) > FILL_BLACK
+                filled = a.copy()
+                for x in range(
+                    a.shape[1]
+                ):  # each column upward from its first mapped pixel
+                    ys = np.nonzero(valid[:, x])[0]
+                    if len(ys):
+                        y0 = ys[0]
+                        filled[:y0, x] = a[y0 : y0 + 12, x][
+                            valid[y0 : y0 + 12, x]
+                        ].mean(axis=0)
+                fill = Image.fromarray(filled.astype(np.uint8)).filter(
+                    ImageFilter.GaussianBlur(FILL_BLUR_PX)
+                )
+            self._aux_maps = (lp, fill)
+        return self._aux_maps
+
+    def _finish_px(self, arr, lp, fill):
+        """A picture's pixels (float, rows x columns x channels) with the layer's finish: the large-scale tone put
+        back (the Cassini mosaics are high-pass filtered: a flat grey with every crater but no albedo), the unmapped
+        black filled. ``lp`` and ``fill`` are the helper maps over the same ground."""
+        import numpy as np
+        from PIL import Image, ImageFilter
+
+        tone = self.finish.get("tone")
+        if tone:
+            lum = arr[..., :1]
+            low = np.asarray(lp, dtype=np.float32)[..., None]
+            detail = lum / np.maximum(low, 8.0)
+            lo, hi, c0, c1 = (
+                tone["lo"],
+                tone["hi"],
+                np.array(tone["dark"], np.float32),
+                np.array(tone["light"], np.float32),
+            )
+            s = np.clip((low - lo) / max(hi - lo, 1e-6), 0.0, 1.0)
+            s = s * s * (3 - 2 * s)
+            arr = (c0 + (c1 - c0) * s) * detail
+        if fill is not None:
+            black = (arr.max(axis=2) <= FILL_BLACK).astype(np.uint8) * 255
+            mask = (
+                Image.fromarray(black)
+                .filter(ImageFilter.MaxFilter(7))
+                .filter(ImageFilter.GaussianBlur(2))
+            )
+            alpha = (np.asarray(mask, dtype=np.float32) / 255.0)[..., None]
+            arr = (
+                arr * (1 - alpha)
+                + np.asarray(fill, dtype=np.float32) * FILL_DIM * alpha
+            )
+        return np.clip(arr, 0, 255)
+
+    def _finished(self, im, lp_box, size):
+        """``im`` with the finish laid on; ``lp_box`` the helper maps' window over the same ground (or None: all)."""
+        import numpy as np
+        from PIL import Image
+
+        lp, fill = self._aux()
+        grab = lambda m: (
+            m.resize(size, Image.BICUBIC, box=lp_box) if m is not None else None
+        )  # noqa: E731
+        arr = np.asarray(im, dtype=np.float32)
+        if arr.ndim == 2:
+            arr = arr[..., None]
+        arr = self._finish_px(arr, grab(lp), grab(fill))
+        return Image.fromarray(
+            arr.astype(np.uint8)[..., 0] if arr.shape[2] == 1 else arr.astype(np.uint8)
+        )
 
     def whole(self, width):
         """The whole globe ``width`` x ``width / 2``: the small map shipped with the view (zimi/static/earth/)."""
@@ -351,19 +563,36 @@ class FileMosaic:
 
         size = (width, width // 2)
         small = self.im.resize(size, Image.LANCZOS)
+        if self.finish:
+            small = self._finished(small, None, size)
         if self.tint is None:
             return small
         rgb = np.asarray(self.tint.resize(size, Image.BICUBIC), dtype=np.float32)
         lum = (rgb @ np.array(LUMA, dtype=np.float32))[..., None]
-        ratio = np.clip(np.where(lum > CHROMA_FLOOR, rgb / np.maximum(lum, 1.0), 1.0), 0.0, CHROMA_MAX)
+        ratio = np.clip(
+            np.where(lum > CHROMA_FLOOR, rgb / np.maximum(lum, 1.0), 1.0),
+            0.0,
+            CHROMA_MAX,
+        )
         grey = np.asarray(small, dtype=np.float32)[..., None]
         return Image.fromarray(np.clip(grey * ratio, 0, 255).astype(np.uint8))
 
     def window(self, lon0, lat_top, span):
         from PIL import Image
 
-        x0, y0, px = (lon0 + 180.0) / self.res, (90.0 - lat_top) / self.res, span / self.res
-        tile = self.im.resize((TILE, TILE), Image.LANCZOS, box=(x0, y0, x0 + px, y0 + px))
+        x0, y0, px = (
+            (lon0 + 180.0) / self.res,
+            (90.0 - lat_top) / self.res,
+            span / self.res,
+        )
+        tile = self.im.resize(
+            (TILE, TILE), Image.LANCZOS, box=(x0, y0, x0 + px, y0 + px)
+        )
+        if self.finish:
+            k = FINISH_MAP_W / self.im.width
+            tile = self._finished(
+                tile, (x0 * k, y0 * k, (x0 + px) * k, (y0 + px) * k), (TILE, TILE)
+            )
         if self.tint is None:
             return tile
         import numpy as np
@@ -468,7 +697,8 @@ def normals_map(dem_path, out_path, width):
 
 def prescaled(path, mode, width, out_path):
     """A mosaic far finer than the pyramid's deepest level, reduced once to its width (a box filter, the honest
-    average): otherwise every one of thousands of tiles would reach into a multi-gigabyte picture."""
+    average): otherwise every one of thousands of tiles would reach into a multi-gigabyte picture.
+    """
     from PIL import Image
 
     Image.MAX_IMAGE_PIXELS = None
@@ -485,8 +715,11 @@ def prescaled(path, mode, width, out_path):
     return out_path
 
 
-SHADE_AZIMUTH_DEG, SHADE_ALTITUDE_DEG = 315.0, 45.0  # the light, from the north-west and half way up
-SHADE_BASE, SHADE_GAIN = 0.45, 0.8                   # a flat place's grey, and how much a slope moves it
+SHADE_AZIMUTH_DEG, SHADE_ALTITUDE_DEG = (
+    315.0,
+    45.0,
+)  # the light, from the north-west and half way up
+SHADE_BASE, SHADE_GAIN = 0.45, 0.8  # a flat place's grey, and how much a slope moves it
 DEM_NODATA = -32768
 
 
@@ -504,7 +737,9 @@ def shaded_map(dem_path, out_path, width, radius_m):
     dem[dem == DEM_NODATA] = np.nan
     mean = np.nanmean(dem)
     dem = np.where(np.isnan(dem), mean, dem)
-    z = np.asarray(Image.fromarray(dem).resize((width, width // 2), Image.BOX), dtype=np.float32)
+    z = np.asarray(
+        Image.fromarray(dem).resize((width, width // 2), Image.BOX), dtype=np.float32
+    )
     h, w = z.shape
     step = np.deg2rad(360.0 / w)
     lat = np.deg2rad(90.0 - (np.arange(h) + 0.5) * 180.0 / h)
@@ -514,15 +749,19 @@ def shaded_map(dem_path, out_path, width, radius_m):
     gy = (up - down) / (2 * radius_m * step)
     az, alt = np.deg2rad(SHADE_AZIMUTH_DEG), np.deg2rad(SHADE_ALTITUDE_DEG)
     light = (np.cos(alt) * np.sin(az), np.cos(alt) * np.cos(az), np.sin(alt))
-    shade = (-gx * light[0] - gy * light[1] + light[2]) / np.sqrt(gx * gx + gy * gy + 1.0)
-    out = np.clip((SHADE_BASE + SHADE_GAIN * (shade - np.sin(alt))) * 255, 0, 255).astype(np.uint8)
+    shade = (-gx * light[0] - gy * light[1] + light[2]) / np.sqrt(
+        gx * gx + gy * gy + 1.0
+    )
+    out = np.clip(
+        (SHADE_BASE + SHADE_GAIN * (shade - np.sin(alt))) * 255, 0, 255
+    ).astype(np.uint8)
     Image.fromarray(out).save(out_path)
     return out_path
 
 
 def file_source(layer, spec, cache, top, update):
     """A file layer's picture ready to cut: fetched, checked against its pin, and derived or reduced where the layer
-    says so. Returns (path, roll, tint map or None)."""
+    says so. Returns (path, roll, tint map or None, finish)."""
     path = _fetch(
         spec["file"], os.path.join(cache, "files", os.path.basename(spec["file"]))
     )
@@ -542,12 +781,37 @@ def file_source(layer, spec, cache, top, update):
         )
     if spec.get("derive") == "shade":
         width = TILE * 2 ** (top + 1)
-        path = shaded_map(path, os.path.join(cache, "files", "%s-shade-%d-%s.png" % (os.path.basename(layer), width, source_sha[:12])), width, spec["radius_m"])
+        path = shaded_map(
+            path,
+            os.path.join(
+                cache,
+                "files",
+                "%s-shade-%d-%s.png"
+                % (os.path.basename(layer), width, source_sha[:12]),
+            ),
+            width,
+            spec["radius_m"],
+        )
     elif spec.get("prescale"):
         width = TILE * 2 ** (top + 1)
-        path = prescaled(path, spec["mode"], width, os.path.join(cache, "files", "%s-%d-%s.png" % (os.path.basename(layer), width, source_sha[:12])))
+        path = prescaled(
+            path,
+            spec["mode"],
+            width,
+            os.path.join(
+                cache,
+                "files",
+                "%s-%d-%s.png" % (os.path.basename(layer), width, source_sha[:12]),
+            ),
+        )
     tint = spec.get("tint")
-    return path, spec.get("roll", False), os.path.join(EARTH_DIR, tint) if tint else None
+    finish = {k: spec[k] for k in ("tone", "fill") if k in spec}
+    return (
+        path,
+        spec.get("roll", False),
+        os.path.join(EARTH_DIR, tint) if tint else None,
+        finish,
+    )
 
 
 def build_layer(layer, cache, out, update, max_level=None, procs=None):
@@ -827,8 +1091,8 @@ def write_small_maps(layers, cache, out_dir, update):
         spec = LAYERS[layer]
         if "file" not in spec or not layer.startswith("planets/"):
             continue
-        path, roll, tint = file_source(layer, spec, cache, spec["max"], update)
-        mos = FileMosaic(path, spec["mode"], roll, tint)
+        path, roll, tint, finish = file_source(layer, spec, cache, spec["max"], update)
+        mos = FileMosaic(path, spec["mode"], roll, tint, finish)
         dest = os.path.join(out_dir, "%s-v1.webp" % os.path.basename(layer))
         im = mos.whole(SMALL_MAP_WIDTH)
         im.save(dest, "WEBP", quality=SMALL_MAP_Q, method=6)
@@ -861,14 +1125,20 @@ def main(argv=None):
         help="the Apollo sites' NAC inserts (on unless --no-inserts)",
     )
     ap.add_argument("--no-inserts", dest="inserts", action="store_false")
-    ap.add_argument("--small-maps", metavar="DIR", help="instead of tiles, write each layer's small map (1024 x 512 WebP) there")
+    ap.add_argument(
+        "--small-maps",
+        metavar="DIR",
+        help="instead of tiles, write each layer's small map (1024 x 512 WebP) there",
+    )
     ap.add_argument(
         "--tag",
         help="the release the file is attached to: writes zimi/assets/almanac-tiles.json for it",
     )
     a = ap.parse_args(argv)
     if a.small_maps:
-        return write_small_maps([x for x in a.layers.split(",") if x], a.cache, a.small_maps, a.update_pins)
+        return write_small_maps(
+            [x for x in a.layers.split(",") if x], a.cache, a.small_maps, a.update_pins
+        )
     stage = os.path.join(a.cache, "stage")
     if os.path.isdir(stage) and not a.keep_stage:
         shutil.rmtree(stage)

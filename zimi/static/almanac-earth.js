@@ -421,10 +421,10 @@ var AE_SUN_SHOW_R = 40;               // ~0.76 degrees as seen from the Earth (r
 var AE_SUN_SEGMENTS = [48, 24];
 var AE_SUN_GLOW_SCALE = 7;            // the glow's width, in the disc's radii
 var AE_GRANULES_PER_RADIUS = 160;     // the granulation's cells (real: ~700, too fine to draw)
-var AE_GRANULE_CONTRAST = 0.3;        // bright cells against dark lanes, at the disc's centre
+var AE_GRANULE_CONTRAST = 0.24;       // bright cells against dark lanes, at the disc's centre
 var AE_GRANULE_LIFE_S = 600;          // a granule lives about ten minutes, on the page's clock
 var AE_GRANULE_CYCLE = 512;           // the pattern's time, wrapped to keep a float's precision
-var AE_SUN_EXPOSURE = [4.5, 2.5, 1.05];   // the photosphere's exposure per colour: golden centre, deep orange limb
+var AE_SUN_EXPOSURE = [3.0, 1.9, 0.85];   // the photosphere's exposure per colour: pale gold centre (burnt out, the limb darkening is lost), deep orange limb
 var AE_FIT_SUN = AE_SUN_SHOW_R * 2.2; // the disc and the glow nearest it
 var AE_MIN_DIST_SUN = AE_SUN_SHOW_R * 1.3;
 var AE_MAX_DIST_SUN = 100000;         // out from the Sun far enough to hold every planet's orbit as shown, on a phone
@@ -1305,7 +1305,9 @@ var AE_SPHERE_VERT = [
   '  vec4 w = modelMatrix * vec4(position, 1.0);',
   '  vWorld = w.xyz;',
   '  vNormal = normalize(mat3(modelMatrix) * normal);',
-  '  gl_Position = projectionMatrix * viewMatrix * w;',
+  // Placed by the camera-relative matrix (the CPU makes it in double precision): through the world position a body
+  // thousands of Earth radii out and a few thousandths of one across (Phobos) lost its shape to float32.
+  '  gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);',
   '}'
 ].join('\n');
 
@@ -1699,7 +1701,7 @@ var AE_SUN_FRAG = [
   '  float mu = max(dot(n, normalize(cameraPosition - vWorld)), 0.0);',
   '  vec3 q = n * ' + AE_GRANULES_PER_RADIUS.toFixed(1) + ' + vec3(0.0, 0.0, uT * 0.37);',
   '  vec3 c = aeCells(q);',
-  '  float lane = smoothstep(0.0, 0.25, c.y - c.x);',
+  '  float lane = smoothstep(0.0, 0.32, c.y - c.x);',
   '  float cell = lane * (1.2 - 0.9 * c.x) * (0.8 + 0.4 * c.z) - 0.6;',
   '  float fine = clamp(1.6 - 0.9 * length(fwidth(q)), 0.0, 1.0);',
   '  // @sunfx-cells',
