@@ -12,6 +12,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 **Zimi**
 
 - `zimi check` checks a ZIM the way openZIM's zimcheck does: its checksum, metadata, icon, redirects and internal links.
+- Manage can clear the catalog copies Zimi keeps: the cached catalog and the `.torrent` files of ZIMs you have not installed.
 
 **Games**
 
@@ -20,6 +21,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 **Almanac**
 
 - The beach scene has clouds that glow after sunset where the Sun still reaches them, and a helicopter with blinking lights.
+- A magnifier on a planet's tip in the solar system opens the sky aimed at it.
 
 ## [1.15.4]
 
