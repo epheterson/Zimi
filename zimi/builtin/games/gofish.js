@@ -170,7 +170,7 @@
       var me = seats.view(), you = seats.isYou(l.seat), asked = l.target === me && !seats.hotseat();
       var ask = TX(you ? 'gofish.ask.you' : asked ? 'gofish.ask.ofYou' : 'gofish.ask', { name: name(l.seat), target: name(l.target), rank: rankWord(l.rank) });
       var result = l.got ? TX('gofish.handed', { cards: cardsOf(l.got) }) : l.empty ? TX('gofish.none') : TX(l.lucky ? 'gofish.lucky' : 'gofish.fish');
-      var out = TX('cards.then', { first: ask, then: result });
+      var out = you && !seats.hotseat() ? result : TX('cards.then', { first: ask, then: result });
       l.books.forEach(function (b) { out = TX('cards.then', { first: out, then: TX(seats.isYou(b.seat) ? 'gofish.book.you' : 'gofish.book', { name: name(b.seat), rank: rankWord(b.rank) }) }); });
       return out;
     }
@@ -197,7 +197,7 @@
         out.choices.push({ label: TX('shell.cancel'), onclick: function () { view.pending = null; repaint(); } });
         return out;
       }
-      out.text = lead(TX(seats.isYou(st.turn) ? 'gofish.pick' : 'gofish.pick.name', { name: name(st.turn) }));
+      out.text = note ? lead(TX(seats.isYou(st.turn) ? 'cards.turn.you' : 'cards.turn.name', { name: name(st.turn) })) : TX(seats.isYou(st.turn) ? 'gofish.pick' : 'gofish.pick.name', { name: name(st.turn) });
       return out;
     }
 

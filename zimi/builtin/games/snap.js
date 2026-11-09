@@ -94,9 +94,9 @@
   root.ZimiSnap = api;
 
   // ── The page ────────────────────────────────────────────────────────────
-  var BUTTON_GAP = 22, BUTTON_MAX = 76, BUTTON_MIN = 52, SIDE_GAP = 24, NOTE_MS = 1200, OVER_MS = 900;
+  var BUTTON_GAP = 22, BUTTON_MAX = 76, BUTTON_MIN = 52, SIDE_GAP = 24, NOTE_MS = 1200, OVER_MS = 900, RESUME_MS = 2200;
   function boot() {
-    var d = root.document, t, board, session, view = { flash: '' }, level = DEFAULT_LEVEL, timer = 0, held = false;
+    var d = root.document, t, board, session, view = { flash: '' }, level = DEFAULT_LEVEL, timer = 0, held = false, resumed = false;
     var button = Z.h('button', { class: 'sn-snap', type: 'button', text: TX('snap.button') });
     var badges = [Z.h('div', { class: 'sn-count' }), Z.h('div', { class: 'sn-count' })];
     Z.pageEls().table.appendChild(button); badges.forEach(function (b) { Z.pageEls().table.appendChild(b); });
@@ -136,7 +136,8 @@
       var st = session.state;
       clear();
       if (held || d.hidden || st.phase === 'over') return;
-      later(flipNow, st.flips === 0 && st.moves === 0 ? OVER_MS : LEVELS[level].flip);
+      later(flipNow, st.flips === 0 && st.moves === 0 ? OVER_MS : resumed ? RESUME_MS : LEVELS[level].flip);
+      resumed = false;
     }
     function flipNow() {
       var st = session.state;
@@ -184,6 +185,7 @@
 
     function newGame() {
       level = readLevel(); clear(); view.flash = '';
+      resumed = true;
       session.reset(deal(T.shuffleOf(Array.apply(null, Array(CARDS)).map(function (x, i) { return i; }), Math.random), Math.round(Math.random())));
       arm();
     }
