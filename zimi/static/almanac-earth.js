@@ -2060,6 +2060,27 @@ function _aeLoadMaps(S) {
 // ZIM, below) or the Almanac ZIM's own answer (hd/, a path from its page, so Kiwix finds them beside it).
 var AE_HD_BASE_LEGACY = '/w/zimi_almanac_hd/';
 function _aeHdBase() { return (_ae.hdSt && _ae.hdSt.base) || AE_HD_BASE_LEGACY; }
+// The ZIMs that hold the tiles: the main one (the Almanac's HD flavour, or 1.15.3's tile ZIM) and, when the set is split
+// (a layer too big for one file), each part installed beside it. Each layer's folder is read from the ZIM that lists it.
+function _aeHdBases() {
+  var parts = (_ae.hdSt && _ae.hdSt.parts) || {};
+  return [_aeHdBase()].concat(Object.keys(parts).sort().map(function (k) { return parts[k]; }));
+}
+// The lists of layers of every ZIM in the set as one: each layer remembers whose folder it is in (``base``). A part that
+// does not answer leaves its layers out, so its bodies keep their one map; the main ZIM's list is required.
+function _aeHdManifest() {
+  var bases = _aeHdBases();
+  return Promise.all(bases.map(function (base, i) {
+    return fetch(base + 'hd.json').then(function (r) { if (!r.ok) throw new Error('hd'); return r.json(); }).then(function (man) {
+      Object.keys((man && man.layers) || {}).forEach(function (k) { man.layers[k].base = base; });
+      return man;
+    }).catch(function (e) { if (i === 0) throw e; return null; });
+  })).then(function (mans) {
+    var man = mans[0];
+    mans.slice(1).forEach(function (x) { if (x && x.layers) Object.keys(x.layers).forEach(function (k) { man.layers[k] = x.layers[k]; }); });
+    return man;
+  });
+}
 var AE_HD_TILE_PX = 512;
 var AE_HD_SPLIT = 1.0;           // a tile gives way to its four once it covers more device pixels than it has
 // What the tiles may hold on the GPU, in bytes (a tile of 512 px: 1.4 MB with mipmaps, a one-channel one a quarter of
@@ -2103,7 +2124,7 @@ function _aeHdLoad(S) {
   if (S.hd) return;
   S.hd = null;
   if (typeof fetch !== 'function') return;
-  fetch(_aeHdBase() + 'hd.json').then(function (r) { if (!r.ok) throw new Error('hd'); return r.json(); }).then(function (man) {
+  _aeHdManifest().then(function (man) {
     if (_ae.gl !== S || !man || !man.layers) return;
     var bodies = _aeHdBodies(S).filter(function (b) {
       b.maps = b.maps.filter(function (m) { return man.layers[m.layer] || !m.optional; });
@@ -2115,6 +2136,7 @@ function _aeHdLoad(S) {
       b.max = man.layers[b.maps[0].layer].max;
       b.maps.forEach(function (m) {
         m.max = man.layers[m.layer].max;
+        m.base = man.layers[m.layer].base;
         // Inserts: tiles past the layer's max, only round some places (the Apollo sites), by level.
         m.ins = {};
         (man.layers[m.layer].inserts || []).forEach(function (e) { (m.ins[e.z] = m.ins[e.z] || []).push(e); });
@@ -2265,7 +2287,7 @@ function _aeHdMinOver(b, lat, lon) {
   }
   return _aeHdTexelMin(b, deepest);
 }
-function _aeHdTileUrl(m, n) { return _aeHdBase() + m.layer + '/' + n.z + '/' + n.x + '/' + n.y + '.webp'; }
+function _aeHdTileUrl(m, n) { return (m.base || _aeHdBase()) + m.layer + '/' + n.z + '/' + n.x + '/' + n.y + '.webp'; }
 function _aeHdReady(b, n) {
   return b.maps.every(function (m) { var t = _aeHdLayerNode(b, n, m).tex[m.layer]; return t && t.isTexture; });
 }
@@ -2473,6 +2495,7 @@ var AE_PLANETS = [
   { key: 'callisto', parent: 'jupiter', km: 2410.3, map: 'callisto', color: [0.49, 0.45, 0.41], orbit: [1882794, 101.383, 21.571073] },
   { key: 'titan', parent: 'saturn', km: 2574.7, map: 'titan', color: [0.85, 0.65, 0.31], atmo: [1, 0.65, 0.2], orbit: [1222375, 327.598, 22.576976] },
   // The small moons, with the same fit (scripts/fit_moon_orbits.py; worst miss in degrees over 1990-2060 beside each).
+  { key: 'mimas', parent: 'saturn', km: 198.2, map: 'mimas', color: [0.78, 0.78, 0.77], orbit: [185572, 120.969, 381.994386] },   // 46.8: its swing against Tethys (a resonance) outruns a mean orbit
   { key: 'enceladus', parent: 'saturn', km: 252.1, map: 'enceladus', color: [0.92, 0.94, 0.96], orbit: [238038, 142.287, 262.731899] },   // 1.0
   { key: 'tethys', parent: 'saturn', km: 531.1, map: 'tethys', color: [0.8, 0.8, 0.78], orbit: [294673, 148.408, 190.697916] },   // 2.2
   { key: 'dione', parent: 'saturn', km: 561.4, map: 'dione', color: [0.78, 0.78, 0.76], orbit: [377416, 136.952, 131.53493] },   // 0.3
@@ -3808,6 +3831,7 @@ var AE_BODY_FACTS = {
   callisto: { mass: 1.076e23, gravity: 1.24, escape: 2.44, tempC: -155, atmo: 'thin_co2', found: { by: 'Galileo Galilei', year: 1610 } },
   titan: { mass: 1.345e23, gravity: 1.35, escape: 2.64, tempC: -179, atmo: 'thick_n2', found: { by: 'Christiaan Huygens', year: 1655 } },
   vesta: { mass: 2.59e20, gravity: 0.25, escape: 0.36, periKm: 322000000, apoKm: 384500000, tilt: 29, yearDays: 1325.5, atmo: 'exo', found: { by: 'Heinrich Olbers', year: 1807 } },
+  mimas: { mass: 3.75e19, gravity: 0.064, escape: 0.159, tempC: -209, atmo: 'exo', found: { by: 'William Herschel', year: 1789 } },
   enceladus: { mass: 1.08e20, gravity: 0.113, escape: 0.239, tempC: -198, atmo: 'exo', found: { by: 'William Herschel', year: 1789 } },
   tethys: { mass: 6.18e20, gravity: 0.145, escape: 0.394, tempC: -187, atmo: 'exo', found: { by: 'Giovanni Cassini', year: 1684 } },
   dione: { mass: 1.095e21, gravity: 0.232, escape: 0.51, tempC: -186, atmo: 'exo', found: { by: 'Giovanni Cassini', year: 1684 } },
@@ -4096,7 +4120,7 @@ function _aeSyncInfo() {
 // _aeInfoRefNeeds says, for each row of a sheet, which listed rows it stands on; the test fails on a row it cannot place or
 // a need the pages do not list.
 var AE_REF_ORDER = ['sun', 'mercury', 'venus', 'earth', 'moon', 'mars', 'jupiter', 'saturn', 'uranus', 'neptune', 'pluto', 'ceres', 'vesta',
-  'io', 'europa', 'ganymede', 'callisto', 'titan', 'enceladus', 'tethys', 'dione', 'rhea', 'iapetus', 'triton', 'charon', 'phobos'];
+  'io', 'europa', 'ganymede', 'callisto', 'titan', 'mimas', 'enceladus', 'tethys', 'dione', 'rhea', 'iapetus', 'triton', 'charon', 'phobos'];
 var AE_REF_SRC_FACTS = 'NASA fact sheet', AE_REF_SRC_MOONCOUNT = 'NASA Science, read 2026-11-06', AE_REF_SRC_POLE = 'IAU WGCCRE 2015';
 var AE_REF_SRC_ELEMENTS = 'JPL (Standish) mean motion', AE_REF_SRC_MOONS = 'JPL Horizons fit';
 function _aeRefMass(kg) { var e = Math.floor(Math.log10(kg)); return (kg / Math.pow(10, e)).toFixed(3) + ' × 10^' + e; }

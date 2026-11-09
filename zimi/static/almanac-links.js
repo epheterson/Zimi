@@ -65,6 +65,7 @@
     'planet:callisto': { q: 'Q3134', en: 'Callisto (moon)' },
     'planet:titan':    { q: 'Q2565', en: 'Titan (moon)' },
     'planet:vesta':    { q: 'Q3030', en: '4 Vesta' },
+    'planet:mimas':    { q: 'Q15034', en: 'Mimas' },
     'planet:enceladus': { q: 'Q3303', en: 'Enceladus' },
     'planet:tethys':   { q: 'Q15047', en: 'Tethys (moon)' },
     'planet:dione':    { q: 'Q15040', en: 'Dione (moon)' },

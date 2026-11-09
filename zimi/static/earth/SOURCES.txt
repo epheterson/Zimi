@@ -215,6 +215,7 @@ craft-<model>-v1.bin (scripts/build_craft_models.py)
       Ganymede Ganymede_Voyager_GalileoSSI_global_mosaic_1km.tif (colour from ganymede-v1)
       Callisto Callisto_Voyager_GalileoSSI_global_mosaic_1km.tif
       Titan    Titan_ISS_P19658_Mosaic_Global_4km.tif
+      Mimas    Mimas/Cassini_DLR_Mimas.zip: MI_170630_DLR_basemap_degrees.tif (Cassini ISS, DLR)
       Enceladus Enceladus_Cassini_ISS_Global_Mosaic_100m_HPF.tif
       Tethys   Tethys_Cassini_mosaic_global_293m.tif
       Dione    Dione_Cassini_Voyager_mosaic_global_154m.tif

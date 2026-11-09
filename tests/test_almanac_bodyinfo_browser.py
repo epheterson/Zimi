@@ -75,6 +75,7 @@ QIDS = {
     "callisto": "Q3134",
     "titan": "Q2565",
     "vesta": "Q3030",
+    "mimas": "Q15034",
     "enceladus": "Q3303",
     "tethys": "Q15047",
     "dione": "Q15040",
