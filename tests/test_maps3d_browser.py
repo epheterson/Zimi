@@ -364,9 +364,10 @@ def test_the_almanacs_place_line_opens_the_map_of_its_place(maplib):
             pg.on("pageerror", lambda e: errors.append(str(e)))
             pg.goto(maplib + "/#almanac", wait_until="load")
             pg.wait_for_selector(
-                "[onclick='_almMapHere()']", state="attached", timeout=120_000
+                "[onclick='_almMapHere()']", state="visible", timeout=120_000
             )
             pg.evaluate(STAND_IN)
+            pg.wait_for_timeout(1000)
             _shot(pg, "almanac-place-line.png")
             pg.evaluate("_almMapHere()")
             try:

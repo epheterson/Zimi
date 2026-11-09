@@ -485,7 +485,7 @@ var AlmanacMaps = (function () {
     var fade = map ? 1 - smooth((alt - c.fullKm) / (c.startKm - c.fullKm)) : 0;
     if (map) {
       var z = clamp(zoomFor(centre), Z_MIN, maxZoomOf(map)), list = wanted(z, centre), ready = 0;
-      list.forEach(function (w) { var t = getTile(w.z, w.x, w.y); want(t); if (t.state === 'ready') ready++; });
+      list.forEach(function (w) { var t = getTile(w.z, w.x, w.y); want(t); if (t.state === 'ready' || t.state === 'empty') ready++; });   // an empty tile (open sea) is as done as a drawn one
       // The level stays until the new one is mostly in: no bare globe between two zooms.
       if (visibleZ < 0 || z === visibleZ || ready * 2 >= list.length) visibleZ = z;
       var show = visibleZ === z ? list : wanted(visibleZ, centre);

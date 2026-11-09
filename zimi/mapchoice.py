@@ -204,5 +204,5 @@ def answer(zims, lat, lng, catalog=None):
     )
     if installed:  # the planet is already here: no second planet on offer
         out["world"] = []
-    mark_overlaps(out["offers"] + out["world"], zims)
+    mark_overlaps(out["offers"], zims)  # the planet overlaps everything: no point saying so
     return out
