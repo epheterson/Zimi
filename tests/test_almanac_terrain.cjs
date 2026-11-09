@@ -14,6 +14,7 @@ const read = (f) => fs.readFileSync(path.join(STATIC, f), 'utf8');
 const ctx = { console, Math, Float32Array, Int16Array, Uint32Array, Uint8Array, DataView, ArrayBuffer, performance: { now: () => Date.now() } };
 vm.createContext(ctx);
 vm.runInContext(read('almanac-terrain.js'), ctx);
+vm.runInContext(read('almanac-terrainshade.js'), ctx);
 const T = (code) => vm.runInContext(code, ctx);
 ctx.__bin = (k) => { const b = fs.readFileSync(path.join(STATIC, 'earth', 'terrain-' + k + '-v1.bin')); return b.buffer.slice(b.byteOffset, b.byteOffset + b.byteLength); };
 
@@ -68,19 +69,24 @@ check(T('_aeStandHeight("jupiter", 0, 0)') === 0, 'a body that cannot be stood o
 }
 
 // ── 2b. Land and sea, and the HD tiles ──
-check(T('_aeTerrainIsWater(10, 40, 120)') && !T('_aeTerrainIsWater(120, 140, 60)') && !T('_aeTerrainIsWater(230, 230, 235)'), 'the day map: the sea is blue, land (green, brown) and ice are not');
 {
-  const mw = 8, mh = 4, rgba = new Uint8Array(mw * mh * 4);
-  for (let i = 0; i < mw * mh; i++) { const wet = (i % mw) < 4; rgba.set(wet ? [10, 40, 120, 255] : [110, 130, 60, 255], 4 * i); }
-  ctx.__mask = T('_aeTerrainWaterMask').call(null, rgba, mw, mh);
-  const at = (lat, lon) => T('_aeTerrainWaterAt(__mask, ' + lat + ', ' + lon + ')');
-  check(at(0, -135) === 1 && at(0, 135) === 0, 'a mask is wet where the picture is and dry where it is not');
-  check(at(0, 0) > 0.2 && at(0, 0) < 0.8, 'the coast is between');
-  ctx.__prev = T('_aeTerr.earth.water');
-  T('_aeTerr.earth.water = __mask');
-  check(h('earth', 0, -135).sea === true, 'Earth: with a mask, the sea is where the mask says');
-  check(h('earth', 0, 135).sea === false && h('earth', 0, 135).h >= 3, 'Earth: land the shipped map averages down below zero stands at least a coast\'s few metres up');
-  T('_aeTerr.earth.water = __prev');
+  const lb = fs.readFileSync(path.join(STATIC, 'earth', 'land-v1.bin'));
+  ctx.__land = T('_aeTerrainLandParse').call(null, lb.buffer.slice(lb.byteOffset, lb.byteOffset + lb.byteLength));
+  check(!!ctx.__land && ctx.__land.w === 8192 && ctx.__land.h === 4096, 'the land mask parses (8192 x 4096)');
+  check(T('_aeTerrainLandParse(new ArrayBuffer(12))') === null, 'a mask of the wrong bytes is refused');
+  const at = (lat, lon) => T('_aeTerrainLandAt(__land, ' + lat + ', ' + lon + ')');
+  check(at(38.5, -98) === 1 && at(0, -150) === 0 && at(-20, -30) === 0, 'Kansas is land; the Pacific and the South Atlantic are sea');
+  check(at(37.77, -122.42) > 0.5 && at(37.77, -123.2) < 0.5, 'San Francisco is land and the sea off the Golden Gate (about 70 km west) is sea');
+  check(at(51.5, -0.12) > 0.5 && at(52.5, 3.5) < 0.5, 'London is land; the North Sea off the Dutch coast is sea');
+  check(at(-80, 0) === 1 && at(-34, 153) < 0.5, 'Antarctica is land; the Tasman Sea off Sydney (about 180 km out) is sea');
+  let land = 0;
+  for (let i = 0; i < 20000; i++) land += at(Math.asin(2 * ((i * 0.6180339887) % 1) - 1) * 180 / Math.PI, ((i * 0.7548776662) % 1) * 360 - 180) > 0.5 ? 1 : 0;
+  check(land / 20000 > 0.27 && land / 20000 < 0.38, 'about a third of the globe is land (' + (land / 200).toFixed(1) + '%)');
+  ctx.__prev = T('_aeTerr.earth.land');
+  T('_aeTerr.earth.land = __land');
+  check(h('earth', 0, -150).sea === true, 'Earth: with the mask, open ocean is sea');
+  check(h('earth', 37.77, -122.42).sea === false && h('earth', 37.77, -122.42).h >= 3, 'Earth: San Francisco stands on land (the coarse map reads it below zero)');
+  T('_aeTerr.earth.land = __prev');
 }
 {
   // HD tiles: a tile of known heights is read bilinearly, and a place without its tiles falls back to the shipped map.
@@ -121,6 +127,48 @@ check(T('_aeTerrainIsWater(10, 40, 120)') && !T('_aeTerrainIsWater(120, 140, 60)
   }
   check(outward > 0.95 * Math.ceil(fin.idx.length / (3 * 97)), 'the triangles face up (counter-clockwise from above)');
   check(b.sMax > 500000, 'the rings reach the horizon from a high orbit (' + Math.round(b.sMax / 1000) + ' km)');
+}
+
+// ── 3b. Shadows the relief casts ──
+{
+  // A wall 50 m high across x = 200..260 on level ground.
+  ctx.__at = (x) => (x > 200 && x < 260 ? 50 : 0);
+  const grids = T('_aeShadeGrids')((x, y) => ctx.__at(x));
+  let guard = 0;
+  while (!grids.step(50) && guard++ < 100000) { /* in slices */ }
+  ctx.__g = grids;
+  const vis = (x, z, el, az) => T('_aeShadeVisible(__g, ' + x + ', 0, ' + z + ', [' + Math.sin(az) * Math.cos(el) + ', ' + Math.cos(az) * Math.cos(el) + ', ' + Math.sin(el) + '], 0.0047)');
+  const deg = Math.PI / 180;
+  check(vis(300, 0, 10 * deg, -Math.PI / 2) < 0.05, 'behind a wall with the Sun 10 degrees up on the wall\'s side: in its shadow');
+  check(vis(300, 0, 10 * deg, Math.PI / 2) === 1, 'on the Sun\'s side of the wall: lit');
+  check(vis(300, 0, 60 * deg, -Math.PI / 2) === 1, 'with the Sun 60 degrees up the wall throws no shadow that far');
+  check(vis(300, 0, 2 * deg, -Math.PI / 2) < 0.05 && vis(1500, 0, 2 * deg, -Math.PI / 2) < 0.6, 'a low Sun: the shadow runs a kilometre and more (' + vis(300, 0, 2 * deg, -Math.PI / 2).toFixed(2) + ' ' + vis(1500, 0, 2 * deg, -Math.PI / 2).toFixed(2) + ')');
+  check(vis(300, 0, 0.0, -Math.PI / 2) === 1, 'a Sun on the horizon casts none by this march (the planet\'s own shadow takes over)');
+  const ends = [vis(300, 0, 15 * deg, -Math.PI / 2), vis(500, 0, 15 * deg, -Math.PI / 2), vis(900, 0, 15 * deg, -Math.PI / 2)];
+  check(ends[0] < 0.05 && ends[2] === 1 && ends[1] > ends[0] - 1e-9, 'the shadow ends: dark at 300 m, lit by 900 m (' + ends.map((v) => v.toFixed(2)).join(' ') + ')');
+  // The penumbra: right at the shadow's far edge the Sun is half covered.
+  let edge = 1, any = false;
+  for (let x = 260; x < 600; x += 1) { const v = vis(x, 0, 15 * deg, -Math.PI / 2); if (v > 0.02 && v < 0.98) { any = true; edge = v; break; } }
+  check(any, 'there is a penumbra at the edge of the shadow (' + edge.toFixed(2) + ')');
+  const pos = new Float32Array([300, 0, 0, 1000, 0, 0, -100, 0, 0]), shade = new Float32Array(3);
+  const job = T('_aeShadeJob')(grids, pos, 3, [-Math.cos(10 * deg), 0, Math.sin(10 * deg)], 0.0047, shade);
+  while (!job.step(1)) { /* slices */ }
+  check(shade[0] < 0.05 && shade[1] > 0.9 && shade[2] === 1, 'a job shades each vertex: ' + Array.from(shade).map((v) => v.toFixed(2)).join(' '));
+  // Real terrain: the shadow of the Moon's relief with the Sun low is there for some vertex and not for others.
+  const lat = 20.19, lon = 30.77, h0 = T('_aeTerrainHeight("moon", ' + lat + ', ' + lon + ', 0).h');
+  ctx.__h0 = h0;
+  const g2 = T('_aeShadeGrids')((x, y, cell) => T('_aeTerrainLocal("moon", ' + lat + ', ' + lon + ', __h0, ' + x + ', ' + y + ', ' + cell / 1000 * 1.5 + ')'));
+  let n = 0;
+  while (!g2.step(200) && n++ < 1000) { /* slices */ }
+  ctx.__g2 = g2;
+  let dark = 0, lit = 0;
+  for (let i = 0; i < 400; i++) {
+    const a = i * 2.399963, r = 30 + (i * 37.1) % 5000, x = r * Math.cos(a), y = r * Math.sin(a);
+    const z = T('_aeTerrainLocal("moon", ' + lat + ', ' + lon + ', __h0, ' + x + ', ' + y + ', 0)');
+    const v = T('_aeShadeVisible(__g2, ' + x + ', ' + y + ', ' + z + ', [0.9961, 0, 0.0872], 0.0047)');   // the Sun 5 degrees up in the east
+    if (v < 0.5) dark++; else lit++;
+  }
+  check(dark > 5 && lit > 100, 'the Moon at Taurus-Littrow with the Sun 5 degrees up: some of the ground is in shadow, most is not (' + dark + ' of 400)');
 }
 
 // ── 4. The bodies ──

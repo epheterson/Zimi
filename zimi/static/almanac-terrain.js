@@ -61,43 +61,46 @@ function _aeTerrainLoad(key) {
   if (!AE_STAND_BODIES[key] || !AE_STAND_BODIES[key].terrain || typeof fetch !== 'function') { _aeTerrainSet(key, null); return (t.promise = Promise.resolve(t)); }
   t.state = 'loading';
   t.promise = fetch(AE_TERRAIN_URL + key + '-v1.bin').then(function (r) { if (!r.ok) throw new Error('terrain'); return r.arrayBuffer(); })
-    .then(function (buf) { _aeTerrainSet(key, _aeTerrainParse(buf)); return key === 'earth' ? _aeTerrainLoadWater(t) : t; })
+    .then(function (buf) { _aeTerrainSet(key, _aeTerrainParse(buf)); return key === 'earth' ? _aeTerrainLoadLand(t) : t; })
     .catch(function () { t.promise = null; _aeTerrainSet(key, null); return t; });   // asked for again next time
   return t.promise;
 }
 
 // ── Land and sea on the Earth ──
 // The shipped map is 156 km a pixel: a coastal cell averages land with the sea and reads below zero. Where the water is
-// comes from the Earth's own picture instead (the day map: the sea is blue there), 1024 x 512, so a coast stands where the
-// coast is.
-var AE_TERRAIN_WATER_W = 1024, AE_TERRAIN_WATER_H = 512, AE_TERRAIN_WATER_BLUE = 12, AE_TERRAIN_COAST_M = 3;
-function _aeTerrainIsWater(r, g, b) { return b > r + AE_TERRAIN_WATER_BLUE && b >= g - 4; }
-// rgba: the picture's pixels, rows from the north.
-function _aeTerrainWaterMask(rgba, w, h) {
-  var data = new Uint8Array(w * h);
-  for (var i = 0; i < data.length; i++) data[i] = _aeTerrainIsWater(rgba[4 * i], rgba[4 * i + 1], rgba[4 * i + 2]) ? 1 : 0;
-  return { w: w, h: h, data: data };
+// comes from Natural Earth's 1:10 million land polygons (scripts/build_landmask.py), 8192 x 4096, stored as runs: a coast
+// stands where the coast is, to a few kilometres. Lakes read as land.
+var AE_TERRAIN_LAND_URL = '/static/earth/land-v1.bin', AE_TERRAIN_LAND_MAGIC = 'ZLND', AE_TERRAIN_COAST_M = 3;
+// The runs as a bit mask (one bit a pixel, rows from the north), or null if the bytes are not this format.
+function _aeTerrainLandParse(buf) {
+  if (!buf || buf.byteLength < 10) return null;
+  var v = new DataView(buf), m = String.fromCharCode(v.getUint8(0), v.getUint8(1), v.getUint8(2), v.getUint8(3));
+  if (m !== AE_TERRAIN_LAND_MAGIC || v.getUint8(4) !== 1) return null;
+  var w = v.getUint16(6, true), h = v.getUint16(8, true), bits = new Uint8Array((w * h + 7) >> 3), pos = 10;
+  for (var y = 0; y < h; y++) {
+    if (pos + 2 > buf.byteLength) return null;
+    var n = v.getUint16(pos, true), x = 0;
+    pos += 2;
+    for (var i = 0; i < n; i++, pos += 2) {
+      var run = v.getUint16(pos, true);
+      if (i % 2 === 1) for (var k = y * w + x, e = k + run; k < e; k++) bits[k >> 3] |= 1 << (k & 7);
+      x += run;
+    }
+    if (x !== w) return null;
+  }
+  return pos === buf.byteLength ? { w: w, h: h, bits: bits } : null;
 }
-// How wet a place is, 0 (land) to 1 (sea): bilinear between the pixels' centres.
-function _aeTerrainWaterAt(m, lat, lon) {
+// How much of a place is land, 0 (sea) to 1 (land): bilinear between the pixels' centres.
+function _aeTerrainLandAt(m, lat, lon) {
   var x = (lon + 180) / 360 * m.w - 0.5, y = (90 - lat) / 180 * m.h - 0.5, x0 = Math.floor(x), y0 = Math.floor(y), fx = x - x0, fy = y - y0;
-  var ya = Math.min(m.h - 1, Math.max(0, y0)), yb = Math.min(m.h - 1, Math.max(0, y0 + 1)), xa = ((x0 % m.w) + m.w) % m.w, xb = (xa + 1) % m.w, d = m.data;
-  return (d[ya * m.w + xa] * (1 - fx) + d[ya * m.w + xb] * fx) * (1 - fy) + (d[yb * m.w + xa] * (1 - fx) + d[yb * m.w + xb] * fx) * fy;
+  var ya = Math.min(m.h - 1, Math.max(0, y0)), yb = Math.min(m.h - 1, Math.max(0, y0 + 1)), xa = ((x0 % m.w) + m.w) % m.w, xb = (xa + 1) % m.w, b = m.bits;
+  function at(yy, xx) { var k = yy * m.w + xx; return (b[k >> 3] >> (k & 7)) & 1; }
+  return (at(ya, xa) * (1 - fx) + at(ya, xb) * fx) * (1 - fy) + (at(yb, xa) * (1 - fx) + at(yb, xb) * fx) * fy;
 }
-function _aeTerrainLoadWater(t) {
-  var url = typeof AE_TEX_DAY !== 'undefined' ? AE_TEX_DAY : '/static/earth/earth-day-v1.webp';
-  if (typeof createImageBitmap !== 'function' || typeof document === 'undefined') return Promise.resolve(t);
-  return fetch(url).then(function (r) { if (!r.ok) throw new Error('map'); return r.blob(); })
-    .then(function (blob) { return createImageBitmap(blob, { colorSpaceConversion: 'none', premultiplyAlpha: 'none' }); })
-    .then(function (bmp) {
-      var cv = document.createElement('canvas');
-      cv.width = AE_TERRAIN_WATER_W; cv.height = AE_TERRAIN_WATER_H;
-      var g = cv.getContext('2d', { willReadFrequently: true });
-      g.drawImage(bmp, 0, 0, cv.width, cv.height);
-      if (bmp.close) bmp.close();
-      t.water = _aeTerrainWaterMask(g.getImageData(0, 0, cv.width, cv.height).data, cv.width, cv.height);
-      return t;
-    }).catch(function () { return t; });   // without it the shipped map's sign decides
+function _aeTerrainLoadLand(t) {
+  return fetch(AE_TERRAIN_LAND_URL).then(function (r) { if (!r.ok) throw new Error('land'); return r.arrayBuffer(); })
+    .then(function (buf) { t.land = _aeTerrainLandParse(buf); return t; })
+    .catch(function () { return t; });   // without it the shipped map's sign decides
 }
 
 // Metres at a place from the shipped map: bilinear, longitude wrapping, the rows clamped at the poles.
@@ -224,9 +227,9 @@ function _aeTerrainHeight(key, lat, lon, lodKm) {
     base = hd === null ? _aeTerrainCoarse(t, lat, lon) : hd;
   }
   if (b.sea && ready) {
-    var wet = t.water ? _aeTerrainWaterAt(t.water, lat, lon) > 0.5 : base < 0;
+    var wet = t.land ? _aeTerrainLandAt(t.land, lat, lon) < 0.5 : base < 0;
     if (wet) return { h: 0, sea: true };
-    if (t.water && base < AE_TERRAIN_COAST_M) base = AE_TERRAIN_COAST_M;
+    if (t.land && base < AE_TERRAIN_COAST_M) base = AE_TERRAIN_COAST_M;
   }
   var u = _aeUnitVec(lat, lon), amp = b.fbm.amp * (b.relief && ready ? _aeTerrainRelief(t, lat, lon) : 1);
   var h = base + _aeFbmHeight(u, b.km, b.fbm, lodKm || 0, amp) + (b.craters ? _aeCraterHeight(u, b.km, b.craters, lodKm || 0) : 0);
@@ -242,6 +245,30 @@ function _aeStandHeight(key, lat, lon) {
   return _aeTerrainHeight(key, lat, lon, 0).h;
 }
 
+// Latitude and longitude (degrees) of the place `sRad` radians from (lat0, lon0) on the bearing theta (from north, clockwise).
+function _aeDestination(lat0, lon0, sRad, theta) {
+  var la0 = lat0 * Math.PI / 180, sl = Math.sin(la0), cl = Math.cos(la0), sinLat = sl * Math.cos(sRad) + cl * Math.sin(sRad) * Math.cos(theta);
+  var lat = Math.asin(Math.max(-1, Math.min(1, sinLat)));
+  var lon = lon0 * Math.PI / 180 + Math.atan2(Math.sin(theta) * Math.sin(sRad) * cl, Math.cos(sRad) - sl * sinLat);
+  return { lat: lat * 180 / Math.PI, lon: ((lon * 180 / Math.PI + 540) % 360) - 180 };
+}
+// The ground at a local east/north place (metres) of a viewer standing at (lat0, lon0) on ground h0 metres up: its height
+// over the viewer's foot, the body's curve included (the same z the mesh's vertices have).
+function _aeTerrainLocal(key, lat0, lon0, h0, x, y, lodKm, flat) {
+  var R = AE_STAND_BODIES[key].km * 1000, s = Math.hypot(x, y), sg = s / R, d = _aeDestination(lat0, lon0, sg, Math.atan2(x, y));
+  return (R + _aeTerrainHeightFlat(key, d.lat, d.lon, lodKm, h0, s, flat).h) * Math.cos(sg) - (R + h0);
+}
+// The height with the ground made level round a site: `flat` ([from, to] metres) gives the viewer's own height up to `from`
+// from the foot (s metres off) and the real one from `to`, a smooth blend between (a lander is set down on level ground).
+function _aeTerrainHeightFlat(key, lat, lon, lodKm, h0, s, flat) {
+  var th = _aeTerrainHeight(key, lat, lon, lodKm);
+  if (flat && !th.sea && s < flat[1]) {
+    var u = Math.max(0, Math.min(1, (s - flat[0]) / (flat[1] - flat[0])));
+    th = { h: h0 + (th.h - h0) * u * u * (3 - 2 * u), sea: th.sea };
+  }
+  return th;
+}
+
 // ── The mesh ──
 // A polar grid round the viewer: rings that grow geometrically from a few decimetres out to the horizon of the
 // highest point the camera starts from, so the same mesh serves the view from orbit and from the ground (every ring
@@ -251,24 +278,16 @@ function _aeMeshCap(km, altKm) {
   var cap = Math.acos(km / (km + altKm)) * AE_MESH_CAP_MARGIN;
   return Math.min(cap, Math.PI * 0.95);
 }
-function _aeMeshBuilder(key, lat0, lon0, capRad) {
+function _aeMeshBuilder(key, lat0, lon0, capRad, flat) {
   var b = AE_STAND_BODIES[key], R = b.km * 1000, nr = AE_MESH_RINGS, na = AE_MESH_AZ, count = 1 + nr * na;
   var pos = new Float32Array(count * 3), dir = new Float32Array(count * 3), hgt = new Float32Array(count), sea = new Float32Array(count);
   var sMax = capRad * R, g = Math.pow(sMax / AE_MESH_S0_M, 1 / (nr - 1));
-  var la0 = lat0 * Math.PI / 180, sl0 = Math.sin(la0), cl0 = Math.cos(la0);
   var h0 = _aeTerrainHeight(key, lat0, lon0, 0).h;
   var made = 0;
   function vertex(i, ring, j) {
     var theta = ring ? j / na * 2 * Math.PI : 0, s = ring ? AE_MESH_S0_M * Math.pow(g, ring - 1) : 0, sg = s / R;
-    var lat, lon;
-    if (!ring) { lat = lat0; lon = lon0; }
-    else {
-      var sinLat = sl0 * Math.cos(sg) + cl0 * Math.sin(sg) * Math.cos(theta);
-      lat = Math.asin(Math.max(-1, Math.min(1, sinLat)));
-      lon = lon0 * Math.PI / 180 + Math.atan2(Math.sin(theta) * Math.sin(sg) * cl0, Math.cos(sg) - sl0 * sinLat);
-      lat = lat * 180 / Math.PI; lon = lon * 180 / Math.PI;
-    }
-    var th = _aeTerrainHeight(key, lat, lon, s * 0.0005);   // the wavelengths a ring's spacing (about 7% of s) can hold
+    var d = ring ? _aeDestination(lat0, lon0, sg, theta) : { lat: lat0, lon: lon0 }, lat = d.lat, lon = d.lon;
+    var th = _aeTerrainHeightFlat(key, lat, lon, s * 0.0005, h0, s, flat);   // the wavelengths a ring's spacing (about 7% of s) can hold
     var rr = R + th.h, sin = Math.sin(sg);
     pos[3 * i] = rr * sin * Math.sin(theta);
     pos[3 * i + 1] = rr * sin * Math.cos(theta);

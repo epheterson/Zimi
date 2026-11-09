@@ -167,3 +167,18 @@ def test_the_sources_are_pinned_and_public_domain_bodies_only():
             )
             == 10 + 256 * 128 * 2
         )
+
+
+def test_the_land_mask_survives_its_runs_and_the_shipped_file_is_whole():
+    spec = importlib.util.spec_from_file_location("bl_under_test", os.path.join(ROOT, "scripts", "build_landmask.py"))
+    bl = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(bl)
+    rng = np.random.default_rng(3)
+    mask = (rng.random((16, 40)) > 0.6).astype(np.uint8)
+    mask[0, :] = 1   # a row that starts on land, and one that is all sea
+    mask[1, :] = 0
+    assert (bl.decode(bl.encode(mask)) == mask).all()
+    shipped = open(os.path.join(ROOT, "zimi", "static", "earth", "land-v1.bin"), "rb").read()
+    full = bl.decode(shipped)
+    assert full.shape == (bl.HEIGHT, bl.WIDTH) and 0.28 < full.mean() < 0.38
+    assert full[int((90 - 38.5) / 180 * bl.HEIGHT), int((180 - 98) / 360 * bl.WIDTH)] == 1   # Kansas
