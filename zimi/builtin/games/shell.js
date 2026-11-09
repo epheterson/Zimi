@@ -886,7 +886,8 @@
   }
   // Counted once a game: the player touched it since the page opened or since the last count (a finished game that comes back from
   // its save shows its end sheet again, uncounted), and a Watch and learn demo is never the player's.
-  var touched = false;
+  // A round counts for the day it began: an own-daily game played across midnight is still that day's.
+  var touched = false, roundDay = null;
   if (d) ['pointerdown', 'keydown'].forEach(function (t) {
     d.addEventListener(t, function (e) {
       if (e.target && e.target.closest && e.target.closest('.ar-bar, .ar-sheet')) return;
@@ -897,7 +898,9 @@
   function countResult(result) {
     if (!touched || (Shell.isWatching && Shell.isWatching())) return null;
     touched = false;
-    var day = roundDaily(), all = readStats();
+    var day = roundDaily() && (roundDay || roundDaily());   // still a daily round, and the day it began
+    roundDay = null;
+    var all = readStats();
     if (day && all.days[day] && all.days[day][PAGE]) return day;   // the day's daily is counted once, however often it is opened
     all = addResult(all, PAGE, result, day);
     try { root.localStorage.setItem(STATS_KEY, JSON.stringify(all)); } catch (e) { /* full or blocked: play on */ }
@@ -918,8 +921,9 @@
     } catch (e) { /* full or blocked: the board goes without it */ }
   }
   function dayStarted() {
-    var day = roundDaily();   // an own-daily game's round too, opened from its ordinary page
+    var day = roundDay || roundDaily();   // an own-daily game's round too, opened from its ordinary page
     if (!day || (Shell.isWatching && Shell.isWatching())) return;
+    roundDay = day;
     var runs = dayRuns(day);
     if (runs[PAGE]) return;
     runs[PAGE] = { start: Date.now() };
@@ -1775,8 +1779,15 @@
     x.drawImage(c, Math.round((SNAP_W - w) / 2), Math.round((SNAP_H - hh) / 2), w, hh);
     return pixel ? out.toDataURL('image/png') : out.toDataURL('image/jpeg', SNAP_JPEG_QUALITY);
   }
+  // A game built from page elements (squares, pieces, dice) has no canvas: tablesnap.js paints its table as an svg.
+  // It loads once the page is up, when the game has neither a snapshot() nor a canvas, so a game left at once still has it.
+  function loadTableSnap() {
+    if (game.snapshot || bigCanvas() || root.ZimiTableSnap || !shellSrc || d.querySelector('script[data-tablesnap]')) return;
+    var s = d.createElement('script'); s.src = new root.URL('tablesnap.js', shellSrc).href; s.setAttribute('data-tablesnap', '');
+    d.head.appendChild(s);
+  }
   function takeSnapshot() {
-    var src = game.snapshot ? game.snapshot() : bigCanvas();
+    var src = game.snapshot ? game.snapshot() : bigCanvas() || (root.ZimiTableSnap && root.ZimiTableSnap.picture(d, game.table));
     if (!src) return null;
     if (typeof src === 'string') return /^\s*<svg[\s>]/.test(src) ? { svg: src } : null;
     try { return { img: canvasPicture(src) }; } catch (e) { return null; }   // a tainted or lost canvas: no picture
@@ -1820,7 +1831,7 @@
     if (hosted) hostReady();
     if (!built) return;
     DIRTY_EVENTS.forEach(function (t) { d.addEventListener(t, markDirty, true); });
-    watchSnapshots(); watchBlur(); watchRecords(); markStatusLines();
+    watchSnapshots(); loadTableSnap(); watchBlur(); watchRecords(); markStatusLines();
     d.documentElement.classList.add('gs-ready');
     // A daily says so under the game's name, so the player knows this board is the day's, not one of their own.
     var h1 = Shell.daily && d.querySelector('.ar-bar h1');

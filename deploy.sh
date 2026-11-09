@@ -5,6 +5,11 @@
 set -euo pipefail
 cd "$(dirname "$0")"
 
+# Zimi's own ZIMs are committed with a release, not with a source edit: build what the source changed
+# since (a hash check when nothing did) so the NAS runs what this checkout says. The result stays
+# uncommitted; the pre-commit hook keeps it out of ordinary commits.
+python3 -m zimi.ownzims
+
 NAS_DIR=/volume1/docker/kiwix
 # One SSH connection for every step (a Synology handshake is ~1 s each).
 SOCK="${TMPDIR:-/tmp}/zimi-deploy-ssh-%r@%h"

@@ -140,3 +140,22 @@ def test_a_morris_point_on_a_phone_is_played_with_one_tap(site, browser, width):
         assert pg.locator(".wk-aim").count() == 0
     finally:
         ctx.close()
+
+
+def test_a_daily_finished_after_midnight_counts_for_the_day_it_was_started(site, browser):
+    """A word game opened from its ordinary tile reads the day off the clock: played across midnight, the win is the day
+    it began, not the next one."""
+    ctx = browser.new_context(viewport=PHONE, timezone_id="UTC")
+    pg = ctx.new_page()
+    try:
+        pg.clock.install(time="2026-11-04T23:59:50Z")
+        pg.goto(site + "fiveletters.html")
+        pg.wait_for_function("() => window.ZimiShell && ZimiShell.stats")
+        pg.keyboard.press("a")   # the first touch of the round
+        pg.clock.fast_forward(30000)   # past midnight
+        assert pg.evaluate("() => ZimiShell.day()") == "2026-11-05"
+        pg.evaluate("() => ZimiShell.endSheet({ result: 'win', title: 'x' })")
+        days = pg.evaluate("() => Object.keys(ZimiShell.stats.read().days)")
+        assert days == ["2026-11-04"], days
+    finally:
+        ctx.close()

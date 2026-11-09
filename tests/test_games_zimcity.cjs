@@ -94,6 +94,15 @@ function seeded(seed, fn) {
   check(Tools.trial(cy, 'coal', plantAt).ok && plantAt[0][1] >= 26, 'a plant aimed over the road lands where it fits (' + plantAt.join('|') + ')');
   Tools.drop(cy, 'coal');
   check(Tools.nudge(cy, 'road', [[25, 25]])[0].join() === '25,25', 'a drawn tool is never moved');
+  // A row is judged whole: the first home fits where it was aimed but the second lands on the road, so the row moves.
+  const lopsided = Tools.nudge(cy, 'residential', [[25, 30], [25, 25]]);
+  check(lopsided.join('|') !== '25,30|25,25' && Tools.trial(cy, 'residential', lopsided).parts.every((q) => q[2]), 'a row whose later home does not fit moves until every home does (' + lopsided.join('|') + ')');
+  Tools.drop(cy, 'residential');
+  // The money outlook counts the taxes at the people and land now, not the last tax day's leftover.
+  Object.assign(cy.sim._census, { totalPop: 4000, landValueAverage: 60 });
+  Object.assign(cy.sim.budget, { cashFlow: 0, policeMaintenanceBudget: 100, fireMaintenanceBudget: 200, roadMaintenanceBudget: 300 });
+  const live = cy.sim.budget.liveFlow(cy.sim._gameLevel, cy.sim._census), tax = cy.sim.budget.yearOf(cy.sim._gameLevel, cy.sim._census).tax;
+  check(tax > 600 && live === tax - 600 && live !== cy.sim.budget.cashFlow, 'the outlook is taxes now less the budget\'s costs, though no tax day has come (' + live + ')');
   cy.sim.budget.totalFunds = 2000;
   const plant = Tools.build(cy, 'coal', [[22, 30]]);
   check(!plant.ok && plant.why === 'money' && plant.short === 1000 && cy.sim.budget.totalFunds === 2000, 'a $3,000 plant with $2,000 is short by $1,000 and not built');

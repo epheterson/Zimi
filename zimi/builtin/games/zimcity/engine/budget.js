@@ -229,18 +229,27 @@ Budget.prototype.updateFundEffects = function() {
 };
 
 
+// What a year would cost and bring in at the census as it stands: the taxes, and what fully funding roads, fire and police takes.
+Budget.prototype.yearOf = function(gameLevel, census) {
+  var roadCost = census.roadTotal * roadMaintenanceCost;
+  var railCost = census.railTotal * railMaintenanceCost;
+  return {
+    police: census.policeStationPop * policeMaintenanceCost,
+    fire: census.fireStationPop * fireMaintenanceCost,
+    road: Math.floor((roadCost + railCost) * RLevels[gameLevel]),
+    tax: Math.floor(Math.floor(census.totalPop * census.landValueAverage / 120) * this.cityTax * FLevels[gameLevel])
+  };
+};
+
 Budget.prototype.collectTax = function(gameLevel, census) {
   this.cashFlow = 0;
 
   // How much would it cost to fully fund every service?
-  this.policeMaintenanceBudget = census.policeStationPop * policeMaintenanceCost;
-  this.fireMaintenanceBudget = census.fireStationPop * fireMaintenanceCost;
-
-  var roadCost = census.roadTotal * roadMaintenanceCost;
-  var railCost = census.railTotal * railMaintenanceCost;
-  this.roadMaintenanceBudget = Math.floor((roadCost + railCost) * RLevels[gameLevel]);
-
-  this.taxFund = Math.floor(Math.floor(census.totalPop * census.landValueAverage / 120) * this.cityTax * FLevels[gameLevel]);
+  var year = this.yearOf(gameLevel, census);
+  this.policeMaintenanceBudget = year.police;
+  this.fireMaintenanceBudget = year.fire;
+  this.roadMaintenanceBudget = year.road;
+  this.taxFund = year.tax;
 
   if (census.totalPop > 0) {
     this.cashFlow = this.taxFund - (this.policeMaintenanceBudget + this.fireMaintenanceBudget + this.roadMaintenanceBudget);

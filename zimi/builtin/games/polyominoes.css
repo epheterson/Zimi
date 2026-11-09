@@ -1,0 +1,34 @@
+/* Polyominoes: a fourteen by fourteen board of paper squares, blue pieces and red ones. Blue pieces are plain; red ones carry a
+   small hole so colour is never the only difference. A piece you are placing is a ghost: green-edged when it may go there,
+   red-edged when it may not. */
+:root { --po-bg: #efe8d6; --po-line: rgba(70, 52, 28, 0.28); --po-0: #2f6fdd; --po-0-hi: #5b92f0; --po-1: #d1432f; --po-1-hi: #ea6a55; --po-ok: #2e9d57; --po-bad: #c62828; --po-start: rgba(70, 52, 28, 0.55); }
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) { --po-bg: #3a3326; --po-line: rgba(255, 240, 210, 0.16); --po-0: #4f8cf0; --po-0-hi: #7aa8f7; --po-1: #e55a45; --po-1-hi: #f07f6b; --po-ok: #4cc27a; --po-bad: #ef5350; --po-start: rgba(255, 240, 210, 0.5); } }
+:root[data-theme="dark"] { --po-bg: #3a3326; --po-line: rgba(255, 240, 210, 0.16); --po-0: #4f8cf0; --po-0-hi: #7aa8f7; --po-1: #e55a45; --po-1-hi: #f07f6b; --po-ok: #4cc27a; --po-bad: #ef5350; --po-start: rgba(255, 240, 210, 0.5); }
+
+.po-main { gap: var(--sp-2); }
+.po-board { --ps: min(100vw - 16px, 100svh - 330px, 560px); width: var(--ps); height: var(--ps); display: grid; grid-template-columns: repeat(14, 1fr); grid-template-rows: repeat(14, 1fr); background: var(--po-bg); border-radius: 4px; box-shadow: 0 0 0 3px var(--sq-edge), 0 6px 18px rgba(0, 0, 0, 0.22); user-select: none; -webkit-user-select: none; touch-action: none; }
+.po-board button { position: relative; min-width: 0; min-height: 0; padding: 0; border: 0; border-radius: 0; background: transparent; box-shadow: inset 0 0 0 0.5px var(--po-line); cursor: pointer; }
+.po-board button:focus-visible { outline: 3px solid var(--accent); outline-offset: -3px; z-index: 3; }
+.po-board button.p0 { background: var(--po-0); box-shadow: inset 0 0 0 1px var(--po-0-hi), inset 0 0 0 0.5px var(--po-line); }
+.po-board button.p1 { background: var(--po-1); box-shadow: inset 0 0 0 1px var(--po-1-hi), inset 0 0 0 0.5px var(--po-line); }
+.po-board button.p1::before { content: ""; position: absolute; left: 36%; top: 36%; width: 28%; height: 28%; border-radius: 50%; background: rgba(0, 0, 0, 0.32); pointer-events: none; }
+.po-board button.last { box-shadow: inset 0 0 0 2px #fff, inset 0 0 0 3px rgba(0, 0, 0, 0.4); }
+.po-board button.start::after { content: ""; position: absolute; left: 22%; top: 22%; width: 56%; height: 56%; border-radius: 50%; border: 2px dashed var(--po-start); box-sizing: border-box; pointer-events: none; }
+.po-board button.s0::after { border-color: var(--po-0); } .po-board button.s1::after { border-color: var(--po-1); }
+.po-board button.corner::after { content: ""; position: absolute; left: 36%; top: 36%; width: 28%; height: 28%; border-radius: 50%; background: var(--hint); pointer-events: none; }
+.po-board button.ghost { z-index: 2; }
+.po-board button.ghost.ok { background: color-mix(in srgb, var(--po-ok) 55%, transparent); box-shadow: inset 0 0 0 2px var(--po-ok); }
+.po-board button.ghost.bad { background: color-mix(in srgb, var(--po-bad) 50%, transparent); box-shadow: inset 0 0 0 2px var(--po-bad); }
+
+/* Your pieces, as small pictures; the ones already played stay as faint places, the ones with nowhere to go are dimmed. */
+.po-tray { --ts: min((100vw - 24px - 7 * 5px) / 8, 44px); display: grid; grid-template-columns: repeat(8, var(--ts)); gap: 5px; justify-content: center; }
+.po-slot { display: grid; place-items: center; width: var(--ts); height: var(--ts); padding: 4px; border: 1px solid var(--line); border-radius: 8px; background: var(--surface); cursor: pointer; }
+.po-slot svg { max-width: 100%; max-height: 100%; fill: var(--po-0); }
+.po-slot.gone { opacity: 0.2; cursor: default; }
+.po-slot.stuck { opacity: 0.45; }
+.po-slot.sel { border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-glow, rgba(245, 158, 11, 0.2)); background: var(--accent-glow, rgba(245, 158, 11, 0.12)); }
+.po-slot:focus-visible { outline: 3px solid var(--accent); outline-offset: 1px; }
+.po-tray.is-off .po-slot:not(.gone) { cursor: default; }
+.bg-controls .po-icon { width: 48px; padding: 0; display: inline-grid; place-items: center; }
+.po-icon svg { width: 22px; height: 22px; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+@media (max-height: 700px) { .po-board { --ps: min(100vw - 16px, 100svh - 300px, 560px); } .po-tray { --ts: min((100vw - 24px - 7 * 5px) / 11, 36px); grid-template-columns: repeat(11, var(--ts)); } }

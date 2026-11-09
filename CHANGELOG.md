@@ -7,6 +7,26 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Changed
+
+- Games: leaving any board, dice or tile game under way keeps a picture of its table as the shelf's tile (live tiles were cards and canvas games only), and Stats lists what you have reached in plain facts.
+### Added
+
+- Games: Pig, Shut the Box and Ten Thousand (dice), Color Trail (a color race for small children) and Who Is It (find Zimi's face with yes-or-no questions), in ten languages.
+### Added
+
+- Games: Go Fish, Old Maid, Snap, Oh Hell and Cheat, five family card games against Zimi.
+### Added
+
+- Games: ten more solitaires on the shelf: Yukon, Forty Thieves, Canfield, Scorpion, Aces Up, Accordion, Calculation, Beleaguered Castle, Eight Off and Monte Carlo.
+### Added
+
+- Games: Courtier, a small deduction card game for two to four, and Odd One Out, a party game for three to eight on one phone that plays from pictures in any language.
+
+### Fixed
+
+- Games: a daily played past midnight counts for the day it began; ZimCity's money warning follows this year's taxes, a kept city's buttons act on that city, and a paused city stops redrawing; Canasta fits eleven melds a side on a short wide screen.
+
 ## [1.15.4]
 
 ### Highlights

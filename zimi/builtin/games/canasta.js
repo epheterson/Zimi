@@ -413,7 +413,7 @@
   var KEEP_STEPS = 3;   // the fans (0.42 to 0.26) that keep a rank readable; the tighter two are the last level's last resort
   // The melds' card size as a share of the table's card, each level tried in turn: the last two give up the count tags under the melds
   // (the slots still say them aloud, and a canasta still glows) so a table of 22 melds fits in the height a phone has.
-  var MELD_LEVELS = [{ scale: 1, tags: true }, { scale: 0.8, tags: true }, { scale: 0.66, tags: true }, { scale: 0.56, tags: true }, { scale: 0.56, tags: false }, { scale: 0.48, tags: false }];
+  var MELD_LEVELS = [{ scale: 1, tags: true }, { scale: 0.8, tags: true }, { scale: 0.66, tags: true }, { scale: 0.56, tags: true }, { scale: 0.56, tags: false }, { scale: 0.48, tags: false }, { scale: 0.4, tags: false }];
   var rowH = function (g) { return g.mch + g.tagH + 4; };
   // Melds flow left to right, each as wide as its fan, and wrap: spots[k] = {x, row, w}.
   function flowMelds(g, melds, step) {

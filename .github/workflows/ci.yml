@@ -102,6 +102,20 @@ jobs:
       - name: Install package
         run: pip install -e ".[pdf,mcp]" pytest pytest-xdist "Pillow>=13.0.0" numpy
 
+      # Zimi's own ZIMs (zimi/builtin/*.zim) are committed once per release, not
+      # with every source edit: a pull request into main (a release) fails here
+      # when they are older than their source, and the fix is one command,
+      # ./scripts/release-gate.sh --fix. Pull requests into topic and dev
+      # branches skip this, so no one commits a 17 MB binary per change.
+      - name: Own ZIMs are current (a release)
+        if: github.base_ref == 'main' || github.ref == 'refs/heads/main'
+        run: python -m zimi.ownzims --check
+
+      # Every job tests the ZIMs the source builds to, not whatever was last
+      # committed: a no-op (one hash) when they are current.
+      - name: Build Zimi's own ZIMs from the source
+        run: python -m zimi.ownzims
+
       # The tier without a browser. Tests needing a sidecar are
       # `pytest.mark.skipif`, so they skip cleanly here instead of failing.
       # --dist loadgroup keeps a module's tests (and its module-scoped fixtures)
@@ -205,18 +219,27 @@ jobs:
       # 1.15.3 Almanac broke there and nowhere else). Pinned by checksum;
       # required here, so a missing binary fails instead of skipping.
       - name: Install kiwix-serve
-        run: |
-          curl -fsSL --retry 3 -o kiwix-tools.tgz https://download.kiwix.org/release/kiwix-tools/kiwix-tools_linux-x86_64-3.8.2.tar.gz
-          echo "b0ae98dd344aa0469a15ab42feff6d5aafb79541a82fb4e2647c74b073123815  kiwix-tools.tgz" | sha256sum -c -
-          tar xzf kiwix-tools.tgz
-          echo "KIWIX_SERVE=$PWD/kiwix-tools_linux-x86_64-3.8.2/kiwix-serve" >> "$GITHUB_ENV"
-          echo "ZIMI_REQUIRE_KIWIX_SERVE=1" >> "$GITHUB_ENV"
+        run: ci/install_kiwix_serve.sh
 
-      # --shard i/N: the browser modules, balanced by size, each in exactly one
+      - name: Build Zimi's own ZIMs from the source
+        run: python -m zimi.ownzims
+
+      # --shard i/N: the browser modules, balanced by measured time, each in exactly one
       # shard (tests/conftest.py); tests/test_ci_contract.py checks the shards
       # add up to the whole.
       - name: Run the browser tests (shard ${{ matrix.shard }} of 4)
-        run: python -m pytest tests/ -m browser --shard ${{ matrix.shard }}/4 -n auto --dist loadgroup -q
+        run: python -m pytest tests/ -m browser --shard ${{ matrix.shard }}/4 -n auto --dist loadgroup -q --durations=25 --junitxml=junit-shard-${{ matrix.shard }}.xml
+
+      # The timing report: the shards are dealt by the seconds in tests/shard_weights.json. Download these
+      # when one shard runs much longer than its siblings and run scripts/shard_weights.py on them.
+      - name: Upload the shard's timings
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: junit-shard-${{ matrix.shard }}
+          path: junit-shard-${{ matrix.shard }}.xml
+          retention-days: 14
+          if-no-files-found: ignore
 
   test:
     if: always() && (github.event_name != 'pull_request' || !github.event.pull_request.draft)
@@ -320,6 +343,10 @@ jobs:
       - name: Install PyGObject (Linux)
         if: runner.os == 'Linux'
         run: pip install "PyGObject<3.52"
+
+      - name: Build Zimi's own ZIMs from the source
+        shell: bash
+        run: python -m zimi.ownzims
 
       # -v, not -q, and the reason is specific: a hard interpreter crash prints
       # no failure summary at all. The Windows leg of the 1.9.0 tag died at 30%

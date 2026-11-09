@@ -127,6 +127,176 @@
   "computer": false
  },
  {
+  "qid": "Q8060807",
+  "wiki": "Yukon (solitaire)",
+  "path": "yukon.html",
+  "title": "Yukon",
+  "blurb": "Move any face-up card, with all on it",
+  "why": "Like Klondike with no stock: every card is on the table, and any run can move, in order or not.",
+  "origin": {
+   "year": null,
+   "era": "1900s"
+  },
+  "region": "Americas",
+  "players": "1",
+  "length": "15 min",
+  "kind": "cards",
+  "computer": false
+ },
+ {
+  "qid": "Q5472990",
+  "wiki": "Napoleon at St Helena",
+  "path": "fortythieves.html",
+  "title": "Forty Thieves",
+  "blurb": "Two decks, build down in one suit",
+  "why": "A long, hard game: two decks, one pass through the stock, one card at a time.",
+  "origin": {
+   "year": null,
+   "era": "1800s"
+  },
+  "region": "Europe",
+  "players": "1",
+  "length": "30 min",
+  "kind": "cards",
+  "computer": false
+ },
+ {
+  "qid": "Q5032311",
+  "wiki": "Canfield (solitaire)",
+  "path": "canfield.html",
+  "title": "Canfield",
+  "blurb": "A reserve of thirteen, any starting rank",
+  "why": "Get all 52 cards to the foundations. One card sets the rank they all start on, and a reserve feeds the columns.",
+  "origin": {
+   "year": null,
+   "era": "1890s"
+  },
+  "region": "Americas",
+  "players": "1",
+  "length": "10 min",
+  "kind": "cards",
+  "computer": false
+ },
+ {
+  "qid": "Q7435391",
+  "wiki": "Scorpion (solitaire)",
+  "path": "scorpion.html",
+  "title": "Scorpion",
+  "blurb": "Build suits down; move any card with what is on it",
+  "why": "Make four suits, king to ace, in the columns. Three spare cards give you one more chance.",
+  "origin": {
+   "year": null,
+   "era": "1900s"
+  },
+  "region": "Worldwide/Modern",
+  "players": "1",
+  "length": "15 min",
+  "kind": "cards",
+  "computer": false
+ },
+ {
+  "qid": "Q2816947",
+  "wiki": "Aces Up",
+  "path": "acesup.html",
+  "title": "Aces Up",
+  "blurb": "Discard lower cards; keep only the aces",
+  "why": "Four columns, one rule: a card leaves when a higher card of its suit shows. The aces never leave.",
+  "origin": {
+   "year": null,
+   "era": "1900s"
+  },
+  "region": "Worldwide/Modern",
+  "players": "1",
+  "length": "5 min",
+  "kind": "cards",
+  "computer": false
+ },
+ {
+  "qid": "Q4672725",
+  "wiki": "Accordion (card game)",
+  "path": "accordion.html",
+  "title": "Accordion",
+  "blurb": "Fold a row of 52 into one pile",
+  "why": "All 52 cards lie in a row and fold into one pile. A pile jumps one or three places left onto a match.",
+  "origin": {
+   "year": null,
+   "era": "1900s"
+  },
+  "region": "Worldwide/Modern",
+  "players": "1",
+  "length": "5 min",
+  "kind": "cards",
+  "computer": false
+ },
+ {
+  "qid": "Q5018882",
+  "wiki": "Calculation (card game)",
+  "path": "calculation.html",
+  "title": "Calculation",
+  "blurb": "Count by ones, twos, threes and fours",
+  "why": "A patience game with a little arithmetic: each foundation counts by a different step, all the way to the king.",
+  "origin": {
+   "year": null,
+   "era": "1800s"
+  },
+  "region": "Europe",
+  "players": "1",
+  "length": "15 min",
+  "kind": "cards",
+  "computer": false
+ },
+ {
+  "qid": "Q4882140",
+  "wiki": "Beleaguered Castle",
+  "path": "beleaguered.html",
+  "title": "Beleaguered Castle",
+  "blurb": "Every card in sight, build down in any suit",
+  "why": "No luck after the deal: every card is face up. Plan, then play.",
+  "origin": {
+   "year": null,
+   "era": "1800s"
+  },
+  "region": "Europe",
+  "players": "1",
+  "length": "10 min",
+  "kind": "cards",
+  "computer": false
+ },
+ {
+  "qid": "Q5349005",
+  "wiki": "Eight Off",
+  "path": "eightoff.html",
+  "title": "Eight Off",
+  "blurb": "Eight free cells, build down in suit",
+  "why": "FreeCell’s cousin: eight cells and one-suit columns. Most deals can be won.",
+  "origin": {
+   "year": null,
+   "era": "1900s"
+  },
+  "region": "Worldwide/Modern",
+  "players": "1",
+  "length": "15 min",
+  "kind": "cards",
+  "computer": false
+ },
+ {
+  "qid": "Q6904680",
+  "wiki": "Monte Carlo (card game)",
+  "path": "montecarlo.html",
+  "title": "Monte Carlo",
+  "blurb": "Pair equal ranks that touch",
+  "why": "Twenty-five cards, pairs that touch, and a stock that slides in new cards. Simple to learn, hard to clear.",
+  "origin": {
+   "year": null,
+   "era": "1900s"
+  },
+  "region": "Worldwide/Modern",
+  "players": "1",
+  "length": "10 min",
+  "kind": "cards",
+  "computer": false
+ },
+ {
   "qid": "Q2121032",
   "wiki": "Spades (card game)",
   "path": "spades.html",
@@ -2288,6 +2458,261 @@
   "players": "1",
   "length": "10 min",
   "kind": "puzzle",
+  "computer": false
+ },
+ {
+  "qid": "Q7193201",
+  "wiki": "Pig (dice game)",
+  "path": "pig.html",
+  "title": "Pig",
+  "blurb": "Roll your luck, hold to keep it",
+  "why": "A folk game with one die and one rule: a 1 loses everything you rolled this turn.",
+  "origin": {
+   "year": 1945,
+   "era": "1940s"
+  },
+  "region": "Worldwide/Modern",
+  "players": "2",
+  "length": "5 min",
+  "kind": "kids",
+  "computer": true
+ },
+ {
+  "qid": "Q2280396",
+  "wiki": "Shut the box",
+  "path": "shutthebox.html",
+  "title": "Shut the Box",
+  "blurb": "Roll, then shut tiles that add up",
+  "why": "An old dice game for a box of hinged, numbered flaps. A pair of dice, a pen and paper will do.",
+  "origin": {
+   "year": null,
+   "era": null
+  },
+  "region": "Worldwide/Modern",
+  "players": "1 to 2",
+  "length": "10 min",
+  "kind": "dice",
+  "computer": true
+ },
+ {
+  "qid": "Q5435387",
+  "wiki": "Farkle",
+  "path": "tenthousand.html",
+  "title": "Ten Thousand",
+  "blurb": "Roll six dice, bank before you bust",
+  "why": "A folk dice game with many names, Farkle among them. It is believed to have reached North America on French ships in the 1600s.",
+  "origin": {
+   "year": null,
+   "era": "1600s"
+  },
+  "region": "Worldwide/Modern",
+  "players": "2",
+  "length": "30 min",
+  "kind": "dice",
+  "computer": true
+ },
+ {
+  "qid": "Q1099522",
+  "wiki": "Race game",
+  "path": "colortrail.html",
+  "title": "Color Trail",
+  "blurb": "Draw a card, race along the colors",
+  "why": "A race for small children: a card names a color and the piece moves to the next square of it. Pure luck, so anyone can win.",
+  "origin": {
+   "year": null,
+   "era": null
+  },
+  "region": "Worldwide/Modern",
+  "players": "2 to 4",
+  "length": "10 min",
+  "kind": "kids",
+  "computer": true
+ },
+ {
+  "qid": "Q302368",
+  "wiki": "Twenty questions",
+  "path": "whoisit.html",
+  "title": "Who Is It",
+  "blurb": "Ask questions to find Zimi’s face",
+  "why": "A guessing game of yes-or-no questions, like Twenty Questions with pictures. A good question rules out about half the faces.",
+  "origin": {
+   "year": null,
+   "era": "1800s"
+  },
+  "region": "Worldwide/Modern",
+  "players": "2",
+  "length": "10 min",
+  "kind": "kids",
+  "computer": true
+ },
+ {
+  "qid": "Q928584",
+  "wiki": "Go Fish",
+  "path": "gofish.html",
+  "title": "Go Fish",
+  "blurb": "Ask for cards and make books of four",
+  "why": "A children's classic: ask, remember who wanted what, and collect sets of four.",
+  "origin": {
+   "year": null,
+   "era": null
+  },
+  "region": "Worldwide/Modern",
+  "players": "2 to 4",
+  "length": "10 min",
+  "kind": "kids",
+  "computer": true
+ },
+ {
+  "qid": "Q476996",
+  "wiki": "Old maid (card game)",
+  "path": "oldmaid.html",
+  "title": "Old Maid",
+  "blurb": "Make pairs and dodge the odd queen",
+  "why": "Pair off your cards and pass the odd queen on; nobody wants to be left with her.",
+  "origin": {
+   "year": null,
+   "era": null
+  },
+  "region": "Europe",
+  "players": "2 to 4",
+  "length": "10 min",
+  "kind": "kids",
+  "computer": true
+ },
+ {
+  "qid": "Q62001484",
+  "wiki": "Snap (card game)",
+  "path": "snap.html",
+  "title": "Snap",
+  "blurb": "Spot a matching pair and snap first",
+  "why": "A fast children's card game: two matching cards turn up, and whoever snaps first takes the piles.",
+  "origin": {
+   "year": null,
+   "era": null
+  },
+  "region": "Europe",
+  "players": "2",
+  "length": "5 min",
+  "kind": "kids",
+  "computer": true
+ },
+ {
+  "qid": "Q973596",
+  "wiki": "Oh hell",
+  "path": "ohhell.html",
+  "title": "Oh Hell",
+  "blurb": "Bid your tricks, then take exactly that many",
+  "why": "A trick-taking game where taking too many tricks is as bad as too few.",
+  "origin": {
+   "year": null,
+   "era": null
+  },
+  "region": "Europe",
+  "players": "3 to 4",
+  "length": "15 min",
+  "kind": "cards",
+  "computer": true
+ },
+ {
+  "qid": "Q1004599",
+  "wiki": "Cheat (game)",
+  "path": "cheat.html",
+  "title": "Cheat",
+  "blurb": "Play cards face down, and lie about them",
+  "why": "Say they are all sevens and nobody can look: unless someone calls you.",
+  "origin": {
+   "year": null,
+   "era": null
+  },
+  "region": "Worldwide/Modern",
+  "players": "2 to 4",
+  "length": "15 min",
+  "kind": "cards",
+  "computer": true
+ },
+ {
+  "qid": "Q1099522",
+  "wiki": "Race game",
+  "path": "walls.html",
+  "title": "Walls",
+  "blurb": "Race to the far side, building walls",
+  "why": "A pawn race where walls can slow the other runner, but never shut them in.",
+  "origin": {
+   "year": null,
+   "era": "1990s"
+  },
+  "region": "Worldwide/Modern",
+  "players": "2",
+  "length": "10 min",
+  "kind": "board",
+  "computer": true
+ },
+ {
+  "qid": "Q573573",
+  "wiki": "Abstract strategy game",
+  "path": "fourfold.html",
+  "title": "Fourfold",
+  "blurb": "Hand over the piece that cannot win",
+  "why": "Every piece has four traits, and the other player chooses the piece you must place.",
+  "origin": {
+   "year": null,
+   "era": "1990s"
+  },
+  "region": "Worldwide/Modern",
+  "players": "2",
+  "length": "10 min",
+  "kind": "board",
+  "computer": true
+ },
+ {
+  "qid": "Q1144819",
+  "wiki": "Polyomino",
+  "path": "polyominoes.html",
+  "title": "Polyominoes",
+  "blurb": "Fit every shape in, touching only at corners",
+  "why": "Every shape that can be built from up to five squares. Fit more of them in than the other player.",
+  "origin": {
+   "year": null,
+   "era": "1950s"
+  },
+  "region": "Americas",
+  "players": "2",
+  "length": "20 min",
+  "kind": "board",
+  "computer": true
+ },
+ {
+  "qid": "Q142714",
+  "wiki": "Card game",
+  "path": "courtier.html",
+  "title": "Courtier",
+  "blurb": "Outwit the court with a single card",
+  "why": "Hold one card, draw one, play one. A small game of hidden cards, deduction and a little nerve.",
+  "origin": {
+   "year": null,
+   "era": "2000s"
+  },
+  "region": "Worldwide/Modern",
+  "players": "2 to 4",
+  "length": "10 min",
+  "kind": "cards",
+  "computer": true
+ },
+ {
+  "qid": "Q85801811",
+  "wiki": "Social deduction game",
+  "path": "oddone.html",
+  "title": "Odd One Out",
+  "blurb": "Spot who has not seen the picture",
+  "why": "Everyone sees the same picture except one person. Say a word about it, then find the odd one out.",
+  "origin": {
+   "year": null,
+   "era": "2000s"
+  },
+  "region": "Worldwide/Modern",
+  "players": "3 to 8",
+  "length": "10 min",
+  "kind": "kids",
   "computer": false
  }
 ]

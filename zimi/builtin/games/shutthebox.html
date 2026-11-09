@@ -1,0 +1,40 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Shut the Box - ZimiGames</title>
+<link rel="stylesheet" href="games.css">
+<link rel="stylesheet" href="play.css">
+<link rel="stylesheet" href="shutthebox.css">
+<!-- zimi-shell --><script src="shell.js"></script><!-- /zimi-shell -->
+</head>
+<body>
+<header class="ar-bar">
+  <a class="ar-back" href="index.html" data-t-aria="shell.back" aria-label="Back">&lsaquo;</a>
+  <h1 data-t="game.shutthebox.title">Shut the Box</h1>
+  <button class="ar-btn" id="st-new" type="button" hidden data-t="shell.menu.new">New game</button>
+</header>
+
+<main class="pl-main">
+  <div class="pl-hud">
+    <div class="pl-stat"><small data-t="shutthebox.rolled">Rolled</small><b id="st-total">–</b></div>
+    <div class="pl-stat"><small data-t="shutthebox.chosen">Chosen</small><b id="st-picked">0</b></div>
+    <div class="pl-stat"><small data-t="shutthebox.open">Open</small><b id="st-left">45</b></div>
+  </div>
+  <div class="st-table" id="st-table" role="group" data-t-aria="shutthebox.table" aria-label="The box and the dice">
+    <div class="st-dice" id="st-dice"></div>
+    <div class="st-box" id="st-box" data-t-aria="shutthebox.box" aria-label="The nine tiles"></div>
+  </div>
+  <p class="st-results" id="st-results"></p>
+  <p class="pl-msg" id="st-msg"></p>
+  <div class="st-actions"><button class="ar-btn gs-primary" id="st-roll" type="button" data-t="backgammon.roll">Roll</button></div>
+</main>
+
+<script src="util.js"></script>
+<script src="playkit.js"></script>
+<script src="shutthebox.js"></script>
+<!-- zimi-recent --><script defer src="recent.js"></script><!-- /zimi-recent -->
+<!-- zimi-about --><footer class="gm-about"><a href="about.html?qid=Q2280396">About Shut the Box</a></footer><!-- /zimi-about -->
+</body>
+</html>

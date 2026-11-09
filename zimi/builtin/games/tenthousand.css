@@ -1,0 +1,27 @@
+/* Ten Thousand: two scores, six dice in two rows of three, Roll and Bank in two big keys. */
+.tt-sides { display: grid; grid-template-columns: 1fr 1fr; gap: var(--sp-3); width: 100%; max-width: 420px; }
+.tt-side { display: flex; flex-direction: column; gap: var(--sp-1); min-width: 0; padding: var(--sp-2) var(--sp-3); border: 2px solid var(--line); border-radius: var(--radius); background: var(--surface); text-align: center; }
+.tt-side.tt-turn { border-color: var(--accent); background: var(--accent-glow); }
+.tt-side.tt-turn small { color: var(--ink); }
+.tt-side small { font-size: var(--fs-small); color: var(--ink2); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.tt-side b { font: 650 var(--fs-display)/1.1 var(--font); font-variant-numeric: tabular-nums; }
+.tt-meter { position: relative; display: block; height: 8px; border-radius: 4px; background: var(--cell); border: 1px solid var(--line); overflow: hidden; }
+.tt-meter i { position: absolute; top: 0; bottom: 0; left: 0; background: var(--g-blue); transition: width 0.2s ease-out; }
+#tt-b .tt-meter i { background: var(--g-red); }
+.tt-goal { margin: calc(var(--sp-2) * -1) 0 0; font-size: var(--fs-small); color: var(--ink2); text-align: center; }
+.tt-table { display: flex; flex-direction: column; align-items: center; gap: var(--sp-3); width: 100%; max-width: 420px; padding: var(--sp-4) var(--sp-3) var(--sp-3); background: #1f6f43; border: 1px solid var(--line); border-radius: var(--r-sheet); }
+.tt-table .pl-stat small { color: #e6efe9; }
+.tt-table .pl-stat b { color: #fff; }
+.tt-dice { display: grid; grid-template-columns: repeat(3, auto); gap: var(--sp-3) var(--sp-4); justify-content: center; }
+.tt-die { --die-size: 76px; }
+.tt-die.tt-locked { opacity: 0.45; box-shadow: none; transform: scale(0.88); }
+.tt-die.tt-dead { opacity: 0.55; }
+.tt-die[aria-disabled="true"]:not(.tt-locked) { cursor: default; }
+.tt-die.tt-tumble { animation: tt-tumble 320ms ease-out; }
+.tt-hud { max-width: 280px; }
+.tt-actions { display: grid; grid-template-columns: 1fr 1fr; gap: var(--sp-3); width: 100%; max-width: 420px; }
+.tt-actions .ar-btn { min-height: 64px; font-size: 18px; font-weight: 650; }
+.tt-actions .ar-btn:disabled { color: var(--ink3); }
+@keyframes tt-tumble { 0% { transform: translateY(-14px) rotate(-24deg) scale(0.9); } 60% { transform: translateY(2px) rotate(8deg); } 100% { transform: none; } }
+@media (prefers-reduced-motion: reduce) { html:not([data-anim="normal"]):not([data-anim="fast"]) .tt-die.tt-tumble { animation: none; } }
+@media (max-width: 380px) { .tt-die { --die-size: 68px; } }
