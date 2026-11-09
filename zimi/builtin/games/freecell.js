@@ -140,13 +140,13 @@
   }
 
   // ── Layout ──────────────────────────────────────────────────────────────
-  var UP_STEP_SHARE = Z.FAN_UP_SHARE, MIN_STEP_SHARE = 0.12;
+  var MIN_STEP_SHARE = 0.12;
 
   function place(state, m) {
     var P = state.piles, cw = m.cw, ch = m.ch, x = function (col) { return m.left + col * m.step; };
     // The free cells and foundations are one row right under the bar; the columns start under it and fan through the rest.
     var rows = Z.solitaireRows(m), y1 = rows.top, y2 = rows.cols, slots = [], cards = [];
-    var step = Z.fanStep(Math.max.apply(null, COLUMNS.map(function (c) { return P[c].length - 1; })), rows.room, ch, ch * UP_STEP_SHARE, ch * MIN_STEP_SHARE);
+    var step = Z.fanStep(Math.max.apply(null, COLUMNS.map(function (c) { return P[c].length - 1; })), rows.room, ch, ch * Z.FAN_GROW_SHARE, ch * MIN_STEP_SHARE);
     var bottom = y2 + ch;
 
     CELLS.forEach(function (c, n) {

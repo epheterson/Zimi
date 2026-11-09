@@ -178,7 +178,7 @@
       };
       var heaviest = function (down) { return Math.max.apply(null, columns.map(function (it) { return weight(P[it.pile], down); })); };
       var down = Z.openDown(heaviest, room, ch, ch * UP_STEP_SHARE, DOWN_RATIO, MAX_DOWN_RATIO, DOWN_RATIO_STEP);
-      var step = Z.fanStep(heaviest(down), room, ch, ch * UP_STEP_SHARE, ch * MIN_STEP_SHARE);
+      var step = Z.fanStep(heaviest(down), room, ch, ch * Z.FAN_GROW_SHARE, ch * MIN_STEP_SHARE);
       var fan = cw * WASTE_FAN_SHARE;
       var frames = [];
 

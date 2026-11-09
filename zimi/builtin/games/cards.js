@@ -1400,6 +1400,7 @@
     // How a game that is not won ends: kind is '' (you lose), 'draw', 'over' (Game over) or { name, team } for the
     // winner of a table of people ("Sam wins", "You and Ana win"). The sheet says lines[0]; `listAll` puts the rest of the lines under it.
     s.lose = function (kind, lines, score, listAll) {
+      if (s.won) return;   // a finished game taken up again (its sheet is already up) is not finished a second time
       s.won = true; halt(); resume = false; clearLater();
       if (typeof score === 'number') s.stats.scored(score);
       paint();
@@ -1411,6 +1412,7 @@
       sheet({ title: title, body: body, actions: [{ label: T('shell.close') }, { label: T('shell.menu.new'), primary: true, onclick: cfg.newGame }] });
     };
     s.win = function (score) {
+      if (s.won) return;   // ... nor won again: the record counts it once
       s.won = true; halt(); resume = false; clearLater();
       var sec = seconds(), best = s.stats.won(sec, score);
       paint();
@@ -1509,6 +1511,9 @@
   // A face-up card in a fan shows this much of its height when the table has room: its whole corner index and its whole top
   // row of pips (PIP_TOP). Less cuts the pips through the middle into triangles beside the index.
   var FAN_UP_SHARE = 0.34;
+  // A fan with height to spare opens up to this share of a card's height per step, instead of huddling at FAN_UP_SHARE at the top
+  // of a tall phone; a long column still shrinks to fit (fanStep takes the smaller of room and this).
+  var FAN_GROW_SHARE = 0.7;
   function fanStep(weight, room, ch, maxStep, minStep) {
     return Math.max(minStep, Math.min(maxStep, weight > 0 ? (room - ch) / weight : maxStep));
   }
@@ -1618,7 +1623,7 @@
     FACT_H: FACT_H, factLine: factLine, moonPhase: moonPhase, moonLitPath: moonLitPath, faceMarkup: faceMarkup, backMarkup: backMarkup,
     italianFaceMarkup: italianFaceMarkup, italianName: italianName,
     spanishFaceMarkup: spanishFaceMarkup, spanishName: spanishName, hanafudaFaceMarkup: hanafudaFaceMarkup, hanafudaCard: hanafudaCard, hanafudaName: hanafudaName, HANA_MONTHS: HANA_MONTHS, jokerMarkup: jokerMarkup, markSvg: markSvg,
-    fmtTime: fmtTime, plural: plural, winTime: winTime, solitairePage: solitairePage, stuckWhen: stuckWhen, describePile: describePile, fanStep: fanStep, FAN_UP_SHARE: FAN_UP_SHARE, openDown: openDown, solitaireRows: solitaireRows, statusTop: statusTop, pageEls: pageEls, idsOf: idsOf, restShare: restShare,
+    fmtTime: fmtTime, plural: plural, winTime: winTime, solitairePage: solitairePage, stuckWhen: stuckWhen, describePile: describePile, fanStep: fanStep, FAN_UP_SHARE: FAN_UP_SHARE, FAN_GROW_SHARE: FAN_GROW_SHARE, openDown: openDown, solitaireRows: solitaireRows, statusTop: statusTop, pageEls: pageEls, idsOf: idsOf, restShare: restShare,
     toast: toast, store: store, createStats: createStats, h: h, sheet: sheet, segmented: segmented, backsSheet: backsSheet, backsRow: backsRow,
     T: T, createBoard: createBoard, createSession: createSession, ensureSprite: ensureSprite,
     currentBack: function () { return currentBack; }
