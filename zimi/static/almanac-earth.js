@@ -5189,7 +5189,7 @@ function _aeFlyToCraft(name, pp, span, waitModel) {
     if (d < nearD) { nearD = d; near = q; }
   });
   var side = _aeNorm(_aeCross(toSun, [0, 0, 1])), dir;
-  if (AE_CRAFT_POINTS[AE_CRAFT_MODEL[name]] === 'sun') dir = _aeAdd(_aeAdd(_aeScale(side, 0.85), _aeScale(toSun, 0.35)), [0, 0, 0.3]);   // a shield in profile, lit
+  if (AE_CRAFT_POINTS[AE_CRAFT_MODEL[name]] === 'sun') dir = _aeAdd(_aeAdd(_aeScale(side, 0.85), _aeScale(toSun, AE_CRAFT_SHIELD_VIEW_SUN)), [0, 0, 0.3]);   // a shield in profile
   else if (near && nearD < AE_PROBE_FRAME_MAX) dir = _aeAdd(_aeScale(_aeNorm(_aeSub(pp, near)), 0.8), _aeScale(toSun, 0.5));
   else dir = _aeAdd(_aeScale(toSun, 0.6), _aeScale(side, 0.8));
   // Its whole span inside the narrower side of the screen (a phone held upright is narrow across: three spans along
@@ -5656,6 +5656,7 @@ var AE_CRAFT_PAL = 12;                                      // palette entries a
 // A gentle fill from the camera beside the Sun's key light: far out the Sun is a bright star, and a probe lit only by it
 // read as a dim grey shape. The station keeps less, so the Earth's shadow still reads as night.
 var AE_CRAFT_FILL = 0.1, AE_ISS_FILL = 0.04;
+var AE_CRAFT_FILL_OF = { webb: 0.4 };                       // Webb's telescope lives in its sunshield's shade: lit by the camera, as every picture of it is
 var AE_CRAFT_MODEL_PX = [6, 14];                            // the model fades in across these widths, the dot out
 var AE_CRAFT_NEAR_MIN = 0.3 / 1000 / AE_EARTH_RADIUS_KM;    // 30 cm: a craft a few metres across, framed close
 // A probe's table key and its model (one model for both Voyagers and both Pioneers); one without a model stays a dot.
@@ -5663,6 +5664,7 @@ var AE_CRAFT_MODEL = { voyager1: 'voyager', voyager2: 'voyager', pioneer10: 'pio
   parker: 'parker', juno: 'juno', jwst: 'webb', cassini: 'cassini', galileo: 'galileo' };
 // What each points: its high-gain antenna at the Earth, or (Parker, Webb) its shield at the Sun.
 var AE_CRAFT_POINTS = { parker: 'sun', webb: 'sun' };
+var AE_CRAFT_SHIELD_VIEW_SUN = -0.35;                       // the shield's profile seen from just behind it: Webb's mirror, Parker's body (the Sun's side, lit, was a grey wall)
 var AE_CRAFT_VIEW_SPANS = 3;                                // a flight to a probe ends at least this many of its spans off
 var AE_CRAFT_FIT_R = 0.6;                                   // and far enough that this share of its span fits the narrow side
 var _aeCraft = {};                                          // model -> { data, loading }
@@ -5678,6 +5680,7 @@ var AE_CRAFT_WAIT_MS = 4000;
 // same gamma as the planets. A mesh without normals (the landing sites' older models) is shaded flat, as it always was.
 var AE_CRAFT_SUN_E = 3.0;                                   // the Sun's irradiance (so an albedo of 0.8 head on reads 0.76)
 var AE_CRAFT_SKY = 0.012;                                   // the faint ambient and the dark of the environment
+var AE_CRAFT_ENV_FILL = 3.0;                                // the camera's fill, as the light foil and mirrors reflect (they have no diffuse to light)
 var AE_CRAFT_WHITE = 2.5;                                   // the tone shoulder's white point
 var AE_CRAFT_GAMMA = 2.2;
 var AE_CRAFT_SHADOW_PX = 1024;                              // the shadow map, one for the craft in view
@@ -5790,7 +5793,7 @@ var AE_CRAFT_FRAG = [
   '  vec3 ps = shineCol * earthLight;',                       // the nearest world's light: from its side, in its colour
   '  col += diff * ps * (0.5 + 0.5 * dot(n, nadirView));',
   '  vec3 r = reflect(-v, n);',
-  '  vec3 env = ps * (0.2 + 1.1 * smoothstep(-0.4, 1.0, dot(r, nadirView))) + vec3(' + AE_CRAFT_SKY.toFixed(3) + ');',
+  '  vec3 env = ps * (0.2 + 1.1 * smoothstep(-0.4, 1.0, dot(r, nadirView))) + vec3(' + AE_CRAFT_SKY.toFixed(3) + ' + fill * ' + AE_CRAFT_ENV_FILL.toFixed(1) + ');',
   '  vec3 fe = f0 + (max(vec3(1.0 - rough), f0) - f0) * pow(1.0 - nv, 5.0);',
   '  col += fe * env * (1.0 - 0.5 * rough);',
   '  col += diff * (' + AE_CRAFT_SKY.toFixed(3) + ' + fill * nv);',   // fill: from the camera, gentle
@@ -5882,7 +5885,7 @@ function _aeCraftUniforms(S, d, model) {
   var THREE = S.THREE, pal = [], i;
   for (i = 0; i < AE_CRAFT_PAL; i++) pal.push(d.look[Math.min(i, d.look.length - 1)]);
   return { sunView: { value: new THREE.Vector3(1, 0, 0) }, nadirView: { value: new THREE.Vector3(0, -1, 0) }, shineCol: { value: new THREE.Vector3(0.55, 0.7, 1.0) },
-    lit: { value: 1 }, fill: { value: model === 'iss' ? AE_ISS_FILL : AE_CRAFT_FILL }, earthLight: { value: 0 }, fade: { value: 1 }, sel: { value: -1 },
+    lit: { value: 1 }, fill: { value: model === 'iss' ? AE_ISS_FILL : AE_CRAFT_FILL_OF[model] || AE_CRAFT_FILL }, earthLight: { value: 0 }, fade: { value: 1 }, sel: { value: -1 },
     shadowOn: { value: 0 }, shadowTexel: { value: 1 / AE_CRAFT_SHADOW_PX }, shadowMap: { value: null }, shadowMat: { value: new THREE.Matrix4() },
     shadowOffset: { value: d.radius * AE_CRAFT_SHADOW_NORMAL },
     albedo: { value: pal.map(function (l) { return new THREE.Vector3(l.rgb[0], l.rgb[1], l.rgb[2]); }) },

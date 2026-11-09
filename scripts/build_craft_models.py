@@ -55,14 +55,11 @@ CRAFT = {
         ("part", "dish_AO"),
     ),
     "juno": (
-        "Juno (B)/Juno (B).glb",
-        "NASA 3D Resources (no individual credit listed)",
+        "Juno (A)/Juno (A).glb",
+        "NASA/JPL-Caltech",
         10000,
-        ("span", 20.1),
-        (
-            "part",
-            "JUNO-solar-face",
-        ),  # its spin axis: the arrays' normal, toward the dish
+        ("part", "solar_panels", 20.1),  # the arrays' reach across their spin axis
+        ("part", "foil_ant"),  # the high-gain dish, on the spin axis
     ),
     "parker": (
         "Parker Solar Probe/Parker Solar Probe.glb",

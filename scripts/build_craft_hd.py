@@ -5,9 +5,8 @@
 Each craft the stock build (scripts/build_craft_models.py) draws from a decimated, flat-coloured mesh is here the
 original NASA 3D Resources glTF, its triangles untouched (up to MAX_TRIS: past that, simplified part by part), one mesh
 to a material with that material's roughness and metalness, its textures re-encoded as WebP (at most TEXTURE_MAX
-pixels a side). The model is brought into the stock model's frame (its units, its axes: the pointing and across axes
-and the size the viewer already knows), by registering the two shapes on each other, so a craft turns the same way
-whichever is drawn. Files, in --out (the folder the Almanac HD ZIM carries as hd/craft/, scripts/build_almanac_maxi.py):
+pixels a side). It is the very file the stock model is made from (bcm.CRAFT), so its frame, its pointing and across
+axes and its size are the stock model's, and a craft turns the same way whichever is drawn. Files, in --out (the folder the Almanac HD ZIM carries as hd/craft/, scripts/build_almanac_maxi.py):
 
     index.json            { "models": { <key>: { "file", "tris", "bytes", "credit" } } }
     <key>.zcr2            the model (scripts/craftmesh.py: ZCR2 with UVs and the texture names)
@@ -22,7 +21,6 @@ import argparse
 import io
 import json
 import os
-import struct
 import sys
 
 import numpy as np
@@ -31,123 +29,9 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import build_craft_models as bcm  # noqa: E402
 import craftmesh as cm  # noqa: E402
 
-ROOT = bcm.ROOT
-EARTH = bcm.EARTH
 MAX_TRIS = 260000
 TEXTURE_MAX = 2048
 WEBP_QUALITY = 88
-REG_SAMPLES = 20000
-REG_ITERS = 40
-REG_TRIM = 0.85  # the closest share of points that count in a registration (the rest are what only one model has)
-
-# key: (file in the repo's 3D Models folder, the page's Source credit, the stock file's source in bcm.CRAFT or None)
-HD = {
-    "voyager": (
-        "Voyager Probe (B)/Voyager Probe (B).glb",
-        "NASA/Christopher R. Meaney",
-    ),
-    "pioneer": ("Pioneer 10/Pioneer 10.glb", "NASA/JPL/Eyes on the Solar System"),
-    "juno": ("Juno (A)/Juno (A).glb", "NASA/JPL-Caltech"),
-    "parker": ("Parker Solar Probe/Parker Solar Probe.glb", "NASA/Matthew J. Garcia"),
-    "webb": (
-        "James Webb Space Telescope (A)/James Webb Space Telescope (A).glb",
-        "NASA/Christopher R. Meaney",
-    ),
-    "galileo": ("Galileo/Galileo.glb", "NASA/JPL/Solar System Simulator"),
-    "cassini": (
-        "Cassini-Huygens (A)/Cassini-Huygens (A).glb",
-        "NASA/JPL/Solar System Simulator",
-    ),
-}
-# Colours the source gets wrong (linear), as the stock build corrects them: key -> {material substring: rgb}.
-RECOLOUR = {
-    "galileo": {"bus:black": (0.01, 0.01, 0.012)},
-    "parker": {"black matte": (0.7, 0.7, 0.66)},
-}
-
-
-# ── Registration ──
-def read_stock(path):
-    """The stock ZCR2's vertices (its source's units) and header: (points, aim, across, metres)."""
-    b = open(path, "rb").read()
-    metres = struct.unpack_from("<f", b, 8)[0]
-    lo = np.array(struct.unpack_from("<3f", b, 12))
-    hi = np.array(struct.unpack_from("<3f", b, 24))
-    aim = np.array(struct.unpack_from("<3f", b, 36))
-    across = np.array(struct.unpack_from("<3f", b, 48))
-    npal, nv, nt, flags = struct.unpack_from("<4I", b, 60)
-    o = 88 + 24 * npal
-    if flags & cm.FLAG_TEXTURES:
-        raise ValueError("a stock model has no textures")
-    stride = 9 + (8 if flags & cm.FLAG_UV else 0)
-    raw = np.frombuffer(b, dtype=np.uint8, count=nv * stride, offset=o).reshape(
-        nv, stride
-    )
-    q = np.ascontiguousarray(raw[:, :6]).view("<i2").reshape(nv, 3).astype(np.float64)
-    return lo + (q + 32767) / 65534 * (hi - lo), aim, across, metres
-
-
-def _umeyama(a, b):
-    """The similarity (s, R, t) taking points a onto points b, least squares."""
-    ma, mb = a.mean(0), b.mean(0)
-    ac, bc = a - ma, b - mb
-    u, d, vt = np.linalg.svd(bc.T @ ac / len(a))
-    s = np.eye(3)
-    if np.linalg.det(u) * np.linalg.det(vt) < 0:
-        s[2, 2] = -1
-    r = u @ s @ vt
-    scale = np.trace(np.diag(d) @ s) / ac.var(0).sum()
-    return scale, r, mb - scale * r @ ma
-
-
-def _chamfer(a, b, tree_b, tree_a, trim=REG_TRIM):
-    da = np.sort(tree_b.query(a)[0])
-    db = np.sort(tree_a.query(b)[0])
-    ka, kb = max(1, int(len(da) * trim)), max(1, int(len(db) * trim))
-    return da[:ka].mean() + db[:kb].mean()
-
-
-def _rotations():
-    """The 24 proper rotations of the cube (signed axis permutations)."""
-    out = []
-    for perm in ([0, 1, 2], [0, 2, 1], [1, 0, 2], [1, 2, 0], [2, 0, 1], [2, 1, 0]):
-        for sg in np.ndindex(2, 2, 2):
-            m = np.zeros((3, 3))
-            for i, p in enumerate(perm):
-                m[i, p] = 1 if sg[i] == 0 else -1
-            if np.linalg.det(m) > 0:
-                out.append(m)
-    return out
-
-
-def register(src, dst):
-    """(scale, R, t) putting the point set src into the frame and units of dst: principal axes first (the best of the
-    24 axis orientations by chamfer distance), then iterated closest points."""
-    from scipy.spatial import cKDTree
-
-    rng = np.random.default_rng(1)
-    a = src[rng.choice(len(src), min(len(src), REG_SAMPLES), replace=False)]
-    b = dst[rng.choice(len(dst), min(len(dst), REG_SAMPLES), replace=False)]
-    ma, mb = a.mean(0), b.mean(0)
-    _, va = np.linalg.eigh(np.cov((a - ma).T))
-    _, vb = np.linalg.eigh(np.cov((b - mb).T))
-    s0 = np.sqrt(b.var(0).sum() / a.var(0).sum())
-    tree_a, tree_b = cKDTree(a), cKDTree(b)
-    best = None
-    for p in _rotations():
-        r = vb @ p @ va.T
-        x = s0 * (a - ma) @ r.T + mb
-        c = _chamfer(x, b, tree_b, cKDTree(x))
-        if best is None or c < best[0]:
-            best = (c, r)
-    s, r, t = s0, best[1], mb - s0 * best[1] @ ma
-    for _ in range(REG_ITERS):
-        x = s * a @ r.T + t
-        d, i = tree_b.query(x)
-        keep = d <= np.quantile(d, REG_TRIM)
-        s, r, t = _umeyama(a[keep], b[i[keep]])
-    err = _chamfer(s * a @ r.T + t, b, tree_b, cKDTree(s * a @ r.T + t))
-    return s, r, t, err / (np.ptp(b, 0).max() or 1)
 
 
 # ── Textures ──
@@ -174,13 +58,10 @@ def webp_bytes(data, linear=False):
 
 
 # ── The model ──
-def build(key, glb, stock_path, recolour=None):
+def build(key, glb, recolour=None):
     j, blob, ps = cm.read_parts(glb)
     mats = j.get("materials") or [{}]
-    stock_pts, _aim, _across, _metres = read_stock(stock_path)
-    verts = np.vstack([p["pos"] for p in ps])
-    s, r, t, err = register(verts, stock_pts)
-    print("  registered: scale %.4f, residual %.3f of the span" % (s, err))
+    # Same file as the stock model: its frame, units, pointing and size are this model's own.
     textures, tex_name, files = [], {}, {}
 
     def texture(info, kind):
@@ -240,7 +121,6 @@ def build(key, glb, stock_path, recolour=None):
         f = np.vstack(fs)
         has_uv = all(p["uv"] is not None for p in mine)
         has_n = all(p["nrm"] is not None for p in mine)
-        pos = s * pos @ r.T + t
         if scale_tris < 1.0 and not has_uv:
             v2, f2 = bcm.simplified(pos, f, max(40, int(len(f) * scale_tris)), 5)
             v2, f2, n2 = cm.creased(v2, f2)
@@ -252,7 +132,7 @@ def build(key, glb, stock_path, recolour=None):
                 (np.vstack([p["uv"] for p in mine]) if has_uv else None),
             )
             if has_n:
-                n2 = np.vstack([p["nrm"] for p in mine]) @ r.T
+                n2 = np.vstack([p["nrm"] for p in mine])
             else:
                 v2, f2, n2 = cm.creased(v2, f2)
                 uv2 = None if uv2 is None else uv2
@@ -282,6 +162,38 @@ def build(key, glb, stock_path, recolour=None):
     return data, files, len(f)
 
 
+def build_iss(glb):
+    """The station at every triangle, in the stock model's five classes (the main arrays turn about the truss)."""
+    j, _blob, ps = cm.read_parts(glb)
+    by = {}
+    for p in ps:
+        if p["pos"][:, 1].min() > bcm.ISS_STRAY_Y:
+            continue
+        by.setdefault(bcm.ISS_CLASS_OF.get(j["materials"][p["mat"]]["name"], bcm.STRUCTURE), []).append(p)
+    V, N, C, F, base = [], [], [], [], 0
+    for k in sorted(by):
+        pos = np.vstack([p["pos"] for p in by[k]])
+        offs = np.cumsum([0] + [len(p["pos"]) for p in by[k]])[:-1]
+        f = np.vstack([p["faces"] + o for p, o in zip(by[k], offs)])
+        if all(p["nrm"] is not None for p in by[k]):
+            n = np.vstack([p["nrm"] for p in by[k]])
+        else:
+            pos, f, n = cm.creased(pos, f)
+        V.append(pos)
+        N.append(n)
+        C.append(np.full(len(pos), k, dtype=np.uint8))
+        F.append(f + base)
+        base += len(pos)
+    v, n, c, f = np.vstack(V), np.vstack(N), np.concatenate(C), np.vstack(F)
+    lo, hi = v.min(0), v.max(0)
+    arr = v[c == bcm.ARRAY]
+    axis = ((arr[:, 0].min() + arr[:, 0].max()) / 2, (arr[:, 1].min() + arr[:, 1].max()) / 2)
+    entries = [(rgb, rough, metal, cm.MAT_DOUBLE_SIDED, -1, -1, -1) for rgb, rough, metal in bcm.ISS_LOOK]
+    print("  %d triangles, %d vertices" % (len(f), len(v)))
+    data = cm.pack(1.0, lo, hi, (0, 0, 0), (0, 0, 0), entries, v, n, c, f, turn=axis, turn_class=bcm.ARRAY)
+    return data, {}, len(f)
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--only", help="comma-separated keys (default all)")
@@ -289,29 +201,24 @@ def main():
         "--src", help="a folder with the downloaded files under their own names"
     )
     ap.add_argument(
-        "--stock",
-        default=EARTH,
-        help="where the stock models are (their frame is the target)",
-    )
-    ap.add_argument(
         "--out", required=True, help="the folder to write (hd/craft/ in the ZIM)"
     )
     a = ap.parse_args()
     os.makedirs(a.out, exist_ok=True)
-    keys = a.only.split(",") if a.only else list(HD)
+    keys = a.only.split(",") if a.only else ["iss", *bcm.CRAFT]
     index = {}
     idx_path = os.path.join(a.out, "index.json")
     if os.path.exists(idx_path):
         index = json.load(open(idx_path))["models"]
     for key in keys:
         print(key)
-        path, credit = HD[key]
-        glb = bcm._fetch(
-            bcm.REPO + bcm.urllib.parse.quote(path), a.src, os.path.basename(path)
-        )
-        data, files, tris = build(
-            key, glb, os.path.join(a.stock, "craft-%s-v1.bin" % key), RECOLOUR.get(key)
-        )
+        if key == "iss":
+            path, credit = "International Space Station (ISS) (B).glb", "NASA/Michael D. Carbajal"
+            data, files, tris = build_iss(bcm._fetch(bcm.ISS_URL, a.src, path))
+        else:
+            path, credit = bcm.CRAFT[key][:2]
+            glb = bcm._fetch(bcm.REPO + bcm.urllib.parse.quote(path), a.src, os.path.basename(path))
+            data, files, tris = build(key, glb, bcm.RECOLOUR.get(key))
         with open(os.path.join(a.out, key + ".zcr2"), "wb") as fh:
             fh.write(data)
         for name, blob in files.items():
