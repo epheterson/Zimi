@@ -231,6 +231,14 @@ BODIES = {
         "step": "2d",
         "events": [],
     },
+    "vesta": {
+        "name": "Vesta",
+        "id": "2000004",
+        "start": "1900-01-01",
+        "end": "2100-01-01",
+        "step": "2d",
+        "events": [],
+    },
 }
 
 # Reference checks: Horizons' own vectors, fetched directly. Each date is

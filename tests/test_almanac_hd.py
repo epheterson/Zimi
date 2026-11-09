@@ -427,3 +427,52 @@ def test_a_finished_download_is_not_the_one_under_way(monkeypatch):
     assert almanachd._downloading() is None
     monkeypatch.setattr(library, "_active_downloads", {"d1": done, "d2": live})
     assert almanachd._downloading() is live
+def _part(name, size=900_000_000):
+    return {
+        "part": name,
+        "file": "zimi_almanac_hd_%s_2026-11.zim" % name,
+        "size": size,
+        "sha256": "cd" * 32,
+    }
+
+
+def test_a_split_set_is_offered_whole_and_every_missing_file_is_queued(hd, monkeypatch):
+    rel = dict(REL, parts=[_part("moon"), _part("mars")])
+    monkeypatch.setattr(almanachd, "release", lambda read=False: rel)
+    monkeypatch.setattr(almanachd, "present", lambda: None)
+    monkeypatch.setattr(almanachd, "parts_present", lambda: {})
+    monkeypatch.setattr(almanachd, "_downloading_all", lambda: [])
+    assert almanachd.status()["offer"]["size"] == REL["size"] + 2 * 900_000_000
+    almanachd.start(None)
+    assert [q["filename"] for q in hd] == [
+        REL["file"],
+        "zimi_almanac_hd_moon_2026-11.zim",
+        "zimi_almanac_hd_mars_2026-11.zim",
+    ]
+
+
+def test_only_the_missing_parts_of_a_set_are_fetched(hd, monkeypatch):
+    rel = dict(REL, parts=[_part("moon"), _part("mars")])
+    monkeypatch.setattr(almanachd, "release", lambda read=False: rel)
+    monkeypatch.setattr(almanachd, "installed", lambda: False)
+    monkeypatch.setattr(almanachd, "present", lambda: "zimi_almanac_maxi")
+    monkeypatch.setattr(
+        almanachd, "parts_present", lambda: {"moon": "zimi_almanac_hd_moon"}
+    )
+    monkeypatch.setattr(almanachd, "_downloading_all", lambda: [])
+    almanachd.start(None)
+    assert [q["filename"] for q in hd] == ["zimi_almanac_hd_mars_2026-11.zim"]
+
+
+def test_a_part_must_be_a_known_one_named_for_it():
+    ok = dict(REL, parts=[_part("moon")])
+    assert almanachd.parse_manifest(json.dumps(ok), "1.15.4")["parts"] == [
+        _part("moon")
+    ]
+    for bad in (
+        dict(REL, parts=[dict(_part("moon"), part="venus")]),
+        dict(REL, parts=[dict(_part("moon"), file="zimi_almanac_hd_mars_2026-11.zim")]),
+        dict(REL, parts=[dict(_part("moon"), file="../x.zim")]),
+        dict(REL, parts="moon"),
+    ):
+        assert almanachd.parse_manifest(json.dumps(bad), "1.15.4") is None, bad

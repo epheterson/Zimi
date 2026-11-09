@@ -44,6 +44,7 @@ SCRIPTS = (
 )
 #: Loaded later, on first use, by the Almanac itself (by relative URL).
 LAZY = (
+    "almanac-sun.js",
     "almanac-look.js",
     "almanac-skyfind.js",
     "almanac-sites.js",
