@@ -615,7 +615,7 @@ var AE_CSS = [
   '}',
   '.ae-row{display:flex;gap:6px;flex-wrap:wrap;justify-content:center;pointer-events:auto}',
   // Go to: a compact sheet over the controls (the field at its foot, under the thumb; above the keyboard when it is up), its places in groups, each with its small disc.
-  '.ae-go{position:absolute;left:12px;right:12px;bottom:calc(8px + env(safe-area-inset-bottom));max-height:min(50vh,440px,var(--sheet-room,100vh));display:flex;flex-direction:column;overflow:hidden;box-sizing:border-box;background:' + AE_PANEL_BG + ';border:1px solid var(--border);border-radius:14px;pointer-events:auto;z-index:2}',
+  '.ae-go{position:absolute;left:12px;right:12px;bottom:calc(8px + env(safe-area-inset-bottom));height:min(50vh,440px,var(--sheet-room,100vh));display:flex;flex-direction:column;overflow:hidden;box-sizing:border-box;background:' + AE_PANEL_BG + ';border:1px solid var(--border);border-radius:14px;pointer-events:auto;z-index:2}',
   '.ae-go[hidden]{display:none}',
   // On a narrow phone the row's chips draw in a little so the five places and Go to stay one line.
   '#ae-views{flex-wrap:nowrap;align-items:center;max-width:calc(100vw - 24px);margin-inline:auto}',
@@ -629,7 +629,7 @@ var AE_CSS = [
   '@media (max-width:370px){#ae-views,.ae-chips{gap:3px}#ae-views .ae-btn{font-size:12px}#ae-views .ae-btn:not(.ae-round){padding-inline:5px}#ae-views .ae-round{width:30px;height:30px}}',
   // Short landscape (a phone on its side, 390 high): the sheet takes the height, short of the control column, so a list of places shows
   // six rows, not one and a half.
-  '@media (orientation:landscape) and (max-height:460px){.ae-go{inset-inline:12px 68px;top:8px;max-height:none}.ae-go-head{display:flex;align-items:center}.ae-go-find{flex:0 0 min(300px,40%)}.ae-go-pills.pills-row{flex:1;min-width:0;width:auto;padding-bottom:0}}',
+  '@media (orientation:landscape) and (max-height:460px){.ae-go{inset-inline:12px 68px;top:8px;height:auto}.ae-go-head{display:flex;align-items:center}.ae-go-find{flex:0 0 min(300px,40%)}.ae-go-pills.pills-row{flex:1;min-width:0;width:auto;padding-bottom:0}}',
   '.ae-go-head{flex:none;border-bottom:1px solid var(--border);padding:0 6px 6px}',
   '.ae-go-find{display:flex;align-items:center;gap:8px;min-height:48px;padding:0 4px 0 8px;color:var(--text3)}',
   '.ae-go-find input{flex:1;min-width:0;height:32px;border:0;background:none;color:var(--text);font:inherit;font-size:16px;outline:none;-webkit-user-select:text;user-select:text;-webkit-appearance:none;appearance:none}',
@@ -967,6 +967,7 @@ function _aeGoName(key) {
 // The name a body has in English whatever the language: what is typed in one language still finds it by the other.
 function _aeGoEnglish(key) {
   if (key.indexOf(AE_GO_MS) === 0) return key.slice(AE_GO_MS.length);
+  if (key.indexOf(AE_GO_LM) === 0) return _aeGoName(key);
   var b = _aePlanetBody(key);
   return b ? b.eph || key : key === 'iss' ? 'ISS' : key;
 }
@@ -8256,6 +8257,7 @@ function _aeBindControls() {
       _aeGoRender();
       var body = _aeById('ae-go').querySelector('.ae-go-body');
       if (body) body.scrollTop = 0;
+      if (pill.scrollIntoView) pill.scrollIntoView({ inline: 'nearest', block: 'nearest' });   // a pill half out of the row comes whole
       return;
     }
     var mode = e.target && e.target.closest ? e.target.closest('[data-ae-gomode]') : null;
