@@ -221,14 +221,10 @@ def name_of_file(filename):
 
 _ident_cache = {}  # path -> ((size, mtime), (Name, Date))
 _ident_lock = threading.Lock()
-#: A copy is looked at only when its file name starts like Zimi's own ("zimi_..."): the decision is by the Name metadata,
-#: this only keeps a scan from opening every file of a large library.
-IDENT_PREFIX = "zimi"
-
-
 def identity(path):
-    """``(Name, Date)`` metadata of a ZIM file, "" for what it lacks, None when it cannot be read. Read once per file
-    version."""
+    """``(Name, Date)`` metadata of a ZIM file, "" for what it lacks, None when it cannot be read. From the library's
+    metadata cache when it holds this file version (no archive opened); else read once per file version, and the cache
+    keeps it from then on (server.load_cache)."""
     try:
         st = os.stat(path)
     except OSError:
@@ -238,6 +234,13 @@ def identity(path):
         hit = _ident_cache.get(path)
         if hit and hit[0] == key:
             return hit[1]
+    from zimi import server as _srv
+
+    cached = _srv.cached_identity(path, st)
+    if cached is not None:
+        with _ident_lock:
+            _ident_cache[path] = (key, cached)
+        return cached
     from libzim.reader import Archive
 
     try:
@@ -259,7 +262,7 @@ def _date_key(date):
 def family_of(path):
     """The own ZIM's served name (``zimi_almanac``) whose Name metadata this file carries, and whether the file is
     strictly newer than the package's, or None. A different ZIM, whatever its file name, is None."""
-    if is_own_path(path) or not os.path.basename(path).lower().startswith(IDENT_PREFIX):
+    if is_own_path(path):
         return None
     mine = identity(path)
     if not mine or not mine[0]:

@@ -116,12 +116,32 @@ def test_a_file_name_alone_does_not_make_a_copy(lib):
     assert zims["zimi_eng_zimi_almanac"] == str(other)
 
 
-def test_a_zim_not_named_like_zimi_is_never_opened_for_this(lib, monkeypatch):
-    other = lib / "wikipedia_en_all_2026-10.zim"
-    build_fixture_zim(
-        str(other), ALMANAC_META
-    )  # carries an own Name, but is not looked at
-    assert _scan()["wikipedia"] == str(other)
+def test_a_renamed_copy_is_caught_by_its_metadata_not_its_file_name(lib):
+    copy = lib / "my_almanac_backup_2026-11.zim"
+    build_fixture_zim(str(copy), dict(ALMANAC_META, Date="2026-11"))
+    zims = _scan()
+    assert zims["zimi_almanac"] == _own_path()
+    assert "my_almanac_backup" not in zims
+    assert [o["file"] for o in srv.older_copies()] == ["my_almanac_backup_2026-11.zim"]
+
+
+def test_the_name_comes_from_the_metadata_cache_once_it_is_there(lib, monkeypatch):
+    copy = lib / "my_almanac_backup_2026-11.zim"
+    build_fixture_zim(str(copy), dict(ALMANAC_META, Date="2026-11"))
+    _scan()  # reads it, and the cache keeps its Name
+    ownzims._ident_cache.clear()
+    assert srv.cached_identity(str(copy), os.stat(copy)) == ("zimi_eng_zimi_almanac", "2026-11")
+    # A scan now opens no archive for it: the cache answers.
+    import libzim.reader
+
+    def refuse(*_a, **_k):
+        raise AssertionError("opened an archive the cache already described")
+
+    monkeypatch.setattr(libzim.reader, "Archive", refuse)
+    assert ownzims.identity(str(copy)) == ("zimi_eng_zimi_almanac", "2026-11")
+    # A changed file is not described by the old record.
+    os.utime(copy, (1, 1))
+    assert srv.cached_identity(str(copy), os.stat(copy)) is None
 
 
 def test_the_same_name_with_an_older_date_is_superseded_and_kept_on_disk(lib):

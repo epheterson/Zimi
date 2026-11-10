@@ -3513,6 +3513,52 @@ def _load_disk_cache():
         return None
 
 
+_ident_disk = (None, {})  # (cache file's stamp, its records)
+
+
+def cached_identity(path, st):
+    """``(Name, Date)`` of the file ``path`` (stat ``st``) from the metadata cache on disk, or None when the cache has no
+    record of this version of it with a Name (a record from before the Name was kept, or a new file)."""
+    global _ident_disk
+    try:
+        stamp = os.stat(_cache_file_path()).st_mtime_ns
+    except OSError:
+        return None
+    if _ident_disk[0] != stamp:
+        _ident_disk = (stamp, _load_disk_cache() or {})
+    rec = _ident_disk[1].get(os.path.basename(path))
+    if isinstance(rec, dict) and "mname" in rec and rec.get("size") == st.st_size and rec.get("mtime") == st.st_mtime:
+        return (rec["mname"], rec.get("date") or "")
+    return None
+
+
+def _keep_identity_stubs(disk_cache, file_cache):
+    """Keep what the library read of each superseded file (its Name and Date, so the next scan opens nothing for it) in
+    the metadata cache, as a stub record: a file no name serves has no full record. True when one was added or changed."""
+    from zimi import ownzims
+
+    changed = False
+    for path in list(_older_copies):
+        fn = os.path.basename(path)
+        if fn in file_cache:
+            continue
+        try:
+            st = os.stat(path)
+        except OSError:
+            continue
+        old = disk_cache.get(fn)
+        if isinstance(old, dict) and old.get("size") == st.st_size and old.get("mtime") == st.st_mtime and "mname" in old:
+            file_cache[fn] = old
+            continue
+        hit = ownzims._ident_cache.get(path)  # only what the scan already read
+        ident = hit[1] if hit else None
+        if ident is None:
+            continue
+        file_cache[fn] = {"stub": True, "mtime": st.st_mtime, "size": st.st_size, "mname": ident[0], "date": ident[1]}
+        changed = True
+    return changed
+
+
 def _save_disk_cache(file_cache):
     """Save metadata cache to disk (atomic write via rename)."""
     data = {
@@ -3675,6 +3721,7 @@ def _extract_zim_metadata(name, path):
         "has_icon": has_icon,
         "category": _effective_category(name, path, kind),
         "main_path": main_path,
+        "meta_name": meta_name,
     }
     # Additive: what the ZIM says it is, kept so a cache hit can re-derive the
     # category without reopening the archive.
@@ -3985,6 +4032,8 @@ def load_cache(force=False):
             continue
 
         cached = disk_cache.get(filename) if disk_cache else None
+        if cached and cached.get("stub"):
+            cached = None  # only what a superseded copy said of itself (_keep_identity_stubs): scanned in full if it is served
         # When Zimi first sees a ZIM, stamp it so the UI can flag it "New" for
         # a few days (#34 — a fresh install is otherwise lost in a big
         # library). A ZIM already known (even if its file changed on an update)
@@ -4171,6 +4220,13 @@ def load_cache(force=False):
                 entry["own_h"] = own["h"]
             info.append(entry)
             cached_out = dict(cached)
+            if "mname" not in cached_out:
+                # A record from before the Name was kept: read it once (the scan has, to place copies of own ZIMs).
+                from zimi import ownzims as _own_ids
+
+                ident = _own_ids.identity(path)
+                if ident is not None:
+                    cached_out["mname"] = ident[0]
             if first_seen is not None:
                 cached_out["first_seen"] = first_seen
             if updated_at is not None:
@@ -4203,6 +4259,9 @@ def load_cache(force=False):
                 "language": entry.get("language", ""),
                 "has_icon": entry["has_icon"],
                 "main_path": entry["main_path"],
+                # The ZIM's own Name, so a copy of one of Zimi's own ZIMs under another file name is known without
+                # opening it (ownzims.family_of).
+                "mname": entry.pop("meta_name", ""),
             }
             if entry.get("article_count") is not None:
                 new_cached["article_count"] = entry["article_count"]
@@ -4252,8 +4311,10 @@ def load_cache(force=False):
 
     # Persist cache if we scanned anything new, backfilled a legacy first_seen
     # (so the mtime stamp is computed once), or repaired mass-stamped entries.
+    stubs_changed = _keep_identity_stubs(disk_cache or {}, file_cache)
     if (
         scanned > 0
+        or stubs_changed
         or backfilled > 0
         or kind_backfilled
         or disk_cache is None

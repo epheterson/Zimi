@@ -3490,12 +3490,16 @@ def _create_engine(value):
     # a form that lies.
     if name == "rendered" and not _create_browser_ready():
         raise ValueError(
-            "the rendered engine needs a browser this server does not have " "installed"
+            _addon_refusal(
+                "the rendered engine needs a browser this server does not have installed", "browser"
+            )
         )
     if name == "singlefile" and not _create_singlefile_ready():
         raise ValueError(
-            "the singlefile engine needs the SingleFile CLI, and this server "
-            "does not have it installed"
+            _addon_refusal(
+                "the singlefile engine needs the SingleFile CLI, and this server does not have it installed",
+                "singlefile",
+            )
         )
     if name == "zimit" and not _create_allows_private():
         # Its browser is in Docker, out of the capture proxy's reach.
@@ -3509,10 +3513,28 @@ def _create_engine(value):
         )
     if name == "alive" and not _create_alive_ready():
         raise ValueError(
-            "the alive engine needs both a browser and the warc2zim sidecar, "
-            "and this server is missing at least one of them"
+            _addon_refusal(
+                "the alive engine needs both a browser and the warc2zim sidecar, "
+                "and this server is missing at least one of them",
+                "browser",
+                "warc2zim",
+            )
         )
     return name
+
+
+def _addon_refusal(message, *keys):
+    """Words for a capture mode this server lacks. When an add-on supplies it: under Automatically the first missing
+    one starts installing now (the job is refused, not held for a download), otherwise the words say where to add it."""
+    from zimi import addons, outbound
+
+    missing = [k for k in keys if not addons.available(k)]
+    if not missing or not addons.supported() or addons.POLICY.mode()[0] == outbound.NEVER:
+        return message
+    if addons.POLICY.mode()[0] == outbound.AUTO:
+        addons.install(missing[0], None)
+        return message + "; adding it now, try again when it is ready"
+    return message + "; add it in Settings > Server > Add-ons"
 
 
 def _create_blocking_engine(engine):
@@ -6019,6 +6041,12 @@ def handle_manage_get(handler, parsed, params):
         from zimi import ownzims
 
         return handler._json(200, {"zims": ownzims.catalog()})
+
+    elif parsed.path == "/manage/addons":
+        # Add-ons (addons.py): what can be added, what is there, the install under way, the setting.
+        from zimi import addons as _addons
+
+        return handler._json(200, _addons.status())
 
     elif parsed.path == "/manage/tidy":
         # What the library keeps beside what it lists: the Almanac's data as one row, and the older copies no name serves.
