@@ -5613,6 +5613,14 @@ def main():
     )
     add_boot_flags(p_doctor)
 
+    p_check = sub.add_parser(
+        "check", help="Is a ZIM well formed: checksum, metadata, icon, redirects, links"
+    )
+    p_check.add_argument("files", nargs="+", metavar="FILE", help="the .zim files to check")
+    p_check.add_argument(
+        "--quick", action="store_true", help="skip the checksum and the link scan"
+    )
+
     p_service = sub.add_parser(
         "service", help="The systemd unit that runs Zimi at boot (Linux)"
     )
@@ -5632,6 +5640,11 @@ def main():
         from zimi import service as _service
 
         return _service.cli_service(args)
+
+    if args.command == "check":
+        from zimi import zimcheck as _zimcheck
+
+        return _zimcheck.cli_check(args)
 
     settings, config_path, data_dir_problem = _resolve_boot(args)
     host = settings["host"][0]
