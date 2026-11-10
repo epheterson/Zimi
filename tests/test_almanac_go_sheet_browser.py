@@ -273,17 +273,25 @@ def test_each_pill_shows_only_its_kind_and_every_row_is_44px(library, view):
                     got = pg.evaluate(
                         """() => ({
                         kinds: Array.from(document.querySelectorAll('#ae-go-groups [data-ae-go]')).map(b => _aeGoKind(b.dataset.aeGo)),
+                        first: (document.querySelector('#ae-go-groups [data-ae-go]') || {dataset: {}}).dataset.aeGo,
                         short: Array.from(document.querySelectorAll('#ae-go-groups .ae-go-row')).filter(b => b.getBoundingClientRect().height < 44).length,
                         on: document.querySelector('[data-ae-pill].active').dataset.aePill })"""
                     )
                     assert got["on"] == pill and got["short"] == 0, (mode, pill, got)
                     assert got["kinds"], (mode, pill)
+                    if pill == "planets":
+                        assert got["first"] == "sun", (mode, got["first"])  # the Sun leads, ahead of the Earth
                     if pill != "all":
                         assert set(got["kinds"]) == {pill}, (
                             mode,
                             pill,
                             set(got["kinds"]),
                         )
+            # There and then's pill wears the sky card's sign (ALM_THEN_SVG) at the pills' icon size.
+            then = pg.evaluate(
+                "(() => { var s = document.querySelector('#ae-go-then svg'), r = s.getBoundingClientRect(); var t = document.createElement('div'); t.innerHTML = ALM_THEN_SVG; return [s.outerHTML === t.firstElementChild.outerHTML, Math.round(r.width), Math.round(r.height)]; })()"
+            )
+            assert then == [True, 16, 16], then
             assert not errors, errors
             ctx.close()
         finally:
