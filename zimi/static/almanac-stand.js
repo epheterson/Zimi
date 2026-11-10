@@ -321,7 +321,7 @@ function _aeStandGroundMesh(st, pend, U, mat) {
     uMap: { value: pend.tex || null }, uMapped: { value: pend.tex ? 1 : 0 }, uGrey: { value: AE_STAND_GREY_MAP[st.key] ? 1 : 0 },
     uBase: { value: AE_STAND_BASE[st.key] || [0.5, 0.5, 0.5] }, uGain: { value: AE_STAND_TINT[st.key] || [1, 1, 1] },
     uAmbient: { value: [0, 0, 0] }, uSkyHor: { value: [0, 0, 0] }, uSkyZen: { value: [0, 0, 0] }, uE2: { value: [0, 0, 0] }, uDir2: { value: [0, 0, 1] },
-    uLommel: { value: a ? 0 : 1 }, uRough: { value: AE_STAND_ROUGH[st.key] || (st.b.fbm.amp > 100 ? 1.3 : 1) }, uRock: { value: AE_STAND_ROCK[st.key] || 0.25 }, uDetail: { value: st.key === 'earth' ? 1 : 0 }, uCloudDim: { value: 1 }, uHead: { value: [0, 1] }, uCover: { value: st.key === 'earth' ? 1 : 0 },
+    uLommel: { value: a ? 0 : 1 }, uRough: { value: AE_STAND_ROUGH[st.key] || (st.b.fbm.amp > 100 ? 1.3 : 1) }, uRock: { value: AE_STAND_ROCK[st.key] || 0.25 }, uDetail: { value: st.key === 'earth' ? 1 : 0 }, uCloudDim: { value: 1 }, uGrass: { value: 0 }, uCanopy: { value: 0 }, uHead: { value: [0, 1] }, uCover: { value: st.key === 'earth' ? 1 : 0 },
     uDiffuse: { value: d ? 1 : 0 }, uVis: { value: d ? d.vis : 1 }, uDirect: { value: 1 }, uDiffSky: { value: [0, 0, 0] }
   }, U);
   var ground = st.groundMesh = new THREE.Mesh(g, mat(AE_ST_GROUND_VERT, AE_ST_GROUND_FRAG, gu, {}));
@@ -446,6 +446,61 @@ function _aeStCrown(tri, t, sd, kind) {
     }
   }
 }
+// Open country's trees stand in clumps and along draws, not scattered: a density (0..1) at a place round the viewer from two slow noises.
+var AE_STAND_GRASS_NEAR_MIN = 10;
+function _aeStSavanna(x, y) {
+  var clump = Math.max(0, _aeNoise3(x / 140, y / 140, 0.5, 31)), draw = Math.exp(-Math.pow(_aeNoise3(x / 260, y / 260, 3.5, 47) / 0.07, 2));
+  return Math.min(0.85, AE_STAND_GRASS_TREES * (0.25 + 9 * clump * clump) + 0.5 * draw);
+}
+// The class's ground: grass pulled green and the distant woods' texture, by the cell the viewer stands in; and the tufts of grass round the feet.
+var AE_STAND_GRASS_COUNT = 5200, AE_STAND_GRASS_RANGE_M = [1.3, 38], AE_STAND_GRASS_DENSITY = { grass: 1, broadleaf: 0.5, conifer: 0.35, tundra: 0.2 };
+function _aeStandGround(st, land, px) {
+  var g = st.ground, cls = land && land.cls;
+  g.uGrass.value = cls === 'grass' ? 1 : 0;
+  g.uCanopy.value = cls === 'broadleaf' ? 0.9 : cls === 'conifer' ? 1 : cls === 'grass' ? 0.3 : 0;
+  var dens = land ? (AE_STAND_GRASS_DENSITY[cls] || 0) * (land.coast ? 0.6 : 1) : 0.4;
+  if (dens > 0) _aeStandGrass(st, dens, cls, px);
+}
+function _aeStandGrass(st, dens, cls, px) {
+  if (st.grass) return;
+  var THREE = _ae.gl.THREE, R = st.b.km * 1000, lat0 = st.lat, lon0 = st.lon, h0 = st.h0;
+  var seed = (Math.round(lat0 * 1e4) * 19349663) ^ (Math.round(lon0 * 1e4) * 83492791), rnd = function () { seed |= 0; seed = seed + 0x6D2B79F5 | 0; var t = Math.imul(seed ^ seed >>> 15, 1 | seed); t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t; return ((t ^ t >>> 14) >>> 0) / 4294967296; };
+  var n = Math.round(AE_STAND_GRASS_COUNT * dens), P = [], N = [], T = [], lo = AE_STAND_GRASS_RANGE_M[0], hi = AE_STAND_GRASS_RANGE_M[1];
+  for (var i = 0; i < n; i++) {
+    var r = lo + (hi - lo) * Math.pow(rnd(), 0.8), th = rnd() * 2 * Math.PI, x0 = r * Math.sin(th), y0 = r * Math.cos(th);
+    var fade = 1 - Math.min(1, Math.max(0, (r - 24) / (hi - 24))), tall = (cls === 'tundra' ? 0.12 : 0.2 + 0.4 * rnd()) * fade;   // the tufts shrink away into the texture by the range's end
+    if (tall < 0.03) continue;
+    var z0 = _aeTerrainLocal('earth', lat0, lon0, h0, x0, y0, r * 0.0005, st.pend && st.pend.flat), sd = rnd(), blades = 4;
+    for (var b = 0; b < blades; b++) {
+      var ang = rnd() * 2 * Math.PI, w = 0.035 + 0.04 * rnd(), hh = tall * (0.6 + 0.6 * rnd()), lean = 0.08 + 0.25 * rnd(), lx = Math.cos(ang) * lean * hh, ly = Math.sin(ang) * lean * hh;
+      var bx = x0 + (rnd() - 0.5) * 0.25, by = y0 + (rnd() - 0.5) * 0.25, px2 = -Math.sin(ang + 1.2) * w, py2 = Math.cos(ang + 1.2) * w;
+      var nx = Math.cos(ang) * 0.3, ny = Math.sin(ang) * 0.3;
+      [[bx - px2, by - py2, z0, 0], [bx + px2, by + py2, z0, 0], [bx + lx, by + ly, z0 + hh, 1]].forEach(function (q) { P.push(q[0], q[1], q[2]); N.push(nx, ny, 0.95); T.push(q[3], sd, 0); });
+    }
+  }
+  if (!P.length) return;
+  var g = new THREE.BufferGeometry();
+  g.setAttribute('position', new THREE.BufferAttribute(new Float32Array(P), 3)); g.setAttribute('aNrm', new THREE.BufferAttribute(new Float32Array(N), 3)); g.setAttribute('aTree', new THREE.BufferAttribute(new Float32Array(T), 3));
+  // The blades take the ground's own colour at the place (the Blue Marble's, pulled green for a grass cell, as the ground's shader does) in linear light.
+  var rgb = _aeStGrassColour(st, px, cls);
+  var uni = Object.assign({}, st.ground, { uGrassAlb: { value: rgb }, uSway: { value: _aeReduceMotion() ? 0 : 1 } });
+  var m = new THREE.ShaderMaterial({ uniforms: uni, vertexShader: AE_ST_GRASS_VERT, fragmentShader: AE_ST_GRASS_FRAG, side: AE_THREE_DOUBLE_SIDE });
+  var mesh = new THREE.Mesh(g, m);
+  mesh.frustumCulled = false; mesh.renderOrder = 1;
+  st.scene.add(mesh); st.grass = { mesh: mesh, count: P.length / 9 };
+  st.geo.push(g); st.mats.push(m);
+  st.dirty = true; _ae.dirty = true; _aeKick();
+}
+function _aeStGrassColour(st, px, cls) {
+  var c = [0.2, 0.28, 0.1];   // a green meadow's albedo, linear
+  if (px) {
+    var x = Math.min(px.w - 1, Math.max(0, Math.floor((st.lon + 180) / 360 * px.w))), y = Math.min(px.h - 1, Math.max(0, Math.floor((st.lat + 90) / 180 * px.h))), i = 4 * (y * px.w + x);
+    var lin = [px.d[i] / 255, px.d[i + 1] / 255, px.d[i + 2] / 255].map(function (v) { return Math.pow(v, 2.2); }), l = 0.3 * lin[0] + 0.59 * lin[1] + 0.11 * lin[2];
+    var dull = lin[1] < Math.max(lin[0], lin[2]) * 1.05;
+    c = dull || cls === 'grass' ? [0.72 * l * 0.85, 1.0 * l * 0.85, 0.42 * l * 0.85].map(function (v, k) { return 0.5 * v + 0.5 * [0.2, 0.28, 0.1][k] * Math.min(1, l / 0.25 + 0.4); }) : lin;
+  }
+  return c.map(function (v) { return Math.min(0.5, Math.max(0.01, v)); });
+}
 function _aeStandTrees(st) {
   if (!st || !st.scene || st.trees || st.key !== 'earth') return;
   var px = null;
@@ -465,9 +520,9 @@ function _aeStandTrees(st) {
     var near = Math.max(0, Math.min(1, (r - thin[0]) / (thin[1] - thin[0])));
     if (rnd() > near * near) continue;   // thinner near the viewer: the first frame is not a wall
     var wood = _aeStForest(px, d.lat, d.lon), land = typeof _osLandCover === 'function' ? _osLandCover(d.lat, d.lon) : null;
-    if (land) {   // the grid's class decides whether, and what: forests are wooded whatever one pixel's green says, grass has a few, the rest none
+    if (land) {   // the grid's class decides whether, and what: forests are wooded whatever one pixel's green says, grass has clumps and rows, the rest none
       if (land.cls === 'sea' || land.cls === 'desert' || land.cls === 'snow' || land.cls === 'tundra') continue;
-      wood = land.cls === 'grass' ? Math.min(wood, AE_STAND_GRASS_TREES) : Math.max(wood, AE_STAND_FOREST_TREES);
+      wood = land.cls === 'grass' ? _aeStSavanna(r * Math.sin(th), r * Math.cos(th)) : Math.max(wood, AE_STAND_FOREST_TREES);
     }
     if (wood <= 0 || rnd() > wood) continue;
     var ht = _aeTerrainHeight('earth', d.lat, d.lon, r * 0.0005);
@@ -475,9 +530,17 @@ function _aeStandTrees(st) {
     var kind = _aeStTreeKind(d.lat, ht.h, rnd, land && land.cls);
     if (!kind) continue;
     var x = r * Math.sin(th), y = r * Math.cos(th), z = _aeTerrainLocal('earth', lat0, lon0, h0, x, y, r * 0.0005, st.pend && st.pend.flat);
-    var sz = kind === 'conifer' ? [20, 40] : kind === 'broadleaf' ? [10, 25] : [8, 18], u = Math.pow(rnd(), 1.3);
+    var sz = kind === 'conifer' ? [20, 40] : kind === 'broadleaf' ? (land && land.cls === 'grass' ? [6, 13] : [10, 25]) : [8, 18], u = Math.pow(rnd(), 1.3);
     list.push({ kind: kind, x: x, y: y, z: z, h: sz[0] + (sz[1] - sz[0]) * u, seed: rnd(), lean: (rnd() - 0.5) * 0.12, w: 0.8 + rnd() * 0.5 });
   }
+  // Open country always has some near: a few oaks within 300 m, wherever the clumps happen to fall.
+  var landHere = typeof _osLandCover === 'function' ? _osLandCover(lat0, lon0) : null, nearTrees = list.filter(function (t) { return Math.hypot(t.x, t.y) < 300; }).length;
+  for (var fz = 0; landHere && landHere.cls === 'grass' && nearTrees < AE_STAND_GRASS_NEAR_MIN && fz < 60; fz++) {
+    var fr2 = 70 + 230 * rnd(), ft = rnd() * 2 * Math.PI, fx = fr2 * Math.sin(ft), fy = fr2 * Math.cos(ft), fh = 6 + 7 * Math.pow(rnd(), 1.3);
+    var fzz = _aeTerrainLocal('earth', lat0, lon0, h0, fx, fy, fr2 * 0.0005, st.pend && st.pend.flat);
+    list.push({ kind: 'broadleaf', x: fx, y: fy, z: fzz, h: fh, seed: rnd(), lean: (rnd() - 0.5) * 0.12, w: 0.8 + rnd() * 0.5 }); nearTrees++;
+  }
+  _aeStandGround(st, landHere, px);
   if (!list.length) return;
   var P = [], N = [], T = [];   // flat arrays: positions, normals, (height fraction, seed, kind)
   var tri = function (a, b, c, ax, kind, seedv, fa, fb, fc, smooth) {   // one face, its normal pointing away from the axis point ax (smooth: each corner's own, away from ax)

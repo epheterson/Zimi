@@ -204,17 +204,17 @@ var AE_ST_TREE_VERT = [
   'varying vec3 vP, vN, vTree;',
   'void main() { vP = position; vN = aNrm; vTree = aTree; gl_Position = projectionMatrix * viewMatrix * vec4(position, 1.0); }'
 ].join('\n');
-var AE_ST_TREE_FRAG = [
+function _aeStTreeFrag(albLines, uniforms) {
+  return [
   'precision highp float;',
   AE_ST_GLSL_ATMO, AE_ST_GLSL_TONE,
   _aeStInscatterGlsl('inscatterGround', AE_ST_STEPS_GROUND),
-  'uniform vec3 uCam, uAmbient; uniform float uK, uCloudDim;',
+  'uniform vec3 uCam, uAmbient; uniform float uK, uCloudDim;' + uniforms,
   'varying vec3 vP, vN, vTree;',
   'void main() {',
   '  gJit = fract(52.9829189 * fract(dot(gl_FragCoord.xy, vec2(0.06711056, 0.00583715))));',
   '  float dist = length(vP - uCam); vec3 V = (uCam - vP) / dist, N = normalize(vN);',
-  '  vec3 alb = vTree.z < 0.5 ? vec3(0.026, 0.05, 0.03) : vTree.z < 1.5 ? vec3(0.036, 0.068, 0.03) : vTree.z < 2.5 ? vec3(0.05, 0.09, 0.035) : vec3(0.04, 0.028, 0.02);',
-  '  alb *= (0.8 + 0.4 * vTree.y) * (0.6 + 0.4 * min(vTree.x, 1.0));',   // each tree its own shade, darker below, paler at the tips
+  albLines,
   '  vec3 sT = sunTrans(vP * 0.001) * uSunE * uCloudDim;',
   '  vec3 L = alb * (sT * max(dot(N, uSunDir), 0.0) / PI + uAmbient * (0.55 + 0.45 * N.z));',
   '  if (uAtmo > 0.5) {',
@@ -223,7 +223,25 @@ var AE_ST_TREE_FRAG = [
   '  }',
   '  gl_FragColor = vec4(tone(L, uK), 1.0);',
   '}'
+  ].join('\n');
+}
+var AE_ST_TREE_FRAG = _aeStTreeFrag([
+  '  vec3 alb = vTree.z < 0.5 ? vec3(0.026, 0.05, 0.03) : vTree.z < 1.5 ? vec3(0.036, 0.068, 0.03) : vTree.z < 2.5 ? vec3(0.05, 0.09, 0.035) : vec3(0.04, 0.028, 0.02);',
+  '  alb *= (0.8 + 0.4 * vTree.y) * (0.6 + 0.4 * min(vTree.x, 1.0));'   // each tree its own shade, darker below, paler at the tips
+].join('\n'), '');
+// Grass: blades in tufts, the ground's own colour (uGrassAlb) darker at the root and paler dry at the tip, swaying a little (uSway: 0 under reduced motion).
+var AE_ST_GRASS_VERT = [
+  'attribute vec3 aNrm, aTree; uniform float uTime, uSway;',
+  'varying vec3 vP, vN, vTree;',
+  'void main() {',
+  '  vec3 p = position; float s = uSway * aTree.x * aTree.x * 0.16, ph = uTime * 1.9 + position.x * 0.41 + position.y * 0.33 + aTree.y * 6.28;',
+  '  p.x += s * sin(ph); p.y += s * 0.6 * sin(ph * 0.8 + 1.3);',
+  '  vP = p; vN = aNrm; vTree = aTree; gl_Position = projectionMatrix * viewMatrix * vec4(p, 1.0);',
+  '}'
 ].join('\n');
+var AE_ST_GRASS_FRAG = _aeStTreeFrag([
+  '  vec3 alb = uGrassAlb * (0.65 + 0.7 * vTree.y) * (0.5 + 0.5 * min(vTree.x, 1.0)); alb = mix(alb, alb * vec3(1.5, 1.35, 0.7), smoothstep(0.55, 1.0, vTree.x) * vTree.y);'
+].join('\n'), ' uniform vec3 uGrassAlb;');
 // Clouds: one deck over the Earth, from a field of (place, day): a plane `base` metres over the ground, fbm density thresholded by the
 // coverage, lit by the Sun through the air up to the deck, thin edges bright and thick bodies dark. `osClouds(d, o)` (d: unit view
 // direction, o: the camera in metres, local frame) gives premultiplied radiance and alpha, in the sky's own units; a provider may bring its own.
@@ -409,7 +427,7 @@ var AE_ST_GROUND_FRAG = [
   'uniform vec3 uCam; uniform float uK, uPixAng, uTime;',
   'uniform sampler2D uMap; uniform float uMapped, uGrey; uniform vec3 uBase, uGain;',
   'uniform vec3 uAmbient, uSkyHor, uSkyZen, uE2, uDir2;',
-  'uniform vec2 uHead; uniform float uCloudDim; uniform float uLommel, uRough, uRock, uDetail, uCover, uDiffuse, uVis, uDirect; uniform vec3 uDiffSky;',
+  'uniform vec2 uHead; uniform float uCloudDim; uniform float uGrass, uCanopy; uniform float uLommel, uRough, uRock, uDetail, uCover, uDiffuse, uVis, uDirect; uniform vec3 uDiffSky;',
   'varying vec3 vP, vN, vDir; varying float vH, vSea, vShade;',
   // Rock, fractal bumps and mottling at the scales a pixel can show, all fixed to the ground (the camera never moves on it).
   'float fine(vec3 p, float foot) {',
@@ -463,9 +481,14 @@ var AE_ST_GROUND_FRAG = [
   // Underfoot: blades and tussocks as fine noise stretched along the line of sight (as grass is seen across a field), sharp at the
   // feet and gone where a pixel would hold several of them, so it softens with distance as the Moon's stones do.
   '    float across = dot(vP.xy, tt), along = dot(vP.xy, rr), bl = 0.0;',
-  '    for (int i = 0; i < 4; i++) { float s = 0.03 * pow(3.0, float(i)), wb = 1.0 - smoothstep(0.5, 2.0, 2.5 * foot / s); if (wb > 0.0) bl += (vnoise(vec3(across / s, along / (s * (i < 2 ? 2.4 : 1.3)), 41.0 + float(i) * 5.0)) ) * wb * (0.9 - 0.15 * float(i)); }',
+  '    for (int i = 0; i < 4; i++) { float s = 0.03 * pow(3.0, float(i)), wb = 1.0 - smoothstep(0.5, 2.0, 2.5 * foot / s); if (wb > 0.0) bl += (vnoise(vec3(across / s, along / (s * (i < 2 ? 1.5 : 1.1)), 41.0 + float(i) * 5.0)) ) * wb * (0.9 - 0.15 * float(i)); }',
   '    float tuft = smoothstep(0.1, 0.6, vnoise(vP / 0.42 + 9.0)) * (1.0 - smoothstep(0.5, 2.0, 2.5 * foot / 0.42));',
   '    alb *= clamp(1.0 + bl * 0.5 - tuft * 0.12 * grass, 0.6, 1.25);',
+  '  }',
+  // Grass cells (the land-cover grid's): a dry season's Blue Marble is tan, but the ground is still grass: its brightness kept, its hue pulled green where the map is not.
+  '  if (uDetail > 0.5 && vSea < 0.5 && uGrass > 0.0) {',
+  '    float lg = dot(alb, vec3(0.3, 0.59, 0.11)), dull = 1.0 - smoothstep(0.0, 0.06, alb.g - max(alb.r, alb.b));',
+  '    alb = mix(alb, vec3(0.72, 1.0, 0.42) * lg * 0.85, uGrass * (0.3 + 0.5 * dull));',
   '  }',
   // Ground cover by height, slope and latitude (the Earth's): snow above the snow line, bare rock on steep ground and above the
   // trees, the Blue Marble's own tint elsewhere; the lines wander with a slow noise so no height is a ruled edge.
@@ -485,6 +508,12 @@ var AE_ST_GROUND_FRAG = [
   '    alb = mix(alb, vec3(0.78, 0.8, 0.84), snow);',
   '    float sp = step(0.9985, hash31(floor(vP / 0.03))) * (1.0 - smoothstep(0.1, 0.5, 2.5 * foot / 0.03));',
   '    alb += vec3(sp * snow * 1.6);',
+  '  }',
+  // Far off, woods and tree lines as a darker green in patches, the horizon's own texture (uCanopy: how wooded the class is).
+  '  if (uCanopy > 0.0 && vSea < 0.5 && uDetail > 0.5) {',
+  '    float dd = smoothstep(150.0, 500.0, dist) * (1.0 - smoothstep(12000.0, 40000.0, dist)), c1 = vnoise(vP / 70.0 + 5.0), c2 = vnoise(vP / 480.0 + 9.0), c3 = abs(vnoise(vP / 900.0 + 21.0));',
+  '    float tree = smoothstep(0.0, 0.45, c1 * 0.55 + c2 * 0.5 + (uCanopy - 0.5) * 0.9 - (uCanopy < 0.5 ? c3 * 0.0 : 0.0)) * (uCanopy < 0.5 ? smoothstep(0.1, 0.0, c3 - 0.05) + 0.25 * smoothstep(0.2, 0.7, c2) : 1.0);',
+  '    alb = mix(alb, vec3(0.03, 0.06, 0.026) * (0.7 + 0.6 * dot(alb, vec3(0.33))), clamp(dd * tree * min(1.0, uCanopy * 1.3 + 0.35), 0.0, 0.8));',
   '  }',
   '  vec2 rk = (vSea > 0.5 || dist > ' + AE_ST_ROCK_FADE_M[1].toFixed(1) + ') ? vec2(0.0) : rocks(vP, foot) * (1.0 - smoothstep(' + AE_ST_ROCK_FADE_M[0].toFixed(1) + ', ' + AE_ST_ROCK_FADE_M[1].toFixed(1) + ', dist)); float hb = vSea > 0.5 ? 0.0 : fine(vP, foot) + rk.x; alb *= clamp(1.0 + 0.5 * rk.y, 0.5, 1.35);',
   '  vec3 dpx = dFdx(vP), dpy = dFdy(vP); float hx = dFdx(hb), hy = dFdy(hb);',
