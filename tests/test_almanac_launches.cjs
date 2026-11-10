@@ -258,11 +258,23 @@ const flight = S._lfAscent(SLC40);
   const wins = S._lfBatchWindows(dep, Date.UTC(2021, 4, 7, 2, 0), Date.UTC(2021, 4, 7, 8, 0), GV[0], GV[1], 10, 30000);
   check(S._lfSkyBatch(dep, t25 + 60000, GV[0], GV[1]).length === 0, 'no satellites before release');
   const at = wins.length ? wins[0].peakMs : 0, sats = S._lfSkyBatch(dep, at, GV[0], GV[1]);
-  check(sats.length > 0 && sats.every((v) => v.kind === 'sat' && v.el >= 0 && isFinite(v.mag) && v.mag > -6 && v.mag < 12 && v.km > 250 && v.km < 600), 'the batch at its best pass is ' + sats.length + ' points with magnitudes ' + (sats.length ? Math.min.apply(null, sats.map((v) => v.mag)).toFixed(1) + ' to ' + Math.max.apply(null, sats.map((v) => v.mag)).toFixed(1) : '-'));
+  check(sats.length > 0 && sats.every((v) => v.kind === 'sat' && v.el >= 0 && isFinite(v.mag) && v.mag > -2 && v.mag < 8 && v.km > 250 && v.km < 600), 'the batch at its best pass is ' + sats.length + ' points with magnitudes ' + (sats.length ? Math.min.apply(null, sats.map((v) => v.mag)).toFixed(1) + ' to ' + Math.max.apply(null, sats.map((v) => v.mag)).toFixed(1) : '-'));
   check(S._lfSkyBatch(dep, Date.UTC(2021, 4, 7, 20, 0), GV[0], GV[1]).length === 0, 'and none in daylight');
-  // The brightness model is the passes' own: the ISS-sized check, a 6,400 m2 sphere at 1,000 km, half lit, is about -1.8.
-  const m = S._lfMagnitude(6400, 1000, Math.PI / 2);
-  check(Math.abs(m - -1.8) < 0.7, 'a 6,400 square metre sphere at 1,000 km, half lit: magnitude ' + m.toFixed(1) + ' (McCants, about -1.8)');
+  // The brightness: Mallama (2020) puts a v1.0 Starlink on station at 550 km at magnitude 4.6 (quarter phase); range scales it by 5 log
+  // of the distance, and while it is raised it is brighter by 1.5 (Tregloan-Reed et al. 2020), which makes a days-old string, overhead
+  // at about 290 km, magnitude 2 to 3 as observers report (Langbroek: "naked eye, magnitude 2-3").
+  const half = Math.PI / 2;
+  check(Math.abs(S._lfBatchMagnitude(550, half, false) - 4.6) < 1e-9, 'a Starlink on station at 550 km, quarter phase: magnitude 4.6');
+  const overhead = S._lfBatchMagnitude(290, half, true);
+  check(overhead > 1.2 && overhead < 3, 'days old, overhead at 290 km: magnitude ' + overhead.toFixed(1));
+  check(Math.abs(S._lfBatchMagnitude(1100, half, false) - S._lfBatchMagnitude(550, half, false) - 5 * Math.log10(2)) < 1e-9, 'twice the range is 1.5 magnitudes fainter');
+  check(S._lfBatchMagnitude(550, 2.6, false) > S._lfBatchMagnitude(550, 1.0, false), 'and nearly full-face is brighter than a thin crescent');
+  // The Earth's shadow: full sun outside, none well inside, a smooth fade across the edge.
+  const sun = [1, 0, 0], R = S.LF_MEAN_RADIUS_KM;
+  const share = (perp, along) => S._lfSunShare([along, perp, 0], sun);
+  check(share(R + 100, -5000) === 1 && share(R - 100, -5000) === 0 && share(0, 5000) === 1, 'sunlight is all or nothing away from the shadow edge');
+  const edge = [R - 20, R - 5, R, R + 5, R + 20].map((x) => share(x, -5000));
+  check(edge.every((v, k) => k === 0 || v >= edge[k - 1]) && edge[0] > 0 && edge[4] < 1 && Math.abs(edge[2] - 0.5) < 1e-9, 'across the edge it fades smoothly (' + edge.map((v) => v.toFixed(2)).join(', ') + ')');
 }
 
 

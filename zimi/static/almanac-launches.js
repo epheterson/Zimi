@@ -360,7 +360,7 @@ function _alWindowsHtml() {
   var list = _al.windows.list.slice(0, AL_WINDOWS_SHOWN);
   if (!list.length) return '<p class="al-note">' + _almEsc(_aeT('alm_launch_no_windows')) + '</p>';
   return '<div class="al-wins">' + list.map(function (w) {
-    return '<button type="button" class="al-win" data-ms="' + w.start + '"><b>' + _almEsc(_alFmt(w.start, AL_DAY_OPTS) + ' ' + _alTimeText(w.start)) + '</b>' +
+    return '<button type="button" class="al-win" data-ms="' + w.start + '"><b>' + _almEsc(_alFmt(w.start, AL_DAY_OPTS) + ' ' + _alTimeText(w.start) + '–' + _alTimeText(w.end)) + '</b>' +
       '<span>' + _almEsc(_aeT('alm_launch_n_sats', { n: w.count })) + '</span><span>' + _alArrow(w.azStart) + ' — ' + _alArrow(w.azEnd) + ' · ' + Math.round(w.peakEl) + '°</span></button>';
   }).join('') + '</div>';
 }
@@ -577,7 +577,7 @@ function _alSkyPaint(ctx, s) {
       var x = _skyX(s, v.az);
       if (!_skyInView(s, x, 4)) return;
       var y = _skyY(s, v.el);
-      ctx.fillStyle = 'rgba(255,240,205,' + AL_PEARL_ALPHA + ')';   // a pinpoint, no halo: a string of pearls
+      ctx.fillStyle = 'rgba(255,240,205,' + (AL_PEARL_ALPHA * v.share).toFixed(3) + ')';   // a pinpoint, no halo: a string of pearls, fading in the Earth's shadow
       ctx.beginPath(); ctx.arc(x, y, AL_PEARL_PX * dpr, 0, 6.2832); ctx.fill();
       if (first) s.bodies.push({ type: 'sat', name: _aeT('alm_launch_recon'), x: x / dpr, y: y / dpr, r: 4, alt: v.el, az: v.az, km: v.km });
       first = false;

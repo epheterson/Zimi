@@ -3795,5 +3795,7 @@
   "tb_kn_launch_falcon_seco": "猎鹰9号：二级首次关机时刻",
   "tb_kn_sat_leo_gone": "近地轨道卫星的轨道根数超过此天数则不绘制",
   "tb_kn_launch_sight_mag": "天空需要星等时各种景象的亮度（估计值）",
-  "tb_kn_launch_batch_area": "刚释放的 Starlink 用于亮度估计的面积"
+  "tb_kn_launch_batch_mag": "到位的 Starlink v1.0：550 公里、四分之一相位时的星等",
+  "tb_kn_launch_batch_raising": "Starlink 抬升期间（太阳板朝向太阳）亮度增加",
+  "tb_kn_launch_shadow_edge": "地球阴影边缘渐隐的宽度（每侧）"
 }

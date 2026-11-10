@@ -3795,5 +3795,7 @@
   "tb_kn_launch_falcon_seco": "Falcon 9: the second stage’s first burn ends at",
   "tb_kn_sat_leo_gone": "A low-orbit satellite is not drawn when its elements are older than",
   "tb_kn_launch_sight_mag": "A sight’s brightness where a sky wants a magnitude (estimates)",
-  "tb_kn_launch_batch_area": "The size a freshly released Starlink is given for its brightness"
+  "tb_kn_launch_batch_mag": "A v1.0 Starlink on station: magnitude at 550 km, quarter phase",
+  "tb_kn_launch_batch_raising": "Brighter by this while a Starlink is being raised (its panel to the Sun)",
+  "tb_kn_launch_shadow_edge": "Width of the fade at the Earth’s shadow edge, each side"
 }

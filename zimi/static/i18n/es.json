@@ -3795,5 +3795,7 @@
   "tb_kn_launch_falcon_seco": "Falcon 9: el primer encendido de la segunda etapa termina a los",
   "tb_kn_sat_leo_gone": "Un satélite de órbita baja no se dibuja si sus elementos son más antiguos que",
   "tb_kn_launch_sight_mag": "Brillo de cada visión donde un cielo pide una magnitud (estimaciones)",
-  "tb_kn_launch_batch_area": "El tamaño que se da a un Starlink recién soltado para su brillo"
+  "tb_kn_launch_batch_mag": "Un Starlink v1.0 en su órbita: magnitud a 550 km, cuarto de fase",
+  "tb_kn_launch_batch_raising": "Más brillante en esta medida mientras se eleva un Starlink (panel hacia el Sol)",
+  "tb_kn_launch_shadow_edge": "Ancho del desvanecimiento en el borde de la sombra de la Tierra, a cada lado"
 }

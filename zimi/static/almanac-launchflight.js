@@ -348,6 +348,7 @@ function _lfThen(L, place, seen) {
 // What a place sees at an instant, as plain objects a sky can paint: {kind, name, az, el, mag, rgb, trail, sight}. The 2D live
 // sky (almanac-launches.js) and the ground view's sky-objects hook both read these.
 var LF_BATCH_TRAIL_STEPS = 2, LF_BATCH_TRAIL_STEP_S = 2;   // a released satellite's short tail: two points, two seconds apart (four seconds)
+var LF_MIN_SHARE = 0.02;   // a satellite with less than this share of sunlight is not drawn
 var LF_SKY_TRAIL_S = 12, LF_SKY_TRAIL_STEP_S = 2;   // a rocket's trail: this far back, a point this often
 var LF_SIGHT_RGB = { jellyfish: [160, 215, 255], flame: [255, 170, 90], dot: [255, 244, 225], day: [255, 244, 225] };
 // The rocket of a launch (flight: _lfAscent's, L: the launch) at ms as seen from a place, or null when it is not up or not
@@ -368,11 +369,23 @@ function _lfSkyRocket(flight, L, ms, obsLat, obsLon) {
   return { kind: 'rocket', name: L.name + (L.mission ? ' · ' + L.mission : ''), az: head.az, el: head.el, mag: AE_LAUNCH_REF.sightMag[head.sight],
     rgb: LF_SIGHT_RGB[head.sight], trail: trail, sight: head.sight, km: head.h };
 }
-// A diffuse sphere of cross-section `areaM2` lit by the Sun and seen at `rangeKm` and phase angle `phase` (radians): the
-// magnitude the Almanac's satellite passes use (Russell 1916).
-function _lfMagnitude(areaM2, rangeKm, phase) {
-  var p = 2 / (3 * Math.PI) * (Math.sin(phase) + (Math.PI - phase) * Math.cos(phase)), d = rangeKm * 1000;
-  return AE_SATS_REF.sunMag - 2.5 * Math.log10(Math.max(1e-30, AE_SATS_REF.albedo * areaM2 * p / (Math.PI * d * d)));
+// A diffuse sphere's phase law (Lambert, Russell 1916), 1 at a quarter phase (90 degrees).
+function _lfPhaseLaw(phase) { return Math.max(1e-6, (Math.sin(phase) + (Math.PI - phase) * Math.cos(phase)) / 1); }
+// The magnitude of a freshly released Starlink: Mallama (2020) puts a v1.0 satellite on station at 550 km at about 4.6 (standard:
+// 550 km, quarter phase); the range's square and the phase law scale it, and while it is being raised it flies with its panel
+// to the Sun, which Tregloan-Reed et al. (2020) saw as brighter by about a magnitude and a half.
+function _lfBatchMagnitude(rangeKm, phase, raising) {
+  var ref = AE_LAUNCH_REF;
+  return ref.batchMag550 + 5 * Math.log10(rangeKm / 550) - 2.5 * Math.log10(_lfPhaseLaw(phase) / _lfPhaseLaw(Math.PI / 2)) + (raising ? ref.batchRaisingMag : 0);
+}
+// The share of sunlight reaching a point: all of it outside the Earth's shadow, none inside, and across an edge shadowEdgeKm each
+// side of it (the air at the limb) a smooth fade: a satellite does not blink out, it fades over some seconds.
+function _lfSunShare(posKm, sun) {
+  var along = _lfDot(posKm, sun);
+  if (along >= 0) return 1;
+  var px = posKm[0] - sun[0] * along, py = posKm[1] - sun[1] * along, pz = posKm[2] - sun[2] * along;
+  var e = AE_LAUNCH_REF.shadowEdgeKm, u = Math.max(0, Math.min(1, (Math.sqrt(px * px + py * py + pz * pz) - (LF_MEAN_RADIUS_KM - e)) / (2 * e)));
+  return u * u * (3 - 2 * u);
 }
 // The satellites of a reconstructed batch at ms as seen from a place: those above the horizon, in sunlight, with the Sun
 // below the passes' limit (AE_SATS_REF.passSunAlt + 1, as the 2D sky draws them).
@@ -381,11 +394,12 @@ function _lfSkyBatch(dep, ms, obsLat, obsLon) {
   if (!dep || ms < dep.sepMs) return out;
   var w = _lfWatcher(ms, obsLat, obsLon);
   if (w.sunAlt >= AE_SATS_REF.passSunAlt + 1) return out;
-  var area = AE_LAUNCH_REF.batchAreaM2, before = [];
+  var raising = dep.shellKm != null && ms < dep.raiseDoneMs, before = [];
   for (var k = 1; k <= LF_BATCH_TRAIL_STEPS; k++) before.push(_lfWatcher(ms - k * LF_BATCH_TRAIL_STEP_S * 1000, obsLat, obsLon));
   for (var i = 0; i < dep.n; i++) {
     var pos = dep.at(ms, i), v = _lfSeenBy(w, pos);
-    if (v.el < 0 || !v.lit) continue;
+    var share = _lfSunShare(pos, w.sun);
+    if (v.el < 0 || share < LF_MIN_SHARE) continue;
     var trail = [];
     for (k = 0; k < before.length; k++) {
       var q = _lfSeenBy(before[k], dep.at(ms - (k + 1) * LF_BATCH_TRAIL_STEP_S * 1000, i));
@@ -393,7 +407,7 @@ function _lfSkyBatch(dep, ms, obsLat, obsLon) {
       trail.push({ az: q.az, el: q.el });
     }
     var rho = [w.o[0] - pos[0], w.o[1] - pos[1], w.o[2] - pos[2]], phase = Math.acos(Math.max(-1, Math.min(1, _lfDot(w.sun, rho) / v.range)));
-    out.push({ kind: 'sat', name: '', trail: trail, az: v.az, el: v.el, mag: _lfMagnitude(area, v.range, phase), km: Math.hypot(pos[0], pos[1], pos[2]) - LF_MEAN_RADIUS_KM });
+    out.push({ kind: 'sat', name: '', trail: trail, az: v.az, el: v.el, share: share, mag: _lfBatchMagnitude(v.range, phase, raising) - 2.5 * Math.log10(share), km: Math.hypot(pos[0], pos[1], pos[2]) - LF_MEAN_RADIUS_KM });
   }
   return out;
 }
