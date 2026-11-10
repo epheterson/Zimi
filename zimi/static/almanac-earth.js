@@ -4492,6 +4492,11 @@ function _aeRefAxesRows() {
   add('ms.a11_splash', _aeT('tb_kn_ms_splash'), '195:18:35 · 13.30 N 169.15 W', '', MR + ', table 7-VII');
   add('ms.a11_fit', _aeT('tb_kn_ms_fit'), '× 1.055 (first stage), × 0.983 (second and third)', '', 'Zimi (scripts/mission_ascent_fit.py), fitted to the first-stage cut-off of the Saturn V AS-506 flight evaluation (67 km, 2.4 km/s)');
   add('ms.voyager_flybys', _aeT('tb_kn_ms_voyager'), 'Jupiter 348,435 · Saturn 184,030 km (Voyager 1)', 'km', 'NASA/JPL Horizons');
+  // Stand at the pad (almanac-padview.js): what is assumed in it.
+  add('pv.view', _aeT('tb_kn_pv_view'), _aeT('tb_kn_pv_view_v'), '', 'Zimi (almanac-padview.js PV_PADS)');
+  add('pv.climb', _aeT('tb_kn_pv_climb'), _aeT('tb_kn_pv_climb_v'), '', 'Zimi, fitted to the mission\'s own table (static/earth/missions-v1.json)');
+  add('pv.pad', _aeT('tb_kn_pv_pad'), _aeT('tb_kn_pv_pad_v'), '', 'NASA Apollo Saturn V Launch Vehicle Flight Handbook (the launch umbilical tower); ULA Atlas V Launch Services User\'s Guide; approximate');
+  add('pv.exhaust', _aeT('tb_kn_pv_exhaust'), _aeT('tb_kn_pv_exhaust_v'), '', 'Zimi (the mission player\'s flame lengths, almanac-missions.js)');
   return rows;
 }
 
