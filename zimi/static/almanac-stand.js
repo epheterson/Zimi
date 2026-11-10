@@ -169,7 +169,7 @@ function _aeStandEnter(st) {
   S.renderer.setPixelRatio(Math.min(S.dpr, _aeStandDprCap));
   _aeResize();
   var fr = _aeStFrame(st, _aeDisplayMs());
-  st.yaw = fr.sunAlt > AE_STAND_SUN_FACE_DEG ? fr.sunAz : 0;
+  st.yaw = st.key === 'earth' ? _aeRad(_aeStandDefaultHeading(st.lat)) : fr.sunAlt > AE_STAND_SUN_FACE_DEG ? fr.sunAz : 0;   // on Earth the card's own rule (toward the equator), elsewhere the Sun's side; a hand-off's heading, below, wins
   var ho = st.pend && st.pend.handoff;
   if (ho) {   // a hand-off from the live sky card: its facing, not the Sun's
     st.handoff = ho;
@@ -674,9 +674,13 @@ function _aeStPhoto(st, fr) {
   // The provider's eclipse: the share of the Sun's light that reaches the place (the ground, its shadows and the Sun's sprite), the faintest star the dimmed sky shows, and the disc geometry.
   if (_aeStandAirOn(st)) {
     var P = _aeStandAir, share = _aeStAirCall(P.sunShare, st, fr), lm = _aeStAirCall(P.limitMag, st, fr), ecl = _aeStAirCall(P.eclipse, st, fr);
-    if (share >= 0 && share < 1) {   // the Sun's light, and with it every term of the light that comes from the sky it lights (this view's own march: the provider's ambient replaces them)
+    var amb = _aeStAirCall(P.ambient, st, fr);   // the provider's own sky light for the ground, at every Sun height (the eclipse is in it already)
+    var ownAmb = !(amb && amb.amb && amb.horizon && amb.zenith);
+    if (!ownAmb) { p.amb = amb.amb; p.hor = amb.horizon; p.zen = amb.zenith; }
+    if (share >= 0 && share < 1) {   // the Sun's light; and, with only this view's own march to go by, every term of the light that comes from the sky it lights
       var dim = function (v) { return v ? v.map(function (x) { return x * share; }) : v; };
-      p.sunE = dim(p.sunE); p.amb = dim(p.amb); p.hor = dim(p.hor); p.zen = dim(p.zen); p.near = dim(p.near); p.diffSky = dim(p.diffSky); e2 *= share; p.sunShare = share;
+      p.sunE = dim(p.sunE); p.sunShare = share; e2 *= share;
+      if (ownAmb) { p.amb = dim(p.amb); p.hor = dim(p.hor); p.zen = dim(p.zen); p.near = dim(p.near); p.diffSky = dim(p.diffSky); }
     }
     if (typeof lm === 'number' && isFinite(lm)) p.lim = lm;
     if (ecl && typeof ecl === 'object') p.ecl = ecl;
@@ -700,6 +704,11 @@ function _aeStMat3(rows) {   // three rows -> the column-major array a mat3 unif
 }
 
 // ── Drawing ──
+// Where Stand faces with nobody having said: the live sky card's default when it is there, else the same rule (toward the equator).
+function _aeStandDefaultHeading(lat) {
+  var h = typeof _osDefaultHeading === 'function' ? _osDefaultHeading(lat) : NaN;
+  return isFinite(h) ? h : (lat >= 0 ? 180 : 0);
+}
 function _aeStandView(st, now) {
   if (st.zf) _aeStandZoomStep(st, now);
   var span = st.mode === 'ascend' ? AE_STAND_ASCENT_MS : AE_STAND_DESCENT_MS;
@@ -1039,8 +1048,11 @@ function _aeStandCloudSelect(st) {
     st.cloudMesh.frustumCulled = false; st.cloudMesh.renderOrder = -0.5;
     st.scene.add(st.cloudMesh); st.cloudSrc = chunk; st.cloudProv = !!prov;
   }
-  var u = st.cloudMesh.material.uniforms;
+  var u = st.cloudMesh.material.uniforms, clear = !!(st.handoff && st.handoff.clouds === 'clear');
+  if (prov && !clear && typeof _osCloudField === 'function') { var pf = null; try { pf = _osCloudField({ lat: st.lat, lon: st.lon, ms: _aeDisplayMs() }); } catch (e) {} st.cloudDim = pf && pf.coverage > 0 ? 1 - AE_STAND_CLOUD_DIM * Math.pow(Math.min(1, pf.coverage), 1.4) : 1; }
+  else if (clear) st.cloudDim = 1;
   if (prov) { st.cloudMesh.visible = true; if (prov.update) { try { prov.update(st, st.fr, st.photo, u); } catch (e) {} } return; }
+  if (clear) { st.cloudMesh.visible = false; st.cloudDim = 1; return; }   // the card draws none, nor does this
   var ms = _aeDisplayMs(), f = st.cloudField && Math.abs(ms - st.cloudField.at) < 600000 ? st.cloudField : (st.cloudField = Object.assign(_aeStandCloudField(st, ms), { at: ms }));
   st.cloudMesh.visible = f.coverage >= 0.02;
   st.cloudDim = 1 - AE_STAND_CLOUD_DIM * Math.pow(Math.min(1, f.coverage), 1.4);
