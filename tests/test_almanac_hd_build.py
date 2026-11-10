@@ -74,8 +74,19 @@ def test_every_level_down_to_the_max_is_cut_and_nothing_past_it(monkeypatch, tmp
             for y in range(2**z):
                 assert os.path.exists(hd.tile_path(out, layer, z, x, y)), (z, x, y)
     assert not os.path.exists(hd.tile_path(out, layer, top + 1, 0, 0))
+    # The fixture is 1024 px round: level 2's eight columns hold 128 of its pixels each. The deepest level keeps them
+    # at that size (nothing magnified into the file); every level above is a full tile.
     with Image.open(hd.tile_path(out, layer, top, 0, 0)) as t:
+        assert t.size == (128, 128) == (hd.native_px(360.0 / 1024, top),) * 2
+    with Image.open(hd.tile_path(out, layer, top - 1, 0, 0)) as t:
         assert t.size == (hd.TILE, hd.TILE)
+
+
+def test_the_deepest_level_is_never_wider_than_a_tile():
+    # A mosaic finer than the deepest level (Mars at 7 holds 360 of its 256-a-degree pixels; one twice as fine would
+    # hold 720) is reduced to a tile, never stored wider.
+    assert hd.native_px(360.0 / 92160, 7) == 360
+    assert hd.native_px(360.0 / 184320, 7) == hd.TILE
 
 
 def test_a_grey_picture_takes_its_colour_from_the_small_map_and_keeps_its_own_brightness(

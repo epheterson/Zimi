@@ -2216,7 +2216,7 @@ function _aeHdManifest() {
         var core = man.layers[k], deep = x.layers[k];
         // A layer split between the core and a part (levels from ``from`` on): the core's folder for the levels it holds, the
         // part's from there, to the part's deepest; and its inserts, which only the part has.
-        man.layers[k] = core && deep.from != null ? { max: deep.max, base: core.base, deep: { from: deep.from, base: deep.base }, inserts: deep.inserts } : deep;
+        man.layers[k] = core && deep.from != null ? { max: deep.max, px: deep.px, base: core.base, deep: { from: deep.from, base: deep.base }, inserts: deep.inserts } : deep;
       });
     });
     return man;
@@ -2236,9 +2236,10 @@ var AE_HD_SEG_DEG = 2.8;         // a tile's mesh no coarser than the base spher
 var AE_HD_MIN_SEG = 8;
 var AE_HD_SKIRT = 0.002;         // each tile's edges hang this far below the surface (of its radius): no crack shows where levels meet
 var AE_HD_TILE_REACH = 0.75;     // a tile's angular radius, as a share of its side (half its diagonal, and a margin)
-// With HD, the Earth's closest approach: its 610 m texels are then about two CSS pixels on a phone (three device
-// pixels at 2x); nearer, the picture only blurs. Every other body's is worked out the same way from its deepest level
-// (_aeHdTexelMin), so the Moon's 166 m texels let the camera come four times nearer than its map alone did.
+// With HD, the Earth's closest approach at the least (its deepest level may let it nearer); nearer than a body's
+// deepest texels at about two CSS pixels the picture only blurs. Every body's is worked out from its deepest level
+// as if its tiles were AE_HD_TILE_PX (_aeHdTexelMin): a deepest level stored at its source's own, smaller size (the
+// build's native_px) is the same picture, so the camera comes as near as it did when the file magnified it.
 var AE_HD_MIN_ALT_KM = 400;
 // A place on a body (latitude, longitude in degrees) as a unit vector in the body's own frame.
 // The point of a body's drawn sphere (squashed along its pole by `flat`) at a latitude and longitude. A map's rows follow
@@ -2338,7 +2339,12 @@ function _aeHdBudget() {
   try { phone = (typeof matchMedia === 'function' && matchMedia('(pointer: coarse)').matches) || (navigator.deviceMemory || 8) <= 4; } catch (e) {}
   return Math.min(phone ? AE_HD_GPU_MB_PHONE : AE_HD_GPU_MB_DESKTOP, _aeCapGet('hdMemMB', 1e9)) * 1048576;
 }
-function _aeHdTexBytes(tx, red) { return Math.round(AE_HD_TILE_PX * AE_HD_TILE_PX * (red ? 1 : AE_HD_RGBA_BYTES) * AE_HD_MIP_FACTOR); }
+// A layer's deepest level may be stored at its source's own size, smaller than AE_HD_TILE_PX (build_almanac_hd.py
+// native_px): a tile is mapped by its box, so only what it holds on the GPU is counted from its own size.
+function _aeHdTexBytes(tx, red) {
+  var px = (tx.image && tx.image.width) || AE_HD_TILE_PX;
+  return Math.round(px * px * (red ? 1 : AE_HD_RGBA_BYTES) * AE_HD_MIP_FACTOR);
+}
 function _aeHdKey(z, x, y) { return z + '/' + x + '/' + y; }
 function _aeHdSpan(z) { return 180 / Math.pow(2, z); }
 // A tile's box in the whole map's uv (u from longitude -180, v from latitude -90).
@@ -4453,7 +4459,7 @@ function _aeRefAxesRows() {
   add('craft.view', _aeT('tb_kn_craft_view'), AE_CRAFT_VIEW_SPANS, '×', 'Zimi');
   // Stand here: its ground and the air over it.
   add('stand.eye', _aeT('tb_kn_stand_eye'), AE_STAND_EYE_M, 'm', 'Zimi');
-  add('stand.terrain', _aeT('tb_kn_stand_terrain'), 'LOLA · MOLA · Magellan · MESSENGER · ETOPO 2022', '', 'NASA, USGS, NOAA (public domain)');
+  add('stand.terrain', _aeT('tb_kn_stand_terrain'), 'LOLA · MOLA · Magellan · MESSENGER · ETOPO 2022 · Dawn · New Horizons · HRSC · Cassini', '', 'NASA, USGS, NOAA, ESA/DLR (public domain)');
   add('stand.detail', _aeT('tb_kn_stand_detail'), 'seeded by the place', '', 'Zimi');
   add('stand.dust', _aeT('tb_kn_stand_dust'), AE_STAND_MARS_TAU, '', 'Lemmon et al. 2015');
   add('stand.haze', _aeT('tb_kn_stand_haze'), AE_STAND_HAZE_VIS_KM.venus + ' · ' + AE_STAND_HAZE_VIS_KM.titan, 'km', 'Zimi, after Venera and Huygens');
@@ -5121,7 +5127,7 @@ var AE_FLY_OVERVIEW_MS = 2000, AE_FLY_OVERVIEW_STRETCH = 1.25, AE_FLY_OVERVIEW_K
 // the first time a spot is tapped). The two names below are the way in for anything else that wants the ground.
 //   _aeStandAt(body, lat, lon)         enter the view: a promise of whether it started
 //   _aeGroundHeight(body, lat, lon)    metres above the body's mean radius; 0 until the body's terrain is loaded
-var AE_STAND_KEYS = ['earth', 'moon', 'mercury', 'venus', 'mars', 'io', 'europa', 'ganymede', 'callisto', 'titan', 'pluto'];
+var AE_STAND_KEYS = ['earth', 'moon', 'mercury', 'venus', 'mars', 'io', 'europa', 'ganymede', 'callisto', 'titan', 'pluto', 'ceres', 'vesta', 'charon', 'phobos', 'enceladus'];
 var AE_STAND_SRCS = [_almAsset('/static/almanac-terrain.js'), _almAsset('/static/almanac-terrainshade.js'), _almAsset('/static/almanac-standlook.js'), _almAsset('/static/almanac-standgl.js'), _almAsset('/static/almanac-oneland.js'), _almAsset('/static/almanac-stand.js'), _almAsset('/static/almanac-standhost.js'), _almAsset('/static/almanac-oneair.js')];
 var AE_STAND_FIGURE_SVG = '<svg class="ae-tool-svg" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="5.5" r="2.3"/><path d="M12 8.5v6M8.5 11.5l3.5-1 3.5 1M12 14.5l-2.5 5.5M12 14.5l2.5 5.5"/></svg>';
 var AE_STAND_EYE_M = 1.7;                      // an eye above the ground
