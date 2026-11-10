@@ -49,13 +49,14 @@ OWN = (
     Own("almanac", "zimi_almanac", "Zimi", _stage_almanac),
 )
 OWN_TAG = "zimi:own"
-# The ZIM's Title leads with the thing and ends " · Zimi" for other readers (Kiwix); inside Zimi it is just the thing.
-_BRAND_SUFFIX = " \u00b7 Zimi"
+# The ZIM's Title is "Zimi <thing>" (zimi.txt in each source folder is its one definition; the Almanac's flavours and
+# the HD tile builds read it from there); inside Zimi it is just the thing.
+_BRAND_PREFIX = "Zimi "
 
 
 def display_title(title):
-    """The name Zimi shows for one of its own ZIMs ("Games · Zimi" -> "Games")."""
-    return title[: -len(_BRAND_SUFFIX)] if title.endswith(_BRAND_SUFFIX) else title
+    """The name Zimi shows for one of its own ZIMs ("Zimi Games" -> "Games")."""
+    return title[len(_BRAND_PREFIX):] if title.startswith(_BRAND_PREFIX) else title
 
 SOURCE_ROOT = os.path.join(os.path.dirname(os.path.abspath(__file__)), "builtin")
 #: Where the built files are committed. A module global so tests build elsewhere.
