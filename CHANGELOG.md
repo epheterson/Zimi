@@ -31,6 +31,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 - A second background start no longer takes a starting server's pid file.
 - The portable Linux build can make icons for captured pages (Pillow).
 - Almanac: the 3D view's controls can no longer be pushed up over the picture; the gear shows three icons and short labels, not paragraphs.
+- Almanac: back to 1x by touch is easier: the speed slider's thumb is grabbed in a fingertip-tall band, and let go within a fingertip of the middle it lands on real time.
 ### Highlights
 
 **Zimi**
