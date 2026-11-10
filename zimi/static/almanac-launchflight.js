@@ -337,8 +337,8 @@ function _lfThen(L, place, seen) {
     family: 'launch',
     title: L.name + (L.mission ? ' · ' + L.mission : ''),
     place: { name: place.name || '', lat: place.lat, lon: place.lon, kind: place.kind || 'place' },
-    instant: Math.round(L.ms + seen.first.t * 1000),
-    look: { az: seen.first.az, el: seen.first.el, spanDeg: LF_THEN_LOOK_SPAN_DEG },
+    instant: Math.round(L.ms + seen.peak.t * 1000),
+    look: { az: seen.peak.az, el: seen.peak.el, spanDeg: LF_THEN_LOOK_SPAN_DEG },
     see: seen.sight,
     source: { name: 'GCAT (McDowell)', url: 'https://planet4589.org/space/gcat', licence: 'CC BY 4.0' }
   };
@@ -347,7 +347,7 @@ function _lfThen(L, place, seen) {
 // ── For a sky that draws what it is given ──
 // What a place sees at an instant, as plain objects a sky can paint: {kind, name, az, el, mag, rgb, trail, sight}. The 2D live
 // sky (almanac-launches.js) and the ground view's sky-objects hook both read these.
-var LF_BATCH_TRAIL_STEPS = 2, LF_BATCH_TRAIL_STEP_S = 2;   // a released satellite's short tail: two points, two seconds apart (four seconds)
+var LF_BATCH_TRAIL_STEPS = 3, LF_BATCH_TRAIL_STEP_S = 1.5, LF_BATCH_TRAIL_FADE = 1.6;   // a released satellite's tail as the satellites layer draws one: three steps of 1.5 s, each dimmer by this many magnitudes
 var LF_MIN_SHARE = 0.02;   // a satellite with less than this share of sunlight is not drawn
 var LF_SKY_TRAIL_S = 12, LF_SKY_TRAIL_STEP_S = 2;   // a rocket's trail: this far back, a point this often
 var LF_SIGHT_RGB = { jellyfish: [160, 215, 255], flame: [255, 170, 90], dot: [255, 244, 225], day: [255, 244, 225] };
@@ -400,14 +400,14 @@ function _lfSkyBatch(dep, ms, obsLat, obsLon) {
     var pos = dep.at(ms, i), v = _lfSeenBy(w, pos);
     var share = _lfSunShare(pos, w.sun);
     if (v.el < 0 || share < LF_MIN_SHARE) continue;
-    var trail = [];
+    var rho = [w.o[0] - pos[0], w.o[1] - pos[1], w.o[2] - pos[2]], phase = Math.acos(Math.max(-1, Math.min(1, _lfDot(w.sun, rho) / v.range)));
+    var trail = [], mag = _lfBatchMagnitude(v.range, phase, raising) - 2.5 * Math.log10(share);
     for (k = 0; k < before.length; k++) {
       var q = _lfSeenBy(before[k], dep.at(ms - (k + 1) * LF_BATCH_TRAIL_STEP_S * 1000, i));
       if (q.el < 0) break;
-      trail.push({ az: q.az, el: q.el });
+      trail.push({ az: q.az, el: q.el, mag: mag + (k + 1) * LF_BATCH_TRAIL_FADE });
     }
-    var rho = [w.o[0] - pos[0], w.o[1] - pos[1], w.o[2] - pos[2]], phase = Math.acos(Math.max(-1, Math.min(1, _lfDot(w.sun, rho) / v.range)));
-    out.push({ kind: 'sat', name: '', trail: trail, az: v.az, el: v.el, share: share, mag: _lfBatchMagnitude(v.range, phase, raising) - 2.5 * Math.log10(share), km: Math.hypot(pos[0], pos[1], pos[2]) - LF_MEAN_RADIUS_KM });
+    out.push({ kind: 'sat', name: '', trail: trail, az: v.az, el: v.el, share: share, mag: mag, km: Math.hypot(pos[0], pos[1], pos[2]) - LF_MEAN_RADIUS_KM });
   }
   return out;
 }

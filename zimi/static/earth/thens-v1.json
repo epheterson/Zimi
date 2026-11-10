@@ -1,0 +1,33 @@
+{
+ "shape": "id family title place{name,lat,lon,kind} instant(ms UTC) look{az,el,spanDeg} see source{name,url,licence} refs notes",
+ "moments": [
+  {
+   "id": "launch:2022-141:34.05,-118.24",
+   "family": "launch",
+   "title": "Falcon 9 · Starlink Group 4-31",
+   "place": {
+    "name": "Los Angeles",
+    "lat": 34.05,
+    "lon": -118.24,
+    "kind": "place"
+   },
+   "instant": 1666919846000,
+   "look": {
+    "az": 217.71532159366993,
+    "el": 42.65141387110942,
+    "spanDeg": 60
+   },
+   "see": "jellyfish",
+   "source": {
+    "name": "GCAT (McDowell)",
+    "url": "https://planet4589.org/space/gcat",
+    "licence": "CC BY 4.0"
+   },
+   "refs": [
+    "https://www.nasaspaceflight.com/2022/10/starlink-4-31/",
+    "https://www.space.com/spacex-starlink-group-4-31-launch"
+   ],
+   "notes": "Falcon 9 from Vandenberg at 6:14 pm PDT, the Sun 3 degrees down at the watcher: the exhaust is lit. The launch time and vehicle are published; the sight is computed."
+  }
+ ]
+}
