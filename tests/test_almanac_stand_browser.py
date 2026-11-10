@@ -608,6 +608,26 @@ def test_stand_does_not_wait_for_hd_terrain_tiles_that_never_arrive(page):
     assert not page.errors, page.errors
 
 
+def test_a_touch_23_px_above_the_sun_with_the_view_offset_under_the_top_bar_still_hits_it(page):
+    """onesky's case: 390x844 at device scale 2, the Sun at the view's centre, the view 56 px under the top bar: the tap lands in PAGE coordinates
+    ~23 px above the Sun (touchscreen.tap(195, 427.2)); the handler converts with the canvas's own rect, so it is inside the 44 px target."""
+    _stand_anywhere(page, "earth", 40.0, -105.0)
+    page.evaluate(
+        """() => { var st = _ae.stand; _aeGoTo(Date.UTC(2026, 5, 20, 18, 0, 0)); st.fr = null; st.dirty = true; _ae.dirty = true; _aeKick(); }"""
+    )
+    page.wait_for_function("() => _ae.stand.fr && _ae.stand.fr.sunAlt > 50", timeout=60_000, polling=250)
+    xy = page.evaluate(
+        """() => { var st = _ae.stand; st.userYaw = st.fr.sunAz - st.yaw; st.userPitch = st.fr.sunAlt * Math.PI / 180 - AE_STAND_PITCH_DEG * Math.PI / 180; st.zoom = 1; st.zf = null; st.zoomBack = null; st.dirty = true; _ae.dirty = true; _aeKick();
+          return new Promise(function (r) { setTimeout(function () { var rect = document.getElementById('ae-canvas').getBoundingClientRect(); r([rect.left + _ae.w / 2, rect.top + _ae.h / 2, rect.top]); }, 800); }); }"""
+    )
+    # The Sun is at the view's centre (the camera looks at it); the finger comes down 23 px above it, in page coordinates.
+    page.touchscreen.tap(xy[0], xy[1] - 23)
+    page.wait_for_function("() => _ae.stand.zoom < 0.3", timeout=15_000, polling=200)
+    page.evaluate("() => { _ae.stand.zoom = 1; _ae.stand.zf = null; _ae.stand.zoomBack = null; }")
+    _leave(page)
+    assert not page.errors, page.errors
+
+
 def test_the_live_sky_cards_handoff_opens_stand_facing_its_way_and_close_goes_back(
     page,
 ):

@@ -334,7 +334,7 @@ var AE_ST_OCC_FRAG = [
 var AE_ST_BODY_FRAG = [
   'precision highp float;', AE_ST_GLSL_TONE,
   'uniform vec3 uDir, uRight, uUp, uSunFrom, uTint, uTrans; uniform float uHalf, uRho, uPix, uE, uK, uEmit, uVis, uGlow, uSkyLit;',
-  'uniform sampler2D uMap; uniform float uMapped, uGrey, uMapGain, uCorona, uSeed; uniform vec3 uOcc; uniform mat3 uBody;',                    // the body's own map, and local -> body-fixed
+  'uniform sampler2D uMap; uniform float uMapped, uGrey, uMapGain, uCorona, uSeed, uPointScale; uniform vec3 uOcc; uniform mat3 uBody;',                    // the body's own map, and local -> body-fixed
   'uniform sampler2D uRingMap; uniform float uRings, uRp; uniform vec3 uRingN, uCen; uniform vec2 uRing;',    // Saturn's rings: plane, centre and size (km)
   'varying vec2 vUv;',
   'const float PI = ' + AE_ST_PI + ';',
@@ -369,7 +369,7 @@ var AE_ST_BODY_FRAG = [
   '      alpha = cov;',
   '    }',
   '  } else {',
-  '    float s = max(uPix * 1.4, uRho * 1.2); float g = exp(-pow(a / s, 2.0) * 1.6);',
+  '    float s = max(uPix * 1.4, uRho * 1.2) * uPointScale; float g = exp(-pow(a / s, 2.0) * 1.6);',
   '    col = uTint * mix(vec3(1.0), uTrans / max(max(uTrans.r, uTrans.g), max(uTrans.b, 1e-6)), 0.7); alpha = g * uVis;',
   '  }',
   // Rings: the plane through the planet's centre, its profile by radius, lit by the Sun and dark in the planet's shadow,

@@ -315,7 +315,7 @@ function _aeStandSpriteMeshes(st, mat) {
     var uni = { uDir: { value: [0, 1, 0] }, uRight: { value: [1, 0, 0] }, uUp: { value: [0, 0, 1] }, uSunFrom: { value: [0, 0, 1] }, uTint: { value: [1, 1, 1] }, uTrans: { value: [1, 1, 1] },
       uHalf: { value: 0.01 }, uRho: { value: 0.001 }, uPix: { value: 0.001 }, uE: { value: 1 }, uK: { value: 1 }, uEmit: { value: 0 }, uVis: { value: 0 }, uGlow: { value: 0 }, uSkyLit: { value: 1 },
       uMap: { value: null }, uMapped: { value: 0 }, uGrey: { value: 0 }, uMapGain: { value: 1 }, uBody: { value: [1, 0, 0, 0, 1, 0, 0, 0, 1] },
-      uOcc: { value: [0, 0, 0] }, uCorona: { value: 0 }, uSeed: { value: 0 }, uRingMap: { value: null }, uRings: { value: 0 }, uRp: { value: 1 }, uRingN: { value: [0, 0, 1] }, uCen: { value: [0, 1, 0] }, uRing: { value: [0, 1] } };
+      uPointScale: { value: 1 }, uOcc: { value: [0, 0, 0] }, uCorona: { value: 0 }, uSeed: { value: 0 }, uRingMap: { value: null }, uRings: { value: 0 }, uRp: { value: 1 }, uRingN: { value: [0, 0, 1] }, uCen: { value: [0, 1, 0] }, uRing: { value: [0, 1] } };
     var mesh = new THREE.Mesh(quad, mat(AE_ST_BODY_VERT, AE_ST_BODY_FRAG, uni, { depthTest: false, depthWrite: false, blending: THREE.AdditiveBlending }));
     mesh.frustumCulled = false; mesh.renderOrder = -1; mesh.visible = false;
     st.sprites.push({ mesh: mesh, uni: uni });
@@ -1036,7 +1036,14 @@ function _aeStandSprites(st, fr, ph, pixAng, alt) {
     m.visible = true;
     uni.uDir.value = o.dir; uni.uRight.value = right; uni.uUp.value = up; uni.uSunFrom.value = o.sunFrom;
     uni.uTint.value = o.tint; uni.uTrans.value = trans;
-    uni.uHalf.value = o.sun ? Math.max(o.rho * 16, pixAng * 8) : Math.max(o.rho * 1.2, ringRho * 1.1, pixAng * 5);
+    // A planet seen as a point is drawn as a star of its magnitude is: bigger the brighter it is, in the colour it looks (not its disc's albedo colour).
+    var pscale = 1, magE = o.mag + (air ? 0.2 * 1 / (Math.max(mu, 0) + 0.025 * Math.exp(-11 * Math.max(mu, 0))) : 0);
+    if (!o.sun && o.rho <= pixAng * 1.2) {
+      pscale = (1.1 + 0.35 * _aeClamp(lim - magE, 0, 6)) / 1.1;
+      uni.uTint.value = AE_STAND_POINT_TINT[o.key] || o.tint.map(function (x) { return 0.5 + 0.5 * x; });
+    }
+    uni.uPointScale.value = pscale;
+    uni.uHalf.value = o.sun ? Math.max(o.rho * 16, pixAng * 8) : Math.max(o.rho * 1.2, ringRho * 1.1, pixAng * 5 * pscale);
     uni.uRho.value = o.rho; uni.uPix.value = pixAng; uni.uE.value = o.E; uni.uK.value = ph.k;
     uni.uEmit.value = o.sun ? 1 : 0; uni.uVis.value = vis;
     uni.uGlow.value = o.sun ? (air || d ? 0 : 0.18) : 0;
@@ -1082,6 +1089,7 @@ function _aeStandEclipseLabel(st, ecl) {
   el.style.transform = 'translate(' + ((p.x + 1) / 2 * _ae.w).toFixed(1) + 'px,' + ((1 - p.y) / 2 * _ae.h).toFixed(1) + 'px)';
 }
 var AE_STAND_CORONA_RADII = 3.4;   // the corona's reach in Moon radii (almanac-sky.js SKY_CORONA_RADII)
+var AE_STAND_POINT_TINT = { mercury: [0.96, 0.93, 0.88], venus: [1, 0.97, 0.9], mars: [1, 0.66, 0.46], jupiter: [1, 0.95, 0.85], saturn: [1, 0.92, 0.76], uranus: [0.8, 0.95, 0.95], neptune: [0.7, 0.8, 1] };   // how the planets look to the eye as points
 var AE_STAND_MAP_PX = 3;                       // a disc this many pixels across (radius) or more is drawn from its map
 var AE_STAND_SATURN_RINGS = [74500, 140220];   // km, the C ring's inside to the A ring's outside (as almanac-earth.js AE_PLANETS)
 // The map of a body seen as a disc: the orbit view's own once it has it, else fetched (once; the disc shows it when it is in).
