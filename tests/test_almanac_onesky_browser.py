@@ -215,7 +215,7 @@ def stand(browser, served, times):
         pg.wait_for_timeout(2500)
         pts = pg.evaluate(
             """(ds) => { const st = _ae.stand, V = _ae.gl.THREE.Vector3;
-              return ds.map(([az, alt]) => { const d = _aeStandSkyDir(az, alt); const p = new V(d[0] * 10, d[1] * 10, d[2] * 10).project(st.camera); return [(p.x + 1) / 2 * _ae.w, (1 - p.y) / 2 * _ae.h]; }); }""",
+              return ds.map(([az, alt]) => { const d = _aeStandSkyDir(az, alt); const p = new V(d[0] * 1e4, d[1] * 1e4, d[2] * 1e4).project(st.camera); return [(p.x + 1) / 2 * _ae.w, (1 - p.y) / 2 * _ae.h]; }); }""",
             SAMPLE_DIRS,
         )
         data = pg.evaluate(
@@ -541,7 +541,7 @@ def test_the_card_and_the_ground_view_draw_the_same_cloud_field(browser, served)
     with_clouds = stand_shot()
     pts = pg.evaluate(
         """(ds) => { const st = _ae.stand, V = _ae.gl.THREE.Vector3;
-          return ds.map(([az, alt]) => { const d = _aeStandSkyDir(az, alt); const p = new V(d[0] * 10, d[1] * 10, d[2] * 10).project(st.camera); return [(p.x + 1) / 2 * _ae.w, (1 - p.y) / 2 * _ae.h]; }); }""",
+          return ds.map(([az, alt]) => { const d = _aeStandSkyDir(az, alt); const p = new V(d[0] * 1e4, d[1] * 1e4, d[2] * 1e4).project(st.camera); return [(p.x + 1) / 2 * _ae.w, (1 - p.y) / 2 * _ae.h]; }); }""",
         CLOUD_DIRS,
     )
     pg.evaluate(clear)
