@@ -3688,7 +3688,7 @@ var _sunMapImg = new Image();
 var _sunMapLoaded = false;
 _sunMapImg.onload = function() { _sunMapLoaded = true; _drawSunMap(); };
 _sunMapImg.onerror = function() { _sunMapLoaded = false; };
-_sunMapImg.src = '/static/world-map.svg?v=1';
+_sunMapImg.src = _almAsset('/static/world-map.svg');
 
 var _sunMapCanvas = null;
 var _sunMapFlashTimer = 0;
@@ -3844,7 +3844,7 @@ function _tzBordersEnsure() {
   _tzBordersFetched = true;
   // ?v= matches the world-map.svg convention: /static/ is served immutable
   // for a year, so a regenerated asset must bump the version to bust caches.
-  fetch('/static/tz-borders.json?v=3')
+  fetch(_almAsset('/static/tz-borders.json'))
     .then(function (r) { return r.ok ? r.json() : null; })
     .then(function (data) {
       if (!data || !data.lines || !data.lines.length) return;
@@ -6065,7 +6065,7 @@ function _promptAlmanacLocation() {
   overlay.innerHTML = '<div style="color:var(--text);font-size:16px;font-weight:600;margin-bottom:4px">' + t('alm_set_location_title') + '</div>' +
     '<div style="color:var(--text3);font-size:12px;margin-bottom:12px">' + t('alm_tap_city') + '</div>' +
     '<div id="almanac-map-wrap" style="position:relative;max-width:560px;width:100%;border-radius:10px;overflow:hidden;border:1px solid var(--border);cursor:crosshair">' +
-      '<img src="/static/world-map.svg?v=1" width="800" height="400" style="display:block;width:100%;height:auto" draggable="false" alt="World map">' +
+      '<img src="' + _almAsset('/static/world-map.svg') + '" width="800" height="400" style="display:block;width:100%;height:auto" draggable="false" alt="World map">' +
       '<div id="almanac-map-marker" style="display:none;position:absolute;pointer-events:none">' +
         '<div style="width:20px;height:20px;border:2px solid rgba(210,170,100,0.7);border-radius:50%;position:absolute;left:-10px;top:-10px"></div>' +
         '<div style="width:6px;height:6px;background:#d4aa64;border-radius:50%;position:absolute;left:-3px;top:-3px"></div>' +
@@ -8433,7 +8433,7 @@ var _grTouchStartX = 0;
 async function _loadRosettaManifest() {
   if (_rosettaManifest) return _rosettaManifest;
   try {
-    var resp = await fetch('/static/rosetta/manifest.json');
+    var resp = await fetch(_almAsset('/static/rosetta/manifest.json'));
     _rosettaManifest = await resp.json();
   } catch(e) { _rosettaManifest = []; }
   return _rosettaManifest;
@@ -8442,7 +8442,7 @@ async function _loadRosettaManifest() {
 async function _loadInscription(id) {
   if (_rosettaCache[id]) return _rosettaCache[id];
   try {
-    var resp = await fetch('/static/rosetta/' + id + '.json');
+    var resp = await fetch(_almAsset('/static/rosetta/' + id + '.json'));
     _rosettaCache[id] = await resp.json();
   } catch(e) { _rosettaCache[id] = {texts:{}}; }
   return _rosettaCache[id];
@@ -8563,7 +8563,7 @@ function _renderGoldenRecordGallery() {
   html += '<div class="gr-grid">';
   for (var i = 0; i < _GR_IMAGES.length; i++) {
     html += '<div class="gr-thumb" onclick="_openGrLightbox(' + i + ')">' +
-      '<img src="/static/golden-record/' + _GR_IMAGES[i] + '" alt="' + _grCap(i) + '" loading="lazy">' +
+      '<img src="' + _almAsset('/static/golden-record/' + _GR_IMAGES[i]) + '" alt="' + _grCap(i) + '" loading="lazy">' +
       '</div>';
   }
   html += '</div></div>';
@@ -8619,7 +8619,7 @@ function _renderGrLightbox() {
     '<button class="gr-lb-close" onclick="_closeGrLightbox()">&times;</button>' +
     '<button class="gr-lb-arrow gr-lb-prev" onclick="event.stopPropagation();_grNav(-1)"><svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="10,2 4,8 10,14"/></svg></button>' +
     '<div class="gr-lb-main" onclick="event.stopPropagation()">' +
-      '<img src="/static/golden-record/' + file + '" alt="' + cap + '">' +
+      '<img src="' + _almAsset('/static/golden-record/' + file) + '" alt="' + cap + '">' +
       '<div class="gr-lb-cap">' + cap + '</div>' +
       '<div class="gr-lb-num">' + (_grLightboxIdx + 1) + ' / ' + _GR_IMAGES.length + '</div>' +
     '</div>' +

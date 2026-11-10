@@ -9,7 +9,7 @@
 //
 // This file is pure maths and data (tests/test_almanac_terrain.cjs runs it on its own): no DOM, no WebGL.
 
-var AE_TERRAIN_URL = '/static/earth/terrain-';          // + <body>-v1.bin
+function _aeTerrainUrl(key) { return _almAsset('/static/earth/terrain-' + key + '-v1.bin'); }
 var AE_TERRAIN_MAGIC = 'ZTRN', AE_TERRAIN_VERSION = 1, AE_TERRAIN_HEADER = 10;
 var AE_TERRAIN_HD_TILE = 256, AE_TERRAIN_HD_OFFSET = 32768;   // build_terrain.py: red is the high byte of metres + 32768, green the low
 var AE_TERRAIN_HD_LAYER = 'terrain/';
@@ -60,7 +60,7 @@ function _aeTerrainLoad(key) {
   t = _aeTerr[key] = t || {};
   if (!AE_STAND_BODIES[key] || !AE_STAND_BODIES[key].terrain || typeof fetch !== 'function') { _aeTerrainSet(key, null); return (t.promise = Promise.resolve(t)); }
   t.state = 'loading';
-  t.promise = fetch(AE_TERRAIN_URL + key + '-v1.bin').then(function (r) { if (!r.ok) throw new Error('terrain'); return r.arrayBuffer(); })
+  t.promise = fetch(_aeTerrainUrl(key)).then(function (r) { if (!r.ok) throw new Error('terrain'); return r.arrayBuffer(); })
     .then(function (buf) { _aeTerrainSet(key, _aeTerrainParse(buf)); return key === 'earth' ? _aeTerrainLoadLand(t) : t; })
     .catch(function () { t.promise = null; _aeTerrainSet(key, null); return t; });   // asked for again next time
   return t.promise;
@@ -70,7 +70,7 @@ function _aeTerrainLoad(key) {
 // The shipped map is 156 km a pixel: a coastal cell averages land with the sea and reads below zero. Where the water is
 // comes from Natural Earth's 1:10 million land polygons (scripts/build_landmask.py), 8192 x 4096, stored as runs: a coast
 // stands where the coast is, to a few kilometres. Lakes read as land.
-var AE_TERRAIN_LAND_URL = '/static/earth/land-v1.bin', AE_TERRAIN_LAND_MAGIC = 'ZLND', AE_TERRAIN_COAST_M = 3, AE_TERRAIN_COAST_RISE = 0.8;   // land at least this high, reached as the land share runs from a half to this
+var AE_TERRAIN_LAND_URL = _almAsset('/static/earth/land-v1.bin'), AE_TERRAIN_LAND_MAGIC = 'ZLND', AE_TERRAIN_COAST_M = 3, AE_TERRAIN_COAST_RISE = 0.8;   // land at least this high, reached as the land share runs from a half to this
 // The runs as a bit mask (one bit a pixel, rows from the north), or null if the bytes are not this format.
 function _aeTerrainLandParse(buf) {
   if (!buf || buf.byteLength < 10) return null;

@@ -35,6 +35,7 @@ const S = {
   matchMedia() { return { matches: false, addEventListener() {} }; }
 };
 vm.createContext(S);
+S._almAsset = (p) => p;   // app.js: a /static address with its version; here, as it is
 vm.runInContext(require("./sk.cjs")(), S);   // app.js SK, loaded before every Almanac file
 vm.runInContext('var _currentLang = "en"; function t(k, v) { var s = k; if (v) for (var x in v) s += "|" + v[x]; return s; } function tPlural(b, n) { return n + " " + b; } var _almanacOpen = false;', S);
 vm.runInContext(fs.readFileSync(path.join(STATIC, 'almanac-orrery.js'), 'utf8'), S);
