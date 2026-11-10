@@ -49,5 +49,5 @@
  },
  "note": "Cold open of the 3D Earth from navigation: Home, tap the Almanac, tap the Earth, 4 s settle. Transferred (encoded) bytes per file, median of 3 (Mac mini, real GPU, 390x844 DPR 3, nothing cached, no HD).",
  "release": "1.15.4",
- "requests": 47
+ "requests": 45
 }
