@@ -7325,13 +7325,16 @@ function _localMoonName(name) { return _MOON_PHASE_I18N[name] ? t(_MOON_PHASE_I1
 // one whole-disc rotation, so a sprite depends only on the phase and the
 // libration and stays cacheable while the sky wheels around it.
 //
-// Two maps. The 1024 one (54 KB) comes with app.js and paints the first disc.
-// The 4096 one (730 KB) is asked for only once the page has painted and gone
-// idle (_moonAfterFirstPaint), and from then on every disc wide enough to
-// show it is drawn from it; the Today card's disc is too small to.
+// Three maps. The 1024 one (54 KB) comes with app.js and paints the first disc.
+// The 2048 one (200 KB) is asked for once the page has painted and gone idle
+// (_moonAfterFirstPaint): the hero, at its drawn size, needs no more, and the
+// Today card's disc is too small to use it. The 4096 one (730 KB) is asked for
+// only by what is wider than that: the 3D Moon (almanac-earth.js).
 var _MOON_MAP_URL = '/static/earth/moon-v1.webp';
+var _MOON_MAP_MID_URL = '/static/earth/moon-2k-v1.webp';
 var _MOON_MAP_HI_URL = '/static/earth/moon-4k-v1.webp';
 var _MOON_TEX = new Image();
+var _MOON_TEX_MID = null;         // the 2048 map's Image, once it has loaded and its tone table is built
 var _MOON_TEX_HI = null;          // the 4096 map's Image, once it has loaded
 var _moonTexReady = false;
 _MOON_TEX.onload = function() {
@@ -7364,6 +7367,7 @@ var _MOON_TINT_B = [1.18, -0.18];
 // (a disc N wide spans pi * N map pixels round the whole Moon), doubling from
 // the small map's width up to the 4096 one's once that is in.
 var _MOON_MAP_FULL_W = 1024;
+var _MOON_MAP_MID_W = 2048;
 var _MOON_MAP_HI_W = 4096;
 var _MOON_MAP_SMALL_W = 256;
 var _MOON_MAP_SMALL_UPTO_PX = 160;
@@ -7472,8 +7476,25 @@ function quietBreath() {
 // one decode. Resolves with the Image, or null if it could not be had.
 var _moonHiLoad = null;
 var _MOON_SLICE_MS = 12;   // the longest a slice of background drawing runs before it lets the page breathe
+var _moonMidLoad = null;
+var _MOON_TEX_MID_IMG = null;  // the 2048 map's Image while its tone table is built; _MOON_TEX_MID once it is
 var _MOON_TEX_HI_IMG = null;   // the 4096 map's Image while its tone tables are built; _MOON_TEX_HI once they are
 function _moonIdle(fn, priority) { whenQuiet(fn, { priority: priority == null ? QUIET_PRI_LOAD : priority }); }
+// The 2048 map: what a disc the hero's size is drawn from, asked for after the first paint. Same road as the 4096 one.
+function _moonLoadMidMap() {
+  if (_moonMidLoad) return _moonMidLoad;
+  var im = new Image();
+  im.src = _MOON_MAP_MID_URL;
+  _moonMidLoad = im.decode().then(function () {
+    _MOON_TEX_MID_IMG = im;
+    _moonMapDataSliced(_MOON_MAP_MID_W).then(function () {
+      _MOON_TEX_MID = im;
+      return repaintMoonsSliced();
+    });
+    return im;
+  }, function () { return null; });
+  return _moonMidLoad;
+}
 function _moonLoadHiMap() {
   if (_moonHiLoad) return _moonHiLoad;
   var im = new Image();
@@ -7499,7 +7520,7 @@ function _moonAfterFirstPaint(fn) {
   if (document.readyState === 'complete') go();
   else window.addEventListener('load', go, { once: true });
 }
-_moonAfterFirstPaint(_moonLoadHiMap);
+_moonAfterFirstPaint(_moonLoadMidMap);
 
 // Hermite ease between two edges. Also used by the lazy-loaded almanac
 // scripts, which app.js always loads first.
@@ -7585,9 +7606,9 @@ function _moonSpriteN(sizePx) {
 function _moonMapWidthFor(N) {
   if (!_moonTexReady) return 0;
   if (N <= _MOON_MAP_SMALL_UPTO_PX) return _MOON_MAP_SMALL_W;
-  if (!_MOON_TEX_HI) return _MOON_MAP_FULL_W;
+  var widest = _MOON_TEX_HI ? _MOON_MAP_HI_W : _MOON_TEX_MID ? _MOON_MAP_MID_W : _MOON_MAP_FULL_W;
   var W = _MOON_MAP_FULL_W;
-  while (W < Math.PI * N && W < _MOON_MAP_HI_W) W *= 2;
+  while (W < Math.PI * N && W < widest) W *= 2;
   return W;
 }
 
@@ -7609,7 +7630,12 @@ function _moonMapBand(m, y0, y1) {
   var src = m.ctx.getImageData(0, y0, m.w, y1 - y0).data, g = m.g, o = y0 * m.w;
   for (var i = 0, n = (y1 - y0) * m.w; i < n; i++) g[o + i] = Math.min(255, _MOON_ALBEDO_LIFT + _MOON_ALBEDO_GAIN * src[i * 4]);
 }
-function _moonMapSource(W) { return W > _MOON_MAP_FULL_W ? _MOON_TEX_HI_IMG || _MOON_TEX_HI : _MOON_TEX; }
+function _moonMapSource(W) {
+  if (W <= _MOON_MAP_FULL_W) return _MOON_TEX;
+  // The 2048 width from the 2048 picture when it is in (the 4096 one is the 3D Moon's, and may not be).
+  if (W <= _MOON_MAP_MID_W && (_MOON_TEX_MID_IMG || _MOON_TEX_MID)) return _MOON_TEX_MID_IMG || _MOON_TEX_MID;
+  return _MOON_TEX_HI_IMG || _MOON_TEX_HI;
+}
 function _moonMapData(W) {
   if (_moonMapCache[W]) return _moonMapCache[W];
   var m = _moonMapPlan(W, _moonMapSource(W));
