@@ -1,10 +1,10 @@
 {
- "shape": "id family title place{name,lat,lon,kind} instant(ms UTC) look{az,el,spanDeg} see source{name,url,licence} refs notes",
+ "shape": "id family title place{name,lat,lon,kind} instant(ms UTC) look{az,el,spanDeg} see source{name,url,licence} refs launch? notes",
  "moments": [
   {
-   "id": "launch:2022-141:34.05,-118.24",
-   "family": "launch",
-   "title": "Falcon 9 · Starlink Group 4-31",
+   "id": "launch-starlink-4-31-la",
+   "family": "spaceflight",
+   "title": "Starlink 4-31 over Los Angeles",
    "place": {
     "name": "Los Angeles",
     "lat": 34.05,
@@ -23,11 +23,470 @@
     "url": "https://planet4589.org/space/gcat",
     "licence": "CC BY 4.0"
    },
+   "launch": "2022-141",
    "refs": [
     "https://www.nasaspaceflight.com/2022/10/starlink-4-31/",
     "https://www.space.com/spacex-starlink-group-4-31-launch"
    ],
-   "notes": "Falcon 9 from Vandenberg at 6:14 pm PDT, the Sun 3 degrees down at the watcher: the exhaust is lit. The launch time and vehicle are published; the sight is computed."
+   "notes": "A Falcon 9 from Vandenberg at 6:14 pm PDT with the Sun just below the horizon: its exhaust is lit. The launch is published; the sight is computed."
+  },
+  {
+   "id": "starlink-train-2019-leiden",
+   "family": "spaceflight",
+   "title": "The first Starlink train, Leiden",
+   "place": {
+    "kind": "place",
+    "name": "Leiden",
+    "lat": 52.16,
+    "lon": 4.49
+   },
+   "instant": 1558738570000,
+   "look": {
+    "az": 156.69512475623367,
+    "el": 50.49457473944315,
+    "spanDeg": 60
+   },
+   "see": "train",
+   "source": {
+    "name": "GCAT (McDowell)",
+    "url": "https://planet4589.org/space/gcat",
+    "licence": "CC BY 4.0"
+   },
+   "launch": "2019-029",
+   "refs": [
+    "https://sattrackcam.blogspot.com/2019/05/wowowow-spectacular-view-of-spacex.html"
+   ],
+   "notes": "Sixty satellites a day after launch. Marco Langbroek filmed the train near 22:55 UT on 24 May 2019 from Leiden; the reconstruction has it rising at 22:55."
+  },
+  {
+   "id": "launch-falcon-heavy-2018",
+   "family": "spaceflight",
+   "title": "Falcon Heavy's first flight, Titusville",
+   "place": {
+    "name": "Titusville",
+    "lat": 28.61,
+    "lon": -80.81,
+    "kind": "place"
+   },
+   "instant": 1517950040000,
+   "look": {
+    "az": 85.85673395726292,
+    "el": 31.679235434748918,
+    "spanDeg": 60
+   },
+   "see": "day",
+   "source": {
+    "name": "GCAT (McDowell)",
+    "url": "https://planet4589.org/space/gcat",
+    "licence": "CC BY 4.0"
+   },
+   "launch": "2018-017",
+   "refs": [
+    "https://en.wikipedia.org/wiki/Falcon_Heavy_test_flight"
+   ],
+   "notes": "Lift-off at 3:45 pm EST from Kennedy; the ascent in daylight, seen from across the river. The ascent is a Falcon profile; the two side boosters are not drawn."
+  },
+  {
+   "id": "launch-artemis-1-2022",
+   "family": "spaceflight",
+   "title": "Artemis I leaves in the night, Titusville",
+   "place": {
+    "name": "Titusville",
+    "lat": 28.61,
+    "lon": -80.81,
+    "kind": "place"
+   },
+   "instant": 1668581400000,
+   "look": {
+    "az": 78.89946534308979,
+    "el": 31.815999783793185,
+    "spanDeg": 60
+   },
+   "see": "flame",
+   "source": {
+    "name": "GCAT (McDowell)",
+    "url": "https://planet4589.org/space/gcat",
+    "licence": "CC BY 4.0"
+   },
+   "launch": "2022-156",
+   "refs": [
+    "https://en.wikipedia.org/wiki/Artemis_I"
+   ],
+   "notes": "Lift-off at 1:47 am EST on 16 November 2022. The ascent is a typical profile for a rocket of its size, not the SLS's own."
+  },
+  {
+   "id": "eclipse-2017-madras",
+   "family": "sky",
+   "title": "Total eclipse, Madras, Oregon, 2017",
+   "place": {
+    "kind": "place",
+    "name": "Madras, Oregon",
+    "lat": 44.63,
+    "lon": -121.13
+   },
+   "instant": 1503336040000,
+   "look": {
+    "az": 119.38190575869857,
+    "el": 41.65470925500962,
+    "spanDeg": 60
+   },
+   "see": "eclipse",
+   "source": {
+    "name": "NASA, Espenak, eclipse predictions",
+    "url": "https://eclipse.gsfc.nasa.gov/SEgoogle/SEgoogle2001/SE2017Aug21Tgoogle.html",
+    "licence": "public domain"
+   },
+   "refs": [
+    "https://eclipse.gsfc.nasa.gov/SEgoogle/SEgoogle2001/SE2017Aug21Tgoogle.html"
+   ],
+   "notes": "Totality in the middle of the path, at 10:20 am PDT."
+  },
+  {
+   "id": "eclipse-2024-kerrville",
+   "family": "sky",
+   "title": "Total eclipse, Kerrville, Texas, 2024",
+   "place": {
+    "kind": "place",
+    "name": "Kerrville, Texas",
+    "lat": 30.05,
+    "lon": -99.14
+   },
+   "instant": 1712601290000,
+   "look": {
+    "az": 177.81972187075678,
+    "el": 67.54038230735237,
+    "spanDeg": 60
+   },
+   "see": "eclipse",
+   "source": {
+    "name": "NASA, Espenak, eclipse predictions",
+    "url": "https://eclipse.gsfc.nasa.gov/SEgoogle/SEgoogle2001/SE2024Apr08Tgoogle.html",
+    "licence": "public domain"
+   },
+   "refs": [
+    "https://eclipse.gsfc.nasa.gov/SEgoogle/SEgoogle2001/SE2024Apr08Tgoogle.html"
+   ],
+   "notes": "Totality at 1:34 pm CDT, the Sun high in the south."
+  },
+  {
+   "id": "eclipse-2024-cleveland",
+   "family": "sky",
+   "title": "Total eclipse, Cleveland, Ohio, 2024",
+   "place": {
+    "kind": "place",
+    "name": "Cleveland, Ohio",
+    "lat": 41.5,
+    "lon": -81.69
+   },
+   "instant": 1712603780000,
+   "look": {
+    "az": 222.77718026953835,
+    "el": 48.54089792091475,
+    "spanDeg": 60
+   },
+   "see": "eclipse",
+   "source": {
+    "name": "NASA, Espenak, eclipse predictions",
+    "url": "https://eclipse.gsfc.nasa.gov/SEgoogle/SEgoogle2001/SE2024Apr08Tgoogle.html",
+    "licence": "public domain"
+   },
+   "refs": [
+    "https://eclipse.gsfc.nasa.gov/SEgoogle/SEgoogle2001/SE2024Apr08Tgoogle.html"
+   ],
+   "notes": "Totality at 3:16 pm EDT."
+  },
+  {
+   "id": "eclipse-2027-luxor",
+   "family": "sky",
+   "title": "Total eclipse, Luxor, 2027",
+   "place": {
+    "kind": "place",
+    "name": "Luxor",
+    "lat": 25.7,
+    "lon": 32.65
+   },
+   "instant": 1817201120000,
+   "look": {
+    "az": 196.1435182903894,
+    "el": 81.75738517692929,
+    "spanDeg": 60
+   },
+   "see": "eclipse",
+   "source": {
+    "name": "NASA, Espenak, eclipse predictions",
+    "url": "https://eclipse.gsfc.nasa.gov/SEgoogle/SEgoogle2001/SE2027Aug02Tgoogle.html",
+    "licence": "public domain"
+   },
+   "refs": [
+    "https://eclipse.gsfc.nasa.gov/SEgoogle/SEgoogle2001/SE2027Aug02Tgoogle.html"
+   ],
+   "notes": "The longest eclipse of the century, near its greatest, the Sun almost overhead. A future moment: the maths is the same."
+  },
+  {
+   "id": "great-conjunction-2020",
+   "family": "sky",
+   "title": "The Great Conjunction, Houston, 2020",
+   "place": {
+    "kind": "place",
+    "name": "Houston",
+    "lat": 29.76,
+    "lon": -95.37
+   },
+   "instant": 1608594300000,
+   "look": {
+    "az": 229.27806723872035,
+    "el": 21.09409322991376,
+    "spanDeg": 60
+   },
+   "see": "conjunction",
+   "source": {
+    "name": "Almanac ephemeris",
+    "url": "https://en.wikipedia.org/wiki/Great_Conjunction_of_2020",
+    "licence": ""
+   },
+   "refs": [
+    "https://en.wikipedia.org/wiki/Great_Conjunction_of_2020"
+   ],
+   "notes": "Jupiter and Saturn a tenth of a degree apart in the dusk, on the night of the solstice."
+  },
+  {
+   "id": "titanic-1912",
+   "family": "history",
+   "title": "The moonless night of the Titanic, 1912",
+   "place": {
+    "name": "North Atlantic",
+    "lat": 41.73,
+    "lon": -49.95,
+    "kind": "sea"
+   },
+   "instant": -1821302520000,
+   "look": {
+    "az": 270,
+    "el": 20,
+    "spanDeg": 90
+   },
+   "see": "dark",
+   "source": {
+    "name": "Almanac ephemeris",
+    "url": "https://en.wikipedia.org/wiki/Sinking_of_the_Titanic",
+    "licence": ""
+   },
+   "refs": [
+    "https://en.wikipedia.org/wiki/Sinking_of_the_Titanic"
+   ],
+   "notes": "Twenty to midnight by ship's time, 14 April 1912, at the collision: a clear, calm night with no Moon (a waning crescent, long set), facing the bow's way, west."
+  },
+  {
+   "id": "adams-moonrise-1941",
+   "family": "places",
+   "title": "Moonrise, Hernandez, New Mexico, 1941",
+   "place": {
+    "kind": "place",
+    "name": "Hernandez, New Mexico",
+    "lat": 36.07,
+    "lon": -106.15
+   },
+   "instant": -888797440000,
+   "look": {
+    "az": 90.07647095671464,
+    "el": 6.890896778610115,
+    "spanDeg": 60
+   },
+   "see": "moonrise",
+   "source": {
+    "name": "Almanac ephemeris",
+    "url": "https://en.wikipedia.org/wiki/Moonrise,_Hernandez,_New_Mexico",
+    "licence": ""
+   },
+   "refs": [
+    "https://en.wikipedia.org/wiki/Moonrise,_Hernandez,_New_Mexico"
+   ],
+   "notes": "Ansel Adams's photograph, 4:49:20 pm MST on 1 November 1941, as astronomers dated it from the Moon's place: a waxing gibbous Moon due east, a few degrees up."
+  },
+  {
+   "id": "starry-night-1889",
+   "family": "places",
+   "title": "Venus before dawn, Saint-Rémy, 1889",
+   "place": {
+    "kind": "place",
+    "name": "Saint-Rémy-de-Provence",
+    "lat": 43.79,
+    "lon": 4.83
+   },
+   "instant": -2541705000000,
+   "look": {
+    "az": 81.52104531126417,
+    "el": 9.66324961072172,
+    "spanDeg": 60
+   },
+   "see": "venus",
+   "source": {
+    "name": "Almanac ephemeris",
+    "url": "https://en.wikipedia.org/wiki/The_Starry_Night",
+    "licence": ""
+   },
+   "refs": [
+    "https://en.wikipedia.org/wiki/The_Starry_Night"
+   ],
+   "notes": "Van Gogh painted The Starry Night in June 1889: the bright star over the hills is Venus, the morning star, rising in the east before dawn."
+  },
+  {
+   "id": "stonehenge-solstice",
+   "family": "places",
+   "title": "Summer solstice sunrise, Stonehenge",
+   "place": {
+    "kind": "place",
+    "name": "Stonehenge",
+    "lat": 51.1789,
+    "lon": -1.8262
+   },
+   "instant": 1718942220000,
+   "look": {
+    "az": 50.27649093710602,
+    "el": 0.30363696119601796,
+    "spanDeg": 60
+   },
+   "see": "sunrise",
+   "source": {
+    "name": "Almanac ephemeris",
+    "url": "https://www.english-heritage.org.uk/visit/places/stonehenge/history/solstice/",
+    "licence": ""
+   },
+   "refs": [
+    "https://www.english-heritage.org.uk/visit/places/stonehenge/history/solstice/"
+   ],
+   "notes": "The Sun rises over the Heel Stone, about 50 degrees from north."
+  },
+  {
+   "id": "abu-simbel-february",
+   "family": "places",
+   "title": "Sunrise at Abu Simbel, 22 February",
+   "place": {
+    "kind": "place",
+    "name": "Abu Simbel",
+    "lat": 22.337,
+    "lon": 31.626
+   },
+   "instant": 1708575810000,
+   "look": {
+    "az": 101.16597951659674,
+    "el": 0.3215225063059738,
+    "spanDeg": 60
+   },
+   "see": "sunrise",
+   "source": {
+    "name": "Almanac ephemeris",
+    "url": "https://en.wikipedia.org/wiki/Abu_Simbel_temples",
+    "licence": ""
+   },
+   "refs": [
+    "https://en.wikipedia.org/wiki/Abu_Simbel_temples"
+   ],
+   "notes": "Twice a year the first light runs down the temple to the statues in its heart: 22 February and 22 October."
+  },
+  {
+   "id": "manhattanhenge",
+   "family": "places",
+   "title": "Manhattanhenge, New York",
+   "place": {
+    "kind": "place",
+    "name": "Midtown Manhattan",
+    "lat": 40.7589,
+    "lon": -73.9851
+   },
+   "instant": 1720743780000,
+   "look": {
+    "az": 299.56448121302174,
+    "el": 0.45635186245007037,
+    "spanDeg": 60
+   },
+   "see": "sunset",
+   "source": {
+    "name": "Almanac ephemeris",
+    "url": "https://en.wikipedia.org/wiki/Manhattanhenge",
+    "licence": ""
+   },
+   "refs": [
+    "https://en.wikipedia.org/wiki/Manhattanhenge"
+   ],
+   "notes": "The setting Sun on the line of the street grid, 29 degrees north of west."
+  }
+ ],
+ "backlog": [
+  {
+   "id": "apollo-8-earthrise",
+   "title": "Earthrise from Apollo 8, 1968-12-24",
+   "needs": "a spacecraft in lunar orbit as a place to stand, the Moon's horizon and Earth rising over it"
+  },
+  {
+   "id": "tranquility-base-landing",
+   "title": "Tranquility Base at the landing, 1969-07-20",
+   "needs": "the lunar sky from the site with the Earth's place worked out from the Moon's libration at that instant"
+  },
+  {
+   "id": "pale-blue-dot",
+   "title": "The Pale Blue Dot from Voyager 1, 1990-02-14",
+   "needs": "a spacecraft as a place to stand, with the Earth as a point from 6 billion km"
+  },
+  {
+   "id": "huygens-titan",
+   "title": "Huygens on Titan, 2005-01-14",
+   "needs": "the landing site's sky under Titan's haze, with the descent"
+  },
+  {
+   "id": "new-horizons-pluto",
+   "title": "The New Horizons flyby of Pluto, 2015-07-14",
+   "needs": "a flyby view from the spacecraft, with Pluto and Charon"
+  },
+  {
+   "id": "falcon-heavy-twin-landing",
+   "title": "The Falcon Heavy twin booster landing, 2018-02-06",
+   "needs": "the two side boosters' return paths (only one booster is modelled)"
+  },
+  {
+   "id": "neowise-2020",
+   "title": "Comet NEOWISE, July 2020",
+   "needs": "comets in the sky (orbits, a coma and a tail)"
+  },
+  {
+   "id": "hale-bopp-1997",
+   "title": "Comet Hale-Bopp, spring 1997",
+   "needs": "comets in the sky"
+  },
+  {
+   "id": "halley-1986-2061",
+   "title": "Halley's Comet, 1986 and 2061",
+   "needs": "comets in the sky"
+  },
+  {
+   "id": "leonids-1833-1966",
+   "title": "The Leonid storms of 1833 and 1966",
+   "needs": "a meteor storm at its published rate, from its radiant"
+  },
+  {
+   "id": "shoemaker-levy-9-1994",
+   "title": "Shoemaker-Levy 9 at Jupiter, July 1994",
+   "needs": "a comet's fragments and their impacts on Jupiter"
+  },
+  {
+   "id": "venus-transit-2012",
+   "title": "The transit of Venus, 2012-06-05",
+   "needs": "Venus drawn as a disc crossing the Sun"
+  },
+  {
+   "id": "galileo-padua-1610",
+   "title": "Galileo's nights with Jupiter's moons, Padua, January 1610",
+   "needs": "the Galilean moons in the live sky, with the instant's positions"
+  },
+  {
+   "id": "tycho-supernova-1572",
+   "title": "Tycho's supernova, November 1572",
+   "needs": "a historical supernova in Cassiopeia as a new star"
+  },
+  {
+   "id": "columbus-eclipse-1504",
+   "title": "Columbus's lunar eclipse, Jamaica, 1504-02-29 (Julian)",
+   "needs": "a lunar eclipse in the live sky at that date (the Julian calendar, and ΔT before 1600)"
   }
  ]
 }
