@@ -544,11 +544,6 @@ var AE_CSS = [
   '.ae-set-choice small a{color:var(--amber);text-decoration:none}',
   '.ae-set-choice small{display:block;font-size:11.5px;color:var(--text2)}',
   '.ae-set-ultra{display:flex;flex-direction:column;gap:2px;margin-top:6px}',
-  '.ae-ultra{display:flex;gap:10px;align-items:center;padding:6px 4px;border-radius:8px;cursor:pointer}',
-  '.ae-ultra:hover{background:rgba(255,255,255,.04)}',
-  '.ae-ultra input{margin:0;flex:0 0 auto;accent-color:var(--amber)}',
-  '.ae-ultra span{flex:1 1 auto;color:var(--text)}',
-  '.ae-ultra small{font-size:11.5px;color:var(--text2)}',
   '.ae-set-choice.ae-off{cursor:default}',
   '.ae-set-choice.ae-off:hover{background:none}',
   '.ae-set-why{margin:6px 4px 0;font-size:11.5px;color:var(--text2)}',
@@ -4612,8 +4607,8 @@ function _aeUltraHtml() {
   if (!list || !list.length) return '';
   var rows = list.map(function (u) {
     var busy = !!u.downloading, tail = busy ? Math.floor(100 * u.downloading.done / Math.max(1, u.downloading.size)) + '%' : _aeHdOfferSize({ size: u.size });
-    return '<label class="ae-ultra"><input type="checkbox" class="ae-ultra-sw" data-part="' + _almEsc(u.part) + '" data-file="' + _almEsc(u.file) + '"' +
-      (u.installed || busy ? ' checked' : '') + (st.can_change && !busy ? '' : ' disabled') + '><span>' + _almEsc(_aeUltraName(u.part)) + '</span><small>' + _almEsc(tail) + '</small></label>';
+    return '<label class="ae-set-choice' + (st.can_change && !busy ? '' : ' ae-off') + '"><input type="checkbox" class="ae-ultra-sw" data-part="' + _almEsc(u.part) + '" data-file="' + _almEsc(u.file) + '"' +
+      (u.installed || busy ? ' checked' : '') + (st.can_change && !busy ? '' : ' disabled') + '><span><b>' + _almEsc(_aeUltraName(u.part)) + '</b><small>' + _almEsc(tail) + '</small></span></label>';
   }).join('');
   return '<div class="ae-set-data ae-set-ultra" role="group" aria-label="' + _almEsc(_aeT('alm_hd_ultra')) + '"><b>' + _almEsc(_aeT('alm_hd_ultra')) + '</b>' + rows + '</div>';
 }
@@ -5572,7 +5567,7 @@ function _aeRenderSettings() {
   panel.innerHTML = html;
   var get = _aeById('ae-set-hd-get');
   if (get) get.onclick = _aeHdGet;
-  Array.prototype.forEach.call(panel.querySelectorAll('.ae-ultra-sw'), function (box) { box.onchange = function () { _aeUltraToggle(box); }; });
+  if (panel.querySelectorAll) Array.prototype.forEach.call(panel.querySelectorAll('.ae-ultra-sw'), function (box) { box.onchange = function () { _aeUltraToggle(box); }; });
 }
 // An admin's choice, saved on the server; then the view asks again, since
 // the choice changes what a stale answer brings (Automatically fetches
