@@ -242,6 +242,28 @@ def test_the_orrery_is_never_wider_than_its_box(page):
     assert _no_side_scroll(page)
 
 
+def test_a_print_leaves_the_page_its_width(page):
+    """The page laid out on paper and back (the view's Print): it never scrolls sideways after.
+
+    Paper sets the scroller's padding aside (almanac-reference.css), and Chromium can keep that 0 once the print is
+    over: the tiles' and chips' -16px edges and an orrery sized meanwhile ran 16px past the screen (406 of 390), a
+    failure that came and went with whether the page was laid out while in print."""
+    _open(page, "sunmoon")
+    for _ in range(3):
+        page.evaluate("_tbPrintOn()")
+        page.emulate_media(media="print")
+        page.evaluate("getComputedStyle(document.getElementById('almanac-content')).paddingLeft")
+        page.emulate_media(media="screen")
+        page.evaluate("_tbPrintOff()")
+    page.evaluate("_tbClose()")
+    page.wait_for_function("() => !document.getElementById('alm-ref')")
+    page.evaluate("_initOrrery()")  # a panel drawn now is drawn at the page's width
+    assert _no_side_scroll(page)
+    edge = page.evaluate("() => document.querySelector('.alm-tile').getBoundingClientRect().left")
+    assert edge >= 16, edge  # the first tile still starts at the page's gutter
+    assert not page.errors, page.errors
+
+
 @pytest.mark.parametrize("id_", TABLES)
 def test_every_table_opens_and_its_window_changes_its_rows(page, id_):
     _open(page, id_)
