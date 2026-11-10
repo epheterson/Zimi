@@ -453,7 +453,7 @@ function _aeStSavanna(x, y) {
   return Math.min(0.85, AE_STAND_GRASS_TREES * (0.25 + 9 * clump * clump) + 0.5 * draw);
 }
 // The class's ground: grass pulled green and the distant woods' texture, by the cell the viewer stands in; and the tufts of grass round the feet.
-var AE_STAND_GRASS_COUNT = 5200, AE_STAND_GRASS_RANGE_M = [1.3, 38], AE_STAND_GRASS_DENSITY = { grass: 1, broadleaf: 0.5, conifer: 0.35, tundra: 0.2 };
+var AE_STAND_GRASS_COUNT = 7000, AE_STAND_GRASS_RANGE_M = [1.3, 38], AE_STAND_GRASS_DENSITY = { grass: 1, broadleaf: 0.5, conifer: 0.35, tundra: 0.2 };
 function _aeStandGround(st, land, px) {
   var g = st.ground, cls = land && land.cls;
   g.uGrass.value = cls === 'grass' ? 1 : 0;
@@ -468,11 +468,11 @@ function _aeStandGrass(st, dens, cls, px) {
   var n = Math.round(AE_STAND_GRASS_COUNT * dens), P = [], N = [], T = [], lo = AE_STAND_GRASS_RANGE_M[0], hi = AE_STAND_GRASS_RANGE_M[1];
   for (var i = 0; i < n; i++) {
     var r = lo + (hi - lo) * Math.pow(rnd(), 0.8), th = rnd() * 2 * Math.PI, x0 = r * Math.sin(th), y0 = r * Math.cos(th);
-    var fade = 1 - Math.min(1, Math.max(0, (r - 24) / (hi - 24))), tall = (cls === 'tundra' ? 0.12 : 0.2 + 0.4 * rnd()) * fade;   // the tufts shrink away into the texture by the range's end
+    var fade = 1 - Math.min(1, Math.max(0, (r - 24) / (hi - 24))), tall = (cls === 'tundra' ? 0.1 : 0.14 + 0.3 * rnd()) * fade;   // the tufts shrink away into the texture by the range's end
     if (tall < 0.03) continue;
-    var z0 = _aeTerrainLocal('earth', lat0, lon0, h0, x0, y0, r * 0.0005, st.pend && st.pend.flat), sd = rnd(), blades = 4;
+    var z0 = _aeTerrainLocal('earth', lat0, lon0, h0, x0, y0, r * 0.0005, st.pend && st.pend.flat), sd = rnd(), blades = 5;
     for (var b = 0; b < blades; b++) {
-      var ang = rnd() * 2 * Math.PI, w = 0.035 + 0.04 * rnd(), hh = tall * (0.6 + 0.6 * rnd()), lean = 0.08 + 0.25 * rnd(), lx = Math.cos(ang) * lean * hh, ly = Math.sin(ang) * lean * hh;
+      var ang = rnd() * 2 * Math.PI, w = 0.016 + 0.016 * rnd(), hh = tall * (0.6 + 0.6 * rnd()), lean = 0.08 + 0.25 * rnd(), lx = Math.cos(ang) * lean * hh, ly = Math.sin(ang) * lean * hh;
       var bx = x0 + (rnd() - 0.5) * 0.25, by = y0 + (rnd() - 0.5) * 0.25, px2 = -Math.sin(ang + 1.2) * w, py2 = Math.cos(ang + 1.2) * w;
       var nx = Math.cos(ang) * 0.3, ny = Math.sin(ang) * 0.3;
       [[bx - px2, by - py2, z0, 0], [bx + px2, by + py2, z0, 0], [bx + lx, by + ly, z0 + hh, 1]].forEach(function (q) { P.push(q[0], q[1], q[2]); N.push(nx, ny, 0.95); T.push(q[3], sd, 0); });
