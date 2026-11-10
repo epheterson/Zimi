@@ -77,6 +77,7 @@ function _alDeployKm(L) {
 function _alHasBatch(L) { return L.n >= AL_BATCH_MIN && L.sepMin != null && L.incDeg != null && L.ok; }
 function _alSelect(i) {
   var L = _alLaunch(i);
+  _alStandWatchStart();
   _al.sel = i; _al.cur = L; _al.windows = null; _al.sight = null; _al.exact = null; _al.depSource = AL_SRC.recon;
   _al.flight = _lfAscent({ name: L.name, lat: L.lat, lon: L.lon, siteName: L.siteName, incDeg: L.incDeg, perigeeKm: L.perigeeKm, ok: L.ok });
   _al.dep = null;
@@ -162,6 +163,8 @@ var AL_CSS = [
   '.al-win b{color:var(--text);font-weight:600}',
   '.al-st{display:grid;gap:6px;margin:6px 0}',
   '.al-st input{font:inherit;color:var(--text);background:var(--surface,rgba(255,255,255,.06));border:1px solid var(--border);border-radius:8px;padding:6px 8px;min-width:0}',
+  '.al-chip{position:absolute;left:50%;transform:translateX(-50%);bottom:calc(112px + env(safe-area-inset-bottom));max-width:calc(100% - 32px);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font:inherit;font-size:12.5px;color:var(--text);background:rgba(18,18,20,.85);border:1px solid var(--border);border-radius:999px;padding:6px 14px;cursor:pointer;pointer-events:auto}',
+  '.al-chip[hidden]{display:none}',
   '@media (orientation:landscape) and (max-height:500px){.al-sheet{bottom:calc(56px + env(safe-area-inset-bottom));max-height:70vh}}'
 ].join('');
 var AL_ICON = {
@@ -199,9 +202,46 @@ function _alOpenSheet() {
   }
   _al.sheet = true;
   _al.sheetEl.hidden = false;
+  _alStandWatchStart();
   if (!_al.filter.year) _al.filter.year = String(new Date(_aeDisplayMs()).getUTCFullYear());
   _alRender();
   _alLoad().then(_alRender).catch(_alRender);
+}
+// Whenever the ground view is open the launch card gives way to a small title chip (a tap brings the card back), whichever way the
+// view was entered: this button, a body card's, a there-and-then, a script. A rule of state, so it is watched, not wired to a button.
+var AL_STAND_WATCH_MS = 300;
+function _alStandIsOpen() { return typeof _ae !== 'undefined' && !!_ae && !!_ae.stand; }
+function _alChipEl() {
+  if (_al.chipEl && _al.chipEl.isConnected) return _al.chipEl;
+  var host = _aeById('ae-view') || (_ae && _ae.el);
+  if (!host) return null;
+  var c = document.createElement('button');
+  c.type = 'button';
+  c.className = 'al-chip';
+  c.hidden = true;
+  c.onclick = function () { _al.expanded = true; _al.sheet = true; if (_al.sheetEl) _al.sheetEl.hidden = false; _alRender(); _alStandWatchTick(); };
+  host.appendChild(c);
+  _al.chipEl = c;
+  return c;
+}
+function _alStandWatchTick() {
+  var standing = _alStandIsOpen(), chip = _alChipEl();
+  if (!standing) _al.expanded = false;
+  var collapsed = standing && !_al.expanded;
+  if (_al.sheetEl) _al.sheetEl.hidden = !_al.sheet || collapsed;
+  if (chip) {
+    var show = collapsed && !!_al.cur;
+    if (chip.hidden === show) chip.hidden = !show;
+    if (show && chip.getAttribute('data-i') !== String(_al.cur.i)) {
+      chip.setAttribute('data-i', String(_al.cur.i));
+      chip.textContent = _al.cur.name + (_al.cur.mission ? ' · ' + _al.cur.mission : '');
+      chip.setAttribute('aria-label', _aeT('alm_launches'));
+    }
+  }
+}
+function _alStandWatchStart() {
+  if (!document.getElementById('al-style')) { var st = document.createElement('style'); st.id = 'al-style'; st.textContent = AL_CSS; document.head.appendChild(st); }
+  if (!_al.watch) _al.watch = setInterval(_alStandWatchTick, AL_STAND_WATCH_MS);
 }
 // Out of the way, the launch kept: the ground view still shows it.
 function _alHideSheet() {

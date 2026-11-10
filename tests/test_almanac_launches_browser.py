@@ -175,3 +175,32 @@ def test_a_launch_opens_at_its_pad_and_says_what_la_could_see(browser, served):
         ], errors
     finally:
         ctx.close()
+
+
+def test_the_launch_card_gives_way_whenever_the_ground_view_opens(browser, served):
+    """A rule of state: with the ground view open the card is a title chip, whatever route led in (here a script calling
+    _aeStandAt, as the body card's button and a there-and-then do), a tap brings it back, and leaving the view restores it."""
+    ctx = browser.new_context(viewport=VIEW, device_scale_factor=2, has_touch=True, is_mobile=True, service_workers="block")
+    ctx.add_init_script("try { localStorage.setItem('zimi_almanac_place', %r); } catch (e) {}" % PLACE)
+    pg = ctx.new_page()
+    try:
+        pg.goto(served + "/#almanac", wait_until="load")
+        pg.wait_for_function("() => typeof openAlmanacEarth === 'function' && typeof _aeLoadThree === 'function'", timeout=READY_MS)
+        pg.evaluate("openAlmanacEarth({ target: 'earth' })")
+        pg.wait_for_function("() => typeof _aeReady === 'function' && _aeReady() && _aeIsOpen", timeout=READY_MS, polling=250)
+        pg.click("#ae-launch-btn")
+        pg.wait_for_function("() => typeof _al !== 'undefined' && _al.state === 'ready'", timeout=READY_MS, polling=250)
+        pg.evaluate("(tag) => _alOpenLaunch(_al.rows.findIndex(function (r) { return r[15] === tag; }))", TAG)
+        pg.wait_for_selector(".al-sheet:not([hidden])")
+        assert pg.evaluate("document.querySelector('.al-chip') === null || document.querySelector('.al-chip').hidden")
+        pg.evaluate("_aeStandAt('earth', 34.05, -118.24)")
+        pg.wait_for_function("() => _ae.stand && _ae.stand.mode === 'ground'", timeout=READY_MS, polling=500)
+        pg.wait_for_selector(".al-chip:not([hidden])", timeout=10_000)
+        assert pg.evaluate("document.querySelector('.al-sheet').hidden") is True
+        assert "Starlink Group 4-31" in pg.inner_text(".al-chip")
+        _shot(pg, "stand-chip.png")
+        pg.click(".al-chip")
+        pg.wait_for_selector(".al-sheet:not([hidden])", timeout=5_000)
+        assert pg.evaluate("document.querySelector('.al-chip').hidden") is True
+    finally:
+        ctx.close()
