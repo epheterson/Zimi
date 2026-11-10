@@ -460,13 +460,19 @@ var _EARTH_RING_ALPHA = 0.16;
 
 // Once a first open finds no WebGL (almanac-earth.js sets .unsupported), the
 // glow and the tips' buttons go, and Earth and the Sun open their articles again.
+// Not yet loaded counts as available where the file is held back (_almLowPower): the tap fetches it.
 function _orreryEarthViewAvailable() {
-  return typeof window.openAlmanacEarth === 'function' && !window.openAlmanacEarth.unsupported;
+  if (typeof window.openAlmanacEarth === 'function') return !window.openAlmanacEarth.unsupported;
+  return typeof _almLoadEarth === 'function' && _almLowPower();
 }
 // Into the 3D view: over the Earth, or on the Sun.
 function _orreryOpenEarthView(target) {
   if (!_orreryEarthViewAvailable()) return;
   _orreryMarkTried('earth');
+  if (typeof window.openAlmanacEarth !== 'function') {
+    _almLoadEarth().then(function () { if (typeof window.openAlmanacEarth === 'function') window.openAlmanacEarth(target ? { target: target } : undefined); }, function () {});
+    return;
+  }
   window.openAlmanacEarth(target ? { target: target } : undefined);
 }
 
@@ -789,7 +795,8 @@ function _initOrrery() {
         _almEsc(t('alm_orr_planet_view', { name: _tp(hit.data.name) })) + '</button>'
       : '';
     if (_orreryIsDestination(hit)) {
-      return close + '<button type="button" class="orrery-tip-btn" data-orr-fly="' + _almEsc(hit.data.name) + '">' +
+      // Two ways in, one primary: the ride is the amber button, the close-up beside it is the quiet one.
+      return close.replace('class="orrery-tip-btn"', 'class="orrery-tip-btn orrery-tip-quiet"') + '<button type="button" class="orrery-tip-btn" data-orr-fly="' + _almEsc(hit.data.name) + '">' +
         _almEsc(t('alm_orr_fly')) + '</button>';
     }
     if (close) return close;

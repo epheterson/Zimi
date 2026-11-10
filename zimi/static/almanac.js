@@ -307,7 +307,16 @@ function _almLoadEarth() {
   _almEarthLoading.catch(function () {});
   return _almEarthLoading;
 }
+// A device that asks to save data, or has little memory or few cores, does not fetch the 3D view's files ahead of the
+// tap: they come at the first thing that needs them.
+var ALM_LOW_MEMORY_GB = 2;
+var ALM_LOW_CORES = 2;
+function _almLowPower() {
+  var n = navigator, c = n.connection;
+  return !!((c && c.saveData) || (n.deviceMemory && n.deviceMemory <= ALM_LOW_MEMORY_GB) || (n.hardwareConcurrency && n.hardwareConcurrency <= ALM_LOW_CORES));
+}
 function _almEarthLater() {
+  if (_almLowPower()) return;
   _almWhenShown(function () {
     setTimeout(function () {
       if (_almanacOpen) whenQuiet(function () { if (_almanacOpen) _almLoadEarth(); }, { key: 'alm-earth', priority: QUIET_PRI_PREPARE, maxWaitMs: ALM_PANELS_SETTLE_MS * 4 });
@@ -1240,7 +1249,9 @@ function _almClockPaint(focus) {
       set('.alm-ck-t', _almClockSegs(cp.tzId, focus, ALM_CK_TIME), 't');
     }
     // The zone, and for the header the place whose clock this is, with the crosshair that chooses it.
-    set('.alm-ck-z', (cp.tz ? (root.getAttribute('data-v') === 'foot' ? ' ' : ' &middot; ') + _almEsc(cp.tz) : '') + (cp.place ? ' &middot; ' + (head ? '<span id="almanac-head-place">' + _almEsc(cp.place) + '</span> ' + _almHereBtnHtml('alm-here-icon') + _almMapBtnHtml(cp.loc) : _almEsc(cp.place)) : ''), 'z');
+    // The zone keeps its room; the place is the part that gives way (ellipsis) in a strip too narrow for both.
+    set('.alm-ck-z', (cp.tz ? '<span class="alm-ck-zn">' + (root.getAttribute('data-v') === 'foot' ? ' ' : ' &middot; ') + _almEsc(cp.tz) + '</span>' : '') +
+      (cp.place ? '<span class="alm-ck-pl"> &middot; ' + (head ? '<span id="almanac-head-place">' + _almEsc(cp.place) + '</span> ' + _almHereBtnHtml('alm-here-icon') + _almMapBtnHtml(cp.loc) : _almEsc(cp.place)) + '</span>' : ''), 'z');
     var r = root.querySelector('.alm-ck-r');
     if (r) {
       var rh = _almEsc(text);   // the rate, away from real time; paused says so in the button (play, to resume)
@@ -2743,7 +2754,7 @@ function _renderAlmanacContent() {
       // The orrery opens spinning as scenery so planets visibly orbit on load (still, where motion is reduced)
       _orreryLastFrame = performance.now();
       _orreryAnimate();
-      _almLoadEarth();   // the orrery's way into the 3D view (its glow, the Earth's tap) needs the view's file: drawn now, wanted soon
+      if (!_almLowPower()) _almLoadEarth();   // the orrery's way into the 3D view (its glow, the Earth's tap) needs the view's file: drawn now, wanted soon
     },
     function () { _startTzClock(); _cacheAlmanacHighlights(now, m); },
     function () { _almPlaceWatch(); _almSecBarInit(); _almRedrawRestore(anchor); _almPanelsReady = true; }
@@ -7529,6 +7540,10 @@ function _almDayMonthYear(day, monthName, yearStr) {
     return fill[p.type] != null ? fill[p.type] : p.value;
   }).join('');
 }
+// In a right-to-left line a calendar's Latin month name ("Aban") is its own left-to-right run, or it takes the words around it with it.
+function _almLtrRuns(text) {
+  return text.replace(/[A-Za-z\u00c0-\u024f][A-Za-z\u00c0-\u024f' .-]*[A-Za-z\u00c0-\u024f]/g, '<bdi dir="ltr">$&</bdi>');
+}
 function _almRenderCrossRef(jdn) {
   var greg = _jdnToGregorian(jdn);
   var html = '<div class="alm-crossref">';
@@ -7545,6 +7560,7 @@ function _almRenderCrossRef(jdn) {
       var monthName = _calMonthName(sys, cal.year, cal.month);
       var yearStr = cal.year + _calYearSuffix(sys);
       dateStr = _almDayMonthYear(cal.day, monthName, yearStr);
+      if (document.documentElement.dir === 'rtl') dateStr = _almLtrRuns(dateStr);
       if (sys === 'chinese') {
         // Key the animal to the CHINESE year being displayed (era 2697), which is
         // the Gregorian year of that year's New Year \u2014 so the animal doesn't flip
