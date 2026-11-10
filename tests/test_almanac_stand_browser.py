@@ -362,8 +362,9 @@ def test_other_lanes_put_objects_in_the_sky_and_a_tap_names_them(page):
 def test_a_provider_atmosphere_takes_over_the_sky_and_the_exposure(page):
     """_aeStandAir: while it wants the stand, its chunk is the sky and its exposureK the one exposure; taken away, the own march."""
     _stand_anywhere(page, "earth", 37.77, -122.42)
+    # The card's own air (almanac-oneair.js) is a provider too; the view's own march is measured without it.
     own_k = page.evaluate(
-        "() => { _ae.stand.dirty = true; _aeStandDraw(performance.now()); return _ae.stand.photo.k; }"
+        "() => { _aeStandAir = null; _ae.stand.fr = null; _ae.stand.dirty = true; _aeStandDraw(performance.now()); return _ae.stand.photo.k; }"
     )
     page.evaluate(
         """() => { window.__upd = 0; _aeStandAir = { wants: function (st) { return st.key === 'earth'; },
