@@ -3860,5 +3860,17 @@
   "tb_kn_maps_tile": "地图瓦片在屏幕上的宽度",
   "tb_kn_maps_ride": "摄像机随地面移动，高度低于",
   "tb_kn_maps_data": "地球上的道路与地名",
-  "alm_hd_ultra": "超清"
+  "alm_hd_ultra": "超清",
+  "alm_ms_ph_separation": "巡航级分离",
+  "alm_ms_ph_touchdown": "着陆",
+  "alm_ms_ev_cruise_sep": "巡航级分离",
+  "alm_ms_ev_m20_entry": "进入大气层",
+  "alm_ms_ev_peak_heat": "峰值加热",
+  "alm_ms_ev_chute": "降落伞展开",
+  "alm_ms_ev_hs_sep": "隔热罩分离",
+  "alm_ms_ev_bs_sep": "后壳分离",
+  "alm_ms_ev_skycrane": "空中吊车",
+  "alm_ms_ev_m20_touchdown": "着陆",
+  "tb_kn_ms_m20": "毅力号进入与着陆",
+  "tb_kn_ms_m20_v": "依据已公布的着陆事件，终点为毅力号的标记；进入航向以及事件之间的高度与速度为假设，并非模拟"
 }

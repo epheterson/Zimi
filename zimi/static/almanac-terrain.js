@@ -209,10 +209,13 @@ function _aeCraterHeight(u, km, c, lodKm) {
 }
 // How rough the real map is round a place: its distance from the mean of the four cells a step away (metres).
 var AE_TERRAIN_RELIEF_STEP_DEG = 0.7, AE_TERRAIN_RELIEF_SCALE = 400, AE_TERRAIN_RELIEF_MIN = 0.012, AE_TERRAIN_RELIEF_MAX = 3;
+var AE_TERRAIN_HIGHLAND_M = 1500, AE_TERRAIN_HIGHLAND_GAIN = 1.5;   // the Earth's relief grows by up to this much more as the coarse height rises to this many metres
 function _aeTerrainRelief(t, lat, lon) {
   var s = AE_TERRAIN_RELIEF_STEP_DEG, c = _aeTerrainCoarse(t, lat, lon);
   var m = (_aeTerrainCoarse(t, lat + s, lon) + _aeTerrainCoarse(t, lat - s, lon) + _aeTerrainCoarse(t, lat, lon + s) + _aeTerrainCoarse(t, lat, lon - s)) / 4;
-  return Math.min(AE_TERRAIN_RELIEF_MAX, Math.max(AE_TERRAIN_RELIEF_MIN, Math.abs(c - m) / AE_TERRAIN_RELIEF_SCALE));
+  // A plateau's edge is mountains the coarse map has averaged away (Boulder's cell is 1.7 km up with the Front Range beside it): the Earth's high ground is rougher.
+  var up = t.sea ? 1 + Math.min(AE_TERRAIN_HIGHLAND_GAIN, Math.max(0, c) / AE_TERRAIN_HIGHLAND_M) : 1;
+  return Math.min(AE_TERRAIN_RELIEF_MAX * up, Math.max(AE_TERRAIN_RELIEF_MIN, up * Math.abs(c - m) / AE_TERRAIN_RELIEF_SCALE));
 }
 function _aeUnitVec(lat, lon) {
   var la = lat * Math.PI / 180, lo = lon * Math.PI / 180, c = Math.cos(la);

@@ -3860,5 +3860,17 @@
   "tb_kn_maps_tile": "Largura de um bloco do mapa na tela",
   "tb_kn_maps_ride": "A câmara acompanha o solo abaixo de",
   "tb_kn_maps_data": "Ruas e nomes sobre a Terra",
-  "alm_hd_ultra": "Ultra"
+  "alm_hd_ultra": "Ultra",
+  "alm_ms_ph_separation": "Separação do estágio de cruzeiro",
+  "alm_ms_ph_touchdown": "Pouso",
+  "alm_ms_ev_cruise_sep": "Separação do estágio de cruzeiro",
+  "alm_ms_ev_m20_entry": "Entrada atmosférica",
+  "alm_ms_ev_peak_heat": "Pico de aquecimento",
+  "alm_ms_ev_chute": "Paraquedas aberto",
+  "alm_ms_ev_hs_sep": "Separação do escudo térmico",
+  "alm_ms_ev_bs_sep": "Separação da carcaça traseira",
+  "alm_ms_ev_skycrane": "Guindaste celeste",
+  "alm_ms_ev_m20_touchdown": "Pouso",
+  "tb_kn_ms_m20": "Perseverance: entrada e pouso",
+  "tb_kn_ms_m20_v": "Segue os eventos publicados do pouso e termina no ponto da Perseverance; o rumo de entrada e a altitude e velocidade entre eventos são supostos, não simulados"
 }

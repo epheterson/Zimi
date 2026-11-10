@@ -61,7 +61,7 @@ EXTRA = dict(
 # The stack's parts (metres along its axis from the first stage's base): Saturn V Flight Manual SA-507.
 Y_SII, Y_SIVB, Y_SLA, Y_CSM = 40.6, 67.6, 86.3, 94.8
 Y_LM_IN_SLA = 88.6  # the lunar module's feet, inside the adapter
-LM_ASC_Z = 3.0  # the ascent stage on the descent stage (the NASA model is 3.37 m tall)
+LM_ASC_Z = 0.0  # the ascent stage on the descent stage: both models share the lander's origin (as the site visit places them), so no offset
 
 
 def ecef_rows(t, Y):

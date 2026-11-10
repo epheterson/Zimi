@@ -50,6 +50,7 @@ def main():
     ap.add_argument("--wait", type=float, default=2.0)
     ap.add_argument("--light", action="store_true")
     ap.add_argument("--handoff", action="store_true", help="play into touchdown, shoot the site visit, press the back chip, shoot the mission again")
+    ap.add_argument("--eval", default="", help="a JS expression evaluated after each shot, its value printed")
     ap.add_argument("--frames", action="store_true", help="a GPU-synchronised frame time at each time (draw, then a pixel read-back)")
     args = ap.parse_args()
     os.makedirs(args.out, exist_ok=True)
@@ -105,6 +106,8 @@ def main():
             pg.wait_for_function("() => !!(_ae.mission)", timeout=120000, polling=200)
             time.sleep(args.wait)
             pg.screenshot(path=os.path.join(args.out, "plan-fly.png"))
+            print("plan debug", pg.evaluate("""() => { const s = _ae.mission, S = _ae.gl, lines = S.scene.children.filter(o => o.isLine && o.visible).map(o => { const a = o.geometry.attributes.position.array; return [a[0], a[1], a[2], a[a.length - 3], a[a.length - 2], a[a.length - 1]]; });
+                return { pose: s.pose && { pos: s.pose.pos, look: s.pose.look, near: s.pose.nearRe, fov: s.pose.fov }, sun: _aeSunShown(_ae.scene), lines: lines.length, big: lines.filter(l => Math.hypot(l[0], l[1], l[2]) > 500).slice(0, 3), far: S.camera.far, earth: S.earth.visible }; }"""))
             print("plan ok", pg.evaluate("() => ({ t: _ae.mission.t, phase: _ae.mission.phaseIdx })"))
             br.close()
             httpd.shutdown()
@@ -145,6 +148,8 @@ def main():
             )
             pg.screenshot(path=os.path.join(args.out, name))
             print(name, json.dumps(info), flush=True)
+            if args.eval:
+                print("  eval", json.dumps(pg.evaluate("() => (" + args.eval + ")")), flush=True)
             if args.frames:
                 ms = pg.evaluate(
                     """() => { const gl = _ae.gl.renderer.getContext(), px = new Uint8Array(4), n = 60, out = [];

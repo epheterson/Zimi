@@ -40,7 +40,7 @@ var AM_IDENTITY = [1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0];
 var AM_CSS_ID = 'am-css';
 
 // Missions in the order of the list. Names are in the interface's languages (alm_ms_<id>).
-var AM_LIST = ['apollo11', 'voyager1', 'voyager2'];   // and 'plan', the planner
+var AM_LIST = ['apollo11', 'perseverance', 'voyager1', 'voyager2'];   // and 'plan', the planner
 
 var _amData = null, _amLoading = null;
 
@@ -130,8 +130,17 @@ function _amLegFrame(leg, sc) {
   else if (fr === 'mfix' || fr === 'rel') {
     var p = _ae.gl.planets && _ae.gl.planets[leg.body];
     if (!p || !p.pos) { leg.centre = null; return; }
-    leg.centre = p.pos; leg.basis = fr === 'mfix' ? p.mesh.matrix.elements : AM_IDENTITY;
+    leg.centre = p.pos; leg.basis = fr === 'mfix' ? _amTurnOnly(p.mesh.matrix.elements) : AM_IDENTITY;
   }
+}
+// A body mesh's turn without its size or flattening: its three columns as unit axes, the way a site stands on the body (almanac-sites.js _asAxes).
+function _amTurnOnly(e) {
+  var out = e.slice(), c;
+  for (c = 0; c < 3; c++) {
+    var n = Math.hypot(e[c * 4], e[c * 4 + 1], e[c * 4 + 2]) || 1;
+    out[c * 4] = e[c * 4] / n; out[c * 4 + 1] = e[c * 4 + 1] / n; out[c * 4 + 2] = e[c * 4 + 2] / n;
+  }
+  return out;
 }
 // A frame's vector (km) into the scene's axes (Earth radii).
 function _amAxes(leg, v, sc) {
@@ -385,6 +394,7 @@ function _aeMissionStep(sc) {
   s.follow = follow;
   if (follow) _amCamera(m, s, follow, ph, dt, sc);
   _amHudTick(m, s, follow, t, now);
+  _amDawn(s, follow, sc);
 }
 // After the camera (its matrices are this frame's): the models, flames and dots.
 function _aeMissionDraw() {
@@ -441,30 +451,59 @@ function _aeMissionDraw() {
   if (s.onDraw) s.onDraw();
 }
 
+
+// ── The dawn glow ──
+// Near the Earth with the Sun a few degrees below the horizon, a warm band lies along the horizon the camera sees (the picture's own atmosphere is too thin a glow
+// for twilight): at its strongest with the Sun about AM_DAWN_PEAK_DEG down, gone by AM_DAWN_SPAN_DEG either side of that.
+var AM_DAWN_PEAK_DEG = -4, AM_DAWN_SPAN_DEG = 6, AM_DAWN_MAX = 0.4, AM_DAWN_ALT_KM = 300, AM_DAWN_BAND = 0.35;
+function _amDawn(s, st, sc) {
+  var el = _aeById('am-dawn');
+  if (!el) return;
+  var pose = s.pose, on = false;
+  if (st && pose && st.leg.ref !== 'moon' && st.leg.frame !== 'probe' && st.leg.frame !== 'helio' && !s.fly) {
+    var up = _aeNorm(st.pos), alt = _aeLen(st.pos) * AE_EARTH_RADIUS_KM - AE_EARTH_RADIUS_KM;
+    if (alt < AM_DAWN_ALT_KM) {
+      var elev = _aeDeg(Math.asin(_aeClamp(_aeDot(_aeNorm(sc.sun), up), -1, 1))), z = (elev - AM_DAWN_PEAK_DEG) / AM_DAWN_SPAN_DEG, k = Math.exp(-z * z);
+      if (k > 0.02) {
+        var look = pose.look, right = _aeNorm(_aeCross(look, pose.up)), upc = _aeCross(right, look);
+        var dip = Math.acos(_aeClamp(AE_EARTH_RADIUS_KM / (AE_EARTH_RADIUS_KM + Math.max(alt, 0)), 0, 1)), pitch = Math.asin(_aeClamp(_aeDot(look, up), -1, 1));
+        var a = -dip - pitch, half = Math.tan(_aeRad(pose.fov) / 2), y = _ae.h / 2 - Math.tan(a) / half * _ae.h / 2, hgt = _ae.h * AM_DAWN_BAND;
+        var roll = Math.atan2(_aeDot(up, right), _aeDot(up, upc));
+        el.style.height = hgt + 'px';
+        el.style.top = (y - hgt / 2) + 'px';
+        el.style.transform = 'rotate(' + roll + 'rad)';
+        el.style.opacity = (AM_DAWN_MAX * k).toFixed(3);
+        on = true;
+      }
+    }
+  }
+  if (!on) el.style.opacity = '0';
+}
+
 // ── The hand-off at touchdown ──
 // On the Moon the mission gives way to the ground's site visit (almanac-sites.js), at the landing instant, with a chip that comes back to the mission at lift-off.
-var AM_SITE_WAIT_MS = 6000, AM_BACK_ID = 'am-back', AM_BACK_WATCH_MS = 600, AM_POLL_MS = 100, AM_RESUME_PAST_S = 25;   // the ascent phase begins 20 s before lift-off: the way back lands just after it
-function _amLandingRow(name) {
-  var rows = (typeof _aeLm !== 'undefined' && _aeLm && _aeLm.moon) || [];
+var AM_SITE_WAIT_MS = 6000, AM_BACK_ID = 'am-back', AM_BACK_WATCH_MS = 600, AM_POLL_MS = 100, AM_RESUME_PAST_S = 25, AM_REPLAY_S = 60;   // the ascent phase begins 20 s before lift-off: the way back lands just after it
+function _amLandingRow(name, body) {
+  var rows = (typeof _aeLm !== 'undefined' && _aeLm && _aeLm[body || 'moon']) || [];
   return rows.filter(function (r) { return r[3] === 'landing' && r[0] === name; })[0] || null;
 }
 function _amHandoff(m, pi) {
-  var id = _ae.mission.id, resume = (m.phases[pi + 1] || m.phases[pi]).t + AM_RESUME_PAST_S, landed = m.phases[pi].t, zero = _ae.mission.zeroMs;
+  var id = _ae.mission.id, resume = m.phases[pi + 1] ? m.phases[pi + 1].t + AM_RESUME_PAST_S : m.phases[pi].t - AM_REPLAY_S, landed = m.phases[pi].t, zero = _ae.mission.zeroMs;
   if (typeof _aeSitesLoad !== 'function') return;
   _aeSitesLoad();
   if (typeof _aeLmLoad === 'function') _aeLmLoad();
   var waited = 0;
   var go = function () {
-    var row = _amLandingRow(m.handoff.site);
+    var row = _amLandingRow(m.handoff.site, m.handoff.body);
     if (!row || typeof _aeSiteVisit !== 'function' || typeof _asData === 'undefined' || !_asData) {
       if ((waited += AM_POLL_MS) < AM_SITE_WAIT_MS) setTimeout(go, AM_POLL_MS);
       return;
     }
-    var def = _asDefFor('moon', row), at = def && def.ms ? def.ms : zero + landed * 1000;
+    var body = m.handoff.body || 'moon', def = _asDefFor(body, row), at = def && def.ms ? def.ms : zero + landed * 1000;
     _amStop(true);
     if (typeof _almClockSetRate === 'function') _almClockSetRate(1);
     if (typeof _aeGoTo === 'function' && at) _aeGoTo(at);
-    _aeSiteVisit('moon', row, false);
+    _aeSiteVisit(body, row, false);
     _amBackChip(true, id, resume);
   };
   go();
@@ -566,6 +605,7 @@ var AM_ICONS = {
   dot: '<svg viewBox="0 0 24 24" width="12" height="12" fill="currentColor" aria-hidden="true"><circle cx="12" cy="12" r="5"/></svg>'
 };
 var AM_CSS = [
+  '.am-dawn{position:absolute;left:-30%;right:-30%;pointer-events:none;opacity:0;background:linear-gradient(to bottom,rgba(255,120,50,0),rgba(255,150,70,.85) 48%,rgba(255,200,120,.55) 52%,rgba(255,120,50,0));mix-blend-mode:screen}',
   '.am-back{position:absolute;left:50%;top:calc(env(safe-area-inset-top,0px) + 64px);transform:translateX(-50%);z-index:60;border:1px solid var(--amber-border);background:rgba(20,20,20,.82);color:var(--amber);border-radius:999px;padding:8px 16px;font:600 13px/1 inherit;cursor:pointer}',
   '.ae-view.ae-mission .ae-top,.ae-view.ae-mission .ae-bottom,.ae-view.ae-mission .ae-labels,.ae-view.ae-mission .ae-lms,.ae-view.ae-mission .ae-mini,.ae-view.ae-mission .ae-info,.ae-view.ae-mission .ae-set{display:none!important}',
   '.am-hud{position:absolute;inset:0;z-index:50;pointer-events:none;display:none;-webkit-user-select:none;user-select:none}',
@@ -598,7 +638,8 @@ var AM_CSS = [
   '.am-chip[data-near="1"]{color:var(--text);border-color:var(--amber-border)}',
   '.am-ctl{display:flex;align-items:center;gap:8px;margin-top:8px}',
   '.am-ctl .am-gap{flex:1}',
-  '.am-rate{font-size:12px;min-width:44px;font-variant-numeric:tabular-nums}'
+  '.am-rate{font-size:12px;min-width:44px;font-variant-numeric:tabular-nums}',
+  '@media (orientation:landscape) and (max-height:520px){.am-ev{display:none}.am-track{height:18px}.am-phase{margin:0 0 4px}.am-phase-t b{font-size:14px}.am-ctl{margin-top:4px}.am-dock{padding-top:4px}}'
 ].join('');
 function _amHud(on) {
   var el = _ae && _ae.el;
@@ -612,7 +653,7 @@ function _amHud(on) {
   hud.className = 'am-hud'; hud.id = 'am-hud';
   var lab = function (k) { return _almEsc(_aeT(k)); };
   var w = _amWidths(m);
-  hud.innerHTML = '<div class="am-layer" id="am-layer"></div>' +
+  hud.innerHTML = '<div class="am-dawn" id="am-dawn"></div><div class="am-layer" id="am-layer"></div>' +
     '<div class="am-bar"><button type="button" class="ae-btn ae-round" id="am-exit" aria-label="' + lab('alm_ms_close') + '" title="' + lab('alm_ms_close') + '">' + AM_ICONS.close + '</button>' +
     '<div class="am-title"><b>' + _almEsc(_aeT('alm_ms_' + s.id) === 'alm_ms_' + s.id ? m.name : _aeT('alm_ms_' + s.id)) + '</b><span class="am-met" id="am-met"></span></div>' +
     '<button type="button" class="ae-btn ae-round" id="am-recentre" aria-label="' + lab('alm_ms_recentre') + '" title="' + lab('alm_ms_recentre') + '">' + AM_ICONS.recentre + '</button></div>' +
