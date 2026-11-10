@@ -348,8 +348,8 @@ def test_go_to_the_minimap_and_the_orrery_s_way_in(served):
                 "Array.from(document.querySelectorAll('#ae-go h4')).length"
             )
             assert (
-                groups == 6
-            ), groups  # Earth and Moon, Planets, Moons, Dwarf planets, Spacecraft, Moon landings
+                groups == 7
+            ), groups  # Earth and Moon, Planets, Moons, Dwarf planets, Spacecraft, Moon landings, Missions
             assert pg.evaluate(
                 "Array.from(document.querySelectorAll('#ae-go .ae-go-row')).every(r => !!r.querySelector('.ae-go-dot'))"
             )

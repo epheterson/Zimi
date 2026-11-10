@@ -545,6 +545,7 @@ var AE_CSS = [
   '.ae-set-choice b{display:block;font-weight:500;color:var(--text)}',
   '.ae-set-choice small a{color:var(--amber);text-decoration:none}',
   '.ae-set-choice small{display:block;font-size:11.5px;color:var(--text2)}',
+  '.ae-set-ultra{display:flex;flex-direction:column;gap:2px;margin-top:6px}',
   '.ae-set-choice.ae-off{cursor:default}',
   '.ae-set-choice.ae-off:hover{background:none}',
   '.ae-set-why{margin:6px 4px 0;font-size:11.5px;color:var(--text2)}',
@@ -2097,7 +2098,15 @@ function _aeHdManifest() {
     }).catch(function (e) { if (i === 0) throw e; return null; });
   })).then(function (mans) {
     var man = mans[0];
-    mans.slice(1).forEach(function (x) { if (x && x.layers) Object.keys(x.layers).forEach(function (k) { man.layers[k] = x.layers[k]; }); });
+    mans.slice(1).forEach(function (x) {
+      if (!x || !x.layers) return;
+      Object.keys(x.layers).forEach(function (k) {
+        var core = man.layers[k], deep = x.layers[k];
+        // A layer split between the core and a part (levels from ``from`` on): the core's folder for the levels it holds, the
+        // part's from there, to the part's deepest; and its inserts, which only the part has.
+        man.layers[k] = core && deep.from != null ? { max: deep.max, base: core.base, deep: { from: deep.from, base: deep.base }, inserts: deep.inserts } : deep;
+      });
+    });
     return man;
   });
 }
@@ -2169,6 +2178,7 @@ function _aeHdLoad(S) {
       b.maps.forEach(function (m) {
         m.max = man.layers[m.layer].max;
         m.base = man.layers[m.layer].base;
+        m.deep = man.layers[m.layer].deep;
         // Inserts: tiles past the layer's max, only round some places (the Apollo sites), by level.
         m.ins = {};
         (man.layers[m.layer].inserts || []).forEach(function (e) { (m.ins[e.z] = m.ins[e.z] || []).push(e); });
@@ -2319,7 +2329,7 @@ function _aeHdMinOver(b, lat, lon) {
   }
   return _aeHdTexelMin(b, deepest);
 }
-function _aeHdTileUrl(m, n) { return (m.base || _aeHdBase()) + m.layer + '/' + n.z + '/' + n.x + '/' + n.y + '.webp'; }
+function _aeHdTileUrl(m, n) { return (m.deep && n.z >= m.deep.from ? m.deep.base : m.base || _aeHdBase()) + m.layer + '/' + n.z + '/' + n.x + '/' + n.y + '.webp'; }
 function _aeHdReady(b, n) {
   return b.maps.every(function (m) { var t = _aeHdLayerNode(b, n, m).tex[m.layer]; return t && t.isTexture; });
 }
@@ -2705,7 +2715,7 @@ function _aeHostOf(k) { var b = _aePlanetBody(k); return b ? b.parent || b.key :
 function _aeOrbitShow(key) { return _aeOrbitShowRaw(key) * _aeSunLineFade(); }
 // Close to the Sun its disc fills the view and the orbit lines (and the trails) cross it edge-on as thin white strokes:
 // they are a far-view aid, out before the Sun fills the screen, never drawn over its disc.
-var AE_SUN_LINES_GONE = 2.6, AE_SUN_LINES_FULL = 6;   // the Sun's radii from it
+var AE_SUN_LINES_GONE = 24, AE_SUN_LINES_FULL = 60;   // the Sun's radii from it: the Sun's own view (about 17) has none, the Planets view (hundreds) all
 function _aeSunLineFade() {
   if (_ae.target !== 'sun') return 1;
   return _aeClamp((_ae.dist / AE_SUN_SHOW_R - AE_SUN_LINES_GONE) / (AE_SUN_LINES_FULL - AE_SUN_LINES_GONE), 0, 1);
@@ -4656,7 +4666,7 @@ function _aeLmFly(body, row) {
 // first and they have not said Not now for this person; under Automatically the server's first answer already started it.
 // It comes with the view's satellite data (_aeTakeSats); while the download runs, /almanac-hd is asked how far it got,
 // and once it is in the library the view draws from it without a reload.
-var AE_HD_URL = '/almanac-hd', AE_HD_SET_URL = '/manage/almanac-hd';
+var AE_HD_URL = '/almanac-hd', AE_HD_SET_URL = '/manage/almanac-hd', AE_HD_DELETE_URL = '/manage/delete';
 var AE_HD_LATER_KEY = SK.ALM_HD_LATER;
 var AE_HD_POLL_MS = 3000;
 function _aeHdLater() { try { return localStorage.getItem(AE_HD_LATER_KEY) === '1'; } catch (e) { return false; } }
@@ -4706,7 +4716,26 @@ function _aeHdRowHtml() {
     tail = st.can_change ? _almEsc(size) + ' · <button type="button" class="ae-fresh" id="ae-set-hd-get">' + _almEsc(_aeT('alm_hd_get')) + '</button>'
       : _almEsc(size) + ' · ' + _almEsc(_aeT('alm_hd_ask_admin'));
   }
-  return '<p class="ae-set-data ae-set-hd">' + head + '<br>' + tail + '</p>';
+  return '<p class="ae-set-data ae-set-hd">' + head + '<br>' + tail + '</p>' + _aeUltraHtml();
+}
+// The Ultra parts, a short list under the core's row: each body's full resolution, with its size and a switch. Off
+// removes the file from the library, on fetches it; the view draws whatever is installed. Only for whoever may change it.
+function _aeUltraName(part) { return part === 'moon' ? _aeT('alm_moon') : _tp(part.charAt(0).toUpperCase() + part.slice(1)); }
+function _aeUltraHtml() {
+  var st = _ae.hdSt, list = st && st.ultra;
+  if (!list || !list.length) return '';
+  var rows = list.map(function (u) {
+    var busy = !!u.downloading, tail = busy ? Math.floor(100 * u.downloading.done / Math.max(1, u.downloading.size)) + '%' : _aeHdOfferSize({ size: u.size });
+    return '<label class="ae-set-choice' + (st.can_change && !busy ? '' : ' ae-off') + '"><input type="checkbox" class="ae-ultra-sw" data-part="' + _almEsc(u.part) + '" data-file="' + _almEsc(u.file) + '"' +
+      (u.installed || busy ? ' checked' : '') + (st.can_change && !busy ? '' : ' disabled') + '><span><b>' + _almEsc(_aeUltraName(u.part)) + '</b><small>' + _almEsc(tail) + '</small></span></label>';
+  }).join('');
+  return '<div class="ae-set-data ae-set-ultra" role="group" aria-label="' + _almEsc(_aeT('alm_hd_ultra')) + '"><b>' + _almEsc(_aeT('alm_hd_ultra')) + '</b>' + rows + '</div>';
+}
+function _aeUltraToggle(box) {
+  var part = box.getAttribute('data-part'), file = box.getAttribute('data-file');
+  box.disabled = true;
+  var done = function () { _aeHdPollNow(); };
+  (box.checked ? _aePost(AE_HD_SET_URL, { start: true, part: part }) : _aePost(AE_HD_DELETE_URL, { filename: file })).then(done, done);
 }
 function _aeHdGet() {
   _aeById('ae-hd-get').disabled = true;
@@ -4945,6 +4974,9 @@ function _aeStandAt(key, lat, lon) {
   if (!_aeStandable(key)) return Promise.resolve(false);
   return _aeStandReady().then(function () { return _aeStandStart(key, lat, lon); }, function () { return false; });
 }
+// The 2D sky's hand-off (almanac-stand.js has the real ones, which replace these once it is loaded): open Stand here from a card, and the way back.
+function _aeStandOpen(h) { return _aeStandReady().then(function () { return typeof _aeStandStart === 'function' ? _aeStandOpen(h) : false; }, function () { return false; }); }
+function _aeStandClose() { /* nothing of Stand is loaded, so nothing of it is open */ }
 function _aeGroundHeight(key, lat, lon) {
   if (typeof _aeStandHeight !== 'function') { _aeStandReady().catch(function () {}); return 0; }
   return _aeStandHeight(key, lat, lon);
@@ -5753,6 +5785,7 @@ function _aeRenderSettings() {
   panel.innerHTML = html;
   var get = _aeById('ae-set-hd-get');
   if (get) get.onclick = _aeHdGet;
+  if (panel.querySelectorAll) Array.prototype.forEach.call(panel.querySelectorAll('.ae-ultra-sw'), function (box) { box.onchange = function () { _aeUltraToggle(box); }; });
 }
 // An admin's choice, saved on the server; then the view asks again, since
 // the choice changes what a stale answer brings (Automatically fetches
@@ -7147,7 +7180,7 @@ function _aeSatShortName(s) {
 
 // ── Taps ──
 function _aeTap(x, y) {
-  if (_ae.stand && _ae.stand.live && typeof _aeStandSkyTap === 'function' && _aeStandSkyTap(x, y)) return;   // an object other lanes put in the sky
+  if (_ae.stand && _ae.stand.live && typeof _aeStandSkyTap === 'function' && (_aeStandSkyTap(x, y) || _aeStandBodyTap(x, y))) return;   // an object other lanes put in the sky
   if (_aeRecordTap(x, y)) return;
   var best = null, bestD = AE_TAP_RADIUS_PX;
   // Satellites are picked at the Earth; from the Moon or the Sun they are a
