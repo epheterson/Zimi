@@ -40,15 +40,16 @@ var AE_STAND_STAR_FLOOR_MS = 400;
 // ── The way in ──
 // Called by the Stand here button, and by anything that wants a body's ground (the models lane). Opens the 3D view if it
 // is not up, flies to the place, and drops to the ground once the terrain's mesh is built; resolves true when it started.
-function _aeStandStart(key, lat, lon) {
+function _aeStandStart(key, lat, lon, handoff) {
   if (!_aeStandable(key)) return Promise.resolve(false);
   if (_ae && _ae.stand) _aeStandDrop();
   return _aeStandViewUp().then(function (up) {
     if (!up) return false;
+    if (handoff && handoff.ms !== undefined && handoff.ms !== null && typeof _aeGoTo === 'function') _aeGoTo(handoff.ms);
     // A body with no place for this date (a dwarf planet whose table does not reach it) has no sky to stand under.
     var frame = _aeStBodyNow(key);
     if (!frame) return false;
-    var pend = _ae.standPending = { key: key, lat: lat, lon: lon, ready: false, t0: performance.now(), builder: null, mesh: null, tex: null };
+    var pend = _ae.standPending = { key: key, lat: lat, lon: lon, ready: false, t0: performance.now(), builder: null, mesh: null, tex: null, handoff: handoff || null };
     _ae.pick = null; _ae.lm = null; _ae.place = null; _ae.selected = null;
     _aeRenderCard();
     var body = AE_STAND_BODIES[key];
@@ -169,6 +170,12 @@ function _aeStandEnter(st) {
   _aeResize();
   var fr = _aeStFrame(st, _aeDisplayMs());
   st.yaw = fr.sunAlt > AE_STAND_SUN_FACE_DEG ? fr.sunAz : 0;
+  var ho = st.pend && st.pend.handoff;
+  if (ho) {   // a hand-off from the live sky card: its facing, not the Sun's
+    st.handoff = ho;
+    if (typeof ho.heading === 'number') st.yaw = _aeRad(ho.heading);
+    if (typeof ho.pitch === 'number') st.userPitch = _aeRad(ho.pitch) - _aeRad(AE_STAND_PITCH_DEG);
+  }
   st.yaw0 = 0;
   _ae.dirty = true;
   _aeKick();
@@ -198,6 +205,7 @@ function _aeStandFinishLeave(st) {
 function _aeStandDrop(closing) {
   var st = _ae && _ae.stand;
   if (_ae) _ae.standPending = null;
+  if (!closing) setTimeout(_aeStandAfterClose, 0);   // the way back, when _aeStandClose asked for it
   if (!st) return;
   _ae.stand = null;
   var S = _ae.gl;
@@ -269,6 +277,7 @@ function _aeStandSkyMesh(st, U, mat) {
   // The same sky drawn small into a target, and a triangle that stretches it back: the air is smooth, the ground stays sharp.
   var low = new THREE.Mesh(tri, sky.material);
   low.frustumCulled = false;
+  st.skyLowMesh = low; st.skyMatOwn = sky.material;
   st.skyScene = new THREE.Scene(); st.skyScene.add(low);
   var blit = st.skyBlit = new THREE.Mesh(tri, new THREE.ShaderMaterial({ uniforms: { tSky: { value: null }, uRes: { value: [1, 1] } }, vertexShader: AE_ST_SKY_VERT, fragmentShader: AE_ST_BLIT_FRAG, depthTest: false, depthWrite: false }));
   blit.frustumCulled = false; blit.renderOrder = -3; blit.visible = false;
@@ -365,6 +374,7 @@ function _aeStandDispose(st) {
   if (st.craftHost && st.craftHost.parentNode) st.craftHost.parentNode.removeChild(st.craftHost);
   if (st.stars) st.stars.geometry.dispose();
   if (st.skyRT) st.skyRT.dispose();
+  if (st.skyMatAir) st.skyMatAir.dispose();
   if (st.skyPts) st.skyPts.mesh.geometry.dispose();
   if (st.skyLines) st.skyLines.mesh.geometry.dispose();
   if (st.skyTag && st.skyTag.parentNode) st.skyTag.parentNode.removeChild(st.skyTag);
@@ -520,6 +530,11 @@ function _aeStPhoto(st, fr) {
     var w = AE_STAND_SKY_MATCH_SHARE * _smoothstep(AE_STAND_SKY_MATCH_DEG[0], AE_STAND_SKY_MATCH_DEG[1], fr.sunAlt), k2 = _sgExposure(fr.sunAlt, -90, 0, 0, 1, 1) * AE_ST_LUX_PER_UNIT;
     if (w > 0 && k2 > 0) p.k = Math.exp(Math.log(p.k) * (1 - w) + Math.log(k2) * w);
   }
+  if (_aeStandAirOn(st) && _aeStandAir.exposureK) {   // a provider's atmosphere brings its own exposure, for everything in the picture
+    var kp = null;
+    try { kp = _aeStandAir.exposureK(st, fr, p); } catch (e) {}
+    if (kp > 0) p.k = kp;
+  }
   p.e2 = e2;
   p.mwStrength = _aeClamp((p.lim - 5.2) / 2.5, 0, 1) * p.mw;
   return p;
@@ -589,6 +604,7 @@ function _aeStandPaint(st, now, moving, place) {
 }
 // The sky into its small target (or, with no way to make one, straight to the screen as before).
 function _aeStandSkyPass(st) {
+  _aeStandAirSelect(st);
   var S = _ae.gl, r = S.renderer, THREE = S.THREE, use = AE_STAND_SKY_SCALE < 1 && !!st.skyBlit && typeof THREE.WebGLRenderTarget === 'function';
   st.skyMesh.visible = !use; st.skyBlit.visible = use;
   if (!use) return;
@@ -756,6 +772,65 @@ function _aeStandCraftMarks(st, fr, view) {
     shown++;
   });
   for (var i = shown; i < host.children.length; i++) host.children[i].hidden = true;
+}
+
+// ── The live sky card's hand-off, and the way back ──
+//   window._osHandoff = { body?: 'earth', lat, lon, ms?, heading?, pitch?, back?() }   the card's place, instant, facing (degrees: heading
+//                                from north clockwise, pitch up) and a function that puts the card back
+//   _aeStandOpen(h?)    opens the 3D view if it is not up, goes to that place and instant, drops to the ground facing that way;
+//                       h defaults to window._osHandoff (which is then cleared); resolves true when it started
+//   _aeStandClose()     the one way back: climbs out of Stand here, closes the 3D view if _aeStandOpen opened it, then calls h.back()
+function _aeStandOpen(h) {
+  h = h || (typeof window !== 'undefined' ? window._osHandoff : null);
+  if (typeof window !== 'undefined' && h && h === window._osHandoff) window._osHandoff = null;
+  if (!h || typeof h.lat !== 'number' || typeof h.lon !== 'number') return Promise.resolve(false);
+  h.openedView = !(typeof _aeIsOpen !== 'undefined' && _aeIsOpen);
+  return _aeStandStart(h.body || 'earth', h.lat, h.lon, h);
+}
+function _aeStandClose() {
+  var st = _ae && _ae.stand, h = (st && st.handoff) || (_ae && _ae.standPending && _ae.standPending.handoff) || null;
+  if (!_ae) return;
+  _ae.standBack = h;
+  if (_ae.stand || _ae.standPending) _aeStandLeave(); else _aeStandAfterClose();
+}
+function _aeStandAfterClose() {
+  var h = _ae && _ae.standBack;
+  if (!h) return;
+  _ae.standBack = null;
+  if (h.openedView && typeof _aeClose === 'function' && typeof _aeIsOpen !== 'undefined' && _aeIsOpen) _aeClose();
+  if (typeof h.back === 'function') { try { h.back(); } catch (e) {} }
+}
+
+// ── An atmosphere from outside (the 2D sky's, for the Earth) ──
+// A provider is an object at `_aeStandAir`; while provider.wants(st) is true (called at every picture) the sky pass is drawn with ITS
+// light and ONE exposure for the sky, the ground and the sprites; otherwise, and with no provider, this view's own ray march.
+//     wants(st) -> bool        st.key, st.altKm (camera height over the ground), st.lat, st.lon are what it will want to know
+//     glsl                     a chunk that defines  vec3 oaSky(vec3 d)  (d: unit view direction in the local frame, x east, y north, z up),
+//                              the sky's radiance there in the units its exposureK goes with (tone is 1 - exp(-L * uK), then gamma);
+//                              it may read this view's uniforms uCam (km, the camera in the local frame), uSunDir (unit, local frame),
+//                              uSunE, uR, uRc, uTop, uAtmo and declare its own `uniform`s, which `uniforms` supplies
+//     uniforms                 { name: initial value } for the chunk's own uniforms (numbers, arrays of 2-4 or 9 numbers, textures)
+//     update(st, fr, ph, u)    optional, at every picture: set u[name].value from the frame (fr: sun and body positions, ph: its photometry)
+//     exposureK(st, fr, ph)    the one uK (a positive number), or null for this view's own
+// The chunk is compiled on first use; a provider whose glsl changes is rebuilt.
+var _aeStandAir = (typeof _aeStandAir !== 'undefined') ? _aeStandAir : null;
+function _aeStandAirOn(st) {
+  var P = _aeStandAir;
+  try { return !!(P && P.glsl && P.wants && P.wants(st)); } catch (e) { return false; }
+}
+function _aeStandAirSelect(st) {
+  var THREE = _ae.gl.THREE, on = _aeStandAirOn(st), P = _aeStandAir;
+  if (on && (!st.skyMatAir || st.skyAirSrc !== P.glsl)) {
+    if (st.skyMatAir) st.skyMatAir.dispose();
+    var own = {};
+    Object.keys(P.uniforms || {}).forEach(function (k) { own[k] = { value: P.uniforms[k] }; });
+    st.skyMatAir = new THREE.ShaderMaterial({ uniforms: Object.assign({}, st.sky, own), vertexShader: AE_ST_SKY_VERT, fragmentShader: _aeStSkyAirFrag(P.glsl), depthTest: false, depthWrite: false });
+    st.skyAirSrc = P.glsl;
+  }
+  var m = on ? st.skyMatAir : st.skyMatOwn;
+  if (st.skyMesh.material !== m) { st.skyMesh.material = m; if (st.skyLowMesh) st.skyLowMesh.material = m; }
+  if (on && P.update) { try { P.update(st, st.fr, st.photo, st.skyMatAir.uniforms); } catch (e) {} }
+  st.airOn = on;
 }
 
 // ── Objects in the sky from other lanes ──

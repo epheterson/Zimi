@@ -174,6 +174,26 @@ var AE_ST_SKYLINE_FRAG = [
   'precision highp float; varying vec3 vCol; varying float vA;',
   'void main() { gl_FragColor = vec4(vCol, vA * 0.7); }'
 ].join('\n');
+// The sky from a provider (_aeStandAir in almanac-stand.js): the same triangle and tone, the radiance from the provider's own chunk.
+function _aeStSkyAirFrag(chunk) {
+  return [
+    'precision highp float;',
+    AE_ST_GLSL_ATMO, AE_ST_GLSL_TONE,
+    'uniform vec3 uCam, uFwd, uRight, uUp; uniform vec2 uTan; uniform float uK;',
+    'uniform sampler2D uMilky; uniform float uMw; uniform mat3 uToGal;',
+    'varying vec2 vNdc;',
+    chunk,
+    'void main() {',
+    '  vec3 d = normalize(uFwd + uRight * vNdc.x * uTan.x + uUp * vNdc.y * uTan.y);',
+    '  vec3 c = tone(oaSky(d), uK);',
+    '  if (uMw > 0.0) {',
+    '    vec3 g = uToGal * d; float l = atan(g.y, g.x), b = asin(clamp(g.z, -1.0, 1.0));',
+    '    c += texture2D(uMilky, vec2(0.5 - l / (2.0 * PI), 0.5 - b / PI)).rgb * uMw;',
+    '  }',
+    '  gl_FragColor = vec4(c, 1.0);',
+    '}'
+  ].join('\n');
+}
 var AE_ST_STARS_FRAG = [
   'precision highp float; varying vec3 vCol; varying float vA;',
   'void main() { vec2 c = gl_PointCoord - 0.5; float a = vA * (1.0 - smoothstep(0.15, 0.5, length(c))); if (a < 0.003) discard; gl_FragColor = vec4(vCol, a); }'
