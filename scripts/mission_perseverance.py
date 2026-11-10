@@ -42,6 +42,8 @@ PROFILE = [
     (412.0, 0.0, 0.75),
 ]
 T_TOUCH = PROFILE[-1][0]
+# where the six wheels stand under the body (sites-v1.json, the rover's own table), deployed as they are on the bridles
+ROVER_WHEELS = [[-1.062, 1.277, 0.263], [1.062, 1.277, 0.263], [-1.184, 0.092, 0.263], [1.184, 0.092, 0.263], [1.062, -0.983, 0.263], [-1.062, -0.983, 0.263]]
 EVENT_AFTER_EI = {
     "chute": 240.0,
     "hs_sep": 262.0,
@@ -359,7 +361,7 @@ def build():
     # after the backshell lets go the descent stage carries the rover down on its own engines
     after = fx[fx[:, 0] >= t_bs - 1.0]
     sky = {"id": "sky", "on": t_bs, "off": fx[-1, 0] + 600.0, "dot": False, "legs": [dict(fixed_leg(after, att="level", sd=1), ref="mars")],
-           "parts": [dict(part("ms-m20-descent", 0.0, rx=90), at=[0.0, 0.0, 7.5], **{"to": fx[-1, 0] - 1.0}), part("site-perseverance-body", 0.0)],
+           "parts": [dict(part("ms-m20-descent", 0.0, rx=90), at=[0.0, 0.0, 7.5], **{"to": fx[-1, 0] - 1.0}), part("site-perseverance-body", 0.0)] + [{"m": "site-perseverance-wheel", "at": w} for w in ROVER_WHEELS],
            "flames": [{"from": t_bs + 4.0, "to": fx[-1, 0] - 1.0, "at": [0, 0, 6.2], "len": 6.0, "r": 0.7, "rx": 90}]}
     # the heat shield and the backshell fall away from where they let go
     hs = {"id": "hs", "on": t_hs, "off": t_hs + 45.0, "dot": False, "legs": [fixed_leg(_fall(fx, t_hs, 45.0, drift=0.0, accel=0.004), att="level", sd=1)],

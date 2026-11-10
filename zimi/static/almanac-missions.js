@@ -315,7 +315,7 @@ function _amMission() { var s = _amState(); return s && _amData ? _amData.missio
 function _amNowS() { var s = _amState(); return s ? (_aeDisplayMs() - s.zeroMs) / 1000 : 0; }
 
 // Open a mission by id. The view flies there when it is not yet in the mission's space.
-function _aeMissionOpen(id, atT) {
+function _aeMissionOpen(id, atT, back) {
   if (!_ae || !_ae.gl) return;
   if (id === 'plan') { _amPlanLoad(function () { _apOpen(); }); return; }
   if (_ae.site) _aeSiteLeave(true);
@@ -330,7 +330,7 @@ function _aeMissionOpen(id, atT) {
     var s = _ae.mission = {
       id: id, zeroMs: m.zeroMs, parts: {}, flames: {}, dot: null, speedIdx: 1, userCam: false, phaseIdx: -1,
       camAz: 0, camEl: 0.3, camDist: 100, camSet: false, shot: null, back: { ms: _aeDisplayMs(), rate: typeof _almRate === 'number' ? _almRate : 1, live: !_aeFocusSet() },
-      lastText: 0, ended: 0, state: {}, fov: AM_FOV_DEG, pose: null, focus: null, trackAt: -1
+      lastText: 0, ended: 0, state: {}, fov: AM_FOV_DEG, pose: null, focus: null, trackAt: -1, noHandoff: !!back
     };
     _ae.el.classList.add('ae-mission');
     _aeShowGo(false);
@@ -482,13 +482,13 @@ function _amDawn(s, st, sc) {
 
 // ── The hand-off at touchdown ──
 // On the Moon the mission gives way to the ground's site visit (almanac-sites.js), at the landing instant, with a chip that comes back to the mission at lift-off.
-var AM_SITE_WAIT_MS = 6000, AM_BACK_ID = 'am-back', AM_BACK_WATCH_MS = 600, AM_POLL_MS = 100, AM_RESUME_PAST_S = 25, AM_REPLAY_S = 60;   // the ascent phase begins 20 s before lift-off: the way back lands just after it
+var AM_SITE_WAIT_MS = 6000, AM_BACK_ID = 'am-back', AM_BACK_WATCH_MS = 600, AM_POLL_MS = 100, AM_RESUME_PAST_S = 25;   // the ascent phase begins 20 s before lift-off: the way back lands just after it
 function _amLandingRow(name, body) {
   var rows = (typeof _aeLm !== 'undefined' && _aeLm && _aeLm[body || 'moon']) || [];
   return rows.filter(function (r) { return r[3] === 'landing' && r[0] === name; })[0] || null;
 }
 function _amHandoff(m, pi) {
-  var id = _ae.mission.id, resume = m.phases[pi + 1] ? m.phases[pi + 1].t + AM_RESUME_PAST_S : m.phases[pi].t - AM_REPLAY_S, landed = m.phases[pi].t, zero = _ae.mission.zeroMs;
+  var id = _ae.mission.id, resume = m.phases[pi + 1] ? m.phases[pi + 1].t + AM_RESUME_PAST_S : m.end, landed = m.phases[pi].t, zero = _ae.mission.zeroMs;
   if (typeof _aeSitesLoad !== 'function') return;
   _aeSitesLoad();
   if (typeof _aeLmLoad === 'function') _aeLmLoad();
@@ -516,7 +516,7 @@ function _amBackChip(on, id, t) {
   var b = document.createElement('button');
   b.type = 'button'; b.id = AM_BACK_ID; b.className = 'am-back';
   b.textContent = _aeT('alm_ms_back');
-  b.onclick = function () { _amBackChip(false); _aeSiteLeave(true); _aeMissionOpen(id, t); };
+  b.onclick = function () { _amBackChip(false); _aeSiteLeave(true); _aeMissionOpen(id, t, true); };
   b._watch = setInterval(function () { if (!_ae || !_ae.el || !_ae.site) _amBackChip(false); }, AM_BACK_WATCH_MS);
   _ae.el.appendChild(b);
 }
@@ -524,7 +524,9 @@ function _amPhaseChanged(m, pi) {
   var hud = _aeById('am-hud');
   if (hud) hud.dataset.phase = String(pi);
   _amPaintPhase(m, pi);
-  if (m.handoff && m.phases[pi].k === m.handoff.phase) _amHandoff(m, pi);
+  var s = _ae.mission, there = m.handoff && m.phases[pi].k === m.handoff.phase;
+  if (!there && s) s.noHandoff = false;   // come back to it later (by replay or a jump) and it hands over again
+  if (there && s && !s.noHandoff) _amHandoff(m, pi);
 }
 
 // ── The camera ──
