@@ -2284,7 +2284,7 @@
   "alm_earth_sat_ask_hint": "在请求之前不获取任何数据",
   "alm_earth_sat_auto": "自动",
   "alm_earth_sat_auto_hint": "来自 {src} 的精确数据",
-  "alm_earth_sat_never": "用离线数据估算",
+  "alm_earth_sat_never": "从不",
   "alm_earth_sat_never_hint": "根据此 Zimi 已有的数据给出位置，时间越久越不精确",
   "alm_earth_sat_admin_only": "只有管理员可以更改此项",
   "alm_earth_sat_offline": "Zimi 处于离线模式（ZIMI_OFFLINE），因此从不获取数据",
@@ -3872,5 +3872,7 @@
   "alm_ms_ev_tmi_burn": "火星转移点火",
   "alm_ms_ev_sc_sep": "航天器分离",
   "tb_kn_ms_m20_launch": "毅力号发射与巡航",
-  "tb_kn_ms_m20_launch_v": "Atlas V 541 的上升过程依据已公布的发射事件；事件之间的高度与速度、发射方位角、停泊轨道和转移点火的形状为假设。自世界时 12:52 起航天器取自 JPL Horizons（-168），先以地心、再以日心描述，直至 203 天后到达火星"
+  "tb_kn_ms_m20_launch_v": "Atlas V 541 的上升过程依据已公布的发射事件；事件之间的高度与速度、发射方位角、停泊轨道和转移点火的形状为假设。自世界时 12:52 起航天器取自 JPL Horizons（-168），先以地心、再以日心描述，直至 203 天后到达火星",
+  "alm_craft_loading": "正在加载航天器",
+  "alm_craft_failed": "这里没有它的模型，以一个点显示"
 }
