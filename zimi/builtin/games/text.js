@@ -5257,6 +5257,7 @@
  "shell.help.pieces": "Pieces",
  "shell.help.tip": "Tip",
  "shell.help.turn": "Your turn",
+ "shell.home.made": "Made by Zimi",
  "shell.length.min": "{n} min",
  "shell.length.minPlus": "{n}+ min",
  "shell.menu": "Menu",

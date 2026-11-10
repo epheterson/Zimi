@@ -5884,5 +5884,6 @@
  "hex.rules.two": "双方各连通自己的两条边，红和蓝。先连成链者胜。",
  "race.matchedShortest": "你走出了最短路线：{n}。",
  "race.matchedRoute": "你走出了已知路线：{n}。",
- "race.beatRoute": "你胜过了已知的 {n} 步路线。"
+ "race.beatRoute": "你胜过了已知的 {n} 步路线。",
+ "shell.home.made": "由 Zimi 制作"
 }

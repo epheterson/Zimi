@@ -4115,5 +4115,6 @@
   "pdf_failed_file": "Le fichier demandé",
   "pdf_failed_back": "Retour à la collection",
   "alm_craft_loading": "Chargement de la sonde",
-  "alm_craft_failed": "Pas de modèle ici : un point"
+  "alm_craft_failed": "Pas de modèle ici : un point",
+  "alm_made_by": "Créé par Zimi"
 }

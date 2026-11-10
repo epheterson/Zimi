@@ -1409,6 +1409,8 @@
     grid.appendChild(tile('stats', T('shell.menu.stats'), '', function () { show(statsPane); }));
     if (aboutLink()) grid.appendChild(tile('about', T('shell.menu.about'), '', function () { show(aboutPane); }));
     card.appendChild(grid);
+    var home = homeLine();
+    if (home) card.appendChild(home);
     void options;
   }
   function summary() {
@@ -1726,6 +1728,29 @@
   if (hosted) {
     d.documentElement.classList.add('gs-hosted');
     var hostStyle = d.createElement('style'); hostStyle.textContent = HOST_CSS + hostMarkCss(HOME + 'mark.svg'); d.head.appendChild(hostStyle);
+  }
+  // ── where this came from ──
+  // Outside Zimi (Kiwix, a browser tab) one line names Zimi, its address written out as well as linked, for a reader with no
+  // network. Inside Zimi it is noise and is never drawn. The address is zimihome.js's, loaded only out here: under the
+  // shelf's description, and at the foot of a game's Menu.
+  function homeLine() {
+    var url = root.ZIMI_HOME;
+    if (hosted || !url) return null;
+    return h('a', { class: 'gs-home', href: url, target: '_blank', rel: 'noopener' }, [
+      h('img', { src: HOME + 'mark.svg', alt: '', width: '20', height: '20' }),
+      h('span', { text: T('shell.home.made') }),
+      h('bdi', { class: 'gs-home-addr', dir: 'ltr', text: url.replace(/^https?:\/\//, '') })
+    ]);
+  }
+  Shell.homeLine = homeLine;
+  if (!hosted && d.head) {
+    var homeJs = d.createElement('script');
+    homeJs.src = HOME + 'zimihome.js';
+    homeJs.onload = function () {
+      var desc = d.querySelector('.ar-shelf > header > p:not(.gs-needjs)'), line = desc && homeLine();
+      if (line) desc.parentNode.insertBefore(line, desc.nextSibling);
+    };
+    d.head.appendChild(homeJs);
   }
   // Measured now, again once the page is laid out (before that a phone may still report the default 980 px layout's
   // height), and whenever the window changes (turning the phone, a browser bar coming or going).

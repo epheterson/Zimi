@@ -6142,5 +6142,6 @@
  "hex.rules.two": "Cada jugador une sus dos bordes, rojo y azul. Gana la primera cadena.",
  "race.matchedShortest": "Igualaste la ruta más corta: {n}.",
  "race.matchedRoute": "Igualaste la ruta conocida: {n}.",
- "race.beatRoute": "Superaste la ruta conocida de {n}."
+ "race.beatRoute": "Superaste la ruta conocida de {n}.",
+ "shell.home.made": "Hecho por Zimi"
 }

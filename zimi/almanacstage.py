@@ -28,6 +28,9 @@ import shutil
 
 STATIC = os.path.join(os.path.dirname(os.path.abspath(__file__)), "static")
 HOST = os.path.join(os.path.dirname(os.path.abspath(__file__)), "builtin", "almanac")
+GAMES = os.path.join(os.path.dirname(os.path.abspath(__file__)), "builtin", "games")
+#: Taken from the Games' folder: Zimi's address (written only there) and its mark.
+FROM_GAMES = ("zimihome.js", "mark.svg")
 
 #: What the Almanac loads, in order (they share one global scope). app.js's
 #: _ALMANAC_MODULES, then what it adds on open and on use.
@@ -263,7 +266,11 @@ def host_defines(host_html, name):
     """Whether the host page declares ``name`` (a function, a variable, or a window property)."""
     n = re.escape(name)
     return bool(
-        re.search(r"(?:function\s+%s\s*\(|(?:var|let|const)\s+%s\b|window\.%s\s*=)" % (n, n, n), host_html)
+        re.search(
+            r"(?:function\s+%s\s*\(|(?:var|let|const)\s+%s\b|window\.%s\s*=)"
+            % (n, n, n),
+            host_html,
+        )
     )
 
 
@@ -313,7 +320,9 @@ def wiring(app_src, names):
 def shell_source(app_src, host_html):
     """shell.js: the pulled pieces of app.js, each once, then their wiring."""
     names = shell_names(app_src, host_html)
-    parts = ["// Pieces of Zimi's app.js the Almanac calls, pulled out by name at build time."]
+    parts = [
+        "// Pieces of Zimi's app.js the Almanac calls, pulled out by name at build time."
+    ]
     for n in names:
         piece = extract(app_src, n)
         if piece not in parts:  # two names declared in one statement
@@ -391,7 +400,12 @@ def _snapshots(dest):
     assets = os.path.join(os.path.dirname(os.path.abspath(__file__)), "assets")
     out = os.path.join(dest, "data")
     os.makedirs(out, exist_ok=True)
-    for name in ("satellites-snapshot.json", "satellites-all-snapshot.json.gz", "launches-snapshot.json.gz", "tides-snapshot.json.gz"):
+    for name in (
+        "satellites-snapshot.json",
+        "satellites-all-snapshot.json.gz",
+        "launches-snapshot.json.gz",
+        "tides-snapshot.json.gz",
+    ):
         if not os.path.exists(os.path.join(assets, name)):
             raise StageError("assets/%s is missing" % name)
     shutil.copyfile(
@@ -424,8 +438,13 @@ def stage(dest):
         f.write(_relative(shell))
     with open(os.path.join(STATIC, "app.css"), encoding="utf-8") as f:
         shell_css = css_rules(f.read().replace("\r\n", "\n"))
-    with open(os.path.join(dest, "shell.css"), "w", encoding="utf-8", newline="\n") as f:
+    with open(
+        os.path.join(dest, "shell.css"), "w", encoding="utf-8", newline="\n"
+    ) as f:
         f.write(shell_css)
     for fn in os.listdir(HOST):
         shutil.copyfile(os.path.join(HOST, fn), os.path.join(dest, fn))
+    # The line naming Zimi outside it: the address and the mark are the Games' (one place each), the same in both ZIMs.
+    for fn in FROM_GAMES:
+        shutil.copyfile(os.path.join(GAMES, fn), os.path.join(dest, fn))
     _snapshots(dest)

@@ -2702,7 +2702,9 @@ function _renderAlmanacContent() {
 
 
   // Footer
+  // Outside Zimi (the Almanac's ZIM in Kiwix) the page that holds it defines _almHomeLine: one line naming Zimi. Zimi has none.
   html += '<div class="alm-footer">' +
+    (typeof _almHomeLine === 'function' ? _almHomeLine() : '') +
     t('alm_footer') +
     '</div>';
 

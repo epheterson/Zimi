@@ -6014,5 +6014,6 @@
  "hex.rules.two": "Each player links their own two edges, red and blue. First chain across wins.",
  "race.matchedShortest": "You matched the shortest route: {n}.",
  "race.matchedRoute": "You matched the known route: {n}.",
- "race.beatRoute": "You beat the known route of {n}."
+ "race.beatRoute": "You beat the known route of {n}.",
+ "shell.home.made": "Made by Zimi"
 }
