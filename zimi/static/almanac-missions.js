@@ -191,7 +191,7 @@ function _amVehicleAt(M, veh, t, sc) {
     fwd = _aeLen(hv) > 1e-12 * 0 + 1e-14 ? _aeNorm(hv) : _aeNorm(_aeCross(up, [0, 0, 1]));
   }
   // On the pad, and for the first seconds, nothing yet says which way it points: up.
-  if (raw.km && leg.frame === 'ecef') { var go = _amSmooth(AM_STILL_KMS[0], AM_STILL_KMS[1], _aeLen(raw.km.v)); fwd = _aeNorm(_aeAdd(_aeScale(fwd, go), _aeScale(up, 1 - go))); }
+  if (raw.km && leg.frame === 'ecef' && leg.att !== 'level') { var go = _amSmooth(AM_STILL_KMS[0], AM_STILL_KMS[1], _aeLen(raw.km.v)); fwd = _aeNorm(_aeAdd(_aeScale(fwd, go), _aeScale(up, 1 - go))); }
   return { pos: pos, fwd: fwd, up: up, speed: raw.km ? _aeLen(raw.km.v) : 0, vehicle: veh, leg: leg, km: raw.km };
 }
 function _amProbeRaw(leg) {
@@ -306,10 +306,11 @@ function _amMission() { var s = _amState(); return s && _amData ? _amData.missio
 function _amNowS() { var s = _amState(); return s ? (_aeDisplayMs() - s.zeroMs) / 1000 : 0; }
 
 // Open a mission by id. The view flies there when it is not yet in the mission's space.
-function _aeMissionOpen(id) {
+function _aeMissionOpen(id, atT) {
   if (!_ae || !_ae.gl) return;
   if (id === 'plan') { _amPlanLoad(function () { _apOpen(); }); return; }
   if (_ae.site) _aeSiteLeave(true);
+  _amBackChip(false);
   if (typeof _aeTracksLoad === 'function') _aeTracksLoad();   // a probe's flight is drawn from its table
   _amLoad(function () {
     var m = _amData.missions[id];
@@ -325,7 +326,7 @@ function _aeMissionOpen(id) {
     _ae.el.classList.add('ae-mission');
     _aeShowGo(false);
     _amHud(true);
-    _amJump(m, m.start);
+    _amJump(m, atT == null ? m.start : atT);
     _aeKick();
   });
 }
@@ -439,10 +440,52 @@ function _aeMissionDraw() {
   _aeCommitPoints(s.dot, nDots);
   if (s.onDraw) s.onDraw();
 }
+
+// ── The hand-off at touchdown ──
+// On the Moon the mission gives way to the ground's site visit (almanac-sites.js), at the landing instant, with a chip that comes back to the mission at lift-off.
+var AM_SITE_WAIT_MS = 6000, AM_BACK_ID = 'am-back', AM_BACK_WATCH_MS = 600, AM_POLL_MS = 100, AM_RESUME_PAST_S = 25;   // the ascent phase begins 20 s before lift-off: the way back lands just after it
+function _amLandingRow(name) {
+  var rows = (typeof _aeLm !== 'undefined' && _aeLm && _aeLm.moon) || [];
+  return rows.filter(function (r) { return r[3] === 'landing' && r[0] === name; })[0] || null;
+}
+function _amHandoff(m, pi) {
+  var id = _ae.mission.id, resume = (m.phases[pi + 1] || m.phases[pi]).t + AM_RESUME_PAST_S, landed = m.phases[pi].t, zero = _ae.mission.zeroMs;
+  if (typeof _aeSitesLoad !== 'function') return;
+  _aeSitesLoad();
+  if (typeof _aeLmLoad === 'function') _aeLmLoad();
+  var waited = 0;
+  var go = function () {
+    var row = _amLandingRow(m.handoff.site);
+    if (!row || typeof _aeSiteVisit !== 'function' || typeof _asData === 'undefined' || !_asData) {
+      if ((waited += AM_POLL_MS) < AM_SITE_WAIT_MS) setTimeout(go, AM_POLL_MS);
+      return;
+    }
+    var def = _asDefFor('moon', row), at = def && def.ms ? def.ms : zero + landed * 1000;
+    _amStop(true);
+    if (typeof _almClockSetRate === 'function') _almClockSetRate(1);
+    if (typeof _aeGoTo === 'function' && at) _aeGoTo(at);
+    _aeSiteVisit('moon', row, false);
+    _amBackChip(true, id, resume);
+  };
+  go();
+}
+// The way back: one chip, there while the visit is. It resumes the mission at lift-off.
+function _amBackChip(on, id, t) {
+  var old = document.getElementById(AM_BACK_ID);
+  if (old) { clearInterval(old._watch); old.remove(); }
+  if (!on || !_ae || !_ae.el) return;
+  var b = document.createElement('button');
+  b.type = 'button'; b.id = AM_BACK_ID; b.className = 'am-back';
+  b.textContent = _aeT('alm_ms_back');
+  b.onclick = function () { _amBackChip(false); _aeSiteLeave(true); _aeMissionOpen(id, t); };
+  b._watch = setInterval(function () { if (!_ae || !_ae.el || !_ae.site) _amBackChip(false); }, AM_BACK_WATCH_MS);
+  _ae.el.appendChild(b);
+}
 function _amPhaseChanged(m, pi) {
   var hud = _aeById('am-hud');
   if (hud) hud.dataset.phase = String(pi);
   _amPaintPhase(m, pi);
+  if (m.handoff && m.phases[pi].k === m.handoff.phase) _amHandoff(m, pi);
 }
 
 // ── The camera ──
@@ -523,6 +566,7 @@ var AM_ICONS = {
   dot: '<svg viewBox="0 0 24 24" width="12" height="12" fill="currentColor" aria-hidden="true"><circle cx="12" cy="12" r="5"/></svg>'
 };
 var AM_CSS = [
+  '.am-back{position:absolute;left:50%;top:calc(env(safe-area-inset-top,0px) + 64px);transform:translateX(-50%);z-index:60;border:1px solid var(--amber-border);background:rgba(20,20,20,.82);color:var(--amber);border-radius:999px;padding:8px 16px;font:600 13px/1 inherit;cursor:pointer}',
   '.ae-view.ae-mission .ae-top,.ae-view.ae-mission .ae-bottom,.ae-view.ae-mission .ae-labels,.ae-view.ae-mission .ae-lms,.ae-view.ae-mission .ae-mini,.ae-view.ae-mission .ae-info,.ae-view.ae-mission .ae-set{display:none!important}',
   '.am-hud{position:absolute;inset:0;z-index:50;pointer-events:none;display:none;-webkit-user-select:none;user-select:none}',
   '.ae-view.ae-mission .am-hud{display:block}',

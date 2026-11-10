@@ -874,19 +874,21 @@ function _aeGoName(key) {
   return b ? _aeBodyName(b) : key;
 }
 var AE_THEN_DOT = '<svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3l2.4 5.6 6.1.5-4.6 4 1.4 6-5.3-3.2L6.7 19l1.4-6-4.6-4 6.1-.5z"/></svg>';
+// The there-and-then row (almanac-thens.js) at the top of the Go to sheet: a place and a moment to stand in, not a body.
+function _aeGoThenRow() {
+  return '<div class="ae-go-list"><button type="button" class="ae-go-row" id="ae-go-then" data-ae-then>' + AE_THEN_DOT + '<span>' + _almEsc(_aeT('then_title')) + '</span></button></div>';
+}
 function _aeGoRender() {
   var sheet = _aeById('ae-go'), host = _aeById('ae-go-groups');
   if (!sheet || sheet.hidden || !host) return;
-  host.innerHTML = _aeGoGroups().map(function (g) {
+  host.innerHTML = _aeGoThenRow() + _aeGoGroups().map(function (g) {
     return '<h4 data-g="' + g[0] + '">' + _almEsc(_aeT(g[0])) + '</h4><div class="ae-go-list">' + g[1].map(function (k) {
       if (k === AE_GO_LOADING) return '<span class="ae-go-wait" role="status">' + _almEsc(_aeT('loading')) + '</span>';
       return '<button type="button" class="ae-go-row" data-ae-go="' + k + '" aria-current="' + (k === _ae.target) + '">' + _aeGoDot(k) +
         '<span>' + _almEsc(_aeGoName(k)) + '</span></button>';
     }).join('') + '</div>';
   }).join('');
-  // The there-and-then list (almanac-thens.js) at the top of the sheet: a place and a moment to stand in, not a body.
-  host.insertAdjacentHTML('afterbegin', '<div class="ae-go-list"><button type="button" class="ae-go-row" data-ae-then>' + AE_THEN_DOT + '<span>' + _almEsc(_aeT('then_title')) + '</span></button></div>');
-  var then = host.querySelector('[data-ae-then]');
+  var then = _aeById('ae-go-then');
   if (then) then.onclick = function () { _aeShowGo(false); openAlmanacThens(); };
   // Opened at a group whose table was still coming (Landings on a first tap): scrolled there once it is drawn.
   var h = _ae.goGroup ? sheet.querySelector('h4[data-g="' + _ae.goGroup + '"]') : null;
@@ -4427,8 +4429,11 @@ function _aeRefAxesRows() {
   add('ms.a11_pdi', _aeT('tb_kn_ms_pdi'), '102:33:05 · 7,129 ft at 125 ft/s (P64, 102:41:32)', '', MR + ', tables 5-I and 5-III');
   add('ms.a11_land', _aeT('tb_kn_ms_land'), '102:45:39.9 · 0.67408 N 23.473 E', '', MR + ', table 5-I; LROC');
   add('ms.a11_ei', _aeT('tb_kn_ms_ei'), '195:03:05.7 · 3.19 S 171.96 E · 36,194 ft/s · −6.48', 'h:mm:ss · ° · °', MR + ', table 7-VII');
+  add('ms.a11_entry_note', _aeT('tb_kn_ms_entry'), _aeT('tb_kn_ms_entry_v'), '', MR + ', table 7-VII');
+  add('ms.a11_tli_time', _aeT('tb_kn_ms_tli'), _aeT('tb_kn_ms_tli_v'), '', MR + ', table 7-II');
+  add('ms.a11_rendezvous', _aeT('tb_kn_ms_rdv'), _aeT('tb_kn_ms_rdv_v'), '', MR + ', table 3-I');
   add('ms.a11_splash', _aeT('tb_kn_ms_splash'), '195:18:35 · 13.30 N 169.15 W', '', MR + ', table 7-VII');
-  add('ms.a11_fit', _aeT('tb_kn_ms_fit'), '× 1.055 (first stage), × 0.983 (second and third)', '', 'Zimi (scripts/mission_ascent_fit.py)');
+  add('ms.a11_fit', _aeT('tb_kn_ms_fit'), '× 1.055 (first stage), × 0.983 (second and third)', '', 'Zimi (scripts/mission_ascent_fit.py), fitted to the first-stage cut-off of the Saturn V AS-506 flight evaluation (67 km, 2.4 km/s)');
   add('ms.voyager_flybys', _aeT('tb_kn_ms_voyager'), 'Jupiter 348,435 · Saturn 184,030 km (Voyager 1)', 'km', 'NASA/JPL Horizons');
   return rows;
 }
