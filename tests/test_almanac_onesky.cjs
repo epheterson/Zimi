@@ -30,6 +30,11 @@ check(Math.abs(tot.sunSemiDeg - 0.2666) < 0.01 && tot.moonSemiDeg > 0.24 && tot.
 const sep = Math.hypot((tot.sunAz - tot.moonAz) * Math.cos(tot.sunAlt * Math.PI / 180), tot.sunAlt - tot.moonAlt);
 check(sep < 0.15, 'and the Moon is on the Sun (' + sep.toFixed(3) + ' deg)');
 
+// ── Where a view faces, and the clouds a visit asks for ──
+check(run('_osDefaultHeading(40)') === 180 && run('_osDefaultHeading(-33)') === 0 && run('_osDefaultHeading(0)') === 180, 'a view faces south in the north and north in the south, from one function');
+check(run('_osHandoffFrom(_osDef({}), null).clouds') === 'auto' && run('_osHandoffFrom(_osDef({}), null, { clouds: "clear" }).clouds') === 'clear', 'a hand-off asks for the day\'s clouds unless it asks for a clear sky');
+check(run('_osCloudValues(_osDef({ lat: 40, lon: -74, tMs: Date.now() }), 1, "clear").cloud[0]') === 0, 'a clear sky has no cover');
+
 // ── The day's clouds ──
 const field = (lat, lon, t) => run('_osCloudField(_osDef({ lat: ' + lat + ', lon: ' + lon + ', tMs: ' + t + ' }))');
 const a = field(40.71, -74, Date.parse('2026-09-11T14:00:00Z')), b = field(40.71, -74, Date.parse('2026-09-11T20:00:00Z'));

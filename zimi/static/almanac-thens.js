@@ -119,7 +119,7 @@ function _atGo(m, how) {
   if (typeof _almClockSetRate === 'function') _almClockSetRate(0);
   if ((how === 'stand' || _atBody(m) !== 'earth') && typeof _aeStandAt === 'function') {
     _alHideSheet();
-    Promise.resolve(_aeStandAt(_atBody(m), m.place.lat, m.place.lon)).then(function (ok) { if (ok !== false) { if (_atBody(m) === 'earth') _alStandRegister(); _atFace(m.look); } });
+    Promise.resolve(_aeStandAt(_atBody(m), m.place.lat, m.place.lon)).then(function (ok) { if (ok !== false) { if (_atBody(m) === 'earth') { _alStandRegister(); if (typeof _osStandClouds === 'function') _osStandClouds('clear'); } _atFace(m.look); } });
     return;
   }
   if (typeof _almLinkPlace !== 'undefined') _almLinkPlace = { lat: m.place.lat, lon: m.place.lon };

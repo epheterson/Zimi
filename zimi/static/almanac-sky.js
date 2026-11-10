@@ -2567,7 +2567,7 @@ var _skyViewReq = null, _skyAspectReq = null;
 function _skyApplyView(s) {
   if (s.hosted) return;   // the look-around view keeps its own lens
   var r = _skyViewReq;
-  s.lens = null; s.span = SKY_SPAN_DEG; s.center = s.lat >= 0 ? 180 : 0;
+  s.lens = null; s.span = SKY_SPAN_DEG; s.center = _osDefaultHeading(s.lat);
   if (!r) return;
   if (_sgReady()) s.lens = _skyMakeLens({ az: r.az, alt: r.alt, fov: _skyClamp(r.fov, SKY_LENS_FOV[0], SKY_LENS_FOV[1]) }, s.W);
   else { s.center = r.az; s.span = _skyClamp(r.fov, SKY_PANO_SPAN[0], SKY_PANO_SPAN[1]); }
@@ -2705,9 +2705,9 @@ var AlmanacSkyView = {
     canvas.setAttribute('role', 'img');
     canvas.style.cssText = 'display:block;width:100%;height:100%;touch-action:none';
     host.appendChild(canvas);
-    var s = { hosted: true, lat: place.lat, lon: place.lon, center: place.lat >= 0 ? 180 : 0, span: SKY_SPAN_DEG, lens: null, stored: true, known: true,
+    var s = { hosted: true, lat: place.lat, lon: place.lon, center: _osDefaultHeading(place.lat), span: SKY_SPAN_DEG, lens: null, stored: true, known: true,
       moonAnim: null, twinkle: 0, bodies: [], baseBodies: [], actors: [], sea: null, aurora: null, base: null, baseDirty: true };
-    _skyHost = { host: host, canvas: canvas, s: s, look: { az: place.lat >= 0 ? 180 : 0, alt: 30, fov: 90 } };
+    _skyHost = { host: host, canvas: canvas, s: s, look: { az: _osDefaultHeading(place.lat), alt: 30, fov: 90 } };
     _skyHostSize(_skyHost);
     _skyWatchNight();
     document.addEventListener('zimisky:red', _skyHostRedraw);
@@ -3060,7 +3060,7 @@ function _initSkyScene(now, lat, lon, animateMoon) {
   var loc = _getLocation();
   var s = {
     canvas: canvas, dpr: dpr, W: canvas.width, H: canvas.height, cssW: w, scale: _skyClamp(w / 600, 0.85, 1.15),
-    lat: lat, lon: lon, center: lat >= 0 ? 180 : 0,
+    lat: lat, lon: lon, center: _osDefaultHeading(lat),
     stored: loc.stored && loc.lat === lat && loc.lon === lon, name: loc.name || '',
     known: loc.known && loc.lat === lat && loc.lon === lon,
     moonAnim: null, twinkle: 0, bodies: [], baseBodies: [],

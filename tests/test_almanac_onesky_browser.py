@@ -222,6 +222,9 @@ def stand(browser, served, times):
             "() => { const st = _ae.stand; _ae.gl.renderer.render(st.scene, st.camera); return _ae.gl.renderer.domElement.toDataURL('image/png'); }"
         )
         out[sa] = _medians(base64.b64decode(data.split(",")[1]), pts)
+        out[("amb", sa)] = pg.evaluate(
+            "() => _aeStandAir.ambient(_ae.stand, _ae.stand.fr)"
+        )
     out["air_on"] = pg.air_on
     out["warnings"] = pg.warnings
     ctx.close()
@@ -312,3 +315,18 @@ def test_one_tap_from_the_card_stands_at_its_place_instant_and_facing_and_back_r
     assert abs(pg.evaluate("() => Math.round(window.pageYOffset)") - y) <= 2
     assert not errors, errors
     ctx.close()
+
+
+def test_the_air_gives_the_ground_its_light_at_every_sun_height(stand):
+    """provider.ambient: three radiances (the ground's light from above, the horizon, the zenith) in the view's units, finite at every
+    Sun height; a hundred times brighter by day than at night, and the zenith bluer than the horizon by day."""
+    import math
+
+    for sa in SUN_ALTS:
+        a = stand[("amb", sa)]
+        assert a and set(a) == {"amb", "horizon", "zenith"}, (sa, a)
+        assert all(math.isfinite(x) and x >= 0 for k in a for x in a[k]), (sa, a)
+    lum = lambda rgb: 0.2126 * rgb[0] + 0.7152 * rgb[1] + 0.0722 * rgb[2]
+    assert lum(stand[("amb", 35)]["amb"]) > 100 * lum(stand[("amb", -18)]["amb"])
+    day = stand[("amb", 35)]
+    assert day["zenith"][2] / day["zenith"][0] > day["horizon"][2] / day["horizon"][0]
