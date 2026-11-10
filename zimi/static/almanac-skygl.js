@@ -237,6 +237,15 @@ var SG_TRANS_W = 256, SG_TRANS_H = 64, SG_MS_N = 32, SG_VIEW_W = 256, SG_VIEW_H 
 // The airmass at an altitude in degrees (Kasten and Young): the one formula, from the page's own constants.
 var SG_GLSL_AIRMASS = 'float airmassDeg(float h) { h = max(h, 0.0); return 1.0 / (sin(radians(h)) + ' + SKY_AIRMASS_A + ' * pow(h + ' + SKY_AIRMASS_B + ', -' + SKY_AIRMASS_C + ')); }';
 var SG_LUT_LOG_SCALE = '32.0', SG_LUT_OD_SCALE = '64.0';   // the tables hold the logarithm of the light and the optical depth, scaled to sit where a half float has digits
+// The tables' addressing, the airmass and the log-coded light: the pieces of the air's GLSL that the card's shaders and Stand here's
+// Earth sky (almanac-oneair.js) both stand on.
+var SG_GLSL_LUT_UTIL = [
+  'vec2 unitToTex(vec2 u, vec2 size) { return (u * (size - 1.0) + 0.5) / size; }',
+  SG_GLSL_AIRMASS,
+  // A table's value back to light: a half float cannot hold a twilight's 1e-8, its logarithm it can.
+  'vec3 lutLight(vec3 t) { return exp(t * ' + SG_LUT_LOG_SCALE + '); }',
+  'vec3 lutOut(vec3 L) { return log(max(L, vec3(1e-14))) / ' + SG_LUT_LOG_SCALE + '; }'
+].join('\n');
 var SG_GLSL_HEAD = [
   '#version 300 es', 'precision highp float;', 'precision highp sampler2D;',
   'const float PI = 3.14159265359;',
@@ -258,11 +267,7 @@ var SG_GLSL_HEAD = [
   '  if (D < 0.0 || b >= 0.0) return -1.0;',
   '  return c / (-b + sqrt(D));',
   '}',
-  'vec2 unitToTex(vec2 u, vec2 size) { return (u * (size - 1.0) + 0.5) / size; }',
-  SG_GLSL_AIRMASS,
-  // A table's value back to light: a half float cannot hold a twilight's 1e-8, its logarithm it can.
-  'vec3 lutLight(vec3 t) { return exp(t * ' + SG_LUT_LOG_SCALE + '); }',
-  'vec3 lutOut(vec3 L) { return log(max(L, vec3(1e-14))) / ' + SG_LUT_LOG_SCALE + '; }'
+  SG_GLSL_LUT_UTIL
 ].join('\n');
 
 var SG_GLSL_TRANS_LOOKUP = [
@@ -398,17 +403,17 @@ var SG_GLSL_VIEW = [
   '}'
 ].join('\n');
 
-var SG_FS_SKY = SG_GLSL_HEAD + '\n' + SG_GLSL_VIEW + '\n' + [
-  'uniform sampler2D uSkyS, uSkyM, uMilky;',
-  'uniform float uSunAz, uSunLux, uMoonAz, uMoonLux, uExposure;',
+// The light of the sky in a direction, in cd/m2, as the two lights' tables, the zodiacal light, the airglow and the place's own glow
+// make it (everything but the Milky Way): one function for the card's shader and for Stand here's Earth, so they cannot differ.
+// Needs SG_GLSL_LUT_UTIL and PI; the uniforms are set by _sgDraw here and by almanac-oneair.js there.
+var SG_GLSL_RADIANCE = [
+  'uniform sampler2D uSkyS, uSkyM;',
+  'uniform float uSunAz, uSunLux, uMoonAz, uMoonLux;',
   'uniform vec3 uGlow;',                     // the place's own light, cd/m2
-  'uniform mat3 uGal;',                      // (east, north, up) to galactic
   'uniform vec3 uEclPole, uSunVec;',         // the ecliptic's pole and the Sun, in (east, north, up)
-  'uniform float uMwScale, uMwOn, uZodiScale, uAirglow, uSeed;',
+  'uniform float uZodiScale, uAirglow;',
   'uniform float uZodi[16];',                // S10 table: elongation (rad) and brightness, 8 rows
-  'out vec4 outColor;',
   'float wrapPi(float a) { return a - 2.0 * PI * floor((a + PI) / (2.0 * PI)); }',
-  'float hash(vec2 p) { p = fract(p * vec2(443.897, 441.423)); p += dot(p, p.yx + 19.19); return fract((p.x + p.y) * p.x); }',
   // The light of the sky at a height, by its bearing from the Sun and from the Moon.
   'vec3 lightRel(float phiS, float phiM, float alt) {',
   '  float v = sqrt(clamp(alt, 0.0, PI * 0.5) / (PI * 0.5));',
@@ -430,11 +435,35 @@ var SG_FS_SKY = SG_GLSL_HEAD + '\n' + SG_GLSL_VIEW + '\n' + [
   '  }',
   '  return 0.0;',
   '}',
-  'vec3 finish(vec3 L, vec2 px) {',
+  // The air's extinction of what is behind it (the Milky Way, the zodiacal light), by the height of the direction.
+  'float skyExt(float alt) { return exp(-' + SG_MW_EXTINCTION + ' * (airmassDeg(degrees(alt)) - 1.0)) * smoothstep(0.0, 0.02, alt); }',
+  'vec3 skyAbove(vec3 d, float alt, float az) {',
+  '  float ext = skyExt(alt);',
+  '  vec3 L = skyLight(az, alt);',
+  '  float elong = acos(clamp(dot(d, uSunVec), -1.0, 1.0)), beta = asin(clamp(dot(d, uEclPole), -1.0, 1.0));',
+  '  float w = mix(radians(' + SG_ZODI_WIDTH[0] + '.0), radians(' + SG_ZODI_WIDTH[1] + '.0), min(1.0, elong / (PI * 0.5)));',
+  '  L += vec3(1.0, 0.93, 0.8) * zodiS10(clamp(elong, radians(15.0), PI)) * ' + SG_S10_LUM.toExponential(2) + ' * exp(-0.5 * pow(beta / w, 2.0)) * uZodiScale * ext;',
+  '  L += vec3(0.55, 1.0, 0.7) * uAirglow * (1.0 / sqrt(1.0 - pow(' + (SG_EARTH_R / (SG_EARTH_R + SG_AIRGLOW_H)).toFixed(5) + ' * cos(alt), 2.0))) * exp(-' + SG_AIRGLOW_EXTINCTION + ' * (airmassDeg(degrees(alt)) - 1.0));',
+  '  L += uGlow * (1.0 + 2.0 * exp(-degrees(alt) / 14.0));',
+  '  return L;',
+  '}',
+  // The eye in the dark: its blue shift, applied to the light before the exposure.
+  'vec3 skyScotopic(vec3 L) {',
   '  float Y = dot(L, vec3(0.2126, 0.7152, 0.0722));',
-  '  float scoto = 1.0 - smoothstep(0.003, 0.3, Y);',                        // the eye's blue shift in the dark
-  '  L = mix(L, vec3(Y) * vec3(0.62, 0.82, 1.25), 0.5 * scoto);',
-  '  vec3 c = 1.0 - exp(-L * uExposure);',
+  '  float scoto = 1.0 - smoothstep(0.003, 0.3, Y);',
+  '  return mix(L, vec3(Y) * vec3(0.62, 0.82, 1.25), 0.5 * scoto);',
+  '}'
+].join('\n');
+
+var SG_FS_SKY = SG_GLSL_HEAD + '\n' + SG_GLSL_VIEW + '\n' + SG_GLSL_RADIANCE + '\n' + [
+  'uniform sampler2D uMilky;',
+  'uniform float uExposure;',
+  'uniform mat3 uGal;',                      // (east, north, up) to galactic
+  'uniform float uMwScale, uMwOn, uSeed;',
+  'out vec4 outColor;',
+  'float hash(vec2 p) { p = fract(p * vec2(443.897, 441.423)); p += dot(p, p.yx + 19.19); return fract((p.x + p.y) * p.x); }',
+  'vec3 finish(vec3 L, vec2 px) {',
+  '  vec3 c = 1.0 - exp(-skyScotopic(L) * uExposure);',
   '  c = pow(c, vec3(1.0 / 2.2));',
   '  c += (hash(px + uSeed) - 0.5) / 255.0;',
   '  return clamp(c, 0.0, 1.0);',
@@ -445,18 +474,12 @@ var SG_FS_SKY = SG_GLSL_HEAD + '\n' + SG_GLSL_VIEW + '\n' + [
   '  float alt = asin(clamp(d.z, -1.0, 1.0)), az = atan(d.x, d.y);',
   '  vec3 L;',
   '  if (alt >= 0.0) {',
-  '    L = skyLight(az, alt);',
-  '    float ext = exp(-' + SG_MW_EXTINCTION + ' * (airmassDeg(degrees(alt)) - 1.0)) * smoothstep(0.0, 0.02, alt);',
+  '    L = skyAbove(d, alt, az);',
   '    vec3 g = uGal * d;',
   '    vec2 tc = vec2(0.5 - atan(g.y, g.x) / (2.0 * PI), 0.5 - asin(clamp(g.z, -1.0, 1.0)) / PI);',
   '    vec3 mw = pow(texture(uMilky, tc).rgb, vec3(' + SG_MW_GAMMA + '));',
   '    float grain = 0.75 + 0.5 * hash(floor(px * 0.5) + 7.0);',            // the stars too faint to be catalogued
-  '    L += uMwOn * mw * (uMwScale * ext * mix(1.0, grain, clamp(dot(mw, vec3(1.0)) * 4.0, 0.0, 1.0)));',
-  '    float elong = acos(clamp(dot(d, uSunVec), -1.0, 1.0)), beta = asin(clamp(dot(d, uEclPole), -1.0, 1.0));',
-  '    float w = mix(radians(' + SG_ZODI_WIDTH[0] + '.0), radians(' + SG_ZODI_WIDTH[1] + '.0), min(1.0, elong / (PI * 0.5)));',
-  '    L += vec3(1.0, 0.93, 0.8) * zodiS10(clamp(elong, radians(15.0), PI)) * ' + SG_S10_LUM.toExponential(2) + ' * exp(-0.5 * pow(beta / w, 2.0)) * uZodiScale * ext;',
-  '    L += vec3(0.55, 1.0, 0.7) * uAirglow * (1.0 / sqrt(1.0 - pow(' + (SG_EARTH_R / (SG_EARTH_R + SG_AIRGLOW_H)).toFixed(5) + ' * cos(alt), 2.0))) * exp(-' + SG_AIRGLOW_EXTINCTION + ' * (airmassDeg(degrees(alt)) - 1.0));',
-  '    L += uGlow * (1.0 + 2.0 * exp(-degrees(alt) / 14.0));',
+  '    L += uMwOn * mw * (uMwScale * skyExt(alt) * mix(1.0, grain, clamp(dot(mw, vec3(1.0)) * 4.0, 0.0, 1.0)));',
   '  } else {',
   // The ground: what falls on it (the sky's light from above, the Sun's if it is up, the place's own glow) times what it gives back,
   // with a little of the horizon's local light at the horizon; darker the further down. Nothing in it depends on the bearing at the nadir.
@@ -833,6 +856,24 @@ function _sgBakeLight(sg, which, altDeg) {
   gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
 }
 
+// What an instant's light comes to in the shaders' own numbers: the Sun's and the Moon's illuminance (lux), the exposure the eye is set
+// to, the place's glow (cd/m2). p is _skyLightParams (almanac-sky.js). The card's sky and Stand here's Earth both read this.
+function _sgLightValues(p) {
+  var moonShare = p.moonShare == null ? 1 : p.moonShare, glow = _sgSkyglow(p.dial);
+  return {
+    sunLux: p.sunAltGeo > -26 ? SG_SUN_LUX * (p.sunShare == null ? 1 : p.sunShare) : 0,
+    moonLux: p.moonAlt > -12 && p.moonIllum > 0.5 ? _sgMoonLux(p.moonIllum, p.moonDist) * SG_MOON_GAIN * moonShare : 0,
+    // The eye has not time to adapt to an eclipse's dimming: it keeps most of the daylight's exposure (the square root of the share).
+    exposure: _sgExposure(p.sunAltGeo, p.moonAlt, p.moonIllum, p.dial, p.sunShare == null ? 1 : Math.sqrt(p.sunShare), Math.sqrt(moonShare)),
+    glow: [glow * 1.0, glow * 0.82, glow * 0.6]
+  };
+}
+// The zodiacal light's table as the shader reads it: elongation (rad) and S10 brightness, the far rows first.
+function _sgZodiTable() {
+  var zt = [];
+  for (var i = SG_ZODI_S10.length - 1; i >= 0; i--) zt.push(SG_ZODI_S10[i][0] * DEG_TO_RAD, SG_ZODI_S10[i][1]);
+  return zt;
+}
 // One frame. p: { W, H, dpr, view, sunAltGeo, sunAz, moonAlt, moonAz, moonIllum,
 // moonDist, horizon (the 9 numbers of _sgHorizonMatrix), eclPole, sunVec,
 // dial, seed, scint, lm, sunShare, moonShare, moonDisc: {x, y, r} in device px
@@ -845,9 +886,7 @@ function _sgDraw(p) {
   gl.bindVertexArray(sg.vao);
   gl.disable(gl.BLEND);
   // The two lights' sky-views (skipped when the light is far below the horizon).
-  var moonShare = p.moonShare == null ? 1 : p.moonShare;
-  var sunLux = p.sunAltGeo > -26 ? SG_SUN_LUX * (p.sunShare == null ? 1 : p.sunShare) : 0;
-  var moonLux = p.moonAlt > -12 && p.moonIllum > 0.5 ? _sgMoonLux(p.moonIllum, p.moonDist) * SG_MOON_GAIN * moonShare : 0;
+  var lv = _sgLightValues(p), sunLux = lv.sunLux, moonLux = lv.moonLux;
   if (sunLux) _sgBakeLight(sg, 'sun', p.sunAltGeo);
   if (moonLux) _sgBakeLight(sg, 'moon', p.moonAlt);
   // The sky itself.
@@ -859,17 +898,13 @@ function _sgDraw(p) {
   _sgViewUniforms(gl, sg.pSky, p);
   gl.uniform1f(u.uSunAz, p.sunAz * DEG_TO_RAD); gl.uniform1f(u.uSunLux, sunLux);
   gl.uniform1f(u.uMoonAz, p.moonAz * DEG_TO_RAD); gl.uniform1f(u.uMoonLux, moonLux);
-  // The eye has not time to adapt to an eclipse's dimming: it keeps most of the daylight's exposure (the square root of the share).
-  gl.uniform1f(u.uExposure, _sgExposure(p.sunAltGeo, p.moonAlt, p.moonIllum, p.dial, p.sunShare == null ? 1 : Math.sqrt(p.sunShare), Math.sqrt(moonShare)));
-  var glow = _sgSkyglow(p.dial);
-  gl.uniform3f(u.uGlow, glow * 1.0, glow * 0.82, glow * 0.6);
+  gl.uniform1f(u.uExposure, lv.exposure);
+  gl.uniform3fv(u.uGlow, lv.glow);
   gl.uniformMatrix3fv(u.uGal, true, _sgMul3(SG_EQ_TO_GAL, _sgTranspose(p.horizon)));
   gl.uniform3fv(u.uEclPole, p.eclPole); gl.uniform3fv(u.uSunVec, p.sunVec);
   gl.uniform1f(u.uMwScale, SG_MW_LUM); gl.uniform1f(u.uMwOn, sg.mwReady ? 1 : 0);
   gl.uniform1f(u.uZodiScale, 1); gl.uniform1f(u.uAirglow, SG_AIRGLOW_LUM); gl.uniform1f(u.uSeed, p.seed || 0);
-  var zt = [];
-  for (var i = SG_ZODI_S10.length - 1; i >= 0; i--) zt.push(SG_ZODI_S10[i][0] * DEG_TO_RAD, SG_ZODI_S10[i][1]);
-  gl.uniform1fv(u['uZodi'], zt);
+  gl.uniform1fv(u['uZodi'], _sgZodiTable());
   gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
   // The stars over it, added as light (but not through the Moon's disc: it is in front of them).
   if (sg.starCount) {

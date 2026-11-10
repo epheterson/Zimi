@@ -89,11 +89,11 @@ function _alSelect(i) {
   _alStandRegister();
   _alKick();
 }
-// The ground view's sky (almanac-stand.js _aeStandSkySource) is given the selected launch's rocket, plume and batch, for as
+// The ground view's sky (almanac-onesky.js _osSkySource) is given the selected launch's rocket, plume and batch, for as
 // long as the launch is selected.
 function _alStandRegister() {
-  if (_al.standOff || typeof _aeStandSkySource !== 'function') return;
-  _al.standOff = _aeStandSkySource(function (body, lat, lon, ms) {
+  if (_al.standOff || typeof _osSkySource !== 'function') return;
+  _al.standOff = _osSkySource(function (body, lat, lon, ms) {
     return body === 'earth' && _al.flight && _al.cur ? _lfStandObjects(_al.flight, _al.cur, _al.depSource === AL_SRC.recon ? _al.dep : null, ms, lat, lon) : [];
   });
 }

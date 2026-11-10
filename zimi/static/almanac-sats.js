@@ -834,7 +834,7 @@ function _asSkyAsk(lat, lon, tMs) {
 function _asSkyNow(lat, lon, tMs) { return _asSkyAsk(lat, lon, tMs).then(function (a) { return _asSkyAt(a, tMs); }); }
 // ── The same sky in Stand here ──
 // While the layer is on, the satellites over the stand place are drawn in the ground view's sky (almanac-stand.js
-// _aeStandSkySource): the station and what a dark sky shows, with a short trail each, and Starlinks of one launch that are
+// _osSkySource): the station and what a dark sky shows, with a short trail each, and Starlinks of one launch that are
 // over together as a train. A tap names them.
 var AS_TRAIN_SKY_MIN = 3, AS_TRAIN_SKY_DEG = 25;
 var AS_SKY_TAIL = { steps: 3, stepS: 1.5, fade: 1.6 };            // a satellite's tail: three steps of a second and a half (4.5 s), each dimmer by this many magnitudes
@@ -868,10 +868,10 @@ function _asStandSkyObjects(answer, tMs) {
 }
 var _asStandSkyOff = function () {};
 function _asStandSkySync() {
-  var want = _as.on && _as.state === 'ready' && typeof _aeStandSkySource === 'function';
+  var want = _as.on && _as.state === 'ready' && typeof _osSkySource === 'function';
   if (want && _asStandSkyOff.registered !== _as.data) {
     _asStandSkyOff();
-    var off = _aeStandSkySource({ ask: _asSkyAsk, at: _asStandSkyObjects });
+    var off = _osSkySource({ ask: _asSkyAsk, at: _asStandSkyObjects });
     _asStandSkyOff = function () { off(); _asStandSkyOff = function () {}; };
     _asStandSkyOff.registered = _as.data;
   } else if (!want) _asStandSkyOff();
