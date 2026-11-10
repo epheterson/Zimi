@@ -303,11 +303,19 @@ def status():
 def _ultra(mode):
     """The Ultra parts, each a choice of its own: ``{"part", "size", "installed", "file", "downloading"}`` (the bytes
     done and the size, while it comes). Offered while the core is there and the setting lets Zimi fetch; one that is
-    installed is listed always, so it can be removed."""
+    installed is listed always, so it can be removed, whether the release pin knows it or someone copied it in."""
     have, core = parts_present(), installed()
     dls = _downloading_all()
     out = []
-    for x in _known_parts(release()):
+    known = _known_parts(release())
+    for part in PARTS:  # a part copied in by hand has no pinned size: the file's own
+        if part in have and part not in {k["part"] for k in known}:
+            path = _installed_path(part_name(part))
+            try:
+                known.append({"part": part, "size": os.path.getsize(path), "file": os.path.basename(path)})
+            except OSError:
+                continue
+    for x in sorted(known, key=lambda k: PARTS.index(k["part"])):
         part, mine = x["part"], part_name(x["part"])
         got = part in have
         if not got and not (core and mode != outbound.NEVER):

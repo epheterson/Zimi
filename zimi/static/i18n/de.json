@@ -2278,7 +2278,7 @@
   "alm_earth_sat_ask_hint": "Nichts wird abgerufen, bis jemand darum bittet",
   "alm_earth_sat_auto": "Automatisch",
   "alm_earth_sat_auto_hint": "Genaue Daten von {src}",
-  "alm_earth_sat_never": "Ungefähr, mit Offline-Daten",
+  "alm_earth_sat_never": "Nie",
   "alm_earth_sat_never_hint": "Positionen aus den Daten, die dieses Zimi schon hat, ungenauer mit der Zeit",
   "alm_earth_sat_admin_only": "Nur ein Admin kann das ändern",
   "alm_earth_sat_offline": "Zimi ist offline (ZIMI_OFFLINE) und ruft daher nie etwas ab",
@@ -4022,5 +4022,7 @@
   "alm_ms_ev_tmi_burn": "Zündung zur Marsinjektion",
   "alm_ms_ev_sc_sep": "Trennung des Raumfahrzeugs",
   "tb_kn_ms_m20_launch": "Perseverance: Start und Reiseflug",
-  "tb_kn_ms_m20_launch_v": "Der Aufstieg der Atlas V 541 folgt den veröffentlichten Ereignissen des Starts; Höhe und Geschwindigkeit dazwischen, Startazimut, Parkbahn und die Form des Injektionsbrandes sind angenommen. Ab 12:52 UT stammt das Raumfahrzeug aus JPL Horizons (-168), erdzentriert, dann sonnenzentriert für die 203 Tage bis Mars"
+  "tb_kn_ms_m20_launch_v": "Der Aufstieg der Atlas V 541 folgt den veröffentlichten Ereignissen des Starts; Höhe und Geschwindigkeit dazwischen, Startazimut, Parkbahn und die Form des Injektionsbrandes sind angenommen. Ab 12:52 UT stammt das Raumfahrzeug aus JPL Horizons (-168), erdzentriert, dann sonnenzentriert für die 203 Tage bis Mars",
+  "alm_craft_loading": "Raumsonde wird geladen",
+  "alm_craft_failed": "Kein Modell hier: als Punkt gezeigt"
 }
