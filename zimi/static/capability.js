@@ -263,6 +263,15 @@ var ZimiCap = window.ZimiCap || (function () {
       paint(inventory);
     }).catch(function () {});
   }
+  // The plain line where the 3D view would be: why in a few words, and the one tap (Full) right there. Everything 2D on the
+  // Almanac's page keeps working behind it; the view's arrow takes the person back to it.
+  function staticLine(box) {
+    var s = probe(), why = !s.webgl2 ? 'cap_why_nogl' : s.soft ? 'cap_why_soft' : 'cap_why_low';
+    box.innerHTML = '<p class="ae-msg-line">' + esc(T('cap_static')) + ' ' + esc(T(why)) + '</p>' +
+      '<button type="button" class="ae-fresh ae-msg-try" title="' + esc(T('cap_hint_full')) + '">' + esc(T('cap_try')) + '</button>';
+    var b = box.querySelector('.ae-msg-try');
+    if (b) b.onclick = function () { choose('full'); };
+  }
   function choose(v) {
     if (SETTINGS.indexOf(v) < 0) return;
     store('local', SETTING_KEY, v);
@@ -286,6 +295,7 @@ var ZimiCap = window.ZimiCap || (function () {
     on: function (fn) { listeners.push(fn); },
     gearHtml: gearHtml,
     gearBind: gearBind,
+    staticLine: staticLine,
     // Whether a map of this size may be asked for at this level (and the device's own limit).
     textureOk: function (px) { return px <= row().textureMax && (!sig || !sig.maxTex || px <= sig.maxTex); },
     // The signals behind the level, for the reference and for tests.

@@ -797,6 +797,9 @@ var AE_CSS = [
   '[dir="rtl"] .ae-card-x{right:auto;left:4px}',
   '.ae-msg{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;text-align:center;padding:24px;color:var(--text2);font-size:14px;pointer-events:none}',
   '.ae-msg[hidden]{display:none}',
+  '.ae-msg{flex-direction:column;gap:14px}',
+  '.ae-msg-line{margin:0;max-width:30em}',
+  '.ae-msg-try{pointer-events:auto;font-size:13px;padding:9px 16px;min-height:36px}',
   '.ae-view.ae-blank .ae-bottom,.ae-view.ae-blank .ae-status{display:none}',
   '.ae-hint{position:absolute;left:50%;bottom:calc(100% - 18px);transform:translateX(-50%);box-sizing:border-box;width:max-content;max-width:calc(100% - 32px);padding:8px 14px;border-radius:16px;background:rgba(0,0,0,.86);color:var(--text2);font-size:12px;line-height:1.4;text-align:center;pointer-events:none;opacity:0;transition:opacity .6s}',
   '.ae-hint.ae-show{opacity:1}',
@@ -8111,6 +8114,7 @@ function _aeMessage(text) {
   if (!m) return;
   m.textContent = text || '';
   m.hidden = !text;
+  if (text && _ae && _ae.capStatic && typeof ZimiCap !== 'undefined') ZimiCap.staticLine(m);   // the reason and the one tap (Full), in place of the bare line
   if (_ae && _ae.el) _ae.el.classList.toggle('ae-blank', !!text);
 }
 

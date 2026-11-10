@@ -4072,7 +4072,7 @@
   "cap_o_satellites": "卫星轨道",
   "cap_o_almanac_hd": "高清瓦片",
   "cap_o_streetzim": "地图",
-  "cap_static": "此设备已关闭 3D 视图。在齿轮中选择“完整”即可尝试。",
+  "cap_static": "此设备已关闭 3D 视图。",
   "tb_kn_cap_dpr": "3D 视图像素比（轻量 · 标准 · 完整）",
   "tb_kn_cap_stand_dpr": "“站在这里”像素比",
   "tb_kn_cap_sats": "最多绘制的卫星数",
@@ -4083,5 +4083,9 @@
   "tb_kn_cap_slow": "达到此耗时的帧计入降级",
   "tb_kn_cap_steps": "调节器步进（像素系数，每步连续三个慢帧）",
   "tb_k_capability": "性能等级",
-  "tb_k_capability_sub": "轻量、标准、完整"
+  "tb_k_capability_sub": "轻量、标准、完整",
+  "cap_why_soft": "它用软件绘制图形。",
+  "cap_why_nogl": "此处没有 WebGL。",
+  "cap_why_low": "内存或速度不足。",
+  "cap_try": "仍然尝试"
 }

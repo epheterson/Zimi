@@ -4072,7 +4072,7 @@
   "cap_o_satellites": "Órbitas de satélites",
   "cap_o_almanac_hd": "Teselas HD",
   "cap_o_streetzim": "Mapas",
-  "cap_static": "La vista 3D está desactivada en este dispositivo. Elige Completo en el engranaje para probarla.",
+  "cap_static": "La vista 3D está desactivada en este dispositivo.",
   "tb_kn_cap_dpr": "Relación de píxeles, vista 3D (ligero · estándar · completo)",
   "tb_kn_cap_stand_dpr": "Relación de píxeles, Estar aquí",
   "tb_kn_cap_sats": "Máximo de satélites dibujados",
@@ -4083,5 +4083,9 @@
   "tb_kn_cap_slow": "Un fotograma así de lento cuenta para bajar un paso",
   "tb_kn_cap_steps": "Pasos del regulador (factor de píxeles, tres fotogramas lentos seguidos cada uno)",
   "tb_k_capability": "Niveles de capacidad",
-  "tb_k_capability_sub": "Ligero, estándar, completo"
+  "tb_k_capability_sub": "Ligero, estándar, completo",
+  "cap_why_soft": "Dibuja por software.",
+  "cap_why_nogl": "Aquí no hay WebGL.",
+  "cap_why_low": "Memoria o velocidad insuficientes.",
+  "cap_try": "Probar igualmente"
 }

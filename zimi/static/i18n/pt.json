@@ -4072,7 +4072,7 @@
   "cap_o_satellites": "Órbitas de satélites",
   "cap_o_almanac_hd": "Blocos HD",
   "cap_o_streetzim": "Mapas",
-  "cap_static": "A vista 3D está desligada neste dispositivo. Escolha Completo na engrenagem para tentar.",
+  "cap_static": "A vista 3D está desligada neste dispositivo.",
   "tb_kn_cap_dpr": "Proporção de pixels, vista 3D (leve · padrão · completo)",
   "tb_kn_cap_stand_dpr": "Proporção de pixels, Ficar aqui",
   "tb_kn_cap_sats": "Máximo de satélites desenhados",
@@ -4083,5 +4083,9 @@
   "tb_kn_cap_slow": "Um quadro tão lento conta para descer um passo",
   "tb_kn_cap_steps": "Passos do regulador (fator de pixels, três quadros lentos seguidos cada)",
   "tb_k_capability": "Níveis de capacidade",
-  "tb_k_capability_sub": "Leve, padrão, completo"
+  "tb_k_capability_sub": "Leve, padrão, completo",
+  "cap_why_soft": "Ele desenha por software.",
+  "cap_why_nogl": "Sem WebGL aqui.",
+  "cap_why_low": "Memória ou velocidade baixas.",
+  "cap_try": "Tentar mesmo assim"
 }

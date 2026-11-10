@@ -4072,7 +4072,7 @@
   "cap_o_satellites": "Orbites des satellites",
   "cap_o_almanac_hd": "Tuiles HD",
   "cap_o_streetzim": "Cartes",
-  "cap_static": "La vue 3D est désactivée sur cet appareil. Choisissez Complet dans la roue pour l'essayer.",
+  "cap_static": "La vue 3D est désactivée sur cet appareil.",
   "tb_kn_cap_dpr": "Rapport de pixels, vue 3D (léger · standard · complet)",
   "tb_kn_cap_stand_dpr": "Rapport de pixels, Se tenir ici",
   "tb_kn_cap_sats": "Satellites dessinés au plus",
@@ -4083,5 +4083,9 @@
   "tb_kn_cap_slow": "Une image aussi lente compte pour un cran de moins",
   "tb_kn_cap_steps": "Paliers du régulateur (facteur de pixels, trois images lentes de suite chacun)",
   "tb_k_capability": "Niveaux de capacité",
-  "tb_k_capability_sub": "Léger, standard, complet"
+  "tb_k_capability_sub": "Léger, standard, complet",
+  "cap_why_soft": "Il dessine en logiciel.",
+  "cap_why_nogl": "Pas de WebGL ici.",
+  "cap_why_low": "Mémoire ou vitesse insuffisantes.",
+  "cap_try": "Essayer quand même"
 }
