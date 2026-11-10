@@ -99,6 +99,7 @@ from libzim.suggestion import SuggestionSearcher
 
 from zimi.libzimcompat import entry_by_id, result_paths
 from zimi import changes as _changes
+from zimi import zimparts
 from zimi.safety import loggable
 
 # PyMuPDF, for reading PDFs embedded in ZIM files.
@@ -771,7 +772,7 @@ def _dir_holding_zims(candidate):
     A hit is `*.zim` directly in the candidate, else in a `zims/` child —
     the two shapes a hand-assembled folder of ZIMs actually has."""
     for d in (candidate, os.path.join(candidate, DISCOVERY_ZIMS_SUBDIR)):
-        if glob.glob(os.path.join(d, "*.zim")):
+        if zimparts.in_folder(d):
             return d
     return None
 
@@ -3066,13 +3067,13 @@ def _zim_short_name(filename):
     language's build (gutenberg_ale beside gutenberg_en). A file the library
     does not hold gets its base name, so for anything not installed this is
     _zim_base_name."""
-    filename = os.path.basename(filename)
+    filename = zimparts.book_filename(filename)
     name = _zim_base_name(filename)
     files = _zim_files_cache
     held = files.get(name) if files else None
-    if held and os.path.basename(held) != filename:
+    if held and zimparts.book_filename(held) != filename:
         lang_name = _zim_lang_name(filename)
-        if os.path.basename(files.get(lang_name) or "") == filename:
+        if zimparts.book_filename(files.get(lang_name) or "") == filename:
             return lang_name
     return name
 
@@ -3128,7 +3129,7 @@ def _zim_pick(cands):
     top = min(tier for tier, _path in cands)
     return max(
         (path for tier, path in cands if tier == top),
-        key=lambda path: _zim_build_rank(os.path.basename(path)),
+        key=lambda path: _zim_build_rank(zimparts.book_filename(path)),
     )
 
 
@@ -3161,6 +3162,9 @@ def _scan_zim_files():
     """Scan ZIM_DIR plus exactly one level of subdirectories for ZIM files.
     Returns {short_name: path} mapping.
 
+    A split book (name.zimaa, name.zimab...) is one entry at its .zimaa path,
+    named as name.zim would be (zimparts).
+
     Subfolder eligibility: dotted names are never scanned (glob semantics, so
     `.zimi` stays state, not content), the deny list above is skipped, and a
     subfolder containing a `.nozim` marker file is skipped — that is the
@@ -3187,7 +3191,7 @@ def _scan_zim_files():
     (gutenberg_ale) instead of vanishing. A language name some file already
     has as its own is never taken, so no ZIM with a name loses it.
     """
-    root_paths = sorted(glob.glob(os.path.join(ZIM_DIR, "*.zim")))
+    root_paths = zimparts.in_folder(ZIM_DIR)
     sub_paths = []
     for sub in sorted(glob.glob(os.path.join(ZIM_DIR, "*", ""))):
         base = os.path.basename(sub.rstrip(os.sep))
@@ -3196,7 +3200,7 @@ def _scan_zim_files():
         if os.path.exists(os.path.join(sub, _SCAN_IGNORE_MARKER)):
             log.info("Skipping %s (has %s marker)", base, _SCAN_IGNORE_MARKER)
             continue
-        sub_paths.extend(sorted(glob.glob(os.path.join(sub, "*.zim"))))
+        sub_paths.extend(zimparts.in_folder(sub))
     # Folders another program owns (libfolders) are the last tier: read where
     # they are, and never shadowing a ZIM of Zimi's own.
     from zimi import libfolders
@@ -3214,7 +3218,7 @@ def _scan_zim_files():
         (3, ownzims.zim_paths()),
     ):
         for path in paths:
-            name = _zim_base_name(os.path.basename(path))
+            name = _zim_base_name(zimparts.book_filename(path))
             groups.setdefault(name, []).append((tier, path))
     for name, cands in groups.items():
         _own_copy_first(name, cands)
@@ -3321,8 +3325,8 @@ def server_zim_count():
 
 
 def open_archive(path):
-    """Open a ZIM archive."""
-    return Archive(path)
+    """Open a ZIM archive (a split book whole, or not at all: zimparts)."""
+    return zimparts.open_book(path)
 
 
 def entry_item(archive, path):
@@ -3400,7 +3404,7 @@ def list_zims(use_cache=True):
     zims = get_zim_files()
     info = []
     for name, path in zims.items():
-        size_bytes = os.path.getsize(path)
+        size_bytes = zimparts.size(path)
         article_count = None
         try:
             archive = open_archive(path)
@@ -3414,15 +3418,28 @@ def list_zims(use_cache=True):
             entry_count = "?"
         entry = {
             "name": name,
-            "file": os.path.basename(path),
+            "file": zimparts.book_filename(path),
             "size_gb": round(size_bytes / _BYTES_PER_GB, 6),
             "size_bytes": size_bytes,
             "entries": entry_count,
+            **_split_facts(path),
         }
         if article_count is not None:
             entry["article_count"] = article_count
         info.append(entry)
     return info
+
+
+def _split_facts(path):
+    """What a library row says about a split book: ``parts``, its chunk
+    count, and ``missing_part`` when a chunk is gone. Empty for a whole file."""
+    if not zimparts.is_split(path):
+        return {}
+    facts = {"parts": len(zimparts.parts(path))}
+    gap = zimparts.missing_part(path)
+    if gap:
+        facts["missing_part"] = gap
+    return facts
 
 
 def get_archive(name):
@@ -3533,7 +3550,8 @@ def _own_display_title(title, tags):
 
 def _extract_zim_metadata(name, path):
     """Open a ZIM archive and extract its metadata. Returns (info_dict, archive)."""
-    size_bytes = os.path.getsize(path)
+    size_bytes = zimparts.size(path)
+    filename = zimparts.book_filename(path)
     size_gb = size_bytes / _BYTES_PER_GB
     meta_title = name
     meta_desc = ""
@@ -3623,12 +3641,12 @@ def _extract_zim_metadata(name, path):
         entry_count = "?"
     # Fall back to date from filename if not in metadata
     if not meta_date:
-        _, file_date = _extract_zim_date(os.path.basename(path))
+        _, file_date = _extract_zim_date(filename)
         if file_date:
             meta_date = file_date
     # Fall back to language from filename (e.g. wikipedia_fr_all → "fr")
     if not meta_lang:
-        m = re.match(r"^[a-zA-Z]+(?:\.\w+)*_([a-z]{2,3})_", os.path.basename(path))
+        m = re.match(r"^[a-zA-Z]+(?:\.\w+)*_([a-z]{2,3})_", filename)
         if m:
             code = m.group(1)
             meta_lang = _ISO639_3_TO_1.get(code, code)
@@ -3636,7 +3654,8 @@ def _extract_zim_metadata(name, path):
     map_search = kind == "map" and _zim_map_search(meta_scraper)
     info = {
         "name": name,
-        "file": os.path.basename(path),
+        "file": filename,
+        **_split_facts(path),
         "size_gb": round(size_gb, 6),
         # Exact byte size: peers verify a pulled .zim against this (a
         # truncated transfer is the realistic LAN failure mode).
@@ -3981,11 +4000,10 @@ def load_cache(force=False):
                 prior_by_name[_sn] = _ce
 
     for name, path in zims.items():
-        filename = os.path.basename(path)
+        filename = zimparts.book_filename(path)
         try:
-            stat = os.stat(path)
-            mtime = stat.st_mtime
-            size = stat.st_size
+            mtime = zimparts.mtime(path)
+            size = zimparts.size(path)
         except OSError:
             continue
 
@@ -4122,6 +4140,8 @@ def load_cache(force=False):
                 "first_seen": first_seen,
                 "updated_at": updated_at,
             }
+            # A split book's chunks, read from the files like the folder (a stat each).
+            entry.update(_split_facts(path))
             folder = _zim_folder(path)
             if folder:
                 entry["folder"] = folder
@@ -5616,7 +5636,7 @@ def main():
     p_check = sub.add_parser(
         "check", help="Is a ZIM well formed: checksum, metadata, icon, redirects, links"
     )
-    p_check.add_argument("files", nargs="+", metavar="FILE", help="the .zim files to check")
+    p_check.add_argument("files", nargs="+", metavar="FILE", help="the .zim files to check (a split book: its .zimaa)")
     p_check.add_argument(
         "--quick", action="store_true", help="skip the checksum and the link scan"
     )

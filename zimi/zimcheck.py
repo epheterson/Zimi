@@ -183,11 +183,12 @@ def _walk(archive, links):
 
 
 def check(path, quick=False):
-    """Every finding for the ZIM at ``path``; an empty list is a clean bill."""
-    from libzim.reader import Archive
+    """Every finding for the ZIM at ``path``; an empty list is a clean bill.
+    Any chunk of a split book (name.zimab...) checks the whole book."""
+    from zimi import zimparts
 
     try:
-        archive = Archive(path)
+        archive = zimparts.open_book(zimparts.first_chunk(path))
     except Exception as e:
         return [_finding(ERROR, "open", f"cannot be opened: {e}")]
     out = []

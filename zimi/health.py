@@ -18,6 +18,7 @@ import threading
 import time
 
 import zimi.server as _srv
+from zimi import zimparts
 from zimi.libzimcompat import can_walk_entries, entry_by_id
 
 log = logging.getLogger("zimi.health")
@@ -261,6 +262,8 @@ def _check_one(entry, path, catalog_sizes):
                     log.debug("health: text sample failed for %s: %s", name, e)
             finally:
                 del archive
+    except zimparts.SplitBookError as e:
+        row["issues"].append(str(e))
     except Exception as e:
         log.debug("health: open failed for %s: %s", name, e)
         row["issues"].append("does not open")
