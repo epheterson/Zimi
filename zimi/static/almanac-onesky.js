@@ -271,6 +271,51 @@ function _osStandFromLook() {
   });
 }
 
+// ── The place's own night ──
+// The light-pollution dial's starting point, from a one-degree night-lights grid (zimi/static/earth/nightlights-v1.bin, 5.8 KB, from the Black
+// Marble: scripts/build_nightlights.py): a city under its glow, a desert under none. The person's own choice of dial wins (almanac-sky.js).
+var OS_NIGHT_URL = '/static/earth/nightlights-v1.bin', OS_NIGHT_MAGIC = 'ZNLT', OS_NIGHT_HEADER = 10, OS_NIGHT_MAX_DIAL = 1;
+var _osPlaceDial = null, _osNight = null, _osNightLoading = false;
+function _osNightParse(buf) {
+  if (!buf || buf.byteLength < OS_NIGHT_HEADER) return null;
+  var u8 = new Uint8Array(buf), v = new DataView(buf);
+  if (String.fromCharCode(u8[0], u8[1], u8[2], u8[3]) !== OS_NIGHT_MAGIC || u8[4] !== 1) return null;
+  var w = v.getUint16(6, true), h = v.getUint16(8, true), n = w * h, cells = new Uint8Array(n), k = 0, pos = OS_NIGHT_HEADER;
+  while (k < n && pos + 1 < buf.byteLength) {
+    var len = u8[pos + 1];
+    if (!len || k + len > n) return null;
+    cells.fill(u8[pos], k, k + len);
+    k += len; pos += 2;
+  }
+  return k === n ? { w: w, h: h, cells: cells } : null;
+}
+// The dial for a place (0 a dark site to 1 a city), or null while the grid is not in.
+function _osNightDial(lat, lon) {
+  var g = _osNight;
+  if (!g || !isFinite(lat) || !isFinite(lon)) return null;
+  var x = Math.min(g.w - 1, Math.max(0, Math.floor((((lon + 180) % 360) + 360) % 360 / 360 * g.w))), y = Math.min(g.h - 1, Math.max(0, Math.floor((90 - lat) / 180 * g.h)));
+  return Math.min(OS_NIGHT_MAX_DIAL, g.cells[y * g.w + x] / 255);
+}
+function _osNightLoad() {
+  if (_osNight || _osNightLoading) return;
+  _osNightLoading = true;
+  fetch(OS_NIGHT_URL).then(function (r) { if (!r.ok) throw new Error('night'); return r.arrayBuffer(); }).then(function (b) {
+    _osNight = _osNightParse(b);
+    var st = typeof _skyState !== 'undefined' ? _skyState : null;
+    if (st) _osSetPlaceDial(st);
+  }).catch(function () { /* the dial stays where it was */ });
+}
+// The place's dial into effect (and remembered with the place), repainting the sky if it moved.
+function _osSetPlaceDial(s) {
+  var d = _osNightDial(s.lat, s.lon);
+  if (d === null || d === _osPlaceDial) return;
+  _osPlaceDial = d;
+  if (s.land) _osLandRemember(_osLandKey(s), s.land);
+  if (s.eph && typeof _skyBrightness === 'function') _skyBrightness(s);
+  s.baseDirty = true;
+  if (typeof _skyKick === 'function') _skyKick();
+}
+
 // ── What the card stands on ──
 // The foreground of the live sky is the place's own land (almanac-skyland.js, from the one grid: almanac-oneland.js). Until the grid is in
 // it is a plain horizon, never the palms; the grid and the painter load after the card's first picture, and the answer for a place is
@@ -282,22 +327,28 @@ function _osLandRemembered(key) {
   try { var r = JSON.parse(localStorage.getItem(OS_LAND_KEY)); return r && r.k === key ? r : null; } catch (e) { return null; }
 }
 function _osLandRemember(key, land) {
-  try { localStorage.setItem(OS_LAND_KEY, JSON.stringify({ k: key, cls: land.cls, coast: land.coast, rgb: land.rgb })); } catch (e) { /* private window */ }
+  try { localStorage.setItem(OS_LAND_KEY, JSON.stringify({ k: key, cls: land.cls, coast: land.coast, rgb: land.rgb, dial: _osPlaceDial })); } catch (e) { /* private window */ }
 }
 // The scene to draw: 'plain' | 'beach' | a land class ('broadleaf', 'conifer', 'grass', 'desert', 'snow', 'tundra').
 function _osCardScene(s) {
   if (s.hosted) return 'beach';   // Look's own sphere keeps what it had
   if (!_osButtonsSynced) { _osButtonsSynced = true; if (typeof requestIdleCallback === 'function') requestIdleCallback(_osSync3DButtons, { timeout: 3000 }); else setTimeout(_osSync3DButtons, 1500); }
   var key = _osLandKey(s);
-  if (s.landKey !== key) { s.landKey = key; s.land = _osLandRemembered(key); }
+  if (s.landKey !== key) {
+    s.landKey = key; s.land = _osLandRemembered(key);
+    if (s.land && typeof s.land.dial === 'number') _osPlaceDial = s.land.dial;   // a return visit starts at the place's own dial
+    if (_osNight) _osSetPlaceDial(s);
+  }
   if (!s.land) { _osLandKick(s, key); return 'plain'; }
-  return s.land.coast || s.land.cls === 'sea' ? 'beach' : s.land.cls;
+  // The sea where the grid says sea or a coast, except where ice or tundra holds the shore: that is an ice shore, not a beach.
+  return s.land.cls === 'sea' || (s.land.coast && s.land.cls !== 'snow' && s.land.cls !== 'tundra') ? 'beach' : s.land.cls;
 }
 function _osLandKick(s, key) {
   if (_osLandLoading || _osLandFailed || typeof _loadScript !== 'function') return;
   _osLandLoading = true;
   var go = function () {
     _osSync3DButtons();
+    _osNightLoad();
     Promise.all(OS_LAND_SRCS.map(function (src) { return _loadScript(src); })).then(function (ok) {
       if (!ok.every(Boolean) || typeof _osLandCoverLoad !== 'function') return false;
       return _osLandCoverLoad();

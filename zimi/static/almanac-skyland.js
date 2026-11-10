@@ -57,6 +57,7 @@ function _slGroundColour(cls, albedo, lit, hor) {
 // The land's ridges: layered rolling lines, far ones paler and nearer ones darker, each a run of strips down to the foot. A slope that faces
 // the Sun is in its light and the one that turns from it in shade (two tones to a ridge, as strong as the Sun is high and low in the sky
 // lets them be), by the bearing of the Sun; a view toward the Sun sees them all from the shaded side.
+var SL_LIT_GAIN = 1.7, SL_LIT_LIFT = 25, SL_LIT_SKY_MIX = 0.35, SL_SHADE_GAIN = 0.35, SL_DIM_LUMA = 0.45;   // the lit slope's colour from the ground's and its mix with the sky's horizon; the shaded one; the ground luminance under which the overlays fade
 var SL_RIDGE_SHADE = 0.5, SL_STRIP_PX = 3, SL_CREST_LAYERS = 5, SL_CREST_DEPTH = 1.6;   // the lit and shaded slopes' strongest overlay; strip width; layers of it down from the crest, and their depth in ridge heights
 function _slRidges(ctx, s, cls, albedo, lit, hor) {
   var R = SL_RIDGES[cls] || SL_RIDGES.plain, W = s.W, H = s.H, yh = H * SKY_HORIZON_Y, dpr = s.dpr, rand = _osMulberry(_slSeed(s) + 7), e = s.eph;
@@ -73,6 +74,10 @@ function _slRidges(ctx, s, cls, albedo, lit, hor) {
     if (!contrast) continue;
     // A slope that faces the Sun is lit, the one that turns from it in shade, by the Sun's bearing: soft overlays down from the crest, each a
     // band under the crest line whose colour runs along it (a horizontal gradient of the facing), nested so they fade with depth.
+    // The lit side is the ground's own colour brightened toward the sky's horizon (warm at sunset, never white), the shaded side its darker self;
+    // both fainter where the ground is dim, so a dune at dusk has no bright dashes along its crest.
+    var litRgb = 'rgba(' + _skyMix(ground.map(function (v) { return Math.min(255, v * SL_LIT_GAIN + SL_LIT_LIFT); }), hor, SL_LIT_SKY_MIX).map(Math.round).join(',') + ',';
+    var shadeRgb = 'rgba(' + ground.map(function (v) { return Math.round(v * SL_SHADE_GAIN); }).join(',') + ',', dim = _skyClamp(_skyLuma(ground) / SL_DIM_LUMA, 0.2, 1);
     var face = [];
     for (i = 1; i < xs.length; i++) {
       var rise = (ys[i - 1] - ys[i]) / step, side = Math.sin((e.sun.az - _skyAzAt(s, xs[i])) * DEG_TO_RAD);
@@ -82,8 +87,8 @@ function _slRidges(ctx, s, cls, albedo, lit, hor) {
     for (var j = 0; j < SL_CREST_LAYERS; j++) {
       var grad = ctx.createLinearGradient(0, 0, W + step, 0), depth = amp * SL_CREST_DEPTH * (1 - j / SL_CREST_LAYERS), w = (1 - j / SL_CREST_LAYERS) * 0.55;
       for (i = 0; i < smooth.length; i++) {
-        var f = smooth[i], al = (Math.abs(f) * contrast * w).toFixed(3);
-        grad.addColorStop(Math.min(1, xs[i + 1] / (W + step)), f > 0 ? 'rgba(255,246,225,' + al + ')' : 'rgba(18,14,10,' + al + ')');
+        var f = smooth[i], al = (Math.abs(f) * contrast * w * dim).toFixed(3);
+        grad.addColorStop(Math.min(1, xs[i + 1] / (W + step)), (f > 0 ? litRgb : shadeRgb) + al + ')');
       }
       ctx.fillStyle = grad;
       ctx.beginPath(); ctx.moveTo(xs[0], ys[0]);

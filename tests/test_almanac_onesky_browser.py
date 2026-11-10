@@ -338,7 +338,9 @@ FOREGROUNDS = [
     ("Salina", 38.84, -97.61, "grass"),
     ("Ghat", 25.0, 10.0, "desert"),
     ("Greenland", 72.0, -40.0, "snow"),
-    ("Tiksi", 71.6, 128.9, "beach"),  # a coast, so the sea; no palms at 71 N
+    ("Tiksi", 71.6, 128.9, "tundra"),  # a tundra shore is tundra, not a beach
+    ("Cairo", 30.04, 31.24, "desert"),  # the Nile valley in a dry cell
+    ("McMurdo", -77.85, 166.67, "snow"),  # an ice shore, not a beach
     ("Lisbon", 38.72, -9.14, "beach"),
     ("Sydney", -33.87, 151.21, "beach"),
 ]

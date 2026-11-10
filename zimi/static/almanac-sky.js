@@ -605,7 +605,12 @@ function _skyLoadSettings() {
   if (typeof saved.dial === 'number' && saved.dial >= 0 && saved.dial <= 1) out.dial = _skyChosen.dial = saved.dial;
   return out;
 }
-function _skySetting(k) { if (!_skySettings) _skySettings = _skyLoadSettings(); return _skySettings[k]; }
+// The light-pollution dial starts where the place's own night lights say (almanac-onesky.js _osPlaceDial); the person's own choice always wins.
+function _skySetting(k) {
+  if (!_skySettings) _skySettings = _skyLoadSettings();
+  if (k === 'dial' && _skyChosen.dial === undefined && typeof _osPlaceDial === 'number') return _osPlaceDial;
+  return _skySettings[k];
+}
 // Choose one; the sky draws once for it.
 function _skySet(k, v) {
   if (_skySetting(k) === v) return;
