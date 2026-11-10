@@ -582,7 +582,7 @@ var AE_CSS = [
   '@media (max-width:370px){#ae-views,.ae-chips{gap:3px}#ae-views .ae-btn{font-size:12px}#ae-views .ae-btn:not(.ae-round){padding-inline:5px}#ae-views .ae-round{width:30px;height:30px}}',
   // Short landscape (a phone on its side, 390 high): the sheet takes the height, short of the control column, so a list of places shows
   // six rows, not one and a half.
-  '@media (orientation:landscape) and (max-height:460px){.ae-go{inset-inline:12px 68px;top:8px;max-height:none}}',
+  '@media (orientation:landscape) and (max-height:460px){.ae-go{inset-inline:12px 68px;top:8px;max-height:none}.ae-go-row{min-height:34px}.ae-go h4{margin:6px 10px 2px}.ae-go-find{padding:4px 14px}}',
   '.ae-go-find{position:sticky;bottom:-8px;z-index:1;display:flex;align-items:center;gap:8px;margin:4px -6px -8px;padding:8px 14px;background:' + AE_PANEL_BG + ';border-top:1px solid var(--border);color:var(--text3)}',
   '.ae-go-find input{flex:1;min-width:0;height:32px;border:0;background:none;color:var(--text);font:inherit;font-size:16px;outline:none;-webkit-user-select:text;user-select:text;-webkit-appearance:none;appearance:none}',
   '.ae-go-find input::-webkit-search-cancel-button{-webkit-appearance:none}',
@@ -2032,6 +2032,11 @@ function _aeLoadMap(S, uni, url, format, load) {
       if (format) tx.format = format;
       if (uni.value) uni.value.dispose();   // a map it replaces (the Moon's 1024 one)
       uni.value = tx;
+      if (typeof ZimiCap !== 'undefined' && tx.image && tx.image.width) {   // the capability level's memory budget (capability.js)
+        if (uni.__capKey) ZimiCap.gpuFree(uni.__capKey);
+        uni.__capKey = 'map:' + url;
+        ZimiCap.gpuTrack(uni.__capKey, tx.image.width * tx.image.height * 4 * 1.34);
+      }
       return true;
     }, function () {
       delete S.maps[url];
