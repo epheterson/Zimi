@@ -3829,5 +3829,9 @@
   "then_see_sunrise": "Die Sonne geht auf der Linie auf",
   "then_see_sunset": "Die Sonne geht auf der Linie unter",
   "then_see_dark": "Ein mondloser Sternenhimmel",
-  "then_see_train": "Eine Kette von Satelliten"
+  "then_see_train": "Eine Kette von Satelliten",
+  "then_apollo_11_tranquility": "Tranquility Base bei der Landung",
+  "then_huygens_titan": "Huygens auf Titan",
+  "then_see_earthsky": "Die Erde hoch an einem schwarzen Himmel",
+  "then_see_site": "Die Sonde, wo sie zur Ruhe kam"
 }

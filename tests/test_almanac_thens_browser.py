@@ -102,3 +102,35 @@ def test_the_list_opens_from_the_sky_searches_and_stands_there_then(browser, ser
         assert not errors, errors
     finally:
         ctx.close()
+
+
+def test_the_moons_entry_faces_the_earth_the_ground_view_draws_and_go_to_has_the_list(browser, served):
+    """Tranquility Base opens the ground view on the Moon at the landing, facing where the view puts the Earth; Go to lists the there-and-thens."""
+    ctx = browser.new_context(viewport=VIEW, device_scale_factor=2, has_touch=True, is_mobile=True, service_workers="block")
+    pg = ctx.new_page()
+    try:
+        pg.goto(served + "/#almanac", wait_until="load")
+        pg.wait_for_function("() => typeof openAlmanacThens === 'function' && typeof _aeLoadThree === 'function'", timeout=READY_MS)
+        pg.evaluate("openAlmanacEarth({ target: 'earth' })")
+        pg.wait_for_function("() => typeof _aeReady === 'function' && _aeReady() && _aeIsOpen", timeout=READY_MS, polling=250)
+        pg.evaluate("_aeShowGo(true)")
+        pg.wait_for_selector("[data-ae-then]")
+        _shot(pg, "thens-goto.png")
+        pg.click("[data-ae-then]")
+        pg.wait_for_selector(".at-row", timeout=READY_MS)
+        pg.click(".at-row[data-id='apollo-11-tranquility']")
+        pg.wait_for_selector("#at-stand")
+        assert pg.evaluate("document.getElementById('at-sky') === null")      # no live sky on another body
+        pg.click("#at-stand")
+        pg.wait_for_function("() => _ae.stand && _ae.stand.key === 'moon' && _ae.stand.mode === 'ground'", timeout=READY_MS, polling=500)
+        pg.wait_for_timeout(4000)
+        got = pg.evaluate("""() => { var st = _ae.stand, o = st.fr.objs.filter(function (x) { return x.key === 'earth'; })[0], d = o.dir;
+          return { az: (Math.atan2(d[0], d[1]) * 180 / Math.PI + 360) % 360, el: Math.asin(d[2]) * 180 / Math.PI, ms: _aeDisplayMs(),
+                   head: (((st.yaw + st.userYaw) * 180 / Math.PI) % 360 + 360) % 360 }; }""")
+        assert abs(got["ms"] - (-14182940000)) < 30_000, got
+        assert abs(got["az"] - 272.3) < 1.5 and abs(got["el"] - 59.2) < 1.5, got       # the entry's look is the Earth's place in the view
+        assert abs(got["head"] - 272.3) < 2, got
+        _shot(pg, "thens-tranquility.png")
+    finally:
+        ctx.close()
+

@@ -33,8 +33,9 @@ function _atSeeText(m) {
   if (m.launch && m.see !== 'train') return _aeT('alm_launch_sight_' + m.see);
   return _aeT('then_see_' + m.see);
 }
+function _atBody(m) { return m.place.body || 'earth'; }
 function _atWhen(m) {
-  var tz = typeof _almTzForLocation === 'function' ? _almTzForLocation(m.place.lat, m.place.lon) : null;
+  var tz = _atBody(m) === 'earth' && typeof _almTzForLocation === 'function' ? _almTzForLocation(m.place.lat, m.place.lon) : 'UTC';   // another body has no zone: UTC
   try { return (tz ? _tzFmt(tz, AT_DATE_OPTS) : new Intl.DateTimeFormat(undefined, AT_DATE_OPTS)).format(new Date(m.instant)); } catch (e) { return new Date(m.instant).toISOString(); }
 }
 function _atYear(m) { return String(new Date(m.instant).getUTCFullYear()); }
@@ -76,7 +77,7 @@ function _atDetailHtml(m) {
     '<li>' + _atSvg(AT_ICON) + '<span>' + _almEsc(_atSeeText(m)) + '</span></li></ul>' +
     '<p class="al-note">' + _almEsc(m.notes) + '</p>' +
     '<div class="al-acts"><button type="button" class="ae-btn" id="at-stand">' + _atSvg('<circle cx="12" cy="5" r="2.2"/><path d="M12 8v7M8 11l4-1 4 1M9.5 21l2.5-6 2.5 6"/>', 18) + _almEsc(_aeT('then_stand')) + '</button>' +
-    '<button type="button" class="ae-btn" id="at-sky">' + _atSvg('<path d="M3 18c4-9 10-13 18-13"/><circle cx="12" cy="10" r="1.8" fill="currentColor" stroke="none"/>', 18) + _almEsc(_aeT('then_live_sky')) + '</button></div>' +
+    (_atBody(m) === 'earth' ? '<button type="button" class="ae-btn" id="at-sky">' + _atSvg('<path d="M3 18c4-9 10-13 18-13"/><circle cx="12" cy="10" r="1.8" fill="currentColor" stroke="none"/>', 18) + _almEsc(_aeT('then_live_sky')) + '</button>' : '') + '</div>' +
     '<p class="al-note">' + m.refs.map(function (r) { return '<a href="' + _almEsc(r) + '" target="_blank" rel="noopener noreferrer">' + _almEsc(m.source.name) + '</a>'; }).slice(0, 1).join('') + '</p>';
 }
 function _atBind() {
@@ -116,9 +117,9 @@ function _atGo(m, how) {
   _atSelectLaunch(m);
   _aeGoTo(m.instant);
   if (typeof _almClockSetRate === 'function') _almClockSetRate(0);
-  if (how === 'stand' && typeof _aeStandAt === 'function') {
+  if ((how === 'stand' || _atBody(m) !== 'earth') && typeof _aeStandAt === 'function') {
     _alHideSheet();
-    Promise.resolve(_aeStandAt('earth', m.place.lat, m.place.lon)).then(function (ok) { if (ok !== false) { _alStandRegister(); _atFace(m.look); } });
+    Promise.resolve(_aeStandAt(_atBody(m), m.place.lat, m.place.lon)).then(function (ok) { if (ok !== false) { if (_atBody(m) === 'earth') _alStandRegister(); _atFace(m.look); } });
     return;
   }
   if (typeof _almLinkPlace !== 'undefined') _almLinkPlace = { lat: m.place.lat, lon: m.place.lon };

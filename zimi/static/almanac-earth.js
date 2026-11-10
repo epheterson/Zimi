@@ -872,6 +872,7 @@ function _aeGoName(key) {
   var b = _aePlanetBody(key);
   return b ? _aeBodyName(b) : key;
 }
+var AE_THEN_DOT = '<svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3l2.4 5.6 6.1.5-4.6 4 1.4 6-5.3-3.2L6.7 19l1.4-6-4.6-4 6.1-.5z"/></svg>';
 function _aeGoRender() {
   var sheet = _aeById('ae-go'), host = _aeById('ae-go-groups');
   if (!sheet || sheet.hidden || !host) return;
@@ -882,6 +883,10 @@ function _aeGoRender() {
         '<span>' + _almEsc(_aeGoName(k)) + '</span></button>';
     }).join('') + '</div>';
   }).join('');
+  // The there-and-then list (almanac-thens.js) at the top of the sheet: a place and a moment to stand in, not a body.
+  host.insertAdjacentHTML('afterbegin', '<div class="ae-go-list"><button type="button" class="ae-go-row" data-ae-then>' + AE_THEN_DOT + '<span>' + _almEsc(_aeT('then_title')) + '</span></button></div>');
+  var then = host.querySelector('[data-ae-then]');
+  if (then) then.onclick = function () { _aeShowGo(false); openAlmanacThens(); };
   // Opened at a group whose table was still coming (Landings on a first tap): scrolled there once it is drawn.
   var h = _ae.goGroup ? sheet.querySelector('h4[data-g="' + _ae.goGroup + '"]') : null;
   if (h) { sheet.scrollTop = h.offsetTop; _ae.goGroup = null; }

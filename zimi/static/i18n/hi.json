@@ -3829,5 +3829,9 @@
   "then_see_sunrise": "सूर्य इसी रेखा पर उगता है",
   "then_see_sunset": "सूर्य इसी रेखा पर अस्त होता है",
   "then_see_dark": "चाँद के बिना तारों भरा आकाश",
-  "then_see_train": "उपग्रहों की कतार"
+  "then_see_train": "उपग्रहों की कतार",
+  "then_apollo_11_tranquility": "लैंडिंग के समय ट्रैंक्विलिटी बेस",
+  "then_huygens_titan": "टाइटन पर ह्यूजेंस",
+  "then_see_earthsky": "काले आकाश में ऊँची पृथ्वी",
+  "then_see_site": "यान जहाँ रुका"
 }

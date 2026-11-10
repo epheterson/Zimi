@@ -3829,5 +3829,9 @@
   "then_see_sunrise": "Солнце восходит на этой линии",
   "then_see_sunset": "Солнце садится на этой линии",
   "then_see_dark": "Звёздное небо без Луны",
-  "then_see_train": "Цепочка спутников"
+  "then_see_train": "Цепочка спутников",
+  "then_apollo_11_tranquility": "База «Спокойствия» в момент посадки",
+  "then_huygens_titan": "Гюйгенс на Титане",
+  "then_see_earthsky": "Земля высоко в чёрном небе",
+  "then_see_site": "Зонд там, где он остановился"
 }

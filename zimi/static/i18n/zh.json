@@ -3829,5 +3829,9 @@
   "then_see_sunrise": "太阳沿此线升起",
   "then_see_sunset": "太阳沿此线落下",
   "then_see_dark": "无月的星空",
-  "then_see_train": "一串卫星"
+  "then_see_train": "一串卫星",
+  "then_apollo_11_tranquility": "宁静基地着陆之时",
+  "then_huygens_titan": "惠更斯号在土卫六",
+  "then_see_earthsky": "黑色天空中高悬的地球",
+  "then_see_site": "探测器停下的地方"
 }

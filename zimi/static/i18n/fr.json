@@ -3829,5 +3829,9 @@
   "then_see_sunrise": "Le Soleil se levant dans l’axe",
   "then_see_sunset": "Le Soleil se couchant dans l’axe",
   "then_see_dark": "Un ciel étoilé sans Lune",
-  "then_see_train": "Un chapelet de satellites"
+  "then_see_train": "Un chapelet de satellites",
+  "then_apollo_11_tranquility": "La base de la Tranquillité à l’alunissage",
+  "then_huygens_titan": "Huygens sur Titan",
+  "then_see_earthsky": "La Terre haut dans un ciel noir",
+  "then_see_site": "La sonde là où elle s’est posée"
 }

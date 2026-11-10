@@ -3829,5 +3829,9 @@
   "then_see_sunrise": "O Sol nascendo na linha",
   "then_see_sunset": "O Sol se pondo na linha",
   "then_see_dark": "Um céu estrelado sem Lua",
-  "then_see_train": "Uma fileira de satélites"
+  "then_see_train": "Uma fileira de satélites",
+  "then_apollo_11_tranquility": "A Base da Tranquilidade no pouso",
+  "then_huygens_titan": "Huygens em Titã",
+  "then_see_earthsky": "A Terra alta num céu negro",
+  "then_see_site": "A sonda onde parou"
 }

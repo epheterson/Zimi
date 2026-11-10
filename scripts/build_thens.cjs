@@ -88,22 +88,37 @@ const moments = [
 ];
 
 const backlog = [
-  { id: 'apollo-8-earthrise', title: 'Earthrise from Apollo 8, 1968-12-24', needs: 'a spacecraft in lunar orbit as a place to stand, the Moon\'s horizon and Earth rising over it' },
-  { id: 'tranquility-base-landing', title: 'Tranquility Base at the landing, 1969-07-20', needs: 'the lunar sky from the site with the Earth\'s place worked out from the Moon\'s libration at that instant' },
-  { id: 'pale-blue-dot', title: 'The Pale Blue Dot from Voyager 1, 1990-02-14', needs: 'a spacecraft as a place to stand, with the Earth as a point from 6 billion km' },
-  { id: 'huygens-titan', title: 'Huygens on Titan, 2005-01-14', needs: 'the landing site\'s sky under Titan\'s haze, with the descent' },
-  { id: 'new-horizons-pluto', title: 'The New Horizons flyby of Pluto, 2015-07-14', needs: 'a flyby view from the spacecraft, with Pluto and Charon' },
-  { id: 'falcon-heavy-twin-landing', title: 'The Falcon Heavy twin booster landing, 2018-02-06', needs: 'the two side boosters\' return paths (only one booster is modelled)' },
-  { id: 'neowise-2020', title: 'Comet NEOWISE, July 2020', needs: 'comets in the sky (orbits, a coma and a tail)' },
-  { id: 'hale-bopp-1997', title: 'Comet Hale-Bopp, spring 1997', needs: 'comets in the sky' },
-  { id: 'halley-1986-2061', title: 'Halley\'s Comet, 1986 and 2061', needs: 'comets in the sky' },
-  { id: 'leonids-1833-1966', title: 'The Leonid storms of 1833 and 1966', needs: 'a meteor storm at its published rate, from its radiant' },
-  { id: 'shoemaker-levy-9-1994', title: 'Shoemaker-Levy 9 at Jupiter, July 1994', needs: 'a comet\'s fragments and their impacts on Jupiter' },
-  { id: 'venus-transit-2012', title: 'The transit of Venus, 2012-06-05', needs: 'Venus drawn as a disc crossing the Sun' },
-  { id: 'galileo-padua-1610', title: 'Galileo\'s nights with Jupiter\'s moons, Padua, January 1610', needs: 'the Galilean moons in the live sky, with the instant\'s positions' },
-  { id: 'tycho-supernova-1572', title: 'Tycho\'s supernova, November 1572', needs: 'a historical supernova in Cassiopeia as a new star' },
-  { id: 'columbus-eclipse-1504', title: 'Columbus\'s lunar eclipse, Jamaica, 1504-02-29 (Julian)', needs: 'a lunar eclipse in the live sky at that date (the Julian calendar, and ΔT before 1600)' }
+  { id: 'apollo-8-earthrise', title: 'Earthrise from Apollo 8, 1968-12-24', lane: 'missions', needs: 'a spacecraft vantage: Apollo 8 in lunar orbit as a place to look from, the Moon\'s horizon and the Earth rising over it' },
+  { id: 'pale-blue-dot', title: 'The Pale Blue Dot from Voyager 1, 1990-02-14', lane: 'missions', needs: 'a spacecraft vantage: Voyager 1 as a place to look from, with the Earth as a point from 6 billion km' },
+  { id: 'new-horizons-pluto', title: 'The New Horizons flyby of Pluto, 2015-07-14', lane: 'missions', needs: 'a spacecraft vantage: New Horizons as a place to look from, with Pluto and Charon' },
+  { id: 'falcon-heavy-twin-landing', title: 'The Falcon Heavy twin booster landing, 2018-02-06', lane: 'launches', needs: 'the two side boosters\' return paths (only one booster is modelled)' },
+  { id: 'neowise-2020', title: 'Comet NEOWISE, July 2020', lane: 'sky', needs: 'the sky engine: comets (orbits, a coma and a tail)' },
+  { id: 'hale-bopp-1997', title: 'Comet Hale-Bopp, spring 1997', lane: 'sky', needs: 'the sky engine: comets' },
+  { id: 'halley-1986-2061', title: 'Halley\'s Comet, 1986 and 2061', lane: 'sky', needs: 'the sky engine: comets' },
+  { id: 'leonids-1833-1966', title: 'The Leonid storms of 1833 and 1966', lane: 'sky', needs: 'the sky engine: a meteor storm at its published rate, from its radiant' },
+  { id: 'shoemaker-levy-9-1994', title: 'Shoemaker-Levy 9 at Jupiter, July 1994', lane: 'sky', needs: 'the sky engine: a comet\'s fragments and their impacts on Jupiter' },
+  { id: 'venus-transit-2012', title: 'The transit of Venus, 2012-06-05', lane: 'sky', needs: 'the sky engine: Venus drawn as a disc crossing the Sun' },
+  { id: 'galileo-padua-1610', title: 'Galileo\'s nights with Jupiter\'s moons, Padua, January 1610', lane: 'sky', needs: 'the sky engine: the Galilean moons in the sky, with the instant\'s positions' },
+  { id: 'tycho-supernova-1572', title: 'Tycho\'s supernova, November 1572', lane: 'sky', needs: 'the sky engine: a historical supernova in Cassiopeia as a new star' },
+  { id: 'columbus-eclipse-1504', title: 'Columbus\'s lunar eclipse, Jamaica, 1504-02-29 (Julian)', lane: 'sky', needs: 'the sky engine: a lunar eclipse in the sky at that date (the Julian calendar, and the Earth\'s slowing before 1600)' }
 ];
+
+// Places on other bodies: the ground view (almanac-stand.js) opens there. The place and the instant are the Almanac's own site data
+// (sites-v1.json, landmarks-v1.json: NASA and ESA); the direction is the Earth's, read off the ground view's own frame at that instant
+// (st.fr.objs, with the browser test tests/test_almanac_thens_browser.py holding the file to it).
+const siteOf = (body, name) => {
+  const sites = JSON.parse(fs.readFileSync(path.join(H.STATIC, 'earth', 'sites-v1.json'), 'utf8')).sites.filter((s) => s.body === body && s.name === name)[0];
+  const lm = JSON.parse(fs.readFileSync(path.join(H.STATIC, 'earth', 'landmarks-v1.json'), 'utf8'))[body].filter((r) => r[0] === name)[0];
+  return { ms: sites.ms, lat: lm[1], lon: lm[2] };
+};
+const apollo = siteOf('moon', 'Apollo 11'), huygens = siteOf('titan', 'Huygens');
+moments.splice(4, 0,
+  { id: 'apollo-11-tranquility', family: 'spaceflight', title: 'Tranquility Base at the landing', place: { name: 'The Moon, Tranquility Base', lat: apollo.lat, lon: apollo.lon, kind: 'site', body: 'moon' }, instant: apollo.ms + 40000,
+    look: { az: 272.3, el: 59.2, spanDeg: SPAN }, see: 'earthsky', source: { name: 'NASA, Apollo 11 mission', url: 'https://www.nasa.gov/mission/apollo-11/', licence: 'public domain' }, refs: ['https://www.nasa.gov/mission/apollo-11/'],
+    notes: 'The Eagle on the ground at 20:17:40 UTC on 20 July 1969, the Earth high in a black sky. The ground view has the lunar module and the Earth; the direction is the Earth\'s in that view.' },
+  { id: 'huygens-titan', family: 'spaceflight', title: 'Huygens on Titan', place: { name: 'Titan, the Huygens site', lat: huygens.lat, lon: huygens.lon, kind: 'site', body: 'titan' }, instant: huygens.ms,
+    look: { az: 117.3, el: 58.9, spanDeg: SPAN }, see: 'site', source: { name: 'ESA, Cassini-Huygens', url: 'https://www.esa.int/Science_Exploration/Space_Science/Cassini-Huygens', licence: '' }, refs: ['https://www.esa.int/Science_Exploration/Space_Science/Cassini-Huygens'],
+    notes: 'The probe on the ground at 12:43 UTC on 14 January 2005, the first landing in the outer solar system. The ground view has the probe where it came to rest.' });
 
 const out = { shape: 'id family title place{name,lat,lon,kind} instant(ms UTC) look{az,el,spanDeg} see source{name,url,licence} refs launch? notes', moments, backlog };
 fs.writeFileSync(path.join(H.STATIC, 'earth', 'thens-v1.json'), JSON.stringify(out, null, 1) + '\n');

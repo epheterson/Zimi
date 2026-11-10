@@ -3829,5 +3829,9 @@
   "then_see_sunrise": "The Sun rising on the line",
   "then_see_sunset": "The Sun setting on the line",
   "then_see_dark": "A moonless, starry sky",
-  "then_see_train": "A string of satellites"
+  "then_see_train": "A string of satellites",
+  "then_apollo_11_tranquility": "Tranquility Base at the landing",
+  "then_huygens_titan": "Huygens on Titan",
+  "then_see_earthsky": "The Earth high in a black sky",
+  "then_see_site": "The probe where it came to rest"
 }

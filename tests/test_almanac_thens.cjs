@@ -28,7 +28,7 @@ const FAMILIES = ['spaceflight', 'sky', 'history', 'places'];
 
 // ── Shape ──
 {
-  check(data.moments.length >= 15 && new Set(data.moments.map((m) => m.id)).size === data.moments.length, data.moments.length + ' entries, ids unique');
+  check(data.moments.length >= 17 && new Set(data.moments.map((m) => m.id)).size === data.moments.length, data.moments.length + ' entries, ids unique');
   const bad = data.moments.filter((m) => !(FAMILIES.includes(m.family) && m.title && m.place && isFinite(m.place.lat) && isFinite(m.place.lon) && m.place.name && isFinite(m.instant) && m.look && isFinite(m.look.az) && isFinite(m.look.el) && m.look.spanDeg > 0 &&
     m.see && m.source && m.source.name && /^https:/.test(m.source.url) && m.refs.length > 0 && m.refs.every((r) => /^https:/.test(r)) && m.notes));
   check(bad.length === 0, 'every entry has family, title, place, instant, look, see, source, references and a note' + bad.map((m) => ' ' + m.id).join(''));
@@ -98,6 +98,24 @@ const FAMILIES = ['spaceflight', 'sky', 'history', 'places'];
   check(near(eb.az, 101, 1.5) && near(eo.az, eb.az, 1), 'Abu Simbel: the Sun rises at ' + eb.az.toFixed(1) + ' on 22 February and ' + eo.az.toFixed(1) + ' on 22 October, the same line');
   const mh = by['manhattanhenge'], em = F.eph(mh.instant, mh.place.lat, mh.place.lon).sun;
   check(near(em.az, 299, 1) && em.alt > 0 && em.alt < 1, 'Manhattanhenge: the Sun sets at azimuth ' + em.az.toFixed(1) + ' on the grid\'s 299');
+}
+
+
+// ── Off the Earth ──
+{
+  const sites = JSON.parse(fs.readFileSync(path.join(H.STATIC, 'earth', 'sites-v1.json'), 'utf8')).sites;
+  const lm = JSON.parse(fs.readFileSync(path.join(H.STATIC, 'earth', 'landmarks-v1.json'), 'utf8'));
+  for (const [id, body, name, plus] of [['apollo-11-tranquility', 'moon', 'Apollo 11', 40000], ['huygens-titan', 'titan', 'Huygens', 0]]) {
+    const m = by[id], site = sites.filter((x) => x.body === body && x.name === name)[0], row = lm[body].filter((r) => r[0] === name)[0];
+    check(m.place.body === body && m.place.kind === 'site' && near(m.place.lat, row[1], 1e-6) && near(m.place.lon, row[2], 1e-6) && m.instant === site.ms + plus,
+      id + ': the ground view\'s own site on ' + body + ' (' + row[1] + ', ' + row[2] + '), at ' + new Date(m.instant).toISOString());
+  }
+  check(new Date(by['apollo-11-tranquility'].instant).toISOString() === '1969-07-20T20:17:40.000Z', 'Eagle landed at 20:17:40 UTC on 20 July 1969');
+  check(new Date(by['huygens-titan'].instant).toISOString() === '2005-01-14T12:43:00.000Z', 'Huygens landed at 12:43 UTC on 14 January 2005');
+  const lanes = new Set(data.backlog.map((b) => b.lane));
+  check(['missions', 'sky', 'launches'].every((l) => lanes.has(l)) && data.backlog.every((b) => ['missions', 'sky', 'launches'].includes(b.lane)), 'the backlog is sorted by who builds it: ' + [...lanes].join(', '));
+  check(data.backlog.filter((b) => b.lane === 'missions').map((b) => b.id).sort().join() === 'apollo-8-earthrise,new-horizons-pluto,pale-blue-dot', 'Earthrise, the Pale Blue Dot and the Pluto flyby need a spacecraft vantage');
+  check(data.backlog.filter((b) => b.lane === 'sky').every((b) => /^the sky engine:/.test(b.needs)) && data.backlog.filter((b) => b.lane === 'sky').length === 9, 'comets, the supernova, the Venus transit, Galileo\'s moons, the Leonids and the lunar eclipse wait for the sky engine');
 }
 
 if (failures) { console.error(failures + ' failed'); process.exit(1); }
