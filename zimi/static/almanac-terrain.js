@@ -206,7 +206,7 @@ function _aeCraterHeight(u, km, c, lodKm) {
   return sum;
 }
 // How rough the real map is round a place: its distance from the mean of the four cells a step away (metres).
-var AE_TERRAIN_RELIEF_STEP_DEG = 0.7, AE_TERRAIN_RELIEF_SCALE = 400, AE_TERRAIN_RELIEF_MIN = 0.05, AE_TERRAIN_RELIEF_MAX = 3;
+var AE_TERRAIN_RELIEF_STEP_DEG = 0.7, AE_TERRAIN_RELIEF_SCALE = 400, AE_TERRAIN_RELIEF_MIN = 0.012, AE_TERRAIN_RELIEF_MAX = 3;
 function _aeTerrainRelief(t, lat, lon) {
   var s = AE_TERRAIN_RELIEF_STEP_DEG, c = _aeTerrainCoarse(t, lat, lon);
   var m = (_aeTerrainCoarse(t, lat + s, lon) + _aeTerrainCoarse(t, lat - s, lon) + _aeTerrainCoarse(t, lat, lon + s) + _aeTerrainCoarse(t, lat, lon - s)) / 4;
