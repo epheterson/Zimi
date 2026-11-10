@@ -3215,11 +3215,14 @@ def _fold_own_copies(zims):
     zimi_eng_zimi_almanac_2026-11.zim beside the package's zimi_almanac) is that ZIM, not another one. The package's
     file is served under the name unless the copy is strictly newer by its Date metadata, in which case the copy is
     (and the package's file stands down, like a same-name copy in _own_copy_first). Edits ``zims`` in place; returns
-    ``{loser path: winner path}``. A ZIM that only looks alike (another Name) is left alone."""
+    ``{loser path: winner path}``. A ZIM that only looks alike (another Name) is left alone, and so is a data pack:
+    Almanac HD carries the Almanac's Name by design (almanachd) and is served under its own."""
     from zimi import ownzims
 
     lost = {}
     for name in sorted(zims):
+        if name in DATA_PACKS:
+            continue
         path = zims.get(name)
         fam = ownzims.family_of(path) if path else None
         if not fam:

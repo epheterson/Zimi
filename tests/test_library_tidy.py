@@ -184,6 +184,16 @@ def test_data_packs_are_one_almanac_hd_row_with_their_parts(lib):
     assert not (set(srv.DATA_PACKS) & set(srv.content_zims()))
 
 
+def test_almanac_hd_carries_the_almanacs_name_and_is_still_served(lib):
+    # The real file: the HD flavour has the Almanac's own Name metadata (almanachd), and the 3D view reads its tiles.
+    build_fixture_zim(str(lib / "zimi_almanac_maxi_2026-11b.zim"), dict(ALMANAC_META, Flavour="maxi"))
+    zims = _scan()
+    assert zims["zimi_almanac"] == _own_path()
+    assert os.path.basename(zims["zimi_almanac_maxi"]) == "zimi_almanac_maxi_2026-11b.zim"
+    assert srv.older_copies() == []
+    assert almanachd.status()["installed"] is True
+
+
 def test_the_counts_agree_with_what_is_listed(lib):
     from zimi import http
 
