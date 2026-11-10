@@ -448,7 +448,7 @@ function _aeStTreeKind(lat, h, rnd, cls) {
   if (a > 66) return null;
   if (a < 24) return rnd() < 0.3 ? 'palm' : 'broadleaf';
   if (cls === 'conifer') return rnd() < 0.92 ? 'conifer' : 'broadleaf';   // the grid's own word for the cell, over the latitude's guess
-  if (cls === 'broadleaf') return rnd() < 0.92 ? 'broadleaf' : 'conifer';
+  if (cls === 'broadleaf') return rnd() < 0.97 ? 'broadleaf' : 'conifer';
   if (cls === 'grass') return 'broadleaf';   // the tropics: broadleaves and palms up to the tree line (the caller stops there), never firs
   if (a > 44 || h > 1100) return rnd() < 0.9 ? 'conifer' : 'broadleaf';
   return rnd() < 0.7 ? 'broadleaf' : 'conifer';
