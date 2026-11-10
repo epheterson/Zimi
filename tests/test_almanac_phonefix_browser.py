@@ -62,3 +62,44 @@ def test_pinching_out_of_the_planets_view_closes_it_without_an_error(browser, se
         assert not errors, errors
     finally:
         ctx.close()
+
+
+CHOSEN_MS = 1717243200000  # 2024-06-01T12:00:00Z, a date the reader picked before the mission
+FOCUS = "() => ({ set: !!_almFocus, ms: _almFocusInstant().getTime(), rate: _almRate, now: Date.now() })"
+
+
+def _fly_apollo_and_go_back(pg):
+    pg.evaluate("_aeMissionStart('apollo11')")
+    pg.wait_for_function("() => !!(_ae.mission && _almFocusInstant().getFullYear() === 1969)", timeout=60_000, polling=200)
+    pg.click("#back-btn")
+    pg.wait_for_function("() => !_aeIsOpen", timeout=20_000, polling=100)
+    pg.wait_for_timeout(500)
+    return pg.evaluate(FOCUS)
+
+
+def test_leaving_a_mission_puts_the_almanac_back_at_now(browser, served):
+    ctx, pg, errors = _page(browser, served)
+    try:
+        _open_3d(pg)
+        got = _fly_apollo_and_go_back(pg)
+        assert got["set"] is False, got  # live again, not a chosen date
+        assert abs(got["ms"] - got["now"]) < 60_000, got
+        assert got["rate"] == 1, got
+        assert "1969" not in pg.inner_text("#almanac-head")
+        assert not errors, errors
+    finally:
+        ctx.close()
+
+
+def test_leaving_a_mission_puts_back_the_date_the_reader_chose(browser, served):
+    ctx, pg, errors = _page(browser, served)
+    try:
+        pg.wait_for_function("() => typeof _almScrubSettle === 'function'", timeout=60_000)
+        pg.evaluate("(ms) => _almScrubSettle(new Date(ms))", CHOSEN_MS)
+        _open_3d(pg)
+        got = _fly_apollo_and_go_back(pg)
+        assert got["set"] is True, got
+        assert abs(got["ms"] - CHOSEN_MS) < 60_000, got
+        assert not errors, errors
+    finally:
+        ctx.close()

@@ -8717,6 +8717,7 @@ function _aeClose(toOrrery) {
   if (!_aeIsOpen || (_ae.hand && _ae.hand.dir < 0)) return;
   if (_ae.site) _aeSiteLeave(true);   // the ground's camera gives way before the view is handed back to the page
   if (_ae.mission) _amStop(true);
+  if (typeof _amRestoreTime === 'function') _amRestoreTime();   // the page goes back to the moment it had before a mission, not the mission's
   _aeLeaveSpin();
   var frame = _ae.fromHero && toOrrery !== true && _aeReady() && !_ae.el.classList.contains('ae-blank') &&
     (typeof _almanacOpen === 'undefined' || _almanacOpen) ? _aeHeroFrame() : null;
@@ -8732,6 +8733,7 @@ function _aeFinishClose() {
   if (window.AlmanacMaps) AlmanacMaps.release();
   if (_ae.site) _aeSiteLeave(true);
   if (_ae.mission) _amStop(true);
+  if (typeof _amRestoreTime === 'function') _amRestoreTime();
   if (typeof updateTopbar === 'function') updateTopbar();   // the header's arrow is the Almanac's own again
   if (typeof _almClockUncover === 'function') _almClockUncover();   // the page lands on the moment the clock reached
   _aeStepOut();

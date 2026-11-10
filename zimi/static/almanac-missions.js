@@ -330,7 +330,7 @@ function _aeMissionOpen(id, atT, back) {
     m.vehicles.forEach(function (v) { v.legs.forEach(function (l) { if (l.frame === 'probe' && AE_CRAFT_MODEL[l.key]) _aeCraftLoad(AE_CRAFT_MODEL[l.key]); }); });   // a probe's own model, drawn by the view itself
     var s = _ae.mission = {
       id: id, zeroMs: m.zeroMs, parts: {}, flames: {}, dot: null, speedIdx: 1, userCam: false, phaseIdx: -1,
-      camAz: 0, camEl: 0.3, camDist: 100, camSet: false, shot: null, back: { ms: _aeDisplayMs(), rate: typeof _almRate === 'number' ? _almRate : 1, live: !_aeFocusSet() },
+      camAz: 0, camEl: 0.3, camDist: 100, camSet: false, shot: null, back: _ae.missionBack || (_ae.missionBack = { ms: _aeDisplayMs(), rate: typeof _almRate === 'number' ? _almRate : 1, live: !_aeFocusSet() }),
       lastText: 0, ended: 0, state: {}, fov: AM_FOV_DEG, pose: null, focus: null, trackAt: -1, noHandoff: !!back
     };
     _ae.el.classList.add('ae-mission');
@@ -365,11 +365,17 @@ function _amStop(quiet) {
   _ae.mission = null;
   _ae.el.classList.remove('ae-mission');
   _amHud(false);
-  if (!quiet) {
-    if (s.back.live && typeof _aeNow === 'function') _aeNow(); else if (typeof _aeGoTo === 'function') _aeGoTo(s.back.ms);
-    if (typeof _almClockSetRate === 'function') _almClockSetRate(s.back.rate);
-    _ae.dirty = true; _aeKick();
-  }
+  if (!quiet) { _amRestoreTime(); _ae.dirty = true; _aeKick(); }
+}
+// The reader's own moment from before the first mission (their chosen date, else now) and the clock's pace, given back
+// once: by the mission's own exit, or by the view closing (almanac-earth.js), whichever comes first. A mission that hands
+// over to a landing site, or gives way to another, keeps the moment from before the first.
+function _amRestoreTime() {
+  var b = _ae && _ae.missionBack;
+  if (!b) return;
+  _ae.missionBack = null;
+  if (b.live && typeof _aeNow === 'function') _aeNow(); else if (typeof _aeGoTo === 'function') _aeGoTo(b.ms);
+  if (typeof _almClockSetRate === 'function') _almClockSetRate(b.rate);
 }
 // Jump to a mission time: the page's clock goes there at the phase's own pace.
 function _amJump(m, t, keepCam) {
