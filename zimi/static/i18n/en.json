@@ -3792,5 +3792,6 @@
   "tb_kn_launch_falcon_sep": "Falcon 9: first and second stage separate at",
   "tb_kn_launch_falcon_ses": "Falcon 9: the second stage lights at",
   "tb_kn_launch_falcon_seco": "Falcon 9: the second stage’s first burn ends at",
-  "tb_kn_sat_leo_gone": "A low-orbit satellite is not drawn when its elements are older than"
+  "tb_kn_sat_leo_gone": "A low-orbit satellite is not drawn when its elements are older than",
+  "tb_kn_launch_sight_mag": "A sight’s brightness where a sky wants a magnitude (estimates)"
 }

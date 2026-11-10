@@ -3792,5 +3792,6 @@
   "tb_kn_launch_falcon_sep": "Falcon 9: Stufentrennung bei",
   "tb_kn_launch_falcon_ses": "Falcon 9: die zweite Stufe zündet bei",
   "tb_kn_launch_falcon_seco": "Falcon 9: erster Brand der zweiten Stufe endet bei",
-  "tb_kn_sat_leo_gone": "Ein Satellit in niedriger Bahn wird nicht gezeigt, wenn seine Bahndaten älter sind als"
+  "tb_kn_sat_leo_gone": "Ein Satellit in niedriger Bahn wird nicht gezeigt, wenn seine Bahndaten älter sind als",
+  "tb_kn_launch_sight_mag": "Helligkeit einer Erscheinung, wo ein Himmel eine Größenklasse braucht (Schätzwerte)"
 }

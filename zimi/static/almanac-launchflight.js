@@ -343,3 +343,49 @@ function _lfThen(L, place, seen) {
     source: { name: 'GCAT (McDowell)', url: 'https://planet4589.org/space/gcat', licence: 'CC BY 4.0' }
   };
 }
+
+// ── For a sky that draws what it is given ──
+// What a place sees at an instant, as plain objects a sky can paint: {kind, name, az, el, mag, rgb, trail, sight}. The 2D live
+// sky (almanac-launches.js) and the ground view's sky-objects hook both read these.
+var LF_SKY_TRAIL_S = 12, LF_SKY_TRAIL_STEP_S = 2;   // a rocket's trail: this far back, a point this often
+var LF_SIGHT_RGB = { jellyfish: [160, 215, 255], flame: [255, 170, 90], dot: [255, 244, 225], day: [255, 244, 225] };
+// The rocket of a launch (flight: _lfAscent's, L: the launch) at ms as seen from a place, or null when it is not up or not
+// seen. mag is an estimate by the sight (AE_LAUNCH_REF.sightMag).
+function _lfSkyRocket(flight, L, ms, obsLat, obsLon) {
+  var t = (ms - L.ms) / 1000;
+  if (t < 0 || t > flight.stop) return null;
+  var sunAlt = _lfSunAlt(ms, obsLat, obsLon), trail = [], head = null;
+  for (var k = 0; k <= LF_SKY_TRAIL_S; k += LF_SKY_TRAIL_STEP_S) {
+    var p = flight.points[Math.max(0, Math.min(flight.points.length - 1, Math.round(t - k)))], lk = _lfLook(obsLat, obsLon, p.lat, p.lon, p.h);
+    if (lk.el < 0) break;
+    var at = ms - k * 1000, lit = _lfSunlit(_lfEci(p.lat, p.lon, p.h, _lfGmst(at)), _lfSunUnit(at));
+    var sight = _lfSight(p.burn > 0, lit, sunAlt, lk.el, p.h);
+    if (k === 0) head = { az: lk.az, el: lk.el, sight: sight, h: p.h };
+    else trail.push({ az: lk.az, el: lk.el });
+  }
+  if (!head || head.sight === 'below') return null;
+  return { kind: 'rocket', name: L.name + (L.mission ? ' · ' + L.mission : ''), az: head.az, el: head.el, mag: AE_LAUNCH_REF.sightMag[head.sight],
+    rgb: LF_SIGHT_RGB[head.sight], trail: trail, sight: head.sight, km: head.h };
+}
+// A diffuse sphere of cross-section `areaM2` lit by the Sun and seen at `rangeKm` and phase angle `phase` (radians): the
+// magnitude the Almanac's satellite passes use (Russell 1916).
+function _lfMagnitude(areaM2, rangeKm, phase) {
+  var p = 2 / (3 * Math.PI) * (Math.sin(phase) + (Math.PI - phase) * Math.cos(phase)), d = rangeKm * 1000;
+  return AE_SATS_REF.sunMag - 2.5 * Math.log10(Math.max(1e-30, AE_SATS_REF.albedo * areaM2 * p / (Math.PI * d * d)));
+}
+// The satellites of a reconstructed batch at ms as seen from a place: those above the horizon, in sunlight, with the Sun
+// below the passes' limit (AE_SATS_REF.passSunAlt + 1, as the 2D sky draws them).
+function _lfSkyBatch(dep, ms, obsLat, obsLon) {
+  var out = [];
+  if (!dep || ms < dep.sepMs) return out;
+  var w = _lfWatcher(ms, obsLat, obsLon);
+  if (w.sunAlt >= AE_SATS_REF.passSunAlt + 1) return out;
+  var area = AE_SATS_REF.areaM2.starlink;
+  for (var i = 0; i < dep.n; i++) {
+    var pos = dep.at(ms, i), v = _lfSeenBy(w, pos);
+    if (v.el < 0 || !v.lit) continue;
+    var rho = [w.o[0] - pos[0], w.o[1] - pos[1], w.o[2] - pos[2]], phase = Math.acos(Math.max(-1, Math.min(1, _lfDot(w.sun, rho) / v.range)));
+    out.push({ kind: 'sat', name: '', az: v.az, el: v.el, mag: _lfMagnitude(area, v.range, phase), km: Math.hypot(pos[0], pos[1], pos[2]) - LF_MEAN_RADIUS_KM });
+  }
+  return out;
+}

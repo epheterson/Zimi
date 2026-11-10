@@ -46,7 +46,7 @@ function line(src, name) {
 const S = { Math, Date, Object, JSON, console, Number, Array, isNaN, Int32Array, Float64Array };
 vm.createContext(S);
 vm.runInContext(['AE_EARTH_RADIUS_KM', 'AE_GM_EARTH'].map((n) => line(earthSrc, n)).join('\n') + '\nvar MS_PER_DAY = 86400000;', S);
-vm.runInContext(block(earthSrc, 'AE_LAUNCH_REF'), S);
+vm.runInContext(block(earthSrc, 'AE_SATS_REF') + block(earthSrc, 'AE_LAUNCH_REF'), S);
 vm.runInContext(fs.readFileSync(path.join(STATIC, 'almanac-launchflight.js'), 'utf8'), S);
 vm.runInContext(fs.readFileSync(path.join(STATIC, 'earth', 'satellite-7.1.0.min.js'), 'utf8'), S);
 const D = 180 / Math.PI;
@@ -237,6 +237,32 @@ const flight = S._lfAscent(SLC40);
   check(m && m.id === 'launch:2022-141:34.05,-118.24' && m.family === 'launch' && m.place.name === 'Los Angeles' && m.instant > L.ms && m.look.az > 250 && m.look.az < 300 && m.see === 'jellyfish' && m.source.licence === 'CC BY 4.0',
     'a launch seen from Los Angeles is a moment: ' + (m ? m.id + ' at +' + (m.instant - L.ms) / 1000 + ' s, face ' + m.look.az.toFixed(0) : 'none'));
   check(S._lfThen(L, { lat: 28, lon: -80 }, { seen: false }) === null, 'and one that could not be seen is not');
+}
+
+
+// ── 7. For a sky that draws what it is given ───────────────────────────────
+{
+  const L = { tag: '2022-141', name: 'Falcon 9', mission: 'Starlink Group 4-31', ms: Date.UTC(2022, 9, 28, 1, 14), lat: 34.632, lon: -120.611, siteName: 'Vandenberg', incDeg: 53.2, perigeeKm: 230, ok: true };
+  const f = S._lfAscent(L), LA = [34.05, -118.24];
+  check(S._lfSkyRocket(f, L, L.ms - 5000, LA[0], LA[1]) === null && S._lfSkyRocket(f, L, L.ms + 600000, LA[0], LA[1]) === null, 'no rocket before lift-off or after the burn');
+  const seen = S._lfObserve(f, L, L.ms, LA[0], LA[1]);
+  const r = S._lfSkyRocket(f, L, L.ms + 150000, LA[0], LA[1]);
+  const sample = seen.samples[150];
+  check(r && r.kind === 'rocket' && Math.abs(r.az - sample.az) < 1e-6 && Math.abs(r.el - sample.el) < 1e-6 && r.sight === sample.sight, 'the rocket at T+150 s is where _lfObserve puts it (' + (r ? r.az.toFixed(0) + ' deg, ' + r.el.toFixed(0) + ' deg, ' + r.sight : 'none') + ')');
+  check(r.sight === 'jellyfish' && r.mag === S.AE_LAUNCH_REF.sightMag.jellyfish && r.trail.length > 3 && r.trail.every((q) => q.el >= 0), 'a lit exhaust in twilight: its magnitude, and a trail of earlier places');
+  const far = S._lfSkyRocket(f, L, L.ms + 150000, 37.19, -121.55 + 40);
+  check(far === null, 'and nothing from a place that cannot see it');
+  // The Starlink 4-31 batch: seen from Los Angeles in the evenings after, as points with magnitudes.
+  const L25 = { mission: 'Starlink V1.0-L25', inc: 53.05, n: 60, depKm: 268.5 }, t25 = Date.UTC(2021, 4, 4, 19, 1);
+  const dep = S._lfDeploy(L25, S._lfAscent({ name: 'Falcon 9', lat: 28.608, lon: -80.604, siteName: 'Kennedy', incDeg: 53.05, perigeeKm: 261, ok: true }), t25, 63), GV = [39.22, -121.06];
+  const wins = S._lfBatchWindows(dep, Date.UTC(2021, 4, 7, 2, 0), Date.UTC(2021, 4, 7, 8, 0), GV[0], GV[1], 10, 30000);
+  check(S._lfSkyBatch(dep, t25 + 60000, GV[0], GV[1]).length === 0, 'no satellites before release');
+  const at = wins.length ? wins[0].peakMs : 0, sats = S._lfSkyBatch(dep, at, GV[0], GV[1]);
+  check(sats.length > 0 && sats.every((v) => v.kind === 'sat' && v.el >= 0 && isFinite(v.mag) && v.mag > -6 && v.mag < 12 && v.km > 250 && v.km < 600), 'the batch at its best pass is ' + sats.length + ' points with magnitudes ' + (sats.length ? Math.min.apply(null, sats.map((v) => v.mag)).toFixed(1) + ' to ' + Math.max.apply(null, sats.map((v) => v.mag)).toFixed(1) : '-'));
+  check(S._lfSkyBatch(dep, Date.UTC(2021, 4, 7, 20, 0), GV[0], GV[1]).length === 0, 'and none in daylight');
+  // The brightness model is the passes' own: the ISS-sized check, a 6,400 m2 sphere at 1,000 km, half lit, is about -1.8.
+  const m = S._lfMagnitude(6400, 1000, Math.PI / 2);
+  check(Math.abs(m - -1.8) < 0.7, 'a 6,400 square metre sphere at 1,000 km, half lit: magnitude ' + m.toFixed(1) + ' (McCants, about -1.8)');
 }
 
 if (failures) { console.error(failures + ' failed'); process.exit(1); }

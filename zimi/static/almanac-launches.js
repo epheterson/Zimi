@@ -19,7 +19,6 @@ var AL_DEP_ORBIT_DAYS = 4;                   // GCAT's catalogued orbit is the d
 var AL_WINDOW_HOURS = 72, AL_WINDOW_STEP_S = 30, AL_WINDOWS_SHOWN = 3;
 var AL_PEARL_PX = 1.1, AL_PEARL_ALPHA = 0.9;   // a released satellite in the sky: this radius (CSS px), this opaque
 var AL_HINT_KEY = 'zimi_al_hint';            // set once a launch's buttons have been used: the legend goes
-var AL_TRAIL_S = 12, AL_TRAIL_STEP_S = 2;    // the rocket's trail in the sky: this far back, a point this often
 // ── In the 3D view ──
 var AL_FLY_TILT_RAD = 0.3;                   // the view looks this far south of the ascent's middle, so the ascent sits above the sheet
 var AL_FLY_MIDDLE = 0.4;                     // the share of the ascent the view is centred on: the pad and the far end both fit
@@ -532,47 +531,37 @@ function _alExactPoints(ms, sc, n) {
 // released satellites that are lit.
 function _alSkyPaint(ctx, s) {
   if (!_al.flight || !_al.cur) return;
-  var ms = _skyLive() ? Date.now() : s.nowTime, dpr = s.dpr, drawn = false, L = _al.cur, f = _al.flight;
-  var t = (ms - L.ms) / 1000;
-  if (t >= 0 && t <= f.stop) {
-    var sunAlt = _lfSunAlt(ms, s.lat, s.lon), trail = [];
-    for (var k = 0; k <= AL_TRAIL_S; k += AL_TRAIL_STEP_S) {
-      var p = f.points[Math.max(0, Math.min(f.points.length - 1, Math.round(t - k)))], lk = _lfLook(s.lat, s.lon, p.lat, p.lon, p.h);
-      if (lk.el < 0) break;
-      var sun = _lfSunlit(_lfEci(p.lat, p.lon, p.h, _lfGmst(ms - k * 1000)), _lfSunUnit(ms - k * 1000));
-      trail.push({ x: _skyX(s, lk.az), y: _skyY(s, lk.el), el: lk.el, az: lk.az, sight: _lfSight(p.burn > 0, sun, sunAlt, lk.el, p.h), h: p.h });
-    }
-    if (trail.length && _skyInView(s, trail[0].x, 40)) {
-      var head = trail[0], jelly = head.sight === 'jellyfish';
-      for (var j = trail.length - 1; j > 0; j--) {
-        ctx.strokeStyle = 'rgba(255,236,200,' + (0.5 * (1 - j / trail.length)).toFixed(3) + ')';
-        ctx.lineWidth = dpr * 1.6;
-        ctx.beginPath(); ctx.moveTo(trail[j].x, trail[j].y); ctx.lineTo(trail[j - 1].x, trail[j - 1].y); ctx.stroke();
-      }
-      if (jelly) _skyLight(ctx, head.x, head.y, 9 * dpr, [160, 215, 255], 0.35);
-      _skyLight(ctx, head.x, head.y, (head.sight === 'dot' || head.sight === 'day' ? 2.2 : 3) * dpr, head.sight === 'flame' ? [255, 170, 90] : [255, 244, 225], 0.95);
-      ctx.fillStyle = 'rgba(255,250,235,.85)';
-      ctx.font = (11 * dpr) + 'px sans-serif';
-      ctx.fillText(L.name, head.x + 8 * dpr, head.y - 8 * dpr);
-      s.bodies.push({ type: 'rocket', name: L.name + (L.mission ? ' · ' + L.mission : ''), x: head.x / dpr, y: head.y / dpr, r: 5, alt: head.el, az: head.az, km: head.h });
-      drawn = true;
-    }
+  var ms = _skyLive() ? Date.now() : s.nowTime, dpr = s.dpr, drawn = false, L = _al.cur;
+  var r = _lfSkyRocket(_al.flight, L, ms, s.lat, s.lon);
+  if (r && _skyInView(s, _skyX(s, r.az), 40)) {
+    var hx = _skyX(s, r.az), hy = _skyY(s, r.el), px = hx, py = hy;
+    r.trail.forEach(function (q, j) {
+      var qx = _skyX(s, q.az), qy = _skyY(s, q.el);
+      ctx.strokeStyle = 'rgba(255,236,200,' + (0.5 * (1 - j / r.trail.length)).toFixed(3) + ')';
+      ctx.lineWidth = dpr * 1.6;
+      ctx.beginPath(); ctx.moveTo(px, py); ctx.lineTo(qx, qy); ctx.stroke();
+      px = qx; py = qy;
+    });
+    if (r.sight === 'jellyfish') _skyLight(ctx, hx, hy, 9 * dpr, r.rgb, 0.35);
+    _skyLight(ctx, hx, hy, (r.sight === 'dot' || r.sight === 'day' ? 2.2 : 3) * dpr, r.sight === 'flame' ? r.rgb : [255, 244, 225], 0.95);
+    ctx.fillStyle = 'rgba(255,250,235,.85)';
+    ctx.font = (11 * dpr) + 'px sans-serif';
+    ctx.fillText(L.name, hx + 8 * dpr, hy - 8 * dpr);
+    s.bodies.push({ type: 'rocket', name: r.name, x: hx / dpr, y: hy / dpr, r: 5, alt: r.el, az: r.az, km: r.km });
+    drawn = true;
   }
-  var dep = _al.dep;
-  if (dep && _al.depSource === AL_SRC.recon && ms >= dep.sepMs) {
-    var w = _lfWatcher(ms, s.lat, s.lon), seen = 0;
-    if (w.sunAlt < AE_SATS_REF.passSunAlt + 1) {
-      for (var i = 0; i < dep.n; i++) {
-        var v = _lfSeenBy(w, dep.at(ms, i));
-        if (v.el < 0 || !v.lit) continue;
-        var x = _skyX(s, v.az);
-        if (!_skyInView(s, x, 4)) continue;
-        ctx.fillStyle = 'rgba(255,240,205,' + AL_PEARL_ALPHA + ')';   // a pinpoint, no halo: a string of pearls
-        ctx.beginPath(); ctx.arc(x, _skyY(s, v.el), AL_PEARL_PX * dpr, 0, 6.2832); ctx.fill();
-        if (!seen++) s.bodies.push({ type: 'sat', name: _aeT('alm_launch_recon'), x: x / dpr, y: _skyY(s, v.el) / dpr, r: 4, alt: v.el, az: v.az, km: dep.heightKm(ms) });
-      }
-    }
-    if (seen) drawn = true;
+  if (_al.dep && _al.depSource === AL_SRC.recon) {
+    var first = true;
+    _lfSkyBatch(_al.dep, ms, s.lat, s.lon).forEach(function (v) {
+      var x = _skyX(s, v.az);
+      if (!_skyInView(s, x, 4)) return;
+      var y = _skyY(s, v.el);
+      ctx.fillStyle = 'rgba(255,240,205,' + AL_PEARL_ALPHA + ')';   // a pinpoint, no halo: a string of pearls
+      ctx.beginPath(); ctx.arc(x, y, AL_PEARL_PX * dpr, 0, 6.2832); ctx.fill();
+      if (first) s.bodies.push({ type: 'sat', name: _aeT('alm_launch_recon'), x: x / dpr, y: y / dpr, r: 4, alt: v.el, az: v.az, km: v.km });
+      first = false;
+      drawn = true;
+    });
   }
   if (drawn) s.issUp = true;
 }

@@ -3792,5 +3792,6 @@
   "tb_kn_launch_falcon_sep": "Falcon 9: separación de etapas a los",
   "tb_kn_launch_falcon_ses": "Falcon 9: la segunda etapa se enciende a los",
   "tb_kn_launch_falcon_seco": "Falcon 9: el primer encendido de la segunda etapa termina a los",
-  "tb_kn_sat_leo_gone": "Un satélite de órbita baja no se dibuja si sus elementos son más antiguos que"
+  "tb_kn_sat_leo_gone": "Un satélite de órbita baja no se dibuja si sus elementos son más antiguos que",
+  "tb_kn_launch_sight_mag": "Brillo de cada visión donde un cielo pide una magnitud (estimaciones)"
 }

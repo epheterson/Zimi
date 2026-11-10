@@ -3792,5 +3792,6 @@
   "tb_kn_launch_falcon_sep": "Falcon 9: separação dos estágios aos",
   "tb_kn_launch_falcon_ses": "Falcon 9: o segundo estágio acende aos",
   "tb_kn_launch_falcon_seco": "Falcon 9: a primeira queima do segundo estágio termina aos",
-  "tb_kn_sat_leo_gone": "Um satélite de órbita baixa não é desenhado se seus elementos forem mais antigos que"
+  "tb_kn_sat_leo_gone": "Um satélite de órbita baixa não é desenhado se seus elementos forem mais antigos que",
+  "tb_kn_launch_sight_mag": "Brilho de cada visão onde um céu pede uma magnitude (estimativas)"
 }

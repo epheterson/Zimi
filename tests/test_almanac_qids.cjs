@@ -153,6 +153,7 @@ const PLAIN_ROWS = {
   launch_falcon_sep: 'a figure the launch pages chose or took from a flight, not a named thing',
   launch_falcon_ses: 'a figure the launch pages chose or took from a flight, not a named thing',
   launch_falcon_seco: 'a figure the launch pages chose or took from a flight, not a named thing',
+  launch_sight_mag: 'a figure the launch pages chose or took from a flight, not a named thing',
   sat_leo_gone: 'a limit this layer chose, not a named thing',
   launch_spread: 'a figure the launch pages chose or took from a flight, not a named thing',
   launch_release: 'a figure the launch pages chose or took from a flight, not a named thing',
