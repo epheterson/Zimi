@@ -39,8 +39,13 @@ RUN pip install --no-cache-dir -r requirements.txt
 # detects that and steps down for exactly that launch, saying so in the log.
 # --only-shell: Chromium's headless build, which is all capture ever runs (no window is
 # shown); the full browser was half the image.
+#
+# libatomic1 first: Playwright 1.65's bundled node driver links it, the slim base lacks it, and without it
+# `playwright install` dies before --with-deps can add anything (exit 127, CI 2026-11-10).
 ENV PLAYWRIGHT_BROWSERS_PATH=/ms-playwright
-RUN pip install --no-cache-dir "playwright>=1.49" \
+RUN apt-get update \
+ && apt-get install -y --no-install-recommends libatomic1 \
+ && pip install --no-cache-dir "playwright>=1.49" \
  && playwright install --with-deps --only-shell chromium \
  && chmod -R a+rx /ms-playwright \
  && rm -rf /var/lib/apt/lists/*
