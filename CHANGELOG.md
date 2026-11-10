@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Fixed
+
+- Almanac Golden Record: each picture names its owner; 8 are NASA's and public domain, the rest are copyright their owners (1.6.0 called all 49 NASA public domain).
+
 ## [1.15.4]
 
 ### Highlights
