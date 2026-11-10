@@ -2,7 +2,7 @@
 Writes SHOTS_DIR/<game>-final.json (the finished session state) and a shot of the natural end sheet.
 """
 
-import sys, os, json, time, random, traceback
+import sys, os, json, time, random, traceback, re
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from play import shot, check, note, sheet_up, SHEET
@@ -75,6 +75,23 @@ def play(r, game, limit_s=420, seed=1):
             pg.touchscreen.tap(s["statusBtn"][0], s["statusBtn"][1])
             continue
         mine = s["turn"] == 0
+        if game == "gin" and mine:
+            # Gin: a card is chosen with one touch, then Discard (or Knock / Gin) in the panel; the stock is drawn from by touching it.
+            if s["choices"]:
+                names = [x[2] for x in s["choices"]]
+                pick = next((x for x in s["choices"] if re.match(r"(Knock|Gin)", x[2])), None) or next((x for x in s["choices"] if x[2].startswith("Discard")), None) or s["choices"][0]
+                pg.touchscreen.tap(pick[0], pick[1])
+                continue
+            if s["phase"] == "draw":
+                box = pg.evaluate("() => { const e = document.querySelector('[data-pile=\"stock\"]'); if (!e) return null; const r = e.getBoundingClientRect(); return [r.x + r.width / 2, r.y + r.height / 2]; }")
+                if box:
+                    pg.touchscreen.tap(box[0], box[1])
+                    continue
+            if s["phase"] == "discard" and s["hand"]:
+                ok = [h for h in s["hand"] if not h[3]] or s["hand"]
+                h = random.choice(ok)
+                pg.touchscreen.tap(h[0], h[1])
+                continue
         if not mine and not s["choices"]:
             pg.clock.run_for(3000)
             continue
