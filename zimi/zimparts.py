@@ -11,11 +11,14 @@ book goes through here instead of the path itself: the book's file name is
 ``name.zim`` (so it gets the served name, date and edition a whole ``name.zim``
 would), and its size, deletion and age cover every chunk.
 
+The extension is matched in any case (``.ZIM``, ``.Zim``, ``.ZIMAA``: what a
+FAT stick or a Windows copy leaves), and the book's file name always ends in
+lower-case ``.zim``, so it is named as the lower-case file would be.
+
 File-name and stat work, plus open_book, which the archive pools
 (server.open_archive) and `zimi check` open books through.
 """
 
-import glob
 import os
 import string
 
@@ -28,15 +31,32 @@ _SUFFIXES = [a + b for a in string.ascii_lowercase for b in string.ascii_lowerca
 
 
 def is_split(path):
-    """True for a split book's first chunk, ``name.zimaa``."""
-    return str(path).endswith(FIRST_EXT)
+    """True for a split book's first chunk, ``name.zimaa`` (any case)."""
+    return str(path).lower().endswith(FIRST_EXT)
+
+
+def is_whole(path):
+    """True for a whole ZIM, ``name.zim`` (any case)."""
+    return str(path).lower().endswith(ZIM_EXT)
 
 
 def book_filename(path):
-    """The file name the book goes by: ``name.zim`` for ``name.zimaa``, else
-    the path's own base name."""
+    """The file name the book goes by: ``name.zim`` for ``name.zimaa`` or
+    ``name.ZIM``, else the path's own base name."""
     base = os.path.basename(path)
-    return base[: -len(FIRST_SUFFIX)] if is_split(base) else base
+    if is_split(base):
+        return base[: -len(FIRST_EXT)] + ZIM_EXT
+    if is_whole(base):
+        return base[: -len(ZIM_EXT)] + ZIM_EXT
+    return base
+
+
+def _chunk_names(path):
+    """Every name a chunk of the split book at ``path`` can have, in order,
+    in the case its first chunk was written in."""
+    stem, first = path[: -len(FIRST_SUFFIX)], path[-len(FIRST_SUFFIX) :]
+    upper = first.isupper()
+    return [stem + (s.upper() if upper else s) for s in _SUFFIXES]
 
 
 def parts(path):
@@ -45,10 +65,8 @@ def parts(path):
     (where libzim stops reading, too)."""
     if not is_split(path):
         return [path]
-    stem = path[: -len(FIRST_SUFFIX)]
     out = []
-    for sfx in _SUFFIXES:
-        p = stem + sfx
+    for p in _chunk_names(path):
         if not os.path.isfile(p):
             break
         out.append(p)
@@ -60,8 +78,7 @@ def on_disk(path):
     what deleting the book removes. The path alone for a whole ZIM."""
     if not is_split(path):
         return [path]
-    stem = path[: -len(FIRST_SUFFIX)]
-    return [stem + sfx for sfx in _SUFFIXES if os.path.isfile(stem + sfx)]
+    return [p for p in _chunk_names(path) if os.path.isfile(p)]
 
 
 def missing_part(path):
@@ -70,11 +87,10 @@ def missing_part(path):
     missing leaves no gap to see: libzim's size check catches that one."""
     if not is_split(path):
         return None
-    stem = path[: -len(FIRST_SUFFIX)]
+    names = _chunk_names(path)
     have = len(parts(path))
-    for sfx in _SUFFIXES[have + 1 :]:
-        if os.path.isfile(stem + sfx):
-            return os.path.basename(stem + _SUFFIXES[have])
+    if any(os.path.isfile(p) for p in names[have + 1 :]):
+        return os.path.basename(names[have])
     return None
 
 
@@ -86,12 +102,15 @@ def first_chunk(path):
     """The ``.zimaa`` a later chunk (``name.zimab``...) belongs to; any other
     path as it is."""
     p = str(path)
+    tail = p[-len(FIRST_EXT) :]
     if (
         len(p) > len(FIRST_EXT)
-        and p[-len(FIRST_EXT) :].startswith(ZIM_EXT)
-        and p[-2:] in _SUFFIXES
+        and tail[: len(ZIM_EXT)].lower() == ZIM_EXT
+        and tail[-2:].lower() in _SUFFIXES
     ):
-        return p[: -len(FIRST_SUFFIX)] + FIRST_SUFFIX
+        return p[: -len(FIRST_SUFFIX)] + (
+            FIRST_SUFFIX.upper() if tail[-2:].isupper() else FIRST_SUFFIX
+        )
     return p
 
 
@@ -104,13 +123,22 @@ def open_book(path):
     gap = missing_part(path)
     if gap:
         raise SplitBookError(f"missing chunk {gap}")
-    try:
+    if not is_split(path):
         return Archive(path)
+    # libzim reads a book as split only when it is named by a lower-case
+    # .zimaa, and finds the later chunks by appending lower-case letters. A
+    # filesystem that ignores case (macOS, Windows) finds NAME.ZIMAB that
+    # way; one that does not (Linux) cannot, and the chunks need renaming.
+    lower = path[: -len(FIRST_EXT)] + FIRST_EXT
+    try:
+        return Archive(lower)
     except RuntimeError as e:
-        if is_split(path):
-            # libzim checks the chunks' total against the header's size.
-            raise SplitBookError(f"a chunk is missing or cut short ({e})") from e
-        raise
+        if lower != path:
+            raise SplitBookError(
+                "libzim reads split chunks by lower-case names: rename them to .zimaa, .zimab..."
+            ) from e
+        # libzim checks the chunks' total against the header's size.
+        raise SplitBookError(f"a chunk is missing or cut short ({e})") from e
 
 
 def size(path):
@@ -127,27 +155,33 @@ def mtime(path):
 
 
 def in_folder(folder):
-    """Every book in ``folder``, sorted: ``*.zim`` files, plus split books'
-    first chunks whose ``name.zim`` is not also there (a whole file of the
-    same name is the same book, and wins)."""
-    whole = glob.glob(os.path.join(folder, "*" + ZIM_EXT))
-    have = set(whole)
-    split = [
-        p
-        for p in glob.glob(os.path.join(folder, "*" + FIRST_EXT))
-        if p[: -len(FIRST_SUFFIX)] not in have
-    ]
-    return sorted(whole + split)
+    """Every book in ``folder``, sorted: ``*.zim`` files in any case, plus
+    split books' first chunks whose whole ``name.zim`` is not also there (a
+    whole file of the same name is the same book, and wins). Dotted names
+    are never books, as with the glob this replaced."""
+    try:
+        names = [n for n in os.listdir(folder) if not n.startswith(".")]
+    except OSError:
+        return []
+    whole = {n[: -len(ZIM_EXT)].lower() for n in names if is_whole(n)}
+    return sorted(
+        os.path.join(folder, n)
+        for n in names
+        if (is_whole(n) or (is_split(n) and n[: -len(FIRST_EXT)].lower() not in whole))
+        and os.path.isfile(os.path.join(folder, n))
+    )
 
 
 def path_of(folder, filename):
     """The library path of the book called ``filename`` (``name.zim``) in
     ``folder``: the whole file when there is one, else a split book's first
-    chunk, else None."""
+    chunk, else None. The extension's case on disk does not matter."""
     whole = os.path.join(folder, filename)
     if os.path.isfile(whole):
         return whole
-    first = whole + FIRST_SUFFIX
-    if filename.endswith(ZIM_EXT) and os.path.isfile(first):
-        return first
+    if not is_whole(filename):
+        return None
+    for p in in_folder(folder):
+        if book_filename(p) == filename:
+            return p
     return None
