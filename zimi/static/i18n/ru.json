@@ -3568,6 +3568,8 @@
   "app_loading_slow": "Ещё готовится…",
   "app_loading_failed": "Не удалось загрузить.",
   "zi_last_updated": "Последнее обновление",
+  "zi_license": "Лицензия",
+  "zi_relation": "Связан с",
   "zi_update_history": "История обновлений",
   "upd_added": "Добавлено",
   "upd_updated": "Обновлено",

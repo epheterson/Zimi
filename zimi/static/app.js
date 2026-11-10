@@ -6242,6 +6242,8 @@ function _ziBodyHtml(info) {
     _ziRow('zi_creator', esc(info.creator)) +
     _ziRow('zi_publisher', esc(info.publisher)) +
     _ziRow('zi_source', _ziSourceHtml(info.source)) +
+    _ziRow('zi_license', esc(info.license)) +
+    _ziRow('zi_relation', esc(info.relation)) +
     _ziRow('zi_scraper', esc(info.scraper)) +
     _ziRow('zi_flavour', esc(info.flavour)) +
     _ziRow('zi_tags', _ziTagsHtml(info.tags)) +

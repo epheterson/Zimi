@@ -1389,6 +1389,8 @@ _PRESENTED_METADATA_KEYS = frozenset(
         "Creator",
         "Publisher",
         "Source",
+        "License",
+        "Relation",
         "Scraper",
         "Flavour",
         "Tags",
@@ -1924,6 +1926,9 @@ def _zim_info(name):
         "source": source,
         "scraper": meta.get("Scraper", ""),
         "flavour": meta.get("Flavour", ""),
+        "license": meta.get("License", ""),
+        # Another book this one goes with (openZIM's Relation), as written.
+        "relation": meta.get("Relation", ""),
         "tags": _split_tags(meta.get("Tags")),
         "history": history,
         "kind": _zimi_kind(meta),

@@ -3568,6 +3568,8 @@
   "app_loading_slow": "ما زال قيد التحضير…",
   "app_loading_failed": "تعذّر التحميل.",
   "zi_last_updated": "آخر تحديث",
+  "zi_license": "الترخيص",
+  "zi_relation": "مرتبط بـ",
   "zi_update_history": "سجل التحديثات",
   "upd_added": "أُضيف",
   "upd_updated": "حُدّث",

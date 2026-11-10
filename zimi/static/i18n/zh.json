@@ -3568,6 +3568,8 @@
   "app_loading_slow": "仍在准备中…",
   "app_loading_failed": "未能加载。",
   "zi_last_updated": "最近更新",
+  "zi_license": "许可证",
+  "zi_relation": "相关",
   "zi_update_history": "更新记录",
   "upd_added": "已添加",
   "upd_updated": "已更新",

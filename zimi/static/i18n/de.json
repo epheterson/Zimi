@@ -3568,6 +3568,8 @@
   "app_loading_slow": "Wird noch vorbereitet …",
   "app_loading_failed": "Das konnte nicht geladen werden.",
   "zi_last_updated": "Zuletzt aktualisiert",
+  "zi_license": "Lizenz",
+  "zi_relation": "Gehört zu",
   "zi_update_history": "Verlauf der Aktualisierungen",
   "upd_added": "Hinzugefügt",
   "upd_updated": "Aktualisiert",

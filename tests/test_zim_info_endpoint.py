@@ -88,6 +88,8 @@ FOUND_META = {
     "Publisher": "openZIM",
     "Scraper": "devdocs2zim v0.2.1",
     "Tags": "devdocs;lit",
+    "License": "CC-BY-SA 4.0",
+    "Relation": "devdocs_en_lit_all",
 }
 
 
@@ -228,6 +230,23 @@ class ZimInfoTests(unittest.TestCase):
         self.assertIsNone(info["kind"])
         # No Source was ever written, so none is claimed.
         self.assertEqual(info["source"], "")
+
+    def test_license_and_relation_are_rows_of_their_own(self):
+        status, info = self._get("/zim-info?zim=found")
+        self.assertEqual(info["license"], "CC-BY-SA 4.0")
+        self.assertEqual(info["relation"], "devdocs_en_lit_all")
+        other = info.get("other") or {}
+        self.assertNotIn("License", other)
+        self.assertNotIn("Relation", other)
+        root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+        with open(os.path.join(root, "zimi", "static", "app.js"), encoding="utf-8") as f:
+            app = f.read()
+        i18n = os.path.join(root, "zimi", "static", "i18n")
+        for key in ("zi_license", "zi_relation"):
+            self.assertIn("_ziRow('%s'" % key, app)
+            for fn in os.listdir(i18n):
+                with open(os.path.join(i18n, fn), encoding="utf-8") as f:
+                    self.assertTrue(json.load(f).get(key), (fn, key))
 
     def test_kinds_lists_only_the_zims_zimi_made(self):
         status, body = self._get("/zim-info?kinds=1")
