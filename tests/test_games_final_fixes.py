@@ -356,7 +356,7 @@ def test_a_family_opens_with_a_count_and_a_chevron(browser, zimi):
     assert f.locator(".sh-fam.sh-open .sh-fam-panel a.ar-game:visible").count() > 20
     card.click()
     assert card.get_attribute("aria-expanded") == "false"
-    assert shelf_n >= int(tag.locator("b").inner_text())
+    assert shelf_n >= int(tag.locator("b").text_content())
     ctx.close()
 
 
