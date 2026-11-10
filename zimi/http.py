@@ -29,6 +29,7 @@ import zimi.server as _srv
 from zimi import bestanswer as _bestanswer
 from zimi import bookpages as _bookpages
 from zimi import changes as _changes
+from zimi import zimparts
 from zimi import manage as _manage_mod
 from zimi import netguard as _netguard
 from zimi import sso as _sso
@@ -1038,11 +1039,7 @@ def _read_disk_space():
     try:
         usage = shutil.disk_usage(_srv.ZIM_DIR)
         total = usage.total
-        zim_size = sum(
-            os.path.getsize(os.path.join(_srv.ZIM_DIR, f))
-            for f in os.listdir(_srv.ZIM_DIR)
-            if f.endswith(".zim")
-        )
+        zim_size = sum(zimparts.size(p) for p in zimparts.in_folder(_srv.ZIM_DIR))
         return {
             "zim_dir": _srv.ZIM_DIR,
             "data_dir": _srv.ZIMI_DATA_DIR,
@@ -1619,7 +1616,7 @@ def _kiwix_book(book):
     if book in names:
         return book
     for name, path in names.items():
-        if os.path.basename(path)[: -len(".zim")] == book:
+        if zimparts.book_filename(path)[: -len(".zim")] == book:
             return name
     base = _srv._zim_base_name(book + ".zim")
     return base if base in names else book
@@ -5259,11 +5256,17 @@ class ZimHandler(BaseHTTPRequestHandler):
         path = zims.get(name)
         if path is None:
             for p in zims.values():
-                if os.path.basename(p) == name:
+                if zimparts.book_filename(p) == name:
                     path = p
                     break
         if path is None or not os.path.isfile(path):
             return self._json(404, {"error": "ZIM not found"})
+        if zimparts.is_split(path):
+            # A split book is its chunks; a peer pulls one file. Refused, not
+            # served as its first chunk (a half book that would look whole).
+            return self._json(
+                409, {"error": "split ZIMs are not shared", "error_key": "split_not_shared"}
+            )
 
         try:
             total_size = os.path.getsize(path)
