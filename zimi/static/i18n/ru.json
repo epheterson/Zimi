@@ -3719,6 +3719,7 @@
   "tb_kn_sat_area_oneweb": "Принятый размер спутника OneWeb",
   "tb_kn_sat_area_iridium": "Принятый размер спутника Iridium",
   "tb_kn_sat_min_rcs": "Радиолокационное сечение, ниже которого спутник не предлагается",
+  "tb_kn_sat_sky_mag": "Спутники во всём небе до этой звёздной величины",
   "tb_kn_sat_pass_max": "Не более пролётов в списке",
   "tb_kn_sat_lone_starlinks": "Не более одиночных Starlink в списке",
   "tb_kn_sat_train_gap": "Starlink ближе по времени этого образуют цепочку",

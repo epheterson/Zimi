@@ -1930,6 +1930,7 @@ var TB_CONST_ROWS = {
       ['sat_pass_el', AE_SATS_REF.passMinEl, 0, '°', 'Zimi'],
       ['sat_pass_sun', AE_SATS_REF.passSunAlt, 0, '°', 'USNO'],
       ['sat_pass_mag', AE_SATS_REF.passMag, 1, '', 'Zimi'],
+      ['sat_sky_mag', AE_SATS_REF.skyMag, 1, '', 'Zimi'],
       ['sat_albedo', AE_SATS_REF.albedo, 2, '', 'Zimi'],
       ['sat_sun_mag', AE_SATS_REF.sunMag, 2, '', 'IAU'],
       ['sat_model', 'm = m☉ − 2.5 log₁₀(a · A · p(φ) / (π d²))', 0, '', 'Russell 1916 (Lambert sphere)'],
