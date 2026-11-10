@@ -7102,7 +7102,9 @@ def handle_manage_post(handler, parsed, data):
         # Kick off the library health report on a worker thread.
         from zimi import health as _health
 
-        started, msg = _health.start_check()
+        # {"deep": true} reads every file for its checksum (minutes a
+        # hundred GB); the Check button sends nothing and stays quick.
+        started, msg = _health.start_check(deep=data.get("deep") is True)
         if started:
             _activity_after(
                 _health.get_state,

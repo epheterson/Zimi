@@ -18,7 +18,7 @@ import threading
 import time
 
 import zimi.server as _srv
-from zimi import zimparts
+from zimi import zimcheck, zimparts
 from zimi.libzimcompat import can_walk_entries, entry_by_id
 
 log = logging.getLogger("zimi.health")
@@ -215,8 +215,10 @@ def _sample_text(archive):
     return {"sampled": sampled, "empty": empty}
 
 
-def _check_one(entry, path, catalog_sizes):
-    """Build a single ZIM's health row."""
+def _check_one(entry, path, catalog_sizes, deep=False):
+    """Build a single ZIM's health row. ``deep`` also reads the whole file
+    for its checksum (zimcheck.checksum_problem: off the libzim lock, and
+    off the GIL, at disk speed)."""
     name = entry.get("name", "")
     row = {
         "name": name,
@@ -268,6 +270,10 @@ def _check_one(entry, path, catalog_sizes):
         log.debug("health: open failed for %s: %s", name, e)
         row["issues"].append("does not open")
 
+    if deep and row["opens"]:
+        problem = zimcheck.checksum_problem(path)
+        if problem:
+            row["issues"].append(problem)
     if row["opens"] and not row["has_main"]:
         row["issues"].append("no main page")
     if row["opens"] and row["entries"] == 0:
@@ -327,7 +333,7 @@ def _check_one(entry, path, catalog_sizes):
     return row
 
 
-def _run():
+def _run(deep=False):
     try:
         zim_files = _srv.get_zim_files()
         by_name = {z.get("name"): z for z in (_srv.list_zims() or [])}
@@ -338,7 +344,7 @@ def _run():
         report = []
         for i, name in enumerate(names):
             entry = by_name.get(name) or {"name": name}
-            report.append(_check_one(entry, zim_files[name], catalog_sizes))
+            report.append(_check_one(entry, zim_files[name], catalog_sizes, deep))
             _set(done=i + 1, total=total)
         healthy = sum(1 for r in report if r["status"] == "ok")
         warnings = total - healthy
@@ -380,9 +386,10 @@ def _run():
         _lock.release()
 
 
-def start_check():
+def start_check(deep=False):
     """Kick off a health check on a daemon worker thread. Returns
-    ``(started, message)``; ``started`` is False when one is already running."""
+    ``(started, message)``; ``started`` is False when one is already running.
+    ``deep`` verifies every checksum too: the whole library read from disk."""
     if not _lock.acquire(blocking=False):
         return False, "a health check is already running"
     _set(
@@ -394,5 +401,5 @@ def start_check():
         started_at=time.time(),
         finished_at=None,
     )
-    threading.Thread(target=_run, daemon=True, name="library-health").start()
+    threading.Thread(target=_run, args=(deep,), daemon=True, name="library-health").start()
     return True, "started"
