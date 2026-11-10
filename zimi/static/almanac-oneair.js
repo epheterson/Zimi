@@ -116,7 +116,7 @@ function _oaFill(u, S) {
 }
 // The tables for a state's Sun and Moon (drawn only when a light has moved).
 function _oaBakeFor(o, S) {
-  if (S.lv.sunLux) _oaBake(o, 'sun', S.p.sunAltGeo);
+  if (S.lv.sunLux) _oaBake(o, 'sun', S.lv.skyAlt);
   if (S.lv.moonLux) _oaBake(o, 'moon', S.p.moonAlt);
   if (S.lv.eclGlow) _oaBake(o, 'ecl', 0);
 }
@@ -205,7 +205,7 @@ _oaAir.clouds = {
   update: function (st, fr, ph, u) {
     _oaAir.update(st, fr, ph, u);
     var def = _oaDef(st, fr), S = _osSkyState(def), cv = _osCloudValues(def, S.p.sunShare, st.handoff && st.handoff.clouds);
-    u.uCloud.value = cv.cloud; u.uCloudWind.value = cv.wind; u.uCloudOct.value = cv.oct; u.uCloudSunE.value = cv.sunE; u.uSunAltDeg.value = S.p.sunAltGeo; u.uMoonVec.value = S.lv.moonVec;
+    u.uCloud.value = cv.cloud; u.uCloudWind.value = cv.wind; u.uCloudOct.value = cv.oct; u.uCloudSunE.value = cv.sunE; u.uSunAltDeg.value = S.lv.skyAlt; u.uMoonVec.value = S.lv.moonVec;
   }
 };
 _aeStandAir = _oaAir;
