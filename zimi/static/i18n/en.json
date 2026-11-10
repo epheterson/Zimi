@@ -4115,6 +4115,5 @@
   "pdf_failed_file": "The file you asked for",
   "pdf_failed_back": "Back to the collection",
   "alm_craft_loading": "Loading the spacecraft",
-  "alm_craft_failed": "No model of it here: shown as a dot",
-  "alm_made_by": "Made by Zimi"
+  "alm_craft_failed": "No model of it here: shown as a dot"
 }

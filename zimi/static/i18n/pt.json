@@ -4115,6 +4115,5 @@
   "pdf_failed_file": "O arquivo que você pediu",
   "pdf_failed_back": "Voltar à coleção",
   "alm_craft_loading": "A carregar a sonda",
-  "alm_craft_failed": "Sem modelo aqui: mostrada como um ponto",
-  "alm_made_by": "Feito pelo Zimi"
+  "alm_craft_failed": "Sem modelo aqui: mostrada como um ponto"
 }

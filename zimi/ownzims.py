@@ -358,6 +358,25 @@ def _with_source(own, fn):
         return fn(dest)
 
 
+#: Written into each own ZIM at build time, never into its source: the build's year, for the credit line the pages
+#: draw outside Zimi (games/shell.js, almanac/index.html). The same day as the ZIM's Date metadata, not the reader's clock;
+#: kept out of the source so the source hash, and with it --check, stays the source's alone.
+BUILD_FILE = "zimibuild.js"
+
+
+def _with_build_year(extra_items=None):
+    from zimi.zimwriter import make_asset_item
+
+    body = ("window.ZIMI_BUILT_YEAR = %d;\n" % datetime.date.today().year).encode("ascii")
+
+    def add(creator):
+        creator.add_item(make_asset_item(BUILD_FILE, "text/javascript", body))
+        if extra_items:
+            extra_items(creator)
+
+    return add
+
+
 def write_zim(own, path, flavour=None, extra_items=None):
     """``own`` built into ``path``, from its source as it is now: another flavour of the same Name
     (``flavour``, ``extra_items``: see creator.create_folder_zim). Nothing is committed or stamped.
@@ -371,7 +390,7 @@ def write_zim(own, path, flavour=None, extra_items=None):
             out_path=path,
             register=False,
             flavour=flavour,
-            extra_items=extra_items,
+            extra_items=_with_build_year(extra_items),
         )
         return path
 
@@ -402,7 +421,7 @@ def build(own):
         for stale in (new, new + ".tmp"):
             if os.path.exists(stale):
                 os.remove(stale)
-        creator.create_folder_zim(folder, out_path=new, register=False)
+        creator.create_folder_zim(folder, out_path=new, register=False, extra_items=_with_build_year())
         os.replace(new, path)
         with open(path + _STAMP_EXT, "w", encoding="ascii") as f:
             f.write(want + "\n")

@@ -1730,29 +1730,36 @@
     var hostStyle = d.createElement('style'); hostStyle.textContent = HOST_CSS + hostMarkCss(HOME + 'mark.svg'); d.head.appendChild(hostStyle);
   }
   // ── where this came from ──
-  // Outside Zimi (Kiwix, a browser tab) one line names Zimi, its address written out as well as linked, for a reader with no
-  // network. Inside Zimi it is noise and is never drawn. The address is zimihome.js's, loaded only out here: under the
-  // shelf's description, and at the foot of a game's Menu.
+  // Outside Zimi (Kiwix, a browser tab) one credit line: the mark, then "© <year> Zimi", the name a link to Zimi's address.
+  // Inside Zimi it is noise and is never drawn. The address is zimihome.js's (written once there); the year is the build's
+  // (zimibuild.js, which ownzims writes into the ZIM; never the reader's clock; a page read from its folder has none and says
+  // "© Zimi"). Both load only out here. Under the shelf's title, and at the foot of a game's Menu.
+  var COPYRIGHT = '©';
   function homeLine() {
     var url = root.ZIMI_HOME;
     if (hosted || !url) return null;
-    return h('a', { class: 'gs-home', href: url, target: '_blank', rel: 'noopener' }, [
-      h('img', { src: HOME + 'mark.svg', alt: '', width: '20', height: '20' }),
-      h('span', { text: T('shell.home.made') }),
-      h('bdi', { class: 'gs-home-addr', dir: 'ltr', text: url.replace(/^https?:\/\//, '') })
+    var year = root.ZIMI_BUILT_YEAR;
+    return h('div', { class: 'gs-home' }, [
+      h('img', { src: HOME + 'mark.svg', alt: '', width: '14', height: '14' }),
+      h('span', {}, [COPYRIGHT + ' ' + (year ? year + ' ' : ''), h('a', { href: url, target: '_blank', rel: 'noopener', text: 'Zimi' })])
     ]);
   }
   Shell.homeLine = homeLine;
+  function loadScript(name, then) {
+    var s = d.createElement('script');
+    s.src = HOME + name;
+    s.onload = s.onerror = then;
+    d.head.appendChild(s);
+  }
   if (!hosted && d.head) {
-    var homeJs = d.createElement('script');
-    homeJs.src = HOME + 'zimihome.js';
     var placeHome = function () {
       var desc = d.querySelector('.ar-shelf > header > p:not(.gs-needjs)'), line = desc && homeLine();
       if (line) desc.parentNode.insertBefore(line, desc.nextSibling);
     };
-    // The file can arrive before the shelf's header is parsed (shell.js runs in the head): then it waits for the page.
-    homeJs.onload = function () { if (d.readyState === 'loading') d.addEventListener('DOMContentLoaded', placeHome); else placeHome(); };
-    d.head.appendChild(homeJs);
+    // The files can arrive before the shelf's header is parsed (shell.js runs in the head): then it waits for the page.
+    loadScript('zimihome.js', function () {
+      loadScript('zimibuild.js', function () { if (d.readyState === 'loading') d.addEventListener('DOMContentLoaded', placeHome); else placeHome(); });
+    });
   }
   // Measured now, again once the page is laid out (before that a phone may still report the default 980 px layout's
   // height), and whenever the window changes (turning the phone, a browser bar coming or going).

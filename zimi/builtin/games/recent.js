@@ -204,7 +204,8 @@
     var label = doc.createElement('span');
     label.className = 'ar-box-label';
     var name = doc.createElement('strong');
-    name.textContent = tile.querySelector('.ar-game-text strong').textContent;
+    // A box is small, like a Daily tile: the game's short name where it has one ("Шашки", not "Английские шашки").
+    name.textContent = named(canon(game.path), 'short', tile.querySelector('.ar-game-text strong').textContent);
     var small = doc.createElement('small');
     small.textContent = tag;
     if (played) small.dataset.ago = '1';
@@ -234,7 +235,24 @@
     tbl.appendChild(inner);
     s.appendChild(h);
     s.appendChild(tbl);
-    return inner.children.length ? s : null;
+    if (!inner.children.length) return null;
+    // Laid out once it is on the page, and again whenever its width changes (a turn, a view, a language's names).
+    if (root.ResizeObserver) new root.ResizeObserver(function () { fitNames(inner); }).observe(inner);
+    return s;
+  }
+  // A name on the table never breaks inside a word ("Checker s" on a 390 px phone, where the boxes overlap): a word wider
+  // than its label takes the name's type down half a pixel at a time, to NAME_MIN_PX at the least, and a word still wider
+  // than that (a long German or Russian name on a narrow box) ends in an ellipsis on one line instead of breaking.
+  var NAME_MIN_PX = 10, NAME_STEP_PX = 0.5;
+  function fitNames(scope) {
+    Array.prototype.forEach.call(scope.querySelectorAll('.ar-box-label strong'), function (n) {
+      n.style.fontSize = '';
+      n.classList.remove('ar-name-cut');
+      if (!n.clientWidth) return;
+      var px = parseFloat(root.getComputedStyle(n).fontSize);
+      while (n.scrollWidth > n.clientWidth && px > NAME_MIN_PX) { px -= NAME_STEP_PX; n.style.fontSize = px + 'px'; }
+      if (n.scrollWidth > n.clientWidth) n.classList.add('ar-name-cut');
+    });
   }
 
   function section(cls, label, tiles) {

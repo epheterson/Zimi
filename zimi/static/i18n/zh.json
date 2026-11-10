@@ -4115,6 +4115,5 @@
   "pdf_failed_file": "你请求的文件",
   "pdf_failed_back": "返回合集",
   "alm_craft_loading": "正在加载航天器",
-  "alm_craft_failed": "这里没有它的模型，以一个点显示",
-  "alm_made_by": "由 Zimi 制作"
+  "alm_craft_failed": "这里没有它的模型，以一个点显示"
 }

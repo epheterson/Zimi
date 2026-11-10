@@ -5885,5 +5885,5 @@
  "race.matchedShortest": "你走出了最短路线：{n}。",
  "race.matchedRoute": "你走出了已知路线：{n}。",
  "race.beatRoute": "你胜过了已知的 {n} 步路线。",
- "shell.home.made": "由 Zimi 制作"
+ "game.checkers.short": "跳棋"
 }

@@ -11,6 +11,7 @@
 <script>document.documentElement.classList.add('js');</script>
 <script src="local.js"></script>
 <script src="zimihome.js"></script>
+<script src="zimibuild.js"></script>
 <style>
   /* The Almanac keeps its dark night-sky look in every reader. These are the
      tokens Zimi's app.css gives it; almanac.css reads them. */
@@ -43,13 +44,13 @@
   :root { --host-bottom: 0px; }
   .almanac-view { bottom: var(--host-bottom); }
   html .ae-spin-full, html .almanac-look, html .tk-pop.tk-sheet, html .tk-scrim, html .gr-lightbox { bottom: var(--host-bottom); }
-  /* The line naming Zimi (_almHomeLine), over the footer's own sentence. */
-  .alm-home { display: flex; flex-wrap: wrap; justify-content: center; align-items: center; gap: 2px 8px; min-height: 44px; margin: 0 auto 8px; font-size: 13px; color: var(--text2); text-decoration: none; }
+  /* The credit line (_almHomeLine) over the footer's own sentence, in the Games' measure: 12px, the mark 14px on the digits. */
+  .alm-home { display: flex; justify-content: center; align-items: center; gap: 5px; margin: 0 auto 10px; font-size: 12px; line-height: 16px; color: var(--text2); font-variant-numeric: tabular-nums; --home-nudge: 0px; }
   /* The pebble is dark: on the night ground it gets the thin ring the Games give it in dark mode. */
-  .alm-home img { flex: none; width: 20px; height: 20px; --mark-ring: rgba(232, 232, 237, 0.28); filter: drop-shadow(1px 0 0 var(--mark-ring)) drop-shadow(-1px 0 0 var(--mark-ring)) drop-shadow(0 1px 0 var(--mark-ring)) drop-shadow(0 -1px 0 var(--mark-ring)); }
-  .alm-home span { font-weight: 650; color: var(--text); }
-  .alm-home-addr { color: var(--amber); text-decoration: underline; text-underline-offset: 2px; }
-  .alm-home:focus-visible { outline: 2px solid var(--amber); outline-offset: 2px; border-radius: 6px; }
+  .alm-home img { flex: none; width: 14px; height: 14px; transform: translateY(var(--home-nudge)); --mark-ring: rgba(232, 232, 237, 0.28); filter: drop-shadow(1px 0 0 var(--mark-ring)) drop-shadow(-1px 0 0 var(--mark-ring)) drop-shadow(0 1px 0 var(--mark-ring)) drop-shadow(0 -1px 0 var(--mark-ring)); }
+  .alm-home a { color: inherit; text-decoration: underline; text-decoration-color: rgba(138, 138, 148, 0.45); text-underline-offset: 2px; padding: 14px 12px; margin: -14px -12px; border-radius: 6px; }
+  .alm-home a:hover { color: var(--text); text-decoration-color: currentColor; }
+  .alm-home a:focus-visible { outline: 2px solid var(--amber); outline-offset: -13px; }
   .zimi-toast { position: fixed; bottom: 20px; left: 50%; transform: translateX(-50%); background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: 10px 16px; font-size: 13px; color: var(--text2); z-index: 300; box-shadow: 0 4px 16px rgba(0,0,0,0.3); }
 </style>
 </head>
@@ -134,13 +135,14 @@ var KIWIX_JS_TOOLBAR_PX = 48;
 if (!HOSTED_IN_ZIMI && window.parent !== window && location.pathname.indexOf('/content/') < 0) {
   document.documentElement.style.setProperty('--host-bottom', KIWIX_JS_TOOLBAR_PX + 'px');
 }
-// Outside Zimi, the foot of the Almanac names Zimi in one line, its address written out as well as linked (a reader with no
-// network can still note it). The address is zimihome.js's (the Games' file, staged in); inside Zimi's reader nothing is drawn.
+// Outside Zimi, the foot of the Almanac carries the credit line: the mark, then "© <year> Zimi", the name a link to Zimi's
+// address (zimihome.js, the Games' file, staged in). The year is the build's (zimibuild.js, written into the ZIM by ownzims),
+// never the reader's clock. Inside Zimi's reader nothing is drawn.
 function _almHomeLine() {
-  var url = window.ZIMI_HOME;
+  var url = window.ZIMI_HOME, year = window.ZIMI_BUILT_YEAR;
   if (HOSTED_IN_ZIMI || !url) return '';
-  return '<a class="alm-home" href="' + escAttr(url) + '" target="_blank" rel="noopener"><img src="mark.svg" alt="" width="20" height="20">' +
-    '<span>' + tH('alm_made_by') + '</span><bdi dir="ltr" class="alm-home-addr">' + esc(url.replace(/^https?:\/\//, '')) + '</bdi></a>';
+  return '<div class="alm-home"><img src="mark.svg" alt="" width="14" height="14"><span>© ' + (year ? esc(year) + ' ' : '') +
+    '<a href="' + escAttr(url) + '" target="_blank" rel="noopener">Zimi</a></span></div>';
 }
 var PDF_URL = '/almanac/pdf';
 if (HOSTED_IN_ZIMI) {

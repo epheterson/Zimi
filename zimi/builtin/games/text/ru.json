@@ -6275,5 +6275,5 @@
  "race.matchedShortest": "Вы повторили кратчайший путь: {n}.",
  "race.matchedRoute": "Вы повторили известный путь: {n}.",
  "race.beatRoute": "Вы улучшили известный путь из {n}.",
- "shell.home.made": "Сделано в Zimi"
+ "game.checkers.short": "Шашки"
 }
