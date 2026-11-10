@@ -1,5 +1,5 @@
 {
- "shape": "id family title place{name,lat,lon,kind} instant(ms UTC) look{az,el,spanDeg} see source{name,url,licence} refs launch? notes",
+ "shape": "id family title place{name,lat,lon,kind} instant(ms UTC) look{az,el,spanDeg} see source{name,url,licence} refs launch? padview? notes",
  "moments": [
   {
    "id": "launch-starlink-4-31-la",
@@ -466,6 +466,34 @@
     "https://en.wikipedia.org/wiki/Manhattanhenge"
    ],
    "notes": "The setting Sun on the line of the street grid, 29 degrees north of west."
+  },
+  {
+   "id": "apollo-11-launch",
+   "family": "spaceflight",
+   "title": "Apollo 11 lifts off from Launch Complex 39A",
+   "place": {
+    "name": "Launch Complex 39A, Cape Canaveral",
+    "lat": 28.6083,
+    "lon": -80.6041,
+    "kind": "place"
+   },
+   "instant": -14552910000,
+   "look": {
+    "az": 20,
+    "el": 4,
+    "spanDeg": 60
+   },
+   "see": "pad",
+   "padview": "apollo11",
+   "source": {
+    "name": "NASA, Apollo 11 mission report",
+    "url": "https://www.nasa.gov/mission/apollo-11/",
+    "licence": "public domain"
+   },
+   "refs": [
+    "https://www.nasa.gov/mission/apollo-11/"
+   ],
+   "notes": "The Saturn V on its pad at 13:31:30 UTC on 16 July 1969, thirty seconds before lift-off, seen from about five kilometres away. The ground view runs the count, the ignition and the climb on the mission's own trajectory."
   }
  ],
  "backlog": [
