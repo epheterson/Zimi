@@ -360,9 +360,9 @@ var AE_ST_GROUND_FRAG = [
   // Underfoot: blades and tussocks as fine noise stretched along the line of sight (as grass is seen across a field), sharp at the
   // feet and gone where a pixel would hold several of them, so it softens with distance as the Moon's stones do.
   '    float across = dot(vP.xy, tt), along = dot(vP.xy, rr), bl = 0.0;',
-  '    for (int i = 0; i < 2; i++) { float s = 0.018 * pow(3.2, float(i)), wb = 1.0 - smoothstep(0.1, 0.4, 2.5 * foot / s); if (wb > 0.0) bl += (vnoise(vec3(across / s, along / (s * 3.5), 41.0 + float(i) * 5.0)) - 0.5) * wb; }',
+  '    for (int i = 0; i < 2; i++) { float s = 0.007 * pow(2.9, float(i)), wb = 1.0 - smoothstep(0.1, 0.4, 2.5 * foot / s); if (wb > 0.0) bl += (vnoise(vec3(across / s, along / (s * 2.4), 41.0 + float(i) * 5.0)) - 0.5) * wb * (i == 0 ? 0.7 : 0.5); }',
   '    float tuft = smoothstep(0.52, 0.72, vnoise(vP / 0.42 + 9.0)) * (1.0 - smoothstep(0.1, 0.5, 2.5 * foot / 0.42));',
-  '    alb *= clamp(1.0 + bl * 1.1 - tuft * 0.28 * grass, 0.45, 1.6);',
+  '    alb *= clamp(1.0 + bl * 1.0 - tuft * 0.12 * grass, 0.5, 1.5);',
   '  }',
   // Ground cover by height, slope and latitude (the Earth's): snow above the snow line, bare rock on steep ground and above the
   // trees, the Blue Marble's own tint elsewhere; the lines wander with a slow noise so no height is a ruled edge.
