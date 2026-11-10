@@ -124,3 +124,25 @@ def test_perseverance_touches_down_on_the_sites_own_pin(missions):
     assert abs(lat - pin[1]) < 0.01 and abs(((lon - pin[2] + 180) % 360) - 180) < 0.01, (lat, lon, pin)
     t_touch = m["zeroMs"] / 1000.0 + last[0]
     assert abs(t_touch * 1000 - site["ms"]) < 2000, (t_touch, site["ms"])
+
+
+def test_perseverance_flies_from_slc41_to_mars_in_one_unbroken_line(missions):
+    """Liftoff on Space Launch Complex 41 at 11:50:00 UT on 2020-07-30, the legs in the order the flight goes (the ascent on the Earth-fixed ground, the Earth-centred
+    legs, the Sun-centred cruise, the Mars-centred approach, the landing on the Mars-fixed ground), each beginning where the last ends, and the cruise from about 1 AU to
+    about 1.5 AU."""
+    import math
+
+    m = missions.get("perseverance")
+    if not m:
+        pytest.skip("the Perseverance table is not in this build")
+    assert abs(m["zeroMs"] - 1596109800000) < 1000   # 2020-07-30 11:50:00 UT
+    legs = [v for v in m["vehicles"] if v["id"] == "m20"][0]["legs"]
+    assert [leg["frame"] for leg in legs] == ["ecef", "eci", "helio", "rel", "mfix"]
+    for a, b in zip(legs, legs[1:]):
+        assert abs(a["s"][-1][0] - b["s"][0][0]) < 20000.0, (a["frame"], b["frame"])   # the Earth-centred leg ends at 14:52 and the Sun-centred one begins there; the rest meet exactly
+    x, y, z = legs[0]["s"][0][1:4]
+    r = math.sqrt(x * x + y * y + z * z)
+    lat, lon = math.degrees(math.asin(z / r)), math.degrees(math.atan2(y, x))
+    assert abs(lat - 28.58) < 0.2 and abs(lon + 80.58) < 0.05   # geocentric latitude is a little under the geodetic 28.5833
+    first, last = legs[2]["s"][0][1:4], legs[2]["s"][-1][1:4]
+    assert 0.95 < math.sqrt(sum(c * c for c in first)) < 1.05 and 1.4 < math.sqrt(sum(c * c for c in last)) < 1.65

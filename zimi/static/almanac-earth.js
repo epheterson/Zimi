@@ -4402,6 +4402,7 @@ function _aeRefAxesRows() {
   add('ms.a11_land', _aeT('tb_kn_ms_land'), '102:45:39.9 · 0.67408 N 23.473 E', '', MR + ', table 5-I; LROC');
   add('ms.a11_ei', _aeT('tb_kn_ms_ei'), '195:03:05.7 · 3.19 S 171.96 E · 36,194 ft/s · −6.48', 'h:mm:ss · ° · °', MR + ', table 7-VII');
   add('ms.a11_entry_note', _aeT('tb_kn_ms_entry'), _aeT('tb_kn_ms_entry_v'), '', MR + ', table 7-VII');
+  add('ms.m20_launch', _aeT('tb_kn_ms_m20_launch'), _aeT('tb_kn_ms_m20_launch_v'), '', 'NASA/JPL Mars 2020 press kit; ULA Atlas V Launch Services User\'s Guide; JPL Horizons -168');
   add('ms.m20_edl', _aeT('tb_kn_ms_m20'), _aeT('tb_kn_ms_m20_v'), '', 'NASA/JPL Mars 2020 press kit; JPL Horizons -168');
   add('ms.a11_tli_time', _aeT('tb_kn_ms_tli'), _aeT('tb_kn_ms_tli_v'), '', MR + ', table 7-II');
   add('ms.a11_rendezvous', _aeT('tb_kn_ms_rdv'), _aeT('tb_kn_ms_rdv_v'), '', MR + ', table 3-I');
