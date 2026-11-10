@@ -368,9 +368,11 @@ function _asSync() {
   }
   _asSyncBar();
   if (_as.cloud) _as.cloud.visible = _as.on && _as.state === 'ready';
+  _asStandSkySync();
 }
 // Leaving the Almanac: the worker and the catalogue go; what is kept is the choice.
 function _asRelease() {
+  _asStandSkyOff();
   if (_as.worker) { _as.worker.terminate(); _as.worker = null; }
   _asCalls = {};
   _as.state = 'idle'; _as.data = null; _as.cloud = null; _as.scene = null; _as.selLine = null; _as.geoRing = null; _as.sel = -1;
@@ -821,6 +823,47 @@ function _asSkyAsk(lat, lon, tMs) {
 }
 // The array for the instant, in one call, when a scene does not keep the answer between frames.
 function _asSkyNow(lat, lon, tMs) { return _asSkyAsk(lat, lon, tMs).then(function (a) { return _asSkyAt(a, tMs); }); }
+// ── The same sky in Stand here ──
+// While the layer is on, the satellites over the stand place are drawn in the ground view's sky (almanac-stand.js
+// _aeStandSkySource): the station and what a dark sky shows, with a short trail each, and Starlinks of one launch that are
+// over together as a train. A tap names them.
+var AS_TRAIN_SKY_MIN = 3, AS_TRAIN_SKY_DEG = 25, AS_SKY_TRAIL_STEPS = 6, AS_SKY_TRAIL_STEP_S = 5;
+var AS_SKY_RGB = { iss: [1, 0.95, 0.85] };
+function _asStandSkyObjects(answer, tMs) {
+  var d = _as.data, live = _asSkyAt(answer, tMs), launches = {};
+  live.forEach(function (e) {
+    if (AS_GROUPS[d.group[e.i]] === 'starlink' && d.launch[e.i] >= 0) (launches[d.launch[e.i]] = launches[d.launch[e.i]] || []).push(e);
+  });
+  var train = {};
+  Object.keys(launches).forEach(function (k) {
+    var g = launches[k];   // together: every member within a few tens of degrees of the first
+    g = g.filter(function (e) { return Math.abs(e.az - g[0].az) % 360 < AS_TRAIN_SKY_DEG || Math.abs(e.az - g[0].az) % 360 > 360 - AS_TRAIN_SKY_DEG; });
+    if (g.length >= AS_TRAIN_SKY_MIN) g.forEach(function (e) { train[e.i] = g.length; });
+  });
+  return live.map(function (e) {
+    var trail = [];
+    for (var k = 1; k <= AS_SKY_TRAIL_STEPS; k++) {
+      var back = -k * AS_SKY_TRAIL_STEP_S, el = e.el + e.elRate * back;
+      if (el < 0) break;
+      trail.push({ az: (((e.az + e.azRate * back) % 360) + 360) % 360, el: el });
+    }
+    var inTrain = train[e.i], iss = d.norad[e.i] === AS_ISS_NORAD;
+    return {
+      az: e.az, el: e.el, mag: e.mag, kind: inTrain ? 'train' : 'sat', trail: trail, rgb: iss ? AS_SKY_RGB.iss : undefined,
+      name: inTrain ? _aeT('alm_sats_train', { n: inTrain }) + ' · ' + e.name : e.name
+    };
+  });
+}
+var _asStandSkyOff = function () {};
+function _asStandSkySync() {
+  var want = _as.on && _as.state === 'ready' && typeof _aeStandSkySource === 'function';
+  if (want && _asStandSkyOff.registered !== _as.data) {
+    _asStandSkyOff();
+    var off = _aeStandSkySource({ ask: _asSkyAsk, at: _asStandSkyObjects });
+    _asStandSkyOff = function () { off(); _asStandSkyOff = function () {}; };
+    _asStandSkyOff.registered = _as.data;
+  } else if (!want) _asStandSkyOff();
+}
 // An answer of _asSkyAsk carried to tMs: positions moved by their rates, those that have set dropped.
 function _asSkyAt(answer, tMs) {
   var dt = (tMs - answer.t) / 1000, out = [];
