@@ -286,6 +286,7 @@ function _osStandOpen(def, back, opts) {
   if (typeof _aeStandOpen !== 'function' && typeof _almLoadEarth !== 'function') return Promise.resolve(false);
   var ready = typeof _aeStandOpen === 'function' ? Promise.resolve() : _almLoadEarth().then(function () { return _aeStandReady(); });
   var h = _osHandoffFrom(def, back);
+  _osNightLoad();   // Stand's sky needs the place's dial too
   if (opts && opts.direct) {
     h.direct = true;
     h.firstFrame = new Promise(function (res) { h._firstFrame = res; });
@@ -419,8 +420,17 @@ function _osLandKick(s, key) {
       if (typeof _skyKick === 'function') _skyKick();
     });
   };
-  // After the card's first picture and the page's own work, when the person is not touching the screen.
-  if (typeof requestIdleCallback === 'function') requestIdleCallback(go, { timeout: 2500 }); else setTimeout(go, 400);
+  // Only once the card has been scrolled into view (the page opening, or the 3D view opening from the Almanac, does not pay for it), then after
+  // the card's picture and the page's own work, when the person is not touching the screen.
+  var later = function () { if (typeof requestIdleCallback === 'function') requestIdleCallback(go, { timeout: 2500 }); else setTimeout(go, 400); };
+  var cv = s && s.canvas;
+  if (!cv || typeof IntersectionObserver !== 'function') { later(); return; }
+  var io = new IntersectionObserver(function (es) {
+    if (!es.some(function (e) { return e.isIntersecting; })) return;
+    io.disconnect();
+    later();
+  });
+  io.observe(cv);
 }
 
 // ── The objects on the card ──

@@ -822,3 +822,42 @@ def test_totality_overhead_looks_like_a_sun_at_minus_6_5_twilight_and_a_minute_b
     assert before >= 3 * total, (before, total)
     assert not errors, errors
     ctx.close()
+
+
+LAZY_PARTS = ("almanac-oneland.js", "almanac-skyland.js", "landcover-v1.bin", "nightlights-v1.bin")
+
+
+def test_the_land_files_wait_for_the_sky_card_to_be_seen_not_for_the_almanac_or_the_earth(
+    browser, served
+):
+    """Opening the Almanac and then the Earth, without scrolling to the sky card, requests none of the four land files; scrolling the
+    card into view does."""
+    ctx = _context(browser)
+    pg = ctx.new_page()
+    seen = []
+    pg.on("request", lambda r: seen.append(r.url))
+    pg.goto(served + "/#almanac", wait_until="load")
+    pg.wait_for_function(
+        "() => typeof _skyState !== 'undefined' && _skyState && _skyState.eph && typeof openAlmanacEarth === 'function'",
+        timeout=120_000,
+    )
+    assert pg.evaluate(
+        "() => { const r = document.querySelector('.almanac-sky-wrap').getBoundingClientRect(); return r.top > innerHeight; }"
+    ), "the sky card is below the first screen"
+    pg.evaluate("() => openAlmanacEarth({ target: 'earth' })")
+    pg.wait_for_function(
+        "() => typeof _aeReady === 'function' && _aeReady() && _aeIsOpen",
+        timeout=READY_MS,
+        polling=250,
+    )
+    pg.wait_for_timeout(5000)
+    early = [u for u in seen if any(p in u for p in LAZY_PARTS)]
+    assert not early, early
+    pg.evaluate("() => { if (typeof _aeClose === 'function') _aeClose(); }")
+    pg.evaluate(
+        "() => document.querySelector('.almanac-sky-wrap').scrollIntoView({ behavior: 'instant', block: 'center' })"
+    )
+    pg.wait_for_function("() => typeof _osLandCover === 'function'", timeout=60_000)
+    pg.wait_for_timeout(3000)
+    assert any("landcover-v1.bin" in u for u in seen), seen[-5:]
+    ctx.close()
