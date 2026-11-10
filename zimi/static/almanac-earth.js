@@ -4640,6 +4640,21 @@ function _aeMissionStart(id) {
   s.onerror = function () { _aeMissionsLoading = false; s.remove(); };
   document.head.appendChild(s);
 }
+// Stand at a launch pad (almanac-padview.js): fetched the first time it is asked for, never with the view. opts: { back: { where, go }, atS }.
+var AE_PADVIEW_JS = '/static/almanac-padview.js', _aePadLoading = null;
+function _aePadOpen(id, opts) {
+  if (typeof _aePadStart === 'function') return _aePadStart(id, opts);
+  if (!_aePadLoading) {
+    _aePadLoading = new Promise(function (resolve, reject) {
+      var s = document.createElement('script');
+      s.src = AE_PADVIEW_JS;
+      s.onload = resolve;
+      s.onerror = function () { _aePadLoading = null; s.remove(); reject(new Error(AE_PADVIEW_JS)); };
+      document.head.appendChild(s);
+    });
+  }
+  return _aePadLoading.then(function () { return _aePadStart(id, opts); }, function () { return false; });
+}
 var _aeSitesLoading = false;
 function _aeSitesLoad() {
   if (_aeSitesLoading) return;

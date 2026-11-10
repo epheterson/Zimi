@@ -702,6 +702,7 @@ var AM_ICONS = {
   next: '<svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10 6l6 6-6 6"/></svg>',
   recentre: '<svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" aria-hidden="true"><circle cx="12" cy="12" r="3"/><path d="M12 3v3M12 18v3M3 12h3M18 12h3"/></svg>',
   burn: '<svg viewBox="0 0 24 24" width="12" height="12" fill="currentColor" aria-hidden="true"><path d="M12 2c4 4 5 8 3 12l-3 6-3-6c-2-4-1-8 3-12z"/></svg>',
+  pad: '<svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="5" r="2.2"/><path d="M12 8v7M8 11l4-1 4 1M9.5 21l2.5-6 2.5 6"/></svg>',
   split: '<svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" aria-hidden="true"><path d="M4 8h16M4 16h16"/></svg>',
   alarm: '<svg viewBox="0 0 24 24" width="12" height="12" fill="currentColor" aria-hidden="true"><path d="M12 3l10 18H2z"/></svg>',
   dot: '<svg viewBox="0 0 24 24" width="12" height="12" fill="currentColor" aria-hidden="true"><circle cx="12" cy="12" r="5"/></svg>'
@@ -920,7 +921,17 @@ function _amPaintPhase(m, pi) {
     }).map(function (e) {
       return '<button type="button" class="am-chip" data-t="' + e.t + '">' + (AM_ICONS[e.icon || 'dot'] || AM_ICONS.dot) + '<span>' + _almEsc(_amLabel(e)) + '</span></button>';
     }).join('');
+    if (pi === 0 && AM_PAD_IDS.indexOf(_ae.mission.id) >= 0) _amPadChip(ev, m);
   }
+}
+// The launch phase's way down to the pad (almanac-padview.js, fetched when it is pressed): a chip at the head of the phase's own.
+var AM_PAD_IDS = ['apollo11', 'perseverance'];
+function _amPadChip(ev, m) {
+  var id = _ae.mission.id;
+  ev.insertAdjacentHTML('afterbegin', '<button type="button" class="am-chip" id="am-pad">' + AM_ICONS.pad + '<span>' + _almEsc(_aeT('alm_pad_at')) + '</span></button>');
+  _aeById('am-pad').onclick = function () {
+    _aePadOpen(id, { back: { where: _aeT('alm_ms_' + id) === 'alm_ms_' + id ? m.name : _aeT('alm_ms_' + id), go: function () { _aeMissionOpen(id, m.start); } } });
+  };
 }
 // Progress through the phases: each segment fills as the time passes through it.
 function _amPaintProgress(m, t) {
