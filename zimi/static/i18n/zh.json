@@ -2278,7 +2278,7 @@
   "alm_earth_sat_ask_hint": "在请求之前不获取任何数据",
   "alm_earth_sat_auto": "自动",
   "alm_earth_sat_auto_hint": "来自 {src} 的精确数据",
-  "alm_earth_sat_never": "用离线数据估算",
+  "alm_earth_sat_never": "从不",
   "alm_earth_sat_never_hint": "根据此 Zimi 已有的数据给出位置，时间越久越不精确",
   "alm_earth_sat_admin_only": "只有管理员可以更改此项",
   "alm_earth_sat_offline": "Zimi 处于离线模式（ZIMI_OFFLINE），因此从不获取数据",
@@ -3736,5 +3736,7 @@
   "tb_kn_site_jump": "漫游车起跳速度",
   "alm_probe_replay": "从发射起回放它的飞行",
   "tb_kn_site_msd": "火星太阳日期（火星时钟）",
-  "tb_kn_site_drive_hour": "漫游车行驶时刻（当地平太阳时）"
+  "tb_kn_site_drive_hour": "漫游车行驶时刻（当地平太阳时）",
+  "alm_craft_loading": "正在加载航天器",
+  "alm_craft_failed": "这里没有它的模型，以一个点显示"
 }

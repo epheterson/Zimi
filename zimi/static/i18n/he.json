@@ -2278,7 +2278,7 @@
   "alm_earth_sat_ask_hint": "שום דבר לא יורד עד שמבקשים",
   "alm_earth_sat_auto": "אוטומטית",
   "alm_earth_sat_auto_hint": "נתונים מדויקים מ-{src}",
-  "alm_earth_sat_never": "קירוב לפי נתונים לא מקוונים",
+  "alm_earth_sat_never": "אף פעם",
   "alm_earth_sat_never_hint": "מיקומים מהנתונים שכבר יש ב-Zimi הזה, פחות מדויקים עם הזמן",
   "alm_earth_sat_admin_only": "רק מנהל יכול לשנות את זה",
   "alm_earth_sat_offline": "Zimi במצב לא מקוון (ZIMI_OFFLINE), ולכן אינו מוריד דבר",
@@ -3736,5 +3736,7 @@
   "tb_kn_site_jump": "מהירות הקפיצה של החללית הנודדת",
   "alm_probe_replay": "להפעיל מחדש את הטיסה מהשיגור",
   "tb_kn_site_msd": "תאריך סול מאדים (שעון מאדים)",
-  "tb_kn_site_drive_hour": "שעת הנסיעה של החלליות הנודדות (זמן שמש ממוצע מקומי)"
+  "tb_kn_site_drive_hour": "שעת הנסיעה של החלליות הנודדות (זמן שמש ממוצע מקומי)",
+  "alm_craft_loading": "טוען את החללית",
+  "alm_craft_failed": "אין כאן דגם: מוצגת נקודה"
 }
