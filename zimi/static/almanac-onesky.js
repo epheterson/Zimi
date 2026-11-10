@@ -105,17 +105,35 @@ function _osCloudNoise(x, y) {
   return (a + (b - a) * fx) * (1 - fy) + (c + (d - c) * fx) * fy;
 }
 function _osSmoothstep(a, b, x) { var t = Math.max(0, Math.min(1, (x - a) / (b - a))); return t * t * (3 - 2 * t); }
-function _osCloudDensity(v, x, y) {
-  var px = (x - v.wind[0] * v.wind[2]) / SG_CLOUD_SCALE_M + v.cloud[3], py = (y - v.wind[1] * v.wind[2]) / SG_CLOUD_SCALE_M + v.cloud[3], s = 0, a = 0.5;
-  for (var i = 0; i < 4; i++) { s += a * _osCloudNoise(px, py); px = px * 2.03 + 17.1; py = py * 2.03 + 17.1; a *= 0.5; }
+function _osCloudFbm(px, py, size, fp) {   // each octave fades to its mean once its cells are smaller than the ground a pixel covers (the GLSL's sum)
+  var s = 0, a = 0.5;
+  for (var i = 0; i < 4; i++) { s += a * (0.5 + (_osCloudNoise(px, py) - 0.5) * (1 - _osSmoothstep(0.25, 1, fp / size))); px = px * 2.03 + 17.1; py = py * 2.03 + 17.1; a *= 0.5; size /= 2.03; }
+  return s / 0.9375;
+}
+function _osCloudMargin(v, x, y, t) {
+  var D = SG_CLOUD_DETAIL, qx = (x - v.wind[0] * v.wind[2]) / SG_CLOUD_SCALE_M + v.cloud[3], qy = (y - v.wind[1] * v.wind[2]) / SG_CLOUD_SCALE_M + v.cloud[3];
+  var n = (1 - D.share) * _osCloudFbm(qx, qy, SG_CLOUD_SCALE_M, t * SG_CLOUD_FOOTPRINT) + D.share * _osCloudFbm(qx * D.scale + D.offset, qy * D.scale + D.offset, SG_CLOUD_SCALE_M / D.scale, t * SG_CLOUD_FOOTPRINT);
+  n = (n - 0.47) * D.stretch + 0.47;
   var th = SG_CLOUD_THRESHOLD[0] + (SG_CLOUD_THRESHOLD[1] - SG_CLOUD_THRESHOLD[0]) * v.cloud[0];
-  return _osSmoothstep(th, th + SG_CLOUD_EDGE, s / 0.9375);
+  return n - th;
 }
 function _osCloudAlphaAt(v, azDeg, altDeg) {
   var az = azDeg * Math.PI / 180, alt = altDeg * Math.PI / 180, dz = Math.sin(alt);
   if (dz <= 0.003 || v.cloud[0] <= 0) return 0;
   var t = Math.min(v.cloud[1] / dz, SG_CLOUD_FAR_M), c = Math.cos(alt);
-  return _osSmoothstep(0, 0.6, _osCloudDensity(v, Math.sin(az) * c * t, Math.cos(az) * c * t)) * 0.94 * _osSmoothstep(0.003, 0.03, dz);
+  return (1 - Math.exp(-SG_CLOUD_TAU * _osSmoothstep(0, SG_CLOUD_EDGE, _osCloudMargin(v, Math.sin(az) * c * t, Math.cos(az) * c * t, t)))) * 0.94 * _osSmoothstep(0.003, 0.03, dz);
+}
+
+// How much of the Moon the day's deck hides (0 clear to about 1 solid), at its place in the sky.
+function _osMoonVeil(s) { return _osMoonVeilAt(_osDef({ lat: s.lat, lon: s.lon, tMs: s.nowTime })); }
+// The same for any definition; mode 'clear' (a hand-off's) has no deck. The ground view's Moon takes this (almanac-oneair.js moonVeil).
+function _osMoonVeilAt(def, mode) {
+  var S = _osSkyState(def), m = S.eph.moon;
+  return m.altitude > 0 ? _osCloudAlphaAt(_osCloudValues(def, S.sunShare, mode), m.azimuth, m.altitude) : 0;
+}
+function _osSunVeilAt(def, mode) {
+  var S = _osSkyState(def), q = S.eph.sun;
+  return q.alt > 0 ? _osCloudAlphaAt(_osCloudValues(def, S.sunShare, mode), q.az, q.alt) : 0;
 }
 
 // ── The sky's objects ──
@@ -175,6 +193,23 @@ function _osObjects(body, lat, lon, tMs) {
 }
 function _osHasSources() { return _osSources.length > 0; }
 
+// ── Whether the 3D view can run here ──
+// Stand here, There and then's ground and Look's way down all need the 3D view, which needs WebGL2. The answer is asked for when a person taps
+// (or after the card's first picture), never before it: a context costs. A page whose 3D view has found it cannot run says so itself.
+var _osGl2 = null, _osButtonsSynced = false;
+function _os3DAvailable() {
+  if (typeof window.openAlmanacEarth === 'function' && window.openAlmanacEarth.unsupported) return false;
+  if (_osGl2 === null) {
+    try { _osGl2 = !!document.createElement('canvas').getContext('webgl2'); } catch (e) { _osGl2 = false; }
+  }
+  return _osGl2;
+}
+// The buttons that lead to the ground are not shown where it cannot be drawn.
+function _osSync3DButtons() {
+  var ok = _os3DAvailable();
+  Array.prototype.forEach.call(document.querySelectorAll('.alm-sky-stand, #look-stand'), function (b) { b.hidden = !ok; });
+}
+
 // ── The card to Stand here, and back ──
 // The card's place, instant and facing, as the hand-off Stand here takes (almanac-stand.js _aeStandOpen).
 // opts.clouds: 'auto' (the day's own deck: the default) or 'clear' (a visit to see something in the sky: an eclipse, a there-and-then, is not left to a coin flip).
@@ -193,9 +228,14 @@ function _osCardDef() {
 // page as it was (the scroll, the card painting again).
 function _osStandHere() {
   var def = _osCardDef();
-  if (!def || typeof _aeStandOpen !== 'function' && typeof _almLoadEarth !== 'function') return Promise.resolve(false);
+  if (!def) return Promise.resolve(false);
   var y = window.pageYOffset || 0;
-  var back = function () { window.scrollTo(0, y); if (typeof _skyResume === 'function' && typeof _skyState !== 'undefined' && _skyState) _skyResume(); };
+  return _osStandOpen(def, function () { window.scrollTo(0, y); if (typeof _skyResume === 'function' && typeof _skyState !== 'undefined' && _skyState) _skyResume(); });
+}
+// Stand here at a definition (the 3D view's files load on the first ask), then `back` when its own way back is taken.
+function _osStandOpen(def, back) {
+  if (!_os3DAvailable()) return Promise.resolve(false);
+  if (typeof _aeStandOpen !== 'function' && typeof _almLoadEarth !== 'function') return Promise.resolve(false);
   var ready = typeof _aeStandOpen === 'function' ? Promise.resolve() : _almLoadEarth().then(function () { return _aeStandReady(); });
   return ready.then(function () { return _aeStandOpen(_osHandoffFrom(def, back)); }).catch(function () { return false; });
 }
@@ -206,6 +246,74 @@ function _osStandClouds(mode) {
   if (!st) return;
   st.handoff = Object.assign(st.handoff || {}, { clouds: mode });
   st.dirty = true; _ae.dirty = true;
+}
+
+// Look's way down to the ground: the same place, instant and facing, and the phone still turning the view if it was (Stand here reads the
+// phone through the same sensors, and the person's choice is the one Look kept); its way back opens Look again where it was.
+var OS_LOOK_BACK_MS = 700;   // the longest Look waits for the browser's step back before it opens anyway
+var OS_MOTION_KEY = 'zimi_ae_stand_motion';   // almanac-standlook.js AE_MOTION_KEY: whether the phone turns the ground view
+function _osStandFromLook() {
+  var S = typeof _look !== 'undefined' ? _look : null;
+  if (!S) return Promise.resolve(false);
+  var place = S.place, view = S.view, sensing = S.mode === 'sensor', ms = typeof _almFocusInstant === 'function' ? _almFocusInstant().getTime() : Date.now();
+  _lookClose();
+  if (sensing) { try { localStorage.setItem(OS_MOTION_KEY, '1'); } catch (e) { /* private window */ } }
+  var def = _osDef({ lat: place.lat, lon: place.lon, tMs: ms, heading: view.az, pitch: Math.max(0, view.alt) });
+  // Closing the 3D view takes the browser a step back; Look opens after that step has landed, or its own would be taken back with it.
+  return _osStandOpen(def, function () {
+    var done = false, open = function () {
+      if (done) return;
+      done = true;
+      if (typeof _lookOpen === 'function') _lookOpen({ lat: place.lat, lon: place.lon, name: place.name });
+    }, onPop = function () { window.removeEventListener('popstate', onPop); setTimeout(open, 0); };
+    window.addEventListener('popstate', onPop);
+    setTimeout(function () { window.removeEventListener('popstate', onPop); open(); }, OS_LOOK_BACK_MS);
+  });
+}
+
+// ── The place's own night ──
+// The light-pollution dial's starting point, from a one-degree night-lights grid (zimi/static/earth/nightlights-v1.bin, 5.8 KB, from the Black
+// Marble: scripts/build_nightlights.py): a city under its glow, a desert under none. The person's own choice of dial wins (almanac-sky.js).
+var OS_NIGHT_URL = '/static/earth/nightlights-v1.bin', OS_NIGHT_MAGIC = 'ZNLT', OS_NIGHT_HEADER = 10, OS_NIGHT_MAX_DIAL = 1;
+var _osPlaceDial = null, _osNight = null, _osNightLoading = false;
+function _osNightParse(buf) {
+  if (!buf || buf.byteLength < OS_NIGHT_HEADER) return null;
+  var u8 = new Uint8Array(buf), v = new DataView(buf);
+  if (String.fromCharCode(u8[0], u8[1], u8[2], u8[3]) !== OS_NIGHT_MAGIC || u8[4] !== 1) return null;
+  var w = v.getUint16(6, true), h = v.getUint16(8, true), n = w * h, cells = new Uint8Array(n), k = 0, pos = OS_NIGHT_HEADER;
+  while (k < n && pos + 1 < buf.byteLength) {
+    var len = u8[pos + 1];
+    if (!len || k + len > n) return null;
+    cells.fill(u8[pos], k, k + len);
+    k += len; pos += 2;
+  }
+  return k === n ? { w: w, h: h, cells: cells } : null;
+}
+// The dial for a place (0 a dark site to 1 a city), or null while the grid is not in.
+function _osNightDial(lat, lon) {
+  var g = _osNight;
+  if (!g || !isFinite(lat) || !isFinite(lon)) return null;
+  var x = Math.min(g.w - 1, Math.max(0, Math.floor((((lon + 180) % 360) + 360) % 360 / 360 * g.w))), y = Math.min(g.h - 1, Math.max(0, Math.floor((90 - lat) / 180 * g.h)));
+  return Math.min(OS_NIGHT_MAX_DIAL, g.cells[y * g.w + x] / 255);
+}
+function _osNightLoad() {
+  if (_osNight || _osNightLoading) return;
+  _osNightLoading = true;
+  fetch(OS_NIGHT_URL).then(function (r) { if (!r.ok) throw new Error('night'); return r.arrayBuffer(); }).then(function (b) {
+    _osNight = _osNightParse(b);
+    var st = typeof _skyState !== 'undefined' ? _skyState : null;
+    if (st) _osSetPlaceDial(st);
+  }).catch(function () { /* the dial stays where it was */ });
+}
+// The place's dial into effect (and remembered with the place), repainting the sky if it moved.
+function _osSetPlaceDial(s) {
+  var d = _osNightDial(s.lat, s.lon);
+  if (d === null || d === _osPlaceDial) return;
+  _osPlaceDial = d;
+  if (s.land) _osLandRemember(_osLandKey(s), s.land);
+  if (s.eph && typeof _skyBrightness === 'function') _skyBrightness(s);
+  s.baseDirty = true;
+  if (typeof _skyKick === 'function') _skyKick();
 }
 
 // ── What the card stands on ──
@@ -219,20 +327,28 @@ function _osLandRemembered(key) {
   try { var r = JSON.parse(localStorage.getItem(OS_LAND_KEY)); return r && r.k === key ? r : null; } catch (e) { return null; }
 }
 function _osLandRemember(key, land) {
-  try { localStorage.setItem(OS_LAND_KEY, JSON.stringify({ k: key, cls: land.cls, coast: land.coast, rgb: land.rgb })); } catch (e) { /* private window */ }
+  try { localStorage.setItem(OS_LAND_KEY, JSON.stringify({ k: key, cls: land.cls, coast: land.coast, rgb: land.rgb, dial: _osPlaceDial })); } catch (e) { /* private window */ }
 }
 // The scene to draw: 'plain' | 'beach' | a land class ('broadleaf', 'conifer', 'grass', 'desert', 'snow', 'tundra').
 function _osCardScene(s) {
   if (s.hosted) return 'beach';   // Look's own sphere keeps what it had
+  if (!_osButtonsSynced) { _osButtonsSynced = true; if (typeof requestIdleCallback === 'function') requestIdleCallback(_osSync3DButtons, { timeout: 3000 }); else setTimeout(_osSync3DButtons, 1500); }
   var key = _osLandKey(s);
-  if (s.landKey !== key) { s.landKey = key; s.land = _osLandRemembered(key); }
+  if (s.landKey !== key) {
+    s.landKey = key; s.land = _osLandRemembered(key);
+    if (s.land && typeof s.land.dial === 'number') _osPlaceDial = s.land.dial;   // a return visit starts at the place's own dial
+    if (_osNight) _osSetPlaceDial(s);
+  }
   if (!s.land) { _osLandKick(s, key); return 'plain'; }
-  return s.land.coast || s.land.cls === 'sea' ? 'beach' : s.land.cls;
+  // The sea where the grid says sea or a coast, except where ice or tundra holds the shore: that is an ice shore, not a beach.
+  return s.land.cls === 'sea' || (s.land.coast && s.land.cls !== 'snow' && s.land.cls !== 'tundra') ? 'beach' : s.land.cls;
 }
 function _osLandKick(s, key) {
   if (_osLandLoading || _osLandFailed || typeof _loadScript !== 'function') return;
   _osLandLoading = true;
   var go = function () {
+    _osSync3DButtons();
+    _osNightLoad();
     Promise.all(OS_LAND_SRCS.map(function (src) { return _loadScript(src); })).then(function (ok) {
       if (!ok.every(Boolean) || typeof _osLandCoverLoad !== 'function') return false;
       return _osLandCoverLoad();

@@ -789,7 +789,8 @@ function _almClockParts(focus) {
   var deviceTz = _almDeviceTz();
   // A chosen place whose zone is not the device's: its time, and its name.
   var placeTz = loc.stored && locTz && locTz !== deviceTz ? locTz : null;
-  var displayTz = placeTz || deviceTz || locTz;
+  var over = typeof _almClockZone === 'function' ? _almClockZone() : null;   // the 3D view's Stand here: the time where one stands
+  var displayTz = (over && over.tz) || placeTz || deviceTz || locTz;
   var lang = (typeof _currentLang !== 'undefined') ? _currentLang : 'en';
   // Cached formatters (_tzFmt), not toLocale*String: this runs on every travel
   // frame, and each toLocale* call builds a fresh Intl.DateTimeFormat.
@@ -798,7 +799,7 @@ function _almClockParts(focus) {
     date: _tzFmt(displayTz, _almEraOpts(focus, { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric' })).format(focus),
     time: _tzFmt(displayTz, { hour: 'numeric', minute: '2-digit' }).format(focus),
     tz: _formatTimezone(lang, displayTz, focus),
-    place: placeTz ? (loc.name || '').split(',')[0].trim() : ''
+    place: over && over.tz ? '' : placeTz ? (loc.name || '').split(',')[0].trim() : ''
   };
 }
 

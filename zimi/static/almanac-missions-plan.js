@@ -14,7 +14,6 @@ var AP_ARC_POINTS = 140;
 var AP_C3_SPAN = 6;                          // the colour scale runs from the best C3 to this many times it
 var AP_PLOT_H = 190;
 var AP_ARC_COLOR = 0xffb454;
-var AP_OVERVIEW_RE = 9000;                    // Earth radii above the Sun: the inner planets' orbits as the view draws them fit
 
 // ── Lambert's problem (universal variables, Bate, Mueller and White 5.2) ──
 function _apStumpff(z) {
@@ -219,14 +218,14 @@ function _apFly() {
   var cell = _ap && _ap.pick;
   if (!cell || cell.c3 === null) return;
   var tr = _apTransfer(_ap.dest, cell.dep, cell.arr), rows = _apArc(_ap.dest, cell.dep, cell.arr, tr), T = rows[rows.length - 1][0], dest = _ap.dest;
-  var day = 86400;
+  var day = 86400, dOver = _amOverviewDist(rows);
   var m = {
     name: _tp('Earth') + ' → ' + _tp(dest), zeroMs: (cell.dep - JD_UNIX_EPOCH) * 86400000, start: -2 * day, end: T + 2 * day, follow: 'probe', ref: { moon: [] }, source: 'Lambert',
     vehicles: [{ id: 'probe', on: 0, off: T + 2 * day, dot: true, parts: [], flames: [], legs: [{ frame: 'helio', s: rows }] }],
     phases: [
-      { t: -2 * day, k: 'alm_ms_ph_launch', en: 'Launch', w: 0.6, rate: day / 2, follow: 'probe', ref: 'sun', cam: { overview: true, d: AP_OVERVIEW_RE } },
-      { t: 0, k: 'alm_ms_ph_cruise', en: 'Cruise', w: 3, rate: T / 40, follow: 'probe', ref: 'sun', cam: { overview: true, d: AP_OVERVIEW_RE } },
-      { t: T - 2 * day, k: 'alm_ms_ph_approach', en: 'Approach', w: 0.6, rate: day / 2, follow: 'probe', ref: 'sun', cam: { overview: true, d: AP_OVERVIEW_RE } }
+      { t: -2 * day, k: 'alm_ms_ph_launch', en: 'Launch', w: 0.6, rate: day / 2, follow: 'probe', ref: 'sun', cam: { overview: true, d: dOver } },
+      { t: 0, k: 'alm_ms_ph_cruise', en: 'Cruise', w: 3, rate: T / 40, follow: 'probe', ref: 'sun', cam: { overview: true, d: dOver } },
+      { t: T - 2 * day, k: 'alm_ms_ph_approach', en: 'Approach', w: 0.6, rate: day / 2, follow: 'probe', ref: 'sun', cam: { overview: true, d: dOver } }
     ],
     events: [{ t: 0, k: 'alm_ms_ev_liftoff', en: 'Liftoff', icon: 'burn' }, { t: T, k: null, en: _tp(dest), icon: 'dot' }]
   };

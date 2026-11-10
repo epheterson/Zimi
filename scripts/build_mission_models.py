@@ -358,6 +358,57 @@ def m_apollo_drogues():
 BUILDERS.update({"apollo-mains": m_apollo_mains, "apollo-drogues": m_apollo_drogues})
 
 
+ATLAS_ORANGE = ((0.72, 0.36, 0.14), 0.3, 14)
+STEEL = ((0.7, 0.7, 0.72), 0.45, 40)
+
+
+def m_atlas_core():
+    """The Atlas V common core booster: 3.81 m across, 32.5 m, white over the orange of its engine section, the RD-180's two bells (ULA Atlas V Launch Services User's Guide)."""
+    r = 3.81 / 2
+    m = Stack([WHITE, ATLAS_ORANGE, ALU, DARK])
+    m.ring(0.0, 4.5, r, r, 1)
+    m.ring(4.5, 32.5, r, r, 0)
+    m.disc(32.5, r, 0)
+    m.ring(0.0, 1.0, r, r * 0.9, 3)
+    for x in (-0.7, 0.7):
+        m.bell(x, 0.0, -2.3, 0.9, 2.4, 3)
+    return m.save("atlas-core")
+
+
+def m_atlas_srb():
+    """One AJ-60A solid rocket booster: 1.58 m across, 17 m with its nose cone, white (ULA Atlas V Launch Services User's Guide)."""
+    r = 1.58 / 2
+    m = Stack([WHITE, ALU, DARK, ATLAS_ORANGE])
+    m.ring(0.0, 15.0, r, r, 0)
+    m.ring(15.0, 17.0, r, 0.15, 0)
+    m.bell(0, 0, -1.2, 0.55, 1.3, 2)
+    return m.save("atlas-srb")
+
+
+def m_atlas_centaur():
+    """The Centaur upper stage: 3.05 m across, 12.7 m, stainless steel, one RL10 (ULA Atlas V Launch Services User's Guide), with the interstage skirt that joins it to the core."""
+    r = 3.05 / 2
+    m = Stack([STEEL, ALU, DARK, WHITE])
+    m.ring(-1.5, 0.0, 3.81 / 2, r, 3)
+    m.ring(0.0, 12.7, r, r, 0)
+    m.disc(12.7, r, 0)
+    m.bell(0, 0, -2.2, 0.5, 2.3, 2)
+    return m.save("atlas-centaur")
+
+
+def m_atlas_fairing():
+    """The 5.4 m payload fairing of the 541: boat-tail from the core's 3.81 m, the cylinder, the ogive, 20.7 m (ULA Atlas V Launch Services User's Guide), white."""
+    m = Stack([WHITE, ALU, DARK, ATLAS_ORANGE])
+    m.ring(0.0, 3.0, 3.81 / 2, 5.4 / 2, 0)
+    m.ring(3.0, 13.0, 5.4 / 2, 5.4 / 2, 0)
+    m.ring(13.0, 18.0, 5.4 / 2, 5.4 / 2 * 0.55, 0)
+    m.ring(18.0, 20.7, 5.4 / 2 * 0.55, 0.15, 0)
+    return m.save("atlas-fairing")
+
+
+BUILDERS.update({"atlas-core": m_atlas_core, "atlas-srb": m_atlas_srb, "atlas-centaur": m_atlas_centaur, "atlas-fairing": m_atlas_fairing})
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--only", default="")

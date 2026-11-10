@@ -136,6 +136,7 @@ function _alOrbitText(L) {
 var AL_CSS = [
   '.al-sheet{position:absolute;left:50%;transform:translateX(-50%);bottom:calc(150px + env(safe-area-inset-bottom));width:min(440px,calc(100% - 32px));max-height:46vh;overflow-y:auto;overscroll-behavior:contain;box-sizing:border-box;background:rgba(18,18,20,.985);border:1px solid var(--border);border-radius:12px;padding:10px 12px;font-size:13px;color:var(--text2);pointer-events:auto}',
   '.al-sheet[hidden]{display:none}',
+  '.al-sheet.al-sheet-page{position:fixed;z-index:10050;bottom:max(16px,env(safe-area-inset-bottom))}',
   '.al-sheet h3{margin:0 56px 8px 0;font-size:14px;font-weight:600;color:var(--text)}',
   '.al-x,.al-back{position:absolute;top:6px;background:none;border:0;color:var(--text2);font-size:20px;cursor:pointer;line-height:1;padding:4px 6px}',
   '.al-x{right:8px}.al-back{right:36px}',
@@ -195,7 +196,8 @@ function _alOpenThens() {
 }
 function _alToggle() { if (_al.sheet) _alCloseSheet(); else _alOpenSheet(); }
 function _alOpenSheet() {
-  var host = _aeById('ae-view') || (_ae && _ae.el);
+  var plain = typeof _os3DAvailable === 'function' && !_os3DAvailable();   // no 3D view: the sheet stands over the page
+  var host = plain ? document.body : (_aeById('ae-view') || (_ae && _ae.el));
   if (!host) return;
   if (typeof _asCloseSheet === 'function') _asCloseSheet();
   if (!document.getElementById('al-style')) {
@@ -209,6 +211,7 @@ function _alOpenSheet() {
     _al.sheetEl.className = 'al-sheet';
     _al.sheetEl.setAttribute('role', 'dialog');
     _al.sheetEl.setAttribute('aria-label', _aeT('alm_launches'));
+    if (plain) _al.sheetEl.classList.add('al-sheet-page');
     host.appendChild(_al.sheetEl);
   }
   _al.sheet = true;

@@ -63,6 +63,22 @@ const a0 = meanAlpha(0), a5 = meanAlpha(0.5), a10 = meanAlpha(1);
 check(a0 === 0 && a5 > 0.15 && a5 < 0.85 && a10 > 0.8 && a5 < a10, 'a clear day veils nothing (' + a0 + '), half cover about half (' + a5.toFixed(2) + '), a full one nearly all (' + a10.toFixed(2) + ')');
 check(run('_osCloudAlphaAt({ cloud: [1, 2500, 700, 5], wind: [0, 0, 0], sunE: 1 }, 90, -5)') === 0, 'a Sun under the horizon is not behind a deck');
 
+// ── The place's own night: the light-pollution dial's start ──
+{
+  const bin = require('fs').readFileSync(require('path').join(__dirname, '..', 'zimi', 'static', 'earth', 'nightlights-v1.bin'));
+  S.__nl = bin.buffer.slice(bin.byteOffset, bin.byteOffset + bin.byteLength);
+  run('_osNight = _osNightParse(__nl)');
+  const dial = (la, lo) => run('_osNightDial(' + la + ', ' + lo + ')');
+  check(bin.length < 12000 && run('!!_osNight && _osNight.w === 360 && _osNight.h === 180'), 'the night-lights grid is small (' + bin.length + ' bytes) and reads');
+  check(dial(34.05, -118.25) > 0.7 && dial(1.35, 103.82) > 0.6 && dial(40.71, -74) > 0.8 && dial(35.7, 139.7) > 0.8, 'Los Angeles, Singapore, New York and Tokyo start at a bright dial (' + [dial(34.05, -118.25), dial(1.35, 103.82), dial(40.71, -74), dial(35.7, 139.7)].map((x) => x.toFixed(2)).join(', ') + ')');
+  check(dial(30.05, -99.14) === 0 && dial(25, 10) === 0 && dial(0, -140) === 0 && dial(72, -40) === 0, 'a Texas hill country cell, the Sahara, the mid-Pacific and Greenland start at a dark site');
+  check(run('_osNightParse(__nl.slice(0, 500))') === null && run('_osNightDial(NaN, 0)') === null, 'a truncated grid is refused and a place that is not a number has no dial');
+  run('_osPlaceDial = 0.82; _skySettings = null;');
+  check(run('_skySetting("dial")') === 0.82, 'the dial defaults to the place\'s own');
+  run('_skyLoadSettings = function () { _skyChosen = { dial: 0.1 }; return { dial: 0.1, skin: "beach", lines: "off", size: "auto" }; }; _skySettings = null;');
+  check(run('_skySetting("dial")') === 0.1, 'and the person\'s own choice wins');
+}
+
 // ── What is in the sky: one registry ──
 run(`var __log = [], __seen = 0;
   var __offA = _osSkySource({ ask: function (la, lo, t) { __log.push('ask'); return Promise.resolve({ t: t }); }, at: function (a, t) { return [{ az: 10, el: 20, mag: 1, kind: 'sat', name: 'A' }]; } });
