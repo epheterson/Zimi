@@ -631,6 +631,7 @@ var AE_CSS = [
   // six rows, not one and a half.
   '@media (orientation:landscape) and (max-height:460px){.ae-go{inset-inline:12px 68px;top:8px;height:auto}.ae-go-head{display:flex;align-items:center}.ae-go-find{flex:0 0 min(300px,40%)}.ae-go-pills.pills-row{flex:1;min-width:0;width:auto;padding-bottom:0}}',
   '.ae-go-head{flex:none;border-bottom:1px solid var(--border);padding:0 6px 6px}',
+  '#ae-go-then svg{width:16px;height:16px}',
   '.ae-go-find{display:flex;align-items:center;gap:8px;min-height:48px;padding:0 4px 0 8px;color:var(--text3)}',
   '.ae-go-find input{flex:1;min-width:0;height:32px;border:0;background:none;color:var(--text);font:inherit;font-size:16px;outline:none;-webkit-user-select:text;user-select:text;-webkit-appearance:none;appearance:none}',
   '.ae-go-find input::-webkit-search-cancel-button{-webkit-appearance:none}',
@@ -990,7 +991,6 @@ function _aeGoFind(typed) {
   hits.sort(function (a, b) { return a.match - b.match || a.at - b.at; });
   return hits.map(function (h) { return h.key; });
 }
-var AE_THEN_DOT = '<svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3.6 12a8.4 8.4 0 1 0 2.5-6M3.6 4.2v4.4h4.4M12 7.6V12l3 1.9"/></svg>';   // a clock running backward: the sign There and then has on the sky card
 var AE_GRID_SVG = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round" aria-hidden="true"><rect x="4" y="4" width="6.5" height="6.5" rx="1.5"/><rect x="13.5" y="4" width="6.5" height="6.5" rx="1.5"/><rect x="4" y="13.5" width="6.5" height="6.5" rx="1.5"/><rect x="13.5" y="13.5" width="6.5" height="6.5" rx="1.5"/></svg>';
 var AE_LIST_SVG = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M9 6h11M9 12h11M9 18h11M4 6h.01M4 12h.01M4 18h.01"/></svg>';
 function _aeGoRow(k) {
@@ -1016,7 +1016,8 @@ function _aeGoRender() {
   } else {
     var keys = [];
     groups.forEach(function (g) {
-      g[1].forEach(function (k) { if ((k === AE_GO_LOADING ? g[2] : _aeGoKind(k)) === _aeGoFilter) keys.push(k); });
+      // The Sun leads the Planets pill, ahead of the Earth (whose group comes first in All).
+      g[1].forEach(function (k) { if ((k === AE_GO_LOADING ? g[2] : _aeGoKind(k)) === _aeGoFilter) keys[k === 'sun' ? 'unshift' : 'push'](k); });
     });
     html = '<div class="ae-go-list">' + keys.map(_aeGoRow).join('') + '</div>';
   }
@@ -1165,8 +1166,8 @@ function _aeGoShell(sheet) {
   var pills = AE_GO_PILLS.map(function (p) {
     return '<button type="button" class="pill" data-ae-pill="' + p[0] + '" aria-pressed="false">' + _almEsc(_aeT(p[1])) + '</button>';
   }).join('');
-  // Then is a door, not a filter: the there-and-then chooser, past a divider, with its star for a name.
-  pills += '<i class="pill-div" aria-hidden="true"></i><button type="button" class="pill" id="ae-go-then" data-ae-then aria-label="' + _almEsc(_aeT('then_title')) + '">' + AE_THEN_DOT + '</button>';
+  // Then is a door, not a filter: the there-and-then chooser, past a divider, with the sky card's sign for a name (ALM_THEN_SVG, almanac.js).
+  pills += '<i class="pill-div" aria-hidden="true"></i><button type="button" class="pill" id="ae-go-then" data-ae-then aria-label="' + _almEsc(_aeT('then_title')) + '">' + ALM_THEN_SVG + '</button>';
   var seg = [['grid', AE_GRID_SVG, 'go_view_grid'], ['list', AE_LIST_SVG, 'go_view_list']].map(function (v) {
     return '<button type="button" data-ae-gomode="' + v[0] + '" aria-pressed="false" aria-label="' + _almEsc(_aeT(v[2])) + '">' + v[1] + '</button>';
   }).join('');
