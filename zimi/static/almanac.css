@@ -382,15 +382,9 @@
 .almanac-sky-wrap { width: 100%; max-width: 600px; margin: 0 auto; position: relative; }
 /* The sky's two corner buttons (settings, Look): small, so the sky is the picture; the touch target
    stays 44 px through an invisible ring around each. */
-:is(.alm-sky-look, .alm-sky-then, .alm-sky-gear, .alm-sky-stand, .alm-sky-stand) { position: absolute; top: 4px; z-index: 2; width: 44px; height: 44px; border-radius: 22px; border: 0; background: none; color: #fff; display: flex; align-items: center; justify-content: center; padding: 0; cursor: pointer; isolation: isolate; }
-:is(.alm-sky-look, .alm-sky-then, .alm-sky-gear, .alm-sky-stand, .alm-sky-stand)::before { content: ""; position: absolute; inset: 6px; z-index: -1; border-radius: 16px; border: 1px solid rgba(255,255,255,.22); background: rgba(8,10,16,.55); backdrop-filter: blur(6px); -webkit-backdrop-filter: blur(6px); }
-:is(.alm-sky-look, .alm-sky-then, .alm-sky-gear, .alm-sky-stand, .alm-sky-stand) svg { width: 17px; height: 17px; }
-.alm-sky-look { right: 4px; }
-.alm-sky-then { right: 52px; }
-[dir=rtl] .alm-sky-then { right: auto; left: 52px; }
-[dir=rtl] .alm-sky-look { right: auto; left: 4px; }
-.alm-sky-stand { right: 48px; }
-[dir=rtl] .alm-sky-stand { right: auto; left: 48px; }
+:is(.alm-sky-look, .alm-sky-then, .alm-sky-gear, .alm-sky-stand) { position: absolute; top: 4px; z-index: 2; width: 44px; height: 44px; border-radius: 22px; border: 0; background: none; color: #fff; display: flex; align-items: center; justify-content: center; padding: 0; cursor: pointer; isolation: isolate; }
+:is(.alm-sky-look, .alm-sky-then, .alm-sky-gear, .alm-sky-stand)::before { content: ""; position: absolute; inset: 6px; z-index: -1; border-radius: 16px; border: 1px solid rgba(255,255,255,.22); background: rgba(8,10,16,.55); backdrop-filter: blur(6px); -webkit-backdrop-filter: blur(6px); }
+:is(.alm-sky-look, .alm-sky-then, .alm-sky-gear, .alm-sky-stand) svg { width: 17px; height: 17px; }
 .almanac-sky-wrap canvas { width: 100%; display: block; border-radius: 12px; touch-action: pan-y; }
 /* The sky is its final size before its first frame (almanac-sky.js sets the same height once it starts, from
    SKY_ASPECT and SKY_ASPECT_PHONE under SKY_PHONE_MAX_W): a canvas waiting at its default 2:1 grew when the
@@ -422,6 +416,9 @@
 #almanac-head .alm-card-val { white-space: normal; overflow-wrap: anywhere; text-wrap: balance; }
 .alm-about-credit { margin: 14px 0 0; font-size: 11px; color: var(--text3); }
 .alm-sky-gear { left: 4px; }
+/* Look, Stand here and There and then: one row of round buttons, 44 px each and equally spaced, at the picture's far corner (its start in a right-to-left language). */
+.alm-sky-bar { position: absolute; top: 4px; inset-inline-end: 4px; z-index: 2; display: flex; }
+.alm-sky-bar > button { position: relative; top: 0; }
 .alm-sky-gear[aria-expanded="true"] { color: var(--amber); }
 .alm-sky-gear[aria-expanded="true"]::before { border-color: var(--amber-border); }
 [dir=rtl] .alm-sky-gear { left: auto; right: 4px; }
@@ -829,13 +826,13 @@ body.look-open { overflow: hidden; }
    :root.night-red) and nothing else. Hard-coded warm, violet and white tones of the tiles, clocks,
    time machine, buttons and the Look view's own marks become the palette's red. The sky and the
    pictures turn red themselves (canvas[data-red], the canvas filter chain). */
-:root.night-red #almanac-view :is(.alm-card-golden, .alm-card-super, .alm-ev, .almanac-eclipse-type, [class*="alm-tz-glyph"], .alm-sky-look, .alm-sky-then, .alm-sky-gear, .alm-sky-stand, .alm-sky-stand) { color: var(--text2); }
+:root.night-red #almanac-view :is(.alm-card-golden, .alm-card-super, .alm-ev, .almanac-eclipse-type, [class*="alm-tz-glyph"], .alm-sky-look, .alm-sky-then, .alm-sky-gear, .alm-sky-stand) { color: var(--text2); }
 /* The clocks' day, dawn, dusk and night tints (amber, coral, violet, blue) are one dim red wash in Red;
    the glyph (sun, moon) still says which part of the day it is. */
 :root.night-red #almanac-view :is(.alm-tz-day, .alm-tz-dawn, .alm-tz-dusk, .alm-tz-night) { background: linear-gradient(180deg, var(--amber-glow), var(--surface) 70%); border-color: var(--border); }
 :root.night-red #almanac-view .alm-tz-glyph { color: var(--text2) !important; }
 :root.night-red #almanac-view :is(.alm-tz-city-card) { border-color: var(--border); }
-:root.night-red #almanac-view :is(.alm-sky-look, .alm-sky-then, .alm-sky-gear, .alm-sky-stand, .alm-sky-stand)::before { border-color: var(--border); background-color: var(--amber-glow); }
+:root.night-red #almanac-view :is(.alm-sky-look, .alm-sky-then, .alm-sky-gear, .alm-sky-stand)::before { border-color: var(--border); background-color: var(--amber-glow); }
 :root.night-red #almanac-view .alm-cell { background-color: var(--amber-glow); }
 :root.night-red #almanac-view .alm-tz-hand { background-color: var(--amber); }
 :root.night-red #almanac-view input { background-color: var(--surface2); accent-color: var(--amber); }

@@ -2626,9 +2626,11 @@ function _renderAlmanacContent() {
     '</div>';
   html += '<div class="almanac-sky-wrap">' +
     '<canvas id="almanac-sky-canvas" data-red aria-describedby="almanac-sky-desc" role="img" tabindex="0"' + _almSkyPreStyle(_getLocation()) + '></canvas>' +
+    '<div class="alm-sky-bar">' +
+    '<button type="button" class="alm-sky-then" onclick="openAlmanacThens()" aria-label="' + escAttr(t('then_title')) + '" title="' + escAttr(t('then_title')) + '">' + ALM_THEN_SVG + '</button>' +
     '<button type="button" class="alm-sky-stand" onclick="_osStandHere()" aria-label="' + escAttr(t('alm_launch_on_ground')) + '" title="' + escAttr(t('alm_launch_on_ground')) + '">' + ALM_STAND_SVG + '</button>' +
     '<button type="button" class="alm-sky-look" onclick="openAlmanacLook()" aria-label="' + escAttr(t('look_title')) + '" title="' + escAttr(t('look_title')) + '">' + ALM_LOOK_SVG + '</button>' +
-    '<button type="button" class="alm-sky-then" onclick="openAlmanacThens()" aria-label="' + escAttr(t('then_title')) + '" title="' + escAttr(t('then_title')) + '">' + ALM_THEN_SVG + '</button>' +
+    '</div>' +
     '<button type="button" class="alm-sky-gear" id="almanac-sky-gear" onclick="_skyToggleSettings()" aria-expanded="false" aria-controls="almanac-sky-set" aria-label="' + escAttr(t('alm_sky_set')) + '" title="' + escAttr(t('alm_sky_set')) + '">' + ALM_GEAR_SVG + '</button>' +
     '<div id="almanac-sky-set" class="alm-sky-set" role="group" aria-label="' + escAttr(t('alm_sky_set')) + '" hidden></div>' +
     '<div id="almanac-sky-tip" class="alm-sky-tip" hidden></div>' +
