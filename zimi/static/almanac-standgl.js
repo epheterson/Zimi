@@ -323,14 +323,14 @@ var AE_ST_BOARD_FRAG = [
   '  float u = dot(q, uAxis) / uSize.x, v = dot(q, perp) / uSize.y;',          // u: -1 the tail .. +1 the head; v: across, in the fan's own half-widths
   '  float t = clamp((u + 1.0) * 0.5, 0.0, 1.0);',
   '  if (u < -1.05 || u > 1.05) discard;',
-  '  float env = 0.1 + 0.9 * pow(1.0 - t, 0.85);',                                // the fan's half-width: narrow at the head, broad behind
+  '  float env = 0.08 + 0.92 * pow(sin(min((1.0 - t) / 0.8, 1.0) * 1.5708), 0.6);',                                // the fan's half-width: narrow at the head, broad behind
   '  vec2 np = vec2(u * 3.2 + uSeed * 9.0, v * 2.2);',
   '  float brk = (n2(np) - 0.5) * 0.7 + (n2(np * 2.7 + 5.0) - 0.5) * 0.35;',      // noise-broken edges and the soft banding of a real plume
   '  float vv = abs(v) / env + brk * (0.25 + 0.6 * (1.0 - t));',
   '  float across = pow(max(1.0 - vv, 0.0), 1.3);',
   '  float tail = smoothstep(0.0, 0.28, t);',                                      // the tail end dissolves
   '  float fan = across * tail * (0.28 + 0.72 * pow(t, 0.9)) * (0.85 + 0.3 * n2(np * 1.3 + 11.0));',
-  '  vec2 hd = vec2((u - 0.98) * uSize.x, v * uSize.y * 0.12) / (uSize.y * 0.09);',   // the core: tiny, at the head
+  '  vec2 hd = vec2((u - 0.98) * uSize.x, v * uSize.y) / (uSize.y * 0.11);',   // the core: tiny and round, at the head
   '  float core = exp(-dot(hd, hd) * 1.4);',
   '  float sunSide = clamp(dot(vec2(-uAxis.y, uAxis.x) * sign(v), uSunTan) * 0.5 + 0.5, 0.0, 1.0);',
   '  float warm = clamp((1.0 - t) * 0.85 + (sunSide - 0.5) * 0.5 * (1.0 - t) + 0.12, 0.0, 1.0);',
