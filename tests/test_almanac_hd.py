@@ -502,3 +502,18 @@ def test_every_part_is_a_data_pack_so_it_is_never_on_home_or_searched():
 
     for part in almanachd.PARTS:
         assert almanachd.part_name(part) in server.DATA_PACKS, part
+
+
+def test_a_part_copied_in_by_hand_is_listed_with_the_size_of_its_file(hd, monkeypatch, tmp_path):
+    f = tmp_path / "zimi_almanac_hd_moon_2026-11b.zim"
+    f.write_bytes(b"x" * 1234)
+    _set(monkeypatch, dict(REL, parts=[_part("mars", 800_000_000)]), core=True, have=("moon",))
+    monkeypatch.setattr(almanachd, "_installed_path", lambda name: str(f))
+    ultra = {u["part"]: u for u in almanachd.status()["ultra"]}
+    assert ultra["moon"]["installed"] and ultra["moon"]["size"] == 1234 and ultra["moon"]["file"] == f.name
+    assert ultra["mars"]["size"] == 800_000_000 and not ultra["mars"]["installed"]
+    _set(monkeypatch, dict(REL), core=True, have=("moon",))  # no pin for any, one installed: that one alone
+    monkeypatch.setattr(almanachd, "_installed_path", lambda name: str(f))
+    assert [u["part"] for u in almanachd.status()["ultra"]] == ["moon"]
+    _set(monkeypatch, dict(REL), core=True)  # no pin, none installed: nothing
+    assert almanachd.status()["ultra"] == []
