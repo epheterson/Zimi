@@ -57,25 +57,34 @@ function _slGroundColour(cls, albedo, lit, hor) {
 // The land's ridges: layered rolling lines, far ones paler and nearer ones darker, each a run of strips down to the foot. A slope that faces
 // the Sun is in its light and the one that turns from it in shade (two tones to a ridge, as strong as the Sun is high and low in the sky
 // lets them be), by the bearing of the Sun; a view toward the Sun sees them all from the shaded side.
-var SL_RIDGE_SHADE = 0.3, SL_STRIP_PX = 5;
+var SL_RIDGE_SHADE = 0.5, SL_STRIP_PX = 3, SL_CREST_LAYERS = 4, SL_CREST_DEPTH = 1.6;   // the lit and shaded slopes' strongest overlay; strip width; layers of it down from the crest, and their depth in ridge heights
 function _slRidges(ctx, s, cls, albedo, lit, hor) {
   var R = SL_RIDGES[cls] || SL_RIDGES.plain, W = s.W, H = s.H, yh = H * SKY_HORIZON_Y, dpr = s.dpr, rand = _osMulberry(_slSeed(s) + 7), e = s.eph;
   var sunAlt = e.sunGeoAlt, contrast = SL_RIDGE_SHADE * _skyClamp(1.1 - sunAlt / 60, 0.25, 1) * (sunAlt > -2 ? 1 : 0), ground = _slGroundColour(cls, albedo, lit, hor);
   for (var k = 0; k < R.n; k++) {
     var d = (k + 1) / (R.n + 1), amp = _skyLerp(R.amp[0], R.amp[1], rand()) * H, per = _skyLerp(R.period[0], R.period[1], rand()) * W, ph = rand() * 6.28;
-    var base = yh + (H - yh) * 0.05 * d * 2, step = SL_STRIP_PX * dpr;
+    var base = yh + (H - yh) * 0.05 * d * 2, step = SL_STRIP_PX * dpr, xs = [], ys = [], x, i;
     var tone = _skyMix(ground.map(function (v) { return v * (1 - 0.15 * d); }), hor, SL_HAZE * (1 - d) * 0.8);
-    var prev = null;
-    for (var x = 0; x <= W + step; x += step) {
-      var y = base - amp * (0.6 * Math.sin(x / per * 6.28 + ph) + 0.4 * Math.sin(x / per * 15 + ph * 2)) - amp;
-      if (prev !== null) {
-        // The slope (screen y falls to the right when the ground climbs) against which side the Sun is on, at this bearing.
-        var rise = (prev - y) / step, side = Math.sin((e.sun.az - _skyAzAt(s, x)) * DEG_TO_RAD), facing = _skyClamp(rise * 40 * side, -1, 1);
-        var k2 = 1 + contrast * facing;
-        ctx.fillStyle = _skyRgb(tone.map(function (v) { return Math.min(255, v * k2); }));
-        ctx.fillRect(x - step, y, step + 1, H - y);
+    for (x = 0; x <= W + step; x += step) { xs.push(x); ys.push(base - amp * (0.6 * Math.sin(x / per * 6.28 + ph) + 0.4 * Math.sin(x / per * 15 + ph * 2)) - amp); }
+    ctx.fillStyle = _skyRgb(tone);
+    ctx.beginPath(); ctx.moveTo(0, H);
+    for (i = 0; i < xs.length; i++) ctx.lineTo(xs[i], ys[i]);
+    ctx.lineTo(W + step, H); ctx.closePath(); ctx.fill();
+    if (!contrast) continue;
+    // A slope that faces the Sun is lit, the one that turns from it in shade, by the Sun's bearing: a soft overlay down from the crest.
+    var face = [];
+    for (i = 1; i < xs.length; i++) {
+      var rise = (ys[i - 1] - ys[i]) / step, side = Math.sin((e.sun.az - _skyAzAt(s, xs[i])) * DEG_TO_RAD);
+      face.push(Math.tanh(rise * 30 * side));
+    }
+    for (i = 0; i < face.length; i++) {   // smoothed over its neighbours
+      var f = ((face[i - 1] === undefined ? face[i] : face[i - 1]) + face[i] * 2 + (face[i + 1] === undefined ? face[i] : face[i + 1])) / 4;
+      if (Math.abs(f) < 0.03) continue;
+      for (var j = 0; j < SL_CREST_LAYERS; j++) {
+        var a = Math.abs(f) * contrast * (1 - j / SL_CREST_LAYERS) * 0.55, top = ys[i + 1] + j * amp * SL_CREST_DEPTH / SL_CREST_LAYERS, hgt = amp * SL_CREST_DEPTH / SL_CREST_LAYERS + 1;
+        ctx.fillStyle = f > 0 ? 'rgba(255,246,225,' + a.toFixed(3) + ')' : 'rgba(18,14,10,' + a.toFixed(3) + ')';
+        ctx.fillRect(xs[i], top, step + 1, hgt);
       }
-      prev = y;
     }
   }
 }
