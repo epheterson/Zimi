@@ -14,7 +14,7 @@ import threading
 import pytest
 
 pytest.importorskip("playwright")
-from playwright.sync_api import sync_playwright  # noqa: E402
+from playwright.sync_api import TimeoutError as PlaywrightTimeout, sync_playwright  # noqa: E402
 
 GAMES = os.path.join(
     os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
@@ -168,7 +168,10 @@ def test_fourfold_a_whole_game_by_touch(browser, site):
             if ended(page):
                 break
             # After placing the given piece the tray is locked until the move settles: tap only a slot that is open.
-            page.wait_for_selector("#ff-tray .ff-slot:not(.gone)[aria-disabled=false]", timeout=10000)
+            try:
+                page.wait_for_selector("#ff-tray .ff-slot:not(.gone)[aria-disabled=false]", timeout=4000)
+            except PlaywrightTimeout:   # still Zimi's move or a piece to place: look again; a stuck game fails the end check below
+                continue
             open_slots = "#ff-tray .ff-slot:not(.gone)[aria-disabled=false]"
             safe = page.locator(open_slots + ":not(.danger)")
             (safe if safe.count() else page.locator(open_slots)).first.tap()
