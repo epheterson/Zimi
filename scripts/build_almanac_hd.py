@@ -1196,20 +1196,58 @@ MIMES = {
 }
 
 
-#: Layers too big for one release file (GitHub's limit is 2 GiB) are packed as ZIMs of their own, parts of one set:
-#: ``zimi_almanac_hd_<part>_<month>.zim`` with an ``hd.json`` listing only their layers (zimi/almanachd.py PARTS).
-#: Everything else is the core, the file the Almanac's HD flavour is made from.
+#: A layer's deepest levels can be an Ultra part: a ZIM of its own (``zimi_almanac_hd_<part>_<month>.zim``, with an
+#: ``hd.json`` listing only what it holds), fetched and removed apart from the core (zimi/almanachd.py PARTS names the
+#: same parts). Per part, each layer and the first level that goes in the part; the levels above it stay in the core,
+#: so the core alone already shows the body sharper, and the part adds the rest. 0 puts a whole layer in the part (a
+#: body's terrain: ``terrain/<body>``, named here when its layers are built). Everything else is the core, the file the
+#: Almanac's HD flavour is made from. A part is under 2 GiB (GitHub's limit for a release file).
 PARTS = {
-    "moon": ("moon/", "terrain/moon/"),
-    "mars": ("planets/mars/", "terrain/mars/"),
-    "mercury": ("planets/mercury/", "terrain/mercury/"),
-    "earth": ("terrain/earth/",),   # the Earth's heights at the source's own resolution: a file of their own
+    "moon": {"moon/albedo": 6, "moon/relief": 5},   # (the Moon's and Mercury's heights stop at level 3: all in the core)
+    "mars": {"planets/mars": 5, "terrain/mars": 4},   # Mars's heights: levels 0-3 (10 km) in the core, 4-6 here
+    "mercury": {"planets/mercury": 5},
+    "earth": {"terrain/earth": 4},   # the Earth's, to the source's own resolution: levels 0-3 in the core, 4-6 here
 }
 
 
+def layer_split(layer):
+    """``(part, first level)`` of a layer: the part its deep levels are in ("" and 0: all in the core)."""
+    for part, layers in PARTS.items():
+        if layer in layers:
+            return part, layers[layer]
+    return "", 0
+
+
 def part_of(rel):
-    """The part a staged file belongs to ("" for the core)."""
-    return next((p for p, prefixes in PARTS.items() if rel.startswith(prefixes)), "")
+    """The part a staged tile (``<layer>/<level>/<x>/<y>.<ext>``) belongs to ("" for the core)."""
+    bits = rel.split("/")
+    at = next((k for k, b in enumerate(bits) if b.isdigit()), None)
+    if at is None:
+        return ""
+    part, first = layer_split("/".join(bits[:at]))
+    return part if part and int(bits[at]) >= first else ""
+
+
+def part_manifest(layers, part):
+    """The ``hd.json`` layers of one ZIM of the set (``part`` "" the core): a layer split between the core and a part is
+    in both, the core's to the level before the part's ``from``, the part's from there with its inserts."""
+    out = {}
+    for layer, spec in layers.items():
+        owner, first = layer_split(layer)
+        if not owner:
+            if part == "":
+                out[layer] = spec
+        elif first == 0:
+            if part == owner:
+                out[layer] = spec
+        elif part == "":
+            if first > 0:
+                core = {k: v for k, v in spec.items() if k != "inserts"}
+                core["max"] = min(spec["max"], first - 1)
+                out[layer] = core
+        elif part == owner and spec["max"] >= first:
+            out[layer] = dict(spec, **{"from": first})
+    return out
 
 
 def pack_zim(stage, path, part=None):
@@ -1248,11 +1286,7 @@ def pack_zim(stage, path, part=None):
                     data = f.read()
                 if rel == "hd.json" and part is not None:
                     man = json.loads(data)
-                    man["layers"] = {
-                        k: v
-                        for k, v in man["layers"].items()
-                        if part_of(k + "/") == part
-                    }
+                    man["layers"] = part_manifest(man["layers"], part)
                     data = json.dumps(man, separators=(",", ":")).encode()
                 if rel == "index.html":
                     zc.add_item(page(rel, "Almanac HD", data))

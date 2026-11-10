@@ -84,7 +84,7 @@ function _aeStandBuild(pend, body) {
   _aeTerrainLoad(pend.key).then(function () {
     if (!_aeStandPendAlive(pend)) return;
     var man = _ae.gl && _ae.gl.hd && _ae.gl.hd.man, layer = man && man.layers && man.layers[AE_TERRAIN_HD_LAYER + pend.key];
-    return layer ? _aeTerrainHdLoad(pend.key, pend.lat, pend.lon, layer.base || _aeHdBase(), layer.max) : null;   // each ZIM of the set stamps its layers with its own folder
+    return layer ? _aeTerrainHdLoad(pend.key, pend.lat, pend.lon, layer, layer.max) : null;   // each ZIM of the set stamps its layers with its own folder
   }).catch(function () {}).then(function () {
     if (!_aeStandPendAlive(pend)) return;
     pend.builder = _aeMeshBuilder(pend.key, pend.lat, pend.lon, _aeMeshCap(body.km, pend.alt0), pend.flat);

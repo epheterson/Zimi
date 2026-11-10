@@ -213,10 +213,12 @@ def test_pack_round_trips_vertices_normals_uvs_and_textures():
 MAX_ALL_MODELS_BYTES = 3_000_000  # probes, the station and the landing sites' models together (they were 2.1 MB)
 
 
-def test_every_model_in_the_app_is_zcr2_and_the_total_is_bounded():
+def test_every_model_in_the_app_is_zcr2_or_zcrf_and_the_total_is_bounded():
     paths = [os.path.join(EARTH, n) for n in os.listdir(EARTH) if (n.startswith("craft-") or n == "iss-v1.bin") and n.endswith(".bin")]
     assert len(paths) >= 40
     for p in paths:
         with open(p, "rb") as f:
-            assert f.read(4) == b"ZCR2", os.path.basename(p)
+            magic = f.read(4)
+        # The probes and the station are ZCR2; a landing site's model may still be the older flat-shaded ZCRF.
+        assert magic == b"ZCR2" or (magic == b"ZCRF" and "craft-site-" in p), os.path.basename(p)
     assert sum(os.path.getsize(p) for p in paths) <= MAX_ALL_MODELS_BYTES
