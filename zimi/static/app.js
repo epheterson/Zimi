@@ -7481,6 +7481,7 @@ var _moonMidLoad = null;
 var _MOON_TEX_MID_IMG = null;  // the 2048 map's Image while its tone table is built; _MOON_TEX_MID once it is
 var _MOON_TEX_HI_IMG = null;   // the 4096 map's Image while its tone tables are built; _MOON_TEX_HI once they are
 function _moonIdle(fn, priority) { whenQuiet(fn, { priority: priority == null ? QUIET_PRI_LOAD : priority }); }
+var _MOON_HI_TEXTURE_PX = 4096;   // the map's width: a device whose capability level allows less never fetches it (capability.js)
 // The 2048 map: what a disc the hero's size is drawn from, asked for after the first paint. Same road as the 4096 one.
 function _moonLoadMidMap() {
   if (_moonMidLoad) return _moonMidLoad;
@@ -8416,7 +8417,6 @@ function openAlmanac(replaceState) {
   }
   if (_almanacOpenPending) return;
   _markZimOpened(_ALMANAC_ZIM);   // the tile's dot is for what has not been opened
-  _moonAfterFirstPaint(_moonLoadHiMap);   // a no-op once asked for
   // The tap answers in the next frame: the Almanac's dark shell (the reload gate's, almanac-boot) goes up before
   // its files load or its page is drawn, and the open follows the paint (Eric, 2026-10-30: "tapping almanac app
   // icon on main page doesn't go right there it hangs back").

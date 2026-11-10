@@ -1251,7 +1251,7 @@ function _almClockPaint(focus) {
     // The zone, and for the header the place whose clock this is, with the crosshair that chooses it.
     // The zone keeps its room; the place is the part that gives way (ellipsis) in a strip too narrow for both.
     set('.alm-ck-z', (cp.tz ? '<span class="alm-ck-zn">' + (root.getAttribute('data-v') === 'foot' ? ' ' : ' &middot; ') + _almEsc(cp.tz) + '</span>' : '') +
-      (cp.place ? '<span class="alm-ck-pl"> &middot; ' + (head ? '<span id="almanac-head-place">' + _almEsc(cp.place) + '</span> ' + _almHereBtnHtml('alm-here-icon') : _almEsc(cp.place)) + '</span>' : ''), 'z');
+      (cp.place ? '<span class="alm-ck-pl"> &middot; ' + (head ? '<span id="almanac-head-place">' + _almEsc(cp.place) + '</span> ' + _almHereBtnHtml('alm-here-icon') + _almMapBtnHtml(cp.loc) : _almEsc(cp.place)) + '</span>' : ''), 'z');
     var r = root.querySelector('.alm-ck-r');
     if (r) {
       var rh = _almEsc(text);   // the rate, away from real time; paused says so in the button (play, to resume)
