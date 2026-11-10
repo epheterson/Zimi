@@ -246,10 +246,7 @@ def _label_faults(marks):
                 n, [o["x"] - o["r"], o["y"] - o["r"], o["x"] + o["r"], o["y"] + o["r"]]
             ):
                 faults.append(("name on a dot", m["body"], o["body"]))
-            if (
-                m["far"]
-                and _seg_dist(o["x"], o["y"], sx, sy, ex, ey) <= o["r"] + 1
-            ):
+            if m["far"] and _seg_dist(o["x"], o["y"], sx, sy, ex, ey) <= o["r"] + 1:
                 faults.append(("leader through a dot", m["body"], o["body"]))
             if m["far"] and o["name"]:
                 on = o["name"]
@@ -289,6 +286,40 @@ def test_planets_view_names_and_leaders_keep_clear_on_lineup_dates(browser, serv
                 "() => !_ae.fly && _ae.target === 'earth'", timeout=60_000, polling=200
             )
         assert not any(report.values()), report
+        assert not errors, errors
+    finally:
+        ctx.close()
+
+
+# The 3D view's own frames asked for (requestAnimationFrame(_aeFrame)), over `ms`: the page's other loops (the
+# Almanac's, background jobs) are not this view's.
+RAF_COUNT = """(ms) => new Promise(res => { let n = 0; const o = window.requestAnimationFrame;
+  window.requestAnimationFrame = function (cb) { if (cb === _aeFrame) n++; return o.call(window, cb); };
+  setTimeout(() => { window.requestAnimationFrame = o; res(n); }, ms); })"""
+
+
+@pytest.mark.parametrize("reduced", [False, True])
+def test_the_3d_view_asks_for_no_frames_while_nothing_moves(browser, served, reduced):
+    ctx, pg, errors = _page(browser, served, reduced=reduced)
+    try:
+        _open_3d(pg)
+        pg.wait_for_timeout(3000)  # the opening's own work done
+        # Real time: a picture a second at most, and only when something on screen has moved.
+        live = pg.evaluate(RAF_COUNT, 5000)
+        assert live <= 6, live
+        pg.evaluate("_almClockSetRate(0)")
+        pg.wait_for_timeout(1500)
+        paused = pg.evaluate(RAF_COUNT, 5000)
+        assert paused == 0, paused
+        # Time running visibly is drawn every frame; a touch is answered at once.
+        pg.evaluate("_almClockSetRate(3600)")
+        assert pg.evaluate("_aeBusy()") is True
+        pg.evaluate("_almClockSetRate(0)")
+        pg.wait_for_timeout(1500)
+        drawn = pg.evaluate(
+            "() => { const t = _ae.lastRender; _aeTurnBy(0.01, 0); return new Promise(r => setTimeout(() => r(_ae.lastRender > t), 500)); }"
+        )
+        assert drawn is True
         assert not errors, errors
     finally:
         ctx.close()

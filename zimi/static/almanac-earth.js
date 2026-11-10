@@ -398,8 +398,17 @@ var AE_ATMO_SEGMENTS = [96, 48];
 var AE_MOON_SEGMENTS = [64, 32];
 var AE_ATMOSPHERE_SCALE = 1.018;      // the glow's shell, ~115 km above the surface
 var AE_ANISOTROPY = 8;
-var AE_IDLE_RENDER_MS = 250;          // at real-time speed nothing moves faster than this shows
-var AE_TEXT_TICK_MS = 100;            // readouts and the GPS counter
+var AE_TEXT_TICK_MS = 100;            // readouts and the GPS counter, while frames are drawn
+// Nothing moving, the view asks for no frames: a timer this often (no animation frame) keeps the readouts on time and
+// asks for a picture only when something changed or the clock has moved something on screen by AE_IDLE_MOVE_PX.
+var AE_IDLE_TICK_MS = 1000;
+var AE_IDLE_MOVE_PX = 0.5;
+// The fastest thing the view draws near a body at real time, in Earth radii a second: Jupiter's equator (12.6 km/s;
+// the ISS, 7.7 km/s, is next). Seen from `dist` it crosses this many px a second; the clock at a faster pace, faster.
+var AE_IDLE_FASTEST_RE_S = 12.6 / 6371;
+var AE_IDLE_SKY_RAD_S = 7.292e-5;      // on the ground (Stand here, side by side), the sky's turn: the Earth's rate
+var AE_IDLE_NEAR_RE = 1e-4;           // the nearest a surface is taken to be (Earth radii), so a close-up is not infinite
+var AE_IDLE_SMOOTH_PX_S = 4;           // the clock moving the picture this fast is drawn every frame, as any motion is
 var AE_SAT_CAPACITY = 80;
 var AE_GPS_RING_POINTS = 72;
 var AE_ISS_RING_POINTS = 96;
@@ -7814,9 +7823,10 @@ function _aeUpdateText(ms) {
 var AE_ARRIVAL_REFRESH_MS = 10000;   // display time between refreshes of the sheet's "now" rows
 
 // ── The loop ──
-// Renders every frame while something moves (a drag, a flight, a faster
-// clock), otherwise a few times a second: at real time the fastest thing on
-// screen, the ISS, crosses a pixel in several seconds.
+// Renders every frame while something moves (a drag, a flight, a clock fast
+// enough to move the picture visibly); otherwise no frame at all until input,
+// a tile or a model arriving (dirty), or the clock has moved something on
+// screen by half a pixel, and then at most one a second.
 function _aeKick() {
   if (!_aeIsOpen) return;
   if (_ae.idleTimer) { clearTimeout(_ae.idleTimer); _ae.idleTimer = 0; }
@@ -7824,7 +7834,32 @@ function _aeKick() {
 }
 function _aeBusy() {
   var fading = !!_ae.orbitFly && !!_ae.orbitFly.endAt && performance.now() - _ae.orbitFly.endAt < AE_ORBITS_FADE_MS;   // orbits going out
-  return !!(_ae.fly || _ae.drag || _ae.pinch || _ae.hand || fading || _aeStationMoves() || _ae.site || _ae.mission || _aeStandBusy());
+  return !!(_ae.fly || _ae.drag || _ae.pinch || _ae.hand || fading || _aeStationMoves() || _ae.site || _ae.mission || _aeStandBusy() ||
+    _aeClockPxPerS() >= AE_IDLE_SMOOTH_PX_S);
+}
+// How many px a second the clock moves the fastest thing on screen (0 when it is stopped).
+function _aeClockPxPerS() {
+  var rate = typeof _almRate === 'number' ? Math.abs(_almRate) : 1, t = AE_TARGETS[_ae.target];
+  if (!rate || !t) return 0;
+  var focal = _aeFocalPx();
+  if (_ae.stand || _ae.spin) return rate * AE_IDLE_SKY_RAD_S * focal;
+  return rate * AE_IDLE_FASTEST_RE_S * focal / Math.max(_ae.dist - t.surface, AE_IDLE_NEAR_RE);
+}
+// Whether the clock has moved something on screen by half a pixel since the last picture (and a second has passed).
+function _aeClockMoved(now) {
+  var since = now - (_ae.lastRender || 0);
+  return since >= AE_IDLE_TICK_MS && since / 1000 * _aeClockPxPerS() >= AE_IDLE_MOVE_PX;
+}
+// Idle: a timer, not a frame. It keeps the readouts on time while the clock runs and asks for a frame only when one
+// would show something new.
+function _aeIdleWait() {
+  _ae.idleTimer = setTimeout(function () {
+    _ae.idleTimer = 0;
+    if (!_aeIsOpen || document.hidden) return;   // shown again, the view is kicked (visibilitychange)
+    var now = performance.now();
+    if (typeof _almRate !== 'number' || _almRate !== 0) { _aeUpdateText(_aeDisplayMs()); _ae.lastText = now; }
+    if (_ae.dirty || _aeBusy() || _aeClockMoved(now)) _aeKick(); else _aeIdleWait();
+  }, AE_IDLE_TICK_MS);
 }
 // The camera rides the station (7.7 km/s, the Earth turning under it) while the clock is not stopped: drawn every frame,
 // not at the idle interval. A paused clock leaves it as still as any other view.
@@ -7834,7 +7869,7 @@ function _aeStationMoves() {
 // Draw the scene at the clock's instant when something changed, something
 // moves, or the idle interval has passed.
 function _aeDraw(now, busy) {
-  if (!_ae.gl || !(_ae.dirty || busy || now - _ae.lastRender >= AE_IDLE_RENDER_MS)) return;
+  if (!_ae.gl || !(_ae.dirty || busy || _aeClockMoved(now))) return;
   if (_ae.spin) {   // Planets side by side: its own scene, nothing of the main one moves
     _aeSpinDraw();
     _ae.lastRender = now;
@@ -7881,7 +7916,7 @@ function _aeFrame() {
   if (busy) _ae.raf = requestAnimationFrame(_aeFrame);
   else {
     _ae.lastTs = 0;
-    _ae.idleTimer = setTimeout(function () { _ae.idleTimer = 0; _aeKick(); }, AE_TEXT_TICK_MS);
+    _aeIdleWait();
   }
 }
 
