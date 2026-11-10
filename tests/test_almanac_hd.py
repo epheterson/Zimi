@@ -26,6 +26,8 @@ REL = {
 def hd(tmp_path, monkeypatch):
     monkeypatch.setattr(almanachd, "release", lambda read=False: REL)
     monkeypatch.setattr(almanachd, "installed", lambda: False)
+    monkeypatch.setattr(almanachd, "present", lambda: None)  # not what an earlier test left in the library
+    monkeypatch.setattr(almanachd, "parts_present", lambda: {})
     monkeypatch.setattr(almanachd.POLICY, "_offline", lambda: False)
     monkeypatch.delenv(almanachd.ENV, raising=False)
     saved = {}
@@ -500,3 +502,36 @@ def test_every_part_is_a_data_pack_so_it_is_never_on_home_or_searched():
 
     for part in almanachd.PARTS:
         assert almanachd.part_name(part) in server.DATA_PACKS, part
+
+
+def test_a_part_copied_in_by_hand_is_listed_with_the_size_of_its_file(hd, monkeypatch, tmp_path):
+    f = tmp_path / "zimi_almanac_hd_moon_2026-11b.zim"
+    f.write_bytes(b"x" * 1234)
+    _set(monkeypatch, dict(REL, parts=[_part("mars", 800_000_000)]), core=True, have=("moon",))
+    monkeypatch.setattr(almanachd, "_installed_path", lambda name: str(f))
+    ultra = {u["part"]: u for u in almanachd.status()["ultra"]}
+    assert ultra["moon"]["installed"] and ultra["moon"]["size"] == 1234 and ultra["moon"]["file"] == f.name
+    assert ultra["mars"]["size"] == 800_000_000 and not ultra["mars"]["installed"]
+    _set(monkeypatch, dict(REL), core=True, have=("moon",))  # no pin for any, one installed: that one alone
+    monkeypatch.setattr(almanachd, "_installed_path", lambda name: str(f))
+    assert [u["part"] for u in almanachd.status()["ultra"]] == ["moon"]
+    _set(monkeypatch, dict(REL), core=True)  # no pin, none installed: nothing
+    assert almanachd.status()["ultra"] == []
+def test_almanac_hd_tiles_and_lists_are_never_rate_limited():
+    from zimi import http
+
+    for path in (
+        "/w/zimi_almanac_maxi/hd/earth/day/7/12/33.webp",
+        "/w/zimi_almanac_maxi/hd/hd.json",
+        "/w/zimi_almanac_hd_moon/moon/albedo/9/401/220.webp",
+        "/w/zimi_almanac_hd_moon/hd.json",
+        "/w/zimi_almanac_hd/planets/mars/5/3/4.webp",
+    ):
+        assert http._rate_class(path)[0] is False, path
+    # An ordinary page's sub-resources, even the Almanac's own, stay on the content budget.
+    for path in (
+        "/w/zimi_almanac/static/x.webp",
+        "/w/wikipedia/A/Moon",
+        "/w/zimi_games/thumbs/a.webp",
+    ):
+        assert http._rate_class(path)[0] is True, path

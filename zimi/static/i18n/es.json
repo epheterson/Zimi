@@ -2278,7 +2278,7 @@
   "alm_earth_sat_ask_hint": "No se descarga nada hasta que se pida",
   "alm_earth_sat_auto": "Automáticamente",
   "alm_earth_sat_auto_hint": "Datos precisos de {src}",
-  "alm_earth_sat_never": "Aproximar con datos sin conexión",
+  "alm_earth_sat_never": "Nunca",
   "alm_earth_sat_never_hint": "Posiciones a partir de los datos que este Zimi ya tiene, menos exactas con el tiempo",
   "alm_earth_sat_admin_only": "Solo un administrador puede cambiar esto",
   "alm_earth_sat_offline": "Zimi está sin conexión (ZIMI_OFFLINE), así que nunca descarga nada",
@@ -4071,5 +4071,7 @@
   "dym_showing": "Mostrando {s} · buscar {o} en su lugar",
   "pdf_failed_body": "Falta el archivo o está dañado. El resto de la colección está bien.",
   "pdf_failed_file": "El archivo que pediste",
-  "pdf_failed_back": "Volver a la colección"
+  "pdf_failed_back": "Volver a la colección",
+  "alm_craft_loading": "Cargando la sonda",
+  "alm_craft_failed": "Sin modelo aquí: se muestra un punto"
 }

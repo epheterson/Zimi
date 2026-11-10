@@ -2278,7 +2278,7 @@
   "alm_earth_sat_ask_hint": "Nothing is fetched until asked",
   "alm_earth_sat_auto": "Automatically",
   "alm_earth_sat_auto_hint": "Accurate data from {src}",
-  "alm_earth_sat_never": "Approximate with offline data",
+  "alm_earth_sat_never": "Never",
   "alm_earth_sat_never_hint": "Positions from the data this Zimi already has, less exact as it ages",
   "alm_earth_sat_admin_only": "Only an admin can change this",
   "alm_earth_sat_offline": "Zimi is offline (ZIMI_OFFLINE), so it never fetches",
@@ -4071,5 +4071,7 @@
   "dym_showing": "Showing {s} · search for {o} instead",
   "pdf_failed_body": "The file is missing or damaged. The rest of the collection is fine.",
   "pdf_failed_file": "The file you asked for",
-  "pdf_failed_back": "Back to the collection"
+  "pdf_failed_back": "Back to the collection",
+  "alm_craft_loading": "Loading the spacecraft",
+  "alm_craft_failed": "No model of it here: shown as a dot"
 }
