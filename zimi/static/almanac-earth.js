@@ -2696,7 +2696,7 @@ function _aeHostOf(k) { var b = _aePlanetBody(k); return b ? b.parent || b.key :
 function _aeOrbitShow(key) { return _aeOrbitShowRaw(key) * _aeSunLineFade(); }
 // Close to the Sun its disc fills the view and the orbit lines (and the trails) cross it edge-on as thin white strokes:
 // they are a far-view aid, out before the Sun fills the screen, never drawn over its disc.
-var AE_SUN_LINES_GONE = 2.6, AE_SUN_LINES_FULL = 6;   // the Sun's radii from it
+var AE_SUN_LINES_GONE = 8, AE_SUN_LINES_FULL = 20;   // the Sun's radii from it: the Sun's own view (about 6) has none, the Planets view (far past 20) all
 function _aeSunLineFade() {
   if (_ae.target !== 'sun') return 1;
   return _aeClamp((_ae.dist / AE_SUN_SHOW_R - AE_SUN_LINES_GONE) / (AE_SUN_LINES_FULL - AE_SUN_LINES_GONE), 0, 1);
