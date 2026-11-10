@@ -2280,7 +2280,7 @@
   "alm_earth_sat_ask_hint": "Nothing is fetched until asked",
   "alm_earth_sat_auto": "Automatically",
   "alm_earth_sat_auto_hint": "Accurate data from {src}",
-  "alm_earth_sat_never": "Approximate with offline data",
+  "alm_earth_sat_never": "Never",
   "alm_earth_sat_never_hint": "Positions from the data this Zimi already has, less exact as it ages",
   "alm_earth_sat_admin_only": "Only an admin can change this",
   "alm_earth_sat_offline": "Zimi is offline (ZIMI_OFFLINE), so it never fetches",
@@ -3913,5 +3913,7 @@
   "alm_ms_ev_tmi_burn": "Mars injection burn",
   "alm_ms_ev_sc_sep": "Spacecraft separation",
   "tb_kn_ms_m20_launch": "Perseverance launch and cruise",
-  "tb_kn_ms_m20_launch_v": "The Atlas V 541's ascent follows the launch's published events; its altitude and speed between them, the launch azimuth, the parking orbit and the shape of the injection burn are assumed. From 12:52 UT the spacecraft is JPL Horizons' own (-168), Earth-centred, then Sun-centred for the 203 days to Mars"
+  "tb_kn_ms_m20_launch_v": "The Atlas V 541's ascent follows the launch's published events; its altitude and speed between them, the launch azimuth, the parking orbit and the shape of the injection burn are assumed. From 12:52 UT the spacecraft is JPL Horizons' own (-168), Earth-centred, then Sun-centred for the 203 days to Mars",
+  "alm_craft_loading": "Loading the spacecraft",
+  "alm_craft_failed": "No model of it here: shown as a dot"
 }

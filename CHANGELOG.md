@@ -28,6 +28,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 ### Almanac
 
 - **Every world, sharp:** the Moon, Mars, Mercury, Venus, Earth by night and every moon and dwarf planet with a NASA mosaic draw from Almanac HD tile by tile as you near them, and the camera comes as close as their pixels allow, within a memory cap that is smaller on a phone.
+- **HD in levels:** Almanac HD sharpens every world; the Moon, Mars and Mercury each add an Ultra part (about 0.8 GB, a switch each in the gear) to fly as close as the data allows.
 - **More worlds to visit:** Vesta, Phobos, Charon, Triton and Saturn's Mimas, Enceladus, Tethys, Dione, Rhea and Iapetus, each in its real orbit.
 - **The Sun close up:** prominences and flares (illustrative, labelled so), loops over sunspot groups and a finer boiling surface.
 
