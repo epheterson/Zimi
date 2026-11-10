@@ -29,6 +29,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 - **The Sun close up:** prominences and flares (illustrative, labelled so), loops over sunspot groups and a finer boiling surface.
 
 - **The sky you remember:** a Launches button in the 3D Earth lists every orbital launch since 1957 by year, site and rocket (Jonathan McDowell's GCAT), opens one at its pad at lift-off, draws its ascent and the satellites it left (reconstructed from the launch's orbit, or exact with your own Space-Track login), and says whether you could have seen it from your place, in the live sky too.
+- **One solar system:** tap a planet or the Sun in the orrery and it lifts into the 3D view as one motion (the camera starts on the flat drawing, the same scale, then tilts and flies in); pull the Planets view out, or go back, and it settles onto the orrery. Both draw every body at the same place, and the orrery's orbits now show their true ellipses.
 
 ## [1.15.4]
 

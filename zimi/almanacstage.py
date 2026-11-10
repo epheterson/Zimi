@@ -61,6 +61,7 @@ LAZY = (
     "almanac-missions.js",
     "almanac-missions-plan.js",
     "almanac-sats.js",
+    "almanac-orrery3d.js",
     "almanac-launches.js",
     "almanac-launchflight.js",
     "almanac-tides.js",

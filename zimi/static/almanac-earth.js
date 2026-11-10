@@ -500,7 +500,7 @@ var _aeFadeU = { value: 1 };   // how far in from the hero the view has come: wh
 var _aeIsOpen = false;
 
 function _aeT(key, vars) { return (typeof t === 'function') ? t(key, vars) : key; }
-function _aeReduceMotion() { return (typeof _almReduceMotion === 'function') ? _almReduceMotion() : false; }
+function _aeReduceMotion() { return _ae && _ae.snapFly ? true : (typeof _almReduceMotion === 'function') ? _almReduceMotion() : false; }   // snapFly: a preset taken at once, no flight (the orrery's lift sets its end)
 function _aeLink(key, html) { return window.AlmanacLinks ? window.AlmanacLinks.wrap(key, html) : html; }
 function _aeLinked(key) { return !!(window.AlmanacLinks && window.AlmanacLinks.linkFor(key)); }
 function _aeClamp(x, lo, hi) { return Math.max(lo, Math.min(hi, x)); }
@@ -4457,12 +4457,12 @@ function _aeDrawMini() {
   if (!on) return;
   var S = _ae.gl, e = S.ecl, cv = _aeById('ae-mini-c'), dpr = S.dpr, size = AE_MINI_PX * dpr;
   if (cv.width !== size) { cv.width = cv.height = size; }
-  var g = cv.getContext('2d'), half = size / 2, W = size * AE_MINI_FILL / _AU_VIS_Y[_AU_VIS_Y.length - 1];
+  var g = cv.getContext('2d'), half = size / 2, W = size * AE_MINI_FILL / _solarSqueeze(AE_PLANETS_OUTER_AU);
   var jd = _ae.scene.ms / MS_PER_DAY + JD_UNIX_EPOCH;
   var names = ['Mercury', 'Venus', 'Earth', 'Mars', 'Jupiter', 'Saturn', 'Uranus', 'Neptune'];
   // The orrery's own picture of the system (its painters), at this size: one drawing for both.
   g.clearRect(0, 0, size, size);
-  _orreryPaintOrbits(g, half, half, W, 0, dpr, names, AE_MINI_ORBIT_ALPHA);
+  _orreryPaintOrbits(g, half, half, W, _jdToJulianCentury(jd), dpr, names, AE_MINI_ORBIT_ALPHA);
   // The Sun on the minimap's planets' own scale: as much bigger than Jupiter as the marks' gentle log makes it.
   if (!_ae.miniSun || _ae.miniSun.size !== size) {   // worked out once per size: Jupiter's disc there, off screen
     var jup = _orreryPaintPlanets(document.createElement('canvas').getContext('2d'), half, half, W, _jdToJulianCentury(jd), 0, dpr, dpr, ['Jupiter'], { plain: true })[0];
@@ -5406,7 +5406,7 @@ function _aePlaceCamera() {
   var S = _ae.gl, cam = S.camera;
   // The far plane reaches the shoulder only while a flight with one is under way: a drag or a hand-in that ends the
   // flight early must not leave it out at the Sun (it costs every later view its depth precision).
-  _aeFarFor(Math.max(_ae.fly && _ae.fly.shoulder ? _ae.fly.shoulder.far : 0, _ae.dist + AE_FAR));   // far out, the far side of the planets too
+  _aeFarFor(Math.max(_ae.fly && _ae.fly.shoulder ? _ae.fly.shoulder.far : 0, _ae.dist + AE_FAR + (_ae.hand && _ae.hand.farHint || 0)));   // far out, the far side of the planets too
   var c = _aeViewCam();
   if (_ae.hand && _ae.scene) c = _aeHandBlend(_aeHandCam(_ae.scene, _ae.hand), c, _ae.hand.e);
   if (_ae.site && _ae.site.pose) c = _aeSiteCam(c);   // on the ground at a landing site: its own camera
@@ -5496,6 +5496,7 @@ function _aeHeroFrame() {
 // The hero's camera at a scene, for `hand` (its frame, and any turn a drag
 // has given the Moon since the swap).
 function _aeHandCam(sc, hand) {
+  if (hand.orrery) return _aeOrreryCam(sc, hand);   // the orrery's lift (almanac-orrery3d.js)
   var dist = _aeLen(sc.moon) - AE_HAND_EARTH_GAP;
   var azel = _aeAzElOf(_aeScale(sc.moon, -1));
   var f = hand.frame;
@@ -5511,8 +5512,7 @@ function _aeLogLerp(a, b, e) { return Math.exp(_aeLerp(Math.log(a), Math.log(b),
 // The camera `e` of the way from a (the hero's) to b (the view's).
 function _aeHandBlend(a, b, e) {
   if (e <= 0) return a;
-  var full = { x: 0, y: 0, w: _ae.w, h: _ae.h };
-  var fa = a.frame, fb = b.frame || full;
+  if (a.orrery) return _aeOrreryBlend(a, b, e);
   return {
     tp: [_aeLerp(a.tp[0], b.tp[0], e), _aeLerp(a.tp[1], b.tp[1], e), _aeLerp(a.tp[2], b.tp[2], e)],
     az: a.az + _aeAngleDeltaRad(a.az, b.az) * e,
@@ -5520,8 +5520,13 @@ function _aeHandBlend(a, b, e) {
     dist: _aeLogLerp(a.dist, b.dist, e),
     tanHalf: _aeLogLerp(a.tanHalf, b.tanHalf, e),
     roll: a.roll + _angleDelta(a.roll, b.roll) * e,
-    frame: e >= 1 ? b.frame : { x: _aeLerp(fa.x, fb.x, e), y: _aeLerp(fa.y, fb.y, e), w: _aeLerp(fa.w, fb.w, e), h: _aeLerp(fa.h, fb.h, e) }
+    frame: e >= 1 ? b.frame : _aeLerpFrame(a.frame, b.frame, e)
   };
+}
+// The rectangle of the canvas a camera fills, `e` of the way from frame a to frame b (null: the whole view).
+function _aeLerpFrame(a, b, e) {
+  var full = { x: 0, y: 0, w: _ae.w, h: _ae.h }, fa = a || full, fb = b || full;
+  return { x: _aeLerp(fa.x, fb.x, e), y: _aeLerp(fa.y, fb.y, e), w: _aeLerp(fa.w, fb.w, e), h: _aeLerp(fa.h, fb.h, e) };
 }
 function _aeAngleDeltaRad(a, b) { return ((b - a + 3 * Math.PI) % (2 * Math.PI) + 2 * Math.PI) % (2 * Math.PI) - Math.PI; }
 
@@ -7656,6 +7661,7 @@ function _aeZoomBy(factor) {
     f.from.dist = _aeClampDist(f.from.dist * factor);
   }
   _ae.dist = _aeClampDist(_ae.dist * factor);
+  if (factor > 1 && typeof _aeOrreryPullCheck === 'function') _aeOrreryPullCheck();   // the Planets view pulled out far enough settles onto the orrery
   if (_ae.preset !== 'planets') _ae.preset = null;   // closer or farther from a body is still that body (_aeMarkViews); the planets stay the planets
   _aeMarkViews();
   _ae.dirty = true;
@@ -8112,6 +8118,7 @@ function _aeWarmSliced(S, first) {
 // controls come up over its last part. Under reduced motion the view does
 // not fly: it fades in over the page, and out.
 function _aeHandApply(h, e) {
+  if (h.orrery) { _aeOrreryApply(h, e); return; }
   h.e = h.xfade ? 1 : e;
   _aeFadeU.value = h.xfade ? 1 : e;
   var st = _ae.el.style;
@@ -8122,14 +8129,14 @@ function _aeHandApply(h, e) {
 }
 function _aeHandReset() {
   _aeFadeU.value = 1;
-  ['opacity', 'background-color', '--ae-ui'].forEach(function (p) { _aeStyleOff(_ae.el, p); });
+  ['opacity', 'background-color', '--ae-ui', 'clip-path'].forEach(function (p) { _aeStyleOff(_ae.el, p); });
   _ae.el.classList.remove('ae-hand');
 }
 // Advance a swap; returns what to do once this frame is drawn, on its last.
 function _aeStepHand(now) {
   var h = _ae.hand;
   if (!h) return null;
-  var p = _aeClamp((now - h.start) / h.ms, 0, 1), k = _aeEaseOut(p);
+  var p = _aeClamp((now - h.start) / h.ms, 0, 1), k = h.orrery ? p : _aeEaseOut(p);   // the orrery's lift paces its own phases
   _aeHandApply(h, h.dir > 0 ? h.e0 + (1 - h.e0) * k : h.e0 * (1 - k));
   if (p < 1) return null;
   return function () {
@@ -8187,20 +8194,25 @@ function _aeHandOut(frame) {
   _aeKick();
 }
 
+// The scene at the view's moment, the camera on the Earth over the chosen place (or the Almanac's stand-in for it).
+function _aeStartAtHere() {
+  _ae.scene = _aeSceneAt(_aeDisplayMs());
+  var loc = (typeof _getLocation === 'function') ? _getLocation() : { lat: 0, lon: 0 };
+  var here = _aeFixedToScene(_aeGeodeticToFixed(_aeClamp(loc.lat, -_aeDeg(AE_START_MAX_LAT), _aeDeg(AE_START_MAX_LAT)), loc.lon), _ae.scene.gast);
+  var azel = _aeAzElOf(here);
+  _ae.target = 'earth';
+  _ae.az = azel.az; _ae.el_ = azel.el;
+}
 // Where the opening flight arrives: over the chosen place (or the Almanac's
 // stand-in for it), so the first thing seen is here, lit as it is now.
 function _aeEnter() {
   // From the hero, its Moon becomes this one where it stands.
   var frame = _ae.fromHero ? _aeHeroFrame() : null;
   if (frame) { _aeHandIn(frame); return; }
+  // From the orrery, the drawing lifts into the view (almanac-orrery3d.js; the page stays under it until then).
+  if (_ae.fromOrrery && !_aeLinkWant && typeof _aeOrreryIn === 'function' && _aeOrreryIn()) return;
   _aeCoverAlmanac(true);
-  var ms = _aeDisplayMs();
-  _ae.scene = _aeSceneAt(ms);
-  var loc = (typeof _getLocation === 'function') ? _getLocation() : { lat: 0, lon: 0 };
-  var here = _aeFixedToScene(_aeGeodeticToFixed(_aeClamp(loc.lat, -_aeDeg(AE_START_MAX_LAT), _aeDeg(AE_START_MAX_LAT)), loc.lon), _ae.scene.gast);
-  var azel = _aeAzElOf(here);
-  _ae.target = 'earth';
-  _ae.az = azel.az; _ae.el_ = azel.el;
+  _aeStartAtHere();
   _ae.dist = _aeReduceMotion() ? _aeFitDist(AE_FIT_EARTH) : AE_FLY_START_DIST;
   var link = _aeLinkWant;
   _aeLinkWant = null;
@@ -8272,19 +8284,28 @@ var _aeFrom = 'orrery';
 function openAlmanacEarth(opts) {
   if (_aeIsOpen || !_aeEnsure()) return;
   _aeOpenTarget = opts && AE_TARGETS[opts.target] ? opts.target : 'earth';
-  var fromHero = !!(opts && opts.fromHero);
+  var fromHero = !!(opts && opts.fromHero), fromOrrery = !fromHero && !!(opts && opts.fromOrrery);
   _aeFrom = fromHero ? 'hero' : (opts && opts.from === 'sky' ? 'sky' : 'orrery');
-  if (!fromHero || _aeReady() || _ae.failed) { _aeShow(fromHero); return; }
-  var hero = document.querySelector(AE_HERO_SEL);
+  var lifts = fromHero || fromOrrery;
+  // The orrery's lift needs its file (almanac-orrery3d.js) as well as the view: both come before the swap.
+  if (!lifts || (_aeReady() && (!fromOrrery || typeof _aeOrreryIn === 'function')) || _ae.failed) {
+    if (fromOrrery && _ae.failed) { _aeOrreryNoGl(); return; }
+    _aeShow(fromHero, fromOrrery);
+    return;
+  }
+  var hero = fromHero ? document.querySelector(AE_HERO_SEL) : null;
   if (hero) hero.classList.add('alm-moon-waking');
+  if (fromOrrery && typeof _orreryWake === 'function') _orreryWake(true);
   _ae.wanted = true;
-  _aePrepare(true).then(function () {
+  Promise.all([_aePrepare(true), fromOrrery ? _aeOrreryLoad() : null]).then(function () {
     if (hero) hero.classList.remove('alm-moon-waking');
-    var kept = _aeWaitDragRelease();
+    if (fromOrrery && typeof _orreryWake === 'function') _orreryWake(false);
+    var kept = fromHero ? _aeWaitDragRelease() : null;
     if (!_ae.wanted) return;
     _ae.wanted = false;
     if (_aeIsOpen || (typeof _almanacOpen !== 'undefined' && !_almanacOpen)) return;
-    _aeShow(true);
+    if (fromOrrery && (_ae.failed || !_aeReady())) { _aeOrreryNoGl(); return; }
+    _aeShow(fromHero, fromOrrery);
     // What the finger did while the view was being made turns the Moon now it is up.
     if (kept && _aeIsOpen && _ae.gl) _aeDragBy(kept.x, kept.y);
   });
@@ -8376,12 +8397,13 @@ function _aeStepPop(e) {
   return false;
 }
 window._aeStepPop = _aeStepPop;
-function _aeShow(fromHero) {
+function _aeShow(fromHero, fromOrrery) {
   _aeStepIn();
   // From the orrery, its chosen moment; from the hero or the sky, the moment
   // they show.
   _aeIsOpen = true;
   _ae.fromHero = fromHero;
+  _ae.fromOrrery = !!fromOrrery;
   _ae.el.classList.add('open');
   _ae.selected = null;
   _aeRenderCard();
@@ -8417,14 +8439,16 @@ function _aeShow(fromHero) {
 // hero it lands in shows it.
 // Where the header's arrow goes back to: the Almanac's page (the hero, the sky) or its solar system (the orrery).
 function _aeBackLabel() { return _aeT(_aeFrom === 'orrery' ? 'alm_solar_system' : 'almanac'); }
-function _aeClose() {
+// `toOrrery`: settle onto the page's orrery whatever the view was opened from (the Planets view pulled out far enough).
+function _aeClose(toOrrery) {
   if (!_aeIsOpen || (_ae.hand && _ae.hand.dir < 0)) return;
   if (_ae.site) _aeSiteLeave(true);   // the ground's camera gives way before the view is handed back to the page
   if (_ae.mission) _amStop(true);
   _aeLeaveSpin();
-  var frame = _ae.fromHero && _aeReady() && !_ae.el.classList.contains('ae-blank') &&
+  var frame = _ae.fromHero && toOrrery !== true && _aeReady() && !_ae.el.classList.contains('ae-blank') &&
     (typeof _almanacOpen === 'undefined' || _almanacOpen) ? _aeHeroFrame() : null;
   if (frame) _aeHandOut(frame);
+  else if ((toOrrery === true || _aeFrom === 'orrery') && typeof _aeOrreryOut === 'function' && _aeOrreryOut()) return;
   else _aeFinishClose();
 }
 function _aeFinishClose() {
@@ -8441,6 +8465,7 @@ function _aeFinishClose() {
   if (_ae.raf) { cancelAnimationFrame(_ae.raf); _ae.raf = 0; }
   if (_ae.idleTimer) { clearTimeout(_ae.idleTimer); _ae.idleTimer = 0; }
   _ae.hand = null;
+  _ae.fromOrrery = false;
   _ae.place = null;
   _aeHandReset();
   _aeCloseInfo(false);
@@ -8551,7 +8576,29 @@ function _aeRelease() {
 }
 
 window.openAlmanacEarth = openAlmanacEarth;
+// The orrery's lift into this view and back is its own small file (almanac-orrery3d.js), asked for with the page's first
+// tap on the orrery or, quietly, once the view's file is here.
+var AE_ORRERY_JS = '/static/almanac-orrery3d.js';
+var _aeOrreryLoading = null;
+function _aeOrreryLoad() {
+  if (typeof _aeOrreryIn === 'function') return Promise.resolve();
+  if (_aeOrreryLoading) return _aeOrreryLoading;
+  _aeOrreryLoading = new Promise(function (resolve) {
+    var el = document.createElement('script');
+    el.src = AE_ORRERY_JS;
+    el.onload = resolve;
+    el.onerror = function () { _aeOrreryLoading = null; el.remove(); resolve(); };   // without it the orrery opens the view as it always did
+    document.head.appendChild(el);
+  });
+  return _aeOrreryLoading;
+}
+// No 3D here: the orrery says so where its hint stands, and goes on as it was.
+function _aeOrreryNoGl() {
+  if (typeof _orreryNote === 'function') _orreryNote(_aeT('alm_earth_nogl'));
+  if (typeof _orreryRenderHint === 'function') setTimeout(_orreryRenderHint, 0);
+}
 // The orrery, drawn before this file ran, can now say Earth opens in 3D.
 if (typeof _orreryRenderHint === 'function') _orreryRenderHint();
+if (document.getElementById('almanac-orrery')) _aeOrreryLoad();
 // This file loads once the Almanac is shown and quiet (almanac.js _almLoadEarth); the view itself (three.js, its maps and
 // shaders) is made ready only when the Moon is touched or the view opened, never behind the page.
