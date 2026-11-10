@@ -229,15 +229,43 @@ function _osCardDef() {
 function _osStandHere() {
   var def = _osCardDef();
   if (!def) return Promise.resolve(false);
-  var y = window.pageYOffset || 0;
-  return _osStandOpen(def, function () { window.scrollTo(0, y); if (typeof _skyResume === 'function' && typeof _skyState !== 'undefined' && _skyState) _skyResume(); });
+  var y = window.pageYOffset || 0, still = _osStill();
+  return _osStandOpen(def, function () { window.scrollTo(0, y); if (typeof _skyResume === 'function' && typeof _skyState !== 'undefined' && _skyState) _skyResume(); }, still ? { direct: true, still: still } : null)
+    .then(function (ok) { if (!ok && still) still.remove(); return ok; });
+}
+// The card's picture held as a still over the 3D view while it opens, so the page never shows a globe: it fades out when Stand's first live
+// ground picture is drawn (h.firstFrame), or after OS_STILL_MAX_MS if that never comes.
+var OS_STILL_MAX_MS = 6000, OS_STILL_FADE_MS = 450;
+function _osStill() {
+  var s = typeof _skyState !== 'undefined' ? _skyState : null, src = s && s.canvas;
+  if (!src || !src.isConnected || !src.width || !src.height) return null;
+  try {
+    var el = document.createElement('canvas'), W = window.innerWidth, H = window.innerHeight, k = Math.max(W / src.width, H / src.height), w = src.width * k, h = src.height * k;
+    el.width = Math.round(W * (window.devicePixelRatio || 1) / 2); el.height = Math.round(H * (window.devicePixelRatio || 1) / 2);
+    el.getContext('2d').drawImage(src, (W - w) / 2 * el.width / W, (H - h) / 2 * el.height / H, w * el.width / W, h * el.height / H);
+    el.className = 'os-still'; el.setAttribute('aria-hidden', 'true');
+    el.style.cssText = 'position:fixed;inset:0;width:100%;height:100%;z-index:10040;pointer-events:none;transition:opacity ' + OS_STILL_FADE_MS + 'ms ease';
+    document.body.appendChild(el);
+    return el;
+  } catch (e) { return null; }
+}
+function _osStillRelease(el) {
+  if (!el) return;
+  el.style.opacity = '0';
+  setTimeout(function () { el.remove(); }, OS_STILL_FADE_MS + 100);
 }
 // Stand here at a definition (the 3D view's files load on the first ask), then `back` when its own way back is taken.
-function _osStandOpen(def, back) {
+function _osStandOpen(def, back, opts) {
   if (!_os3DAvailable()) return Promise.resolve(false);
   if (typeof _aeStandOpen !== 'function' && typeof _almLoadEarth !== 'function') return Promise.resolve(false);
   var ready = typeof _aeStandOpen === 'function' ? Promise.resolve() : _almLoadEarth().then(function () { return _aeStandReady(); });
-  return ready.then(function () { return _aeStandOpen(_osHandoffFrom(def, back)); }).catch(function () { return false; });
+  var h = _osHandoffFrom(def, back);
+  if (opts && opts.direct) {
+    h.direct = true;
+    h.firstFrame = new Promise(function (res) { h._firstFrame = res; });
+    Promise.race([h.firstFrame, new Promise(function (res) { setTimeout(res, OS_STILL_MAX_MS); })]).then(function () { _osStillRelease(opts.still); });
+  }
+  return ready.then(function () { return _aeStandOpen(h); }).catch(function () { return false; });
 }
 
 // Stand here is open without a hand-off (a there-and-then arrives by place): say how its sky is to be clouded.

@@ -293,11 +293,16 @@ def test_one_tap_from_the_card_stands_at_its_place_instant_and_facing_and_back_r
     y = pg.evaluate("() => Math.round(window.pageYOffset)")
     assert pg.query_selector(".alm-sky-bar .alm-sky-stand"), "the button is on the card"
     pg.click(".alm-sky-bar .alm-sky-stand")
+    assert pg.query_selector("canvas.os-still"), "the card's picture is held over the view while it opens"
     pg.wait_for_function(
         "() => typeof _ae !== 'undefined' && _ae && _ae.stand && _ae.stand.live && _ae.stand.mode === 'ground'",
         timeout=READY_MS,
         polling=250,
     )
+    pg.wait_for_function(
+        "() => !document.querySelector('canvas.os-still')", timeout=15_000, polling=250
+    )
+    assert pg.evaluate("() => _ae.stand.handoff.direct === true"), "no flight down from the globe"
     got = pg.evaluate(
         """() => { const st = _ae.stand, head = (((st.yaw + st.userYaw) * 180 / Math.PI) % 360 + 360) % 360; return { lat: st.lat, lon: st.lon, ms: _aeDisplayMs(), head: head, key: st.key }; }"""
     )
