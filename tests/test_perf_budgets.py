@@ -380,3 +380,96 @@ def test_the_3d_view_makes_its_first_frame_in_time_under_a_4x_throttle(phone, se
     finally:
         ctx.close()
     assert took <= FIRST_FRAME_MS_MAX_THROTTLED, "%.0f ms" % took
+# ── The 3D Earth opens as light as 1.15.4's ─────────────────────────────────────────────────────────────────────
+# Eric, 2026-11-09: "by default almanac 3D should ideally be same weight as existing release, with extra kicking in on zoom
+# or with layers, but lightweight." Cold (nothing cached), from navigation: Home, a tap on the Almanac, a tap on the Earth,
+# four seconds for what comes once the globe is up; no HD installed. 1.15.4 transferred 45 files, 2,651,518 bytes in that
+# walk (tests/data/globe_cold_1154.json holds them by file); the budget is that plus 5 percent. What 1.16 adds that the
+# first globe frame does not need belongs behind its own trigger (a layer switched on, a Go to row, a zoom, Stand here).
+# The test names every file that is new or grew, so the lane that owns it can move it. Expected to fail until they have:
+# strict, so the day it passes it says so and the marker goes.
+GLOBE_BASELINE = os.path.join(ROOT, "tests", "data", "globe_cold_1154.json")
+GLOBE_SLACK = 1.05
+GLOBE_GROWN_BYTES = 2048  # a file that grew by more than this is named
+
+
+@pytest.mark.xfail(
+    strict=True,
+    reason="1.16 adds files to the globe's cold open that 1.15.4 did not fetch; see the list this test prints",
+)
+def test_opening_the_globe_cold_stays_within_5_percent_of_1_15_4(served):
+    import json
+
+    from playwright.sync_api import sync_playwright
+
+    with open(GLOBE_BASELINE, encoding="utf-8") as fh:
+        base = json.load(fh)
+    base_requests, base_bytes, base_files = (
+        base["requests"],
+        base["bytes"],
+        base["files"],
+    )
+    with sync_playwright() as pw:
+        br = pw.chromium.launch(
+            args=[
+                "--use-angle=swiftshader",
+                "--enable-unsafe-swiftshader",
+                "--ignore-gpu-blocklist",
+            ]
+        )
+        ctx = br.new_context(service_workers="block", **PHONE)
+        ctx.add_init_script(
+            "try { localStorage.setItem('zimi_almanac_hd_ask', 'never'); } catch (e) {}"
+        )
+        pg = ctx.new_page()
+        counter = Counter(ctx, pg, served)
+        pg.goto(served + "/", wait_until="load")
+        pg.wait_for_timeout(2000)
+        pg.evaluate("() => openAlmanac()")
+        pg.wait_for_function(
+            "() => typeof _almanacLoaded !== 'undefined' && _almanacLoaded",
+            timeout=120_000,
+        )
+        pg.wait_for_timeout(500)
+        pg.evaluate(
+            "() => (typeof _almLoadEarth === 'function' ? _almLoadEarth() : null)"
+        )
+        pg.wait_for_function(
+            "() => typeof openAlmanacEarth === 'function'", timeout=120_000
+        )
+        pg.evaluate("() => openAlmanacEarth({ target: 'earth' })")
+        pg.wait_for_function(
+            "() => typeof _aeReady === 'function' && _aeReady() && _aeIsOpen",
+            timeout=240_000,
+            polling=100,
+        )
+        pg.wait_for_timeout(4000)
+        got = {u.split("?")[0]: b for u, b in counter.by.items()}
+        br.close()
+    requests, total = len(got), sum(got.values())
+    new = sorted(((b, u) for u, b in got.items() if u not in base_files), reverse=True)
+    grown = sorted(
+        (
+            (b - base_files[u], u)
+            for u, b in got.items()
+            if u in base_files and b - base_files[u] > GLOBE_GROWN_BYTES
+        ),
+        reverse=True,
+    )
+    report = (
+        "requests %d (1.15.4: %d, ceiling %d); bytes %d (1.15.4: %d, ceiling %d)\nnew: %s\ngrown: %s"
+        % (
+            requests,
+            base_requests,
+            int(base_requests * GLOBE_SLACK),
+            total,
+            base_bytes,
+            int(base_bytes * GLOBE_SLACK),
+            ["%s %d KB" % (u, b // 1024) for b, u in new],
+            ["%s +%d KB" % (u, d // 1024) for d, u in grown],
+        )
+    )
+    print(report)
+    assert (
+        requests <= base_requests * GLOBE_SLACK and total <= base_bytes * GLOBE_SLACK
+    ), report
