@@ -714,7 +714,7 @@ def test_in_totality_the_sky_is_deep_twilight_and_venus_and_jupiter_are_drawn(
         "() => typeof _aeStandOpen === 'function' && typeof _osEclipse === 'function' && typeof _jdToJulianCentury === 'function'",
         timeout=120_000,
     )
-    ms = _ms("2024-04-08T18:33:15")  # the Stand clock runs on while the test works: start early in the four minutes
+    ms = _ms("2024-04-08T18:33:15Z")  # the Stand clock runs on while the test works: start early in the four minutes
     pg.evaluate(
         "(ms) => _aeStandOpen({ body: 'earth', lat: 30.0474, lon: -99.1403, ms: ms, heading: 180, pitch: 20, clouds: 'clear', direct: true })",
         ms,
@@ -727,7 +727,7 @@ def test_in_totality_the_sky_is_deep_twilight_and_venus_and_jupiter_are_drawn(
     pg.evaluate("(ms) => { _almClockSetRate(0); _aeGoTo(ms); }", ms)
     try:
         pg.wait_for_function(
-            "(ms) => _ae.stand.photo && _ae.stand.photo.lim > 1.8",
+            "(ms) => _ae.stand.photo && _ae.stand.photo.lim > 2.4",
             arg=ms,
             timeout=60_000,
             polling=250,
@@ -740,7 +740,7 @@ def test_in_totality_the_sky_is_deep_twilight_and_venus_and_jupiter_are_drawn(
             )
         )
     lim = pg.evaluate("() => _ae.stand.photo.lim")
-    assert 1.8 < lim < 3.4, lim
+    assert 2.4 < lim < 3.4, lim
     for planet in ("venus", "jupiter"):
         found = pg.evaluate(
             """([name, ms]) => { const st = _ae.stand, e = _skyEphemeris(new Date(ms), 30.0474, -99.1403), o = e.planets.find(x => x.name.toLowerCase() === name);
