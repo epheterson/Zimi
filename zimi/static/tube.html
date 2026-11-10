@@ -420,10 +420,17 @@ function load() {
 }
 function tubeMore() { _shown += PAGE; renderHome(); }
 function tubeSearch(q) { _q = (q || '').trim(); closePlayer(true); load(); }
+// Another window changed a choice: this one shows it.
+var prefsWatched = {
+  zimitube_sort: function(v) { var next = SORTS.indexOf(v) < 0 ? 'top' : v; if (next !== _sort) { _sort = next; _shown = 0; renderHome(); } },
+  zimitube_autoplay: function(v) { var next = v !== '0'; if (next !== _autoplay) { _autoplay = next; paintAutoplay(); } },
+  zimitube_theater: function(v) { var next = v === '1'; if (next !== _theater) { _theater = next; paintTheater(); } },
+};
+prefWatch(prefsWatched);
 function setSort(v) { _sort = v; prefWrite('zimitube_sort', v); _shown = 0; renderHome(); }
 function setZim(name) { _zim = name; _shown = 0; renderHome(); window.scrollTo(0, 0); }
 function toggleAutoplay() { _autoplay = !_autoplay; prefWrite('zimitube_autoplay', _autoplay ? '1' : '0'); paintAutoplay(); }
-function paintAutoplay() { var b = document.getElementById('autoplay'); b.textContent = STR.autoplay + (_autoplay ? ' ✓' : ''); b.className = _autoplay ? 'on' : ''; b.setAttribute('aria-pressed', String(_autoplay)); }
+function paintAutoplay() { var b = document.getElementById('autoplay'); if (!b) return; b.textContent = STR.autoplay + (_autoplay ? ' ✓' : ''); b.className = _autoplay ? 'on' : ''; b.setAttribute('aria-pressed', String(_autoplay)); }
 // Theater: the stage across the whole width, remembered.
 function toggleTheater() { _theater = !_theater; prefWrite('zimitube_theater', _theater ? '1' : '0'); paintTheater(); }
 function paintTheater() {

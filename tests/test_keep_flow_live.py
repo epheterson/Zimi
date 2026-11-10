@@ -26,6 +26,7 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 import test_keep_phone_live as kp  # noqa: E402
+from waiting import until  # noqa: E402
 import test_keep_resume_live as rs  # noqa: E402
 from test_keep_phone_live import (
     _device,
@@ -117,8 +118,18 @@ def test_one_tap_from_the_menu_then_remove(pw, world):
     pg.wait_for_timeout(500)
     assert not pg.query_selector(".stat-card[data-zim='%s'] .keep-ico" % OTHER)
     pg.evaluate("(z) => document.querySelector(`.stat-card[data-zim='${z}']`).scrollIntoView({block: 'center'})", OTHER)
-    pg.click(".stat-card[data-zim='%s'] .card-more" % OTHER)
-    pg.click("#zim-ctx-menu [data-action='keep-start']")
+
+    def keep_from_the_card_menu():
+        # A redraw of the home that lands after the menu opened closes it (CI 2026-11-10): open it again.
+        pg.click(".stat-card[data-zim='%s'] .card-more" % OTHER)
+        try:
+            pg.click("#zim-ctx-menu [data-action='keep-start']", timeout=3000)
+            return True
+        except Exception:
+            pg.keyboard.press("Escape")
+            return False
+
+    until(keep_from_the_card_menu, "the card's menu stays open long enough to tap Keep offline")
     assert not pg.query_selector(".pw-overlay.open")
     pg.wait_for_selector(".stat-card[data-zim='%s'] .keep-ico.kept" % OTHER, timeout=30000)
     open_menu(pg, ZIM)
