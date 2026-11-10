@@ -161,6 +161,26 @@ def m_cm():
     return m.save("cm")
 
 
+def _sm_details(m, rcs_y=6.3):
+    """What the service module's flat cylinder lacks: four RCS quads at 90 degrees (a block with its nozzles each), two radiator panels on opposite sides, the high-gain
+    antenna (four dishes on a boom) and the aft rim (Apollo Operations Handbook, the drawings of the SM's outside)."""
+    r = 3.9 / 2
+    for a in (0, 90, 180, 270):
+        ang = math.radians(a + 45.0)
+        c = (math.cos(ang), math.sin(ang))
+        m.box(((r + 0.12) * c[0], rcs_y, (r + 0.12) * c[1]), (0.6, 1.2, 0.6), 2)
+        for dy in (-0.4, 0.4):
+            m.cyl(((r + 0.3) * c[0], rcs_y + dy, (r + 0.3) * c[1]), 0.12, 0.3, 3, n=8, axis="y")
+    for a in (0, 180):
+        ang = math.radians(a)
+        m.box(((r + 0.03) * math.cos(ang), 4.6, (r + 0.03) * math.sin(ang)), (0.06, 3.2, 1.6), 2)
+    m.tube((r * 0.7, 0.2, 0.0), (r * 0.7 + 1.9, -0.9, 0.0), 0.08, 1, n=6)   # the antenna's boom, folded out aft
+    for i in range(4):
+        ang = math.radians(45 + 90 * i)
+        m.cyl((r * 0.7 + 1.9 + 0.25 * math.cos(ang), -0.9, 0.25 * math.sin(ang)), 0.22, 0.05, 1, n=10, axis="y")
+    m.ring(-0.05, 0.4, r, r * 0.9, 3)   # the aft rim
+
+
 def m_sm():
     """The service module: 3.9 m across, 7.5 m long, with the engine bell (Apollo Operations Handbook)."""
     m = Stack([WHITE, ALU, DARK, GOLD])
@@ -168,7 +188,7 @@ def m_sm():
     m.ring(2.0, 2.4, 3.9 / 2 + 0.02, 3.9 / 2 + 0.02, 2)
     m.disc(7.5, 3.9 / 2, 1)
     m.bell(0, 0, -2.8, 1.25, 3.2, 1)
-    m.box((0, 5.2, 2.0), (0.9, 3.0, 0.2), 1)
+    _sm_details(m)
     return m.save("sm")
 
 
@@ -312,7 +332,7 @@ def m_csm():
     m.bell(0, 0, -2.8, 1.25, 3.2, 2)
     m.ring(7.5, 10.4, 3.9 / 2, 0.8, 3)
     m.ring(10.4, 11.0, 0.8, 0.5, 1)
-    m.box((0, 4.0, 2.0), (1.0, 3.5, 0.2), 2)
+    _sm_details(m)
     m.tube((0, 11.0, 0), (0, 12.4, 0), 0.12, 1, n=6)  # the docking probe
     return m.save("csm")
 

@@ -6,7 +6,7 @@
 // Loaded at the first press of the journey button.
 
 // ── Constants ──
-var AS_TRAVERSES_URL = '/static/earth/traverses-v1.json';
+var AS_TRAVERSES_URL = _almAsset('/static/earth/traverses-v1.json');
 var AS_TRAIL_SECONDS = 70;                  // a replay from landing to now takes this long at its slowest setting
 var AS_TRAIL_SPEEDS = [1, 3, 10];           // times that
 var AS_TRAIL_CLOCK_MS = 450;                // the Almanac's clock moves to the sol at most this often

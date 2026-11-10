@@ -15,7 +15,7 @@
 // A leg's rows may carry an up vector (cols 7-9) for the vehicles whose pointing is not along their velocity.
 
 // ── Constants ──
-var AM_DATA_URL = '/static/earth/missions-v1.json';
+var AM_DATA_URL = _almAsset('/static/earth/missions-v1.json');
 var AM_MRE = 1 / (AE_EARTH_RADIUS_KM * 1000);               // one metre, in Earth radii
 var AM_MOON_FIX_NEAR_KM = 40000, AM_MOON_FIX_FAR_KM = 150000;   // the Moon's correction is all the way in by the first, gone by the second
 var AM_SEAM_DECAY_S = 600;                                  // a leg that begins off the end of the last one (two models of the Earth's turn) closes the gap over this long
@@ -244,7 +244,7 @@ function _amTurnX(b, deg) {
 }
 
 // The planner is its own file, fetched when asked for.
-var AM_PLAN_JS = '/static/almanac-missions-plan.js', _amPlanLoading = false;
+var AM_PLAN_JS = _almAsset('/static/almanac-missions-plan.js'), _amPlanLoading = false;
 function _amPlanLoad(then) {
   if (typeof _apOpen === 'function') { then(); return; }
   if (_amPlanLoading) return;
@@ -358,6 +358,10 @@ function _amStop(quiet) {
   Object.keys(s.flames).forEach(function (k) { var f = s.flames[k]; if (f.parent) f.parent.remove(f); f.geometry.dispose(); f.material.dispose(); });
   if (s.dot) { if (s.dot.parent) s.dot.parent.remove(s.dot); }
   if (s.cleanup) s.cleanup();
+  if (s.pad) {   // the pad's ground and sky go, the globe comes back
+    S.scene.remove(s.pad.group); s.pad.ground.geometry.dispose(); s.pad.ground.material.dispose(); s.pad.dome.geometry.dispose(); s.pad.dome.material.dispose();
+    S.earth.visible = true; if (s.padAtmo) s.padAtmo.visible = true;
+  }
   _ae.mission = null;
   _ae.el.classList.remove('ae-mission');
   _amHud(false);
@@ -462,6 +466,7 @@ function _aeMissionDraw() {
   _aeCommitPoints(s.dot, nDots);
   if (s.onDraw) s.onDraw();
   _amMark(m, s);
+  _amPad(s, s.follow, _ae.scene);
 }
 
 
@@ -492,6 +497,66 @@ function _amDawn(s, st, sc) {
   }
   if (!on) el.style.opacity = '0';
 }
+// ── The pad's ground and sky ──
+// Over the launch pad the Earth is a flat blue wall at this scale. While the vehicle is in the first kilometres of its first leg, the globe is put away and the pad's own
+// surroundings stand in: a ground of the Cape's tones fading to haze, a sky from the haze at the horizon to blue overhead (dimmer as the Sun goes down), both thinning out
+// with height until the globe takes over.
+var AM_PAD_HIDE_KM = 4, AM_PAD_FADE_KM = [3, 45], AM_PAD_GROUND_RE = 0.008, AM_PAD_DOME_RE = 0.2;
+var AM_PAD_GROUND = [0.34, 0.40, 0.27], AM_PAD_HAZE = [0.80, 0.86, 0.93], AM_PAD_SKY = [0.27, 0.48, 0.84];
+var AM_PAD_VERT = 'varying vec3 vP; void main() { vP = position; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }';
+var AM_PAD_FRAG = 'varying vec3 vP; uniform vec3 up, haze, sky; uniform float k, lit;' +
+  'void main() { float h = dot(normalize(vP), up); float t = smoothstep(0.0, 0.45, h);' +
+  'vec3 c = mix(haze, sky, t) * lit; gl_FragColor = vec4(c, k); }';
+var AM_PAD_GROUND_FRAG = 'varying vec3 vP; uniform vec3 colour; uniform float k, rad;' +
+  'void main() { float r = length(vP.xy) / rad; gl_FragColor = vec4(colour, k * (1.0 - smoothstep(0.45, 1.0, r))); }';
+function _amPadBuild(S) {
+  var T = S.THREE, g = new T.Group(), n = 48, pos = new Float32Array((n + 1) * 3), idx = [];
+  for (var i = 0; i < n; i++) { var a = i / n * Math.PI * 2; pos[(i + 1) * 3] = Math.cos(a) * AM_PAD_GROUND_RE; pos[(i + 1) * 3 + 1] = Math.sin(a) * AM_PAD_GROUND_RE; idx.push(0, i + 1, (i + 1) % n + 1); }
+  var geo = new T.BufferGeometry();
+  geo.setAttribute('position', new T.BufferAttribute(pos, 3));
+  geo.setIndex(idx);
+  var gu = { colour: { value: new T.Vector3(AM_PAD_GROUND[0], AM_PAD_GROUND[1], AM_PAD_GROUND[2]) }, k: { value: 1 }, rad: { value: AM_PAD_GROUND_RE } };
+  var ground = new T.Mesh(geo, new T.ShaderMaterial({ uniforms: gu, vertexShader: AM_PAD_VERT, fragmentShader: AM_PAD_GROUND_FRAG, transparent: true, depthWrite: false, side: T.DoubleSide }));
+  ground.frustumCulled = false;
+  var uni = { up: { value: new T.Vector3(0, 0, 1) }, haze: { value: new T.Vector3(AM_PAD_HAZE[0], AM_PAD_HAZE[1], AM_PAD_HAZE[2]) }, sky: { value: new T.Vector3(AM_PAD_SKY[0], AM_PAD_SKY[1], AM_PAD_SKY[2]) }, k: { value: 1 }, lit: { value: 1 } };
+  var dome = new T.Mesh(new T.SphereGeometry(AM_PAD_DOME_RE, 32, 16), new T.ShaderMaterial({ uniforms: uni, vertexShader: AM_PAD_VERT, fragmentShader: AM_PAD_FRAG, side: T.BackSide, transparent: true, depthTest: false, depthWrite: false }));
+  dome.frustumCulled = false; dome.renderOrder = -100;
+  ground.renderOrder = -90;
+  g.add(dome); g.add(ground);
+  g.visible = false;
+  S.scene.add(g);
+  return { group: g, ground: ground, dome: dome, uni: uni, gu: gu };
+}
+function _amPad(s, st, sc) {
+  var S = _ae.gl, m = _amMission(), first = st && st.vehicle && st.vehicle.legs[0] === st.leg && st.leg.frame === 'ecef';
+  var alt = first && st.km ? _aeLen(st.km.p) - _amEarthR(st.km.p) : Infinity;
+  if (!s.pad && first && alt < AM_PAD_FADE_KM[1]) s.pad = _amPadBuild(S);
+  var P = s.pad;
+  if (!P) return;
+  var k = first ? 1 - _amSmooth(AM_PAD_FADE_KM[0], AM_PAD_FADE_KM[1], alt) : 0;
+  if (!(k > 0.01)) { P.group.visible = false; _amPadEarth(s, true); return; }
+  var up = _aeNorm(st.pos), sub = _aeSub(st.pos, _aeScale(up, alt / AE_EARTH_RADIUS_KM));
+  P.group.visible = true;
+  P.group.position.set(sub[0], sub[1], sub[2]);
+  P.group.quaternion.setFromUnitVectors(new S.THREE.Vector3(0, 0, 1), new S.THREE.Vector3(up[0], up[1], up[2]));
+  // the dome's up is in the group's own frame: +z
+  P.uni.up.value.set(0, 0, 1);
+  P.uni.k.value = k * _aeFadeU.value;
+  P.uni.lit.value = 0.25 + 0.75 * _aeClamp(_aeDot(_aeNorm(sc.sun), up) * 3 + 0.5, 0, 1);
+  P.gu.k.value = k * _aeFadeU.value;
+  P.gu.colour.value.set(AM_PAD_GROUND[0] * P.uni.lit.value, AM_PAD_GROUND[1] * P.uni.lit.value, AM_PAD_GROUND[2] * P.uni.lit.value);
+  _amPadEarth(s, alt >= AM_PAD_HIDE_KM);
+}
+// The globe and its atmosphere: put away while the pad's ground stands in, given back above it (and when the mission closes).
+function _amPadEarth(s, show) {
+  var S = _ae.gl;
+  if (s.padShown === show) return;
+  s.padShown = show;
+  if (s.padAtmo === undefined) s.padAtmo = S.scene.children.filter(function (o) { return o.material && o.material.fragmentShader === AE_ATMO_FRAG; })[0] || null;
+  S.earth.visible = show;
+  if (s.padAtmo) s.padAtmo.visible = show;
+}
+
 
 // The probe's name beside its dot in an overview, the way the planets are named: placed over the picture where the dot is drawn.
 function _amMark(m, s) {
@@ -847,7 +912,12 @@ function _amPaintPhase(m, pi) {
   for (var i = 0; i < segs.length; i++) segs[i].dataset.on = i === pi ? '1' : '0';
   var t0 = ph.t, t1 = _amPhaseEnd(m, pi), ev = _aeById('am-ev');
   if (ev) {
-    ev.innerHTML = m.events.filter(function (e) { return e.t >= t0 - 1e-6 && e.t < t1 - 1e-6; }).map(function (e) {
+    var seen = {};
+    ev.innerHTML = m.events.filter(function (e) { return e.t >= t0 - 1e-6 && e.t < t1 - 1e-6; }).filter(function (e) {
+      var k = _amLabel(e);   // each chip once: a label that comes again in the phase (the 1202 alarms, a second ignition) is the first one's
+      if (seen[k]) return false;
+      return (seen[k] = true);
+    }).map(function (e) {
       return '<button type="button" class="am-chip" data-t="' + e.t + '">' + (AM_ICONS[e.icon || 'dot'] || AM_ICONS.dot) + '<span>' + _almEsc(_amLabel(e)) + '</span></button>';
     }).join('');
   }

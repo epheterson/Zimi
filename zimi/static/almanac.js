@@ -21,7 +21,7 @@ function _jdToJulianCentury(JD) { return (JD - JD_J2000) / JULIAN_CENTURY; }
 var ALM_GEAR_SVG = '<svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z"/></svg>';
 // A phone tilted up, with a star over it: hold your phone up to the sky. The gear's weight and size.
 // There and then (almanac-thens.js): a star over a clock's hand, opening the list of moments to stand in.
-var ALM_THEN_SVG = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3l2.4 5.6 6.1.5-4.6 4 1.4 6-5.3-3.2L6.7 19l1.4-6-4.6-4 6.1-.5z"/></svg>';
+var ALM_THEN_SVG = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3.6 12a8.4 8.4 0 1 0 2.5-6M3.6 4.2v4.4h4.4M12 7.6V12l3 1.9"/></svg>';   // There and then: a clock with its arrow running backward, not the bookmark star
 var ALM_STAND_SVG = '<svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="5.5" r="2.3"/><path d="M12 8.5v6M8.5 11.5l3.5-1 3.5 1M12 14.5l-2.5 5.5M12 14.5l2.5 5.5"/></svg>';   // Stand here (almanac-onesky.js _osStandHere)
 var ALM_LOOK_SVG = '<svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><g transform="rotate(-20 11.5 15)"><rect x="7" y="8.5" width="9" height="13" rx="2"/><path d="M10.5 18.5h2"/></g><path d="M18.5 2.5l.9 2.1 2.1.9-2.1.9-.9 2.1-.9-2.1-2.1-.9 2.1-.9z" fill="currentColor" stroke-width="1.2"/></svg>';
 var _ALM_PLACE_KEY = SK.ALMANAC_PLACE;
@@ -307,7 +307,16 @@ function _almLoadEarth() {
   _almEarthLoading.catch(function () {});
   return _almEarthLoading;
 }
+// A device that asks to save data, or has little memory or few cores, does not fetch the 3D view's files ahead of the
+// tap: they come at the first thing that needs them.
+var ALM_LOW_MEMORY_GB = 2;
+var ALM_LOW_CORES = 2;
+function _almLowPower() {
+  var n = navigator, c = n.connection;
+  return !!((c && c.saveData) || (n.deviceMemory && n.deviceMemory <= ALM_LOW_MEMORY_GB) || (n.hardwareConcurrency && n.hardwareConcurrency <= ALM_LOW_CORES));
+}
 function _almEarthLater() {
+  if (_almLowPower()) return;
   _almWhenShown(function () {
     setTimeout(function () {
       if (_almanacOpen) whenQuiet(function () { if (_almanacOpen) _almLoadEarth(); }, { key: 'alm-earth', priority: QUIET_PRI_PREPARE, maxWaitMs: ALM_PANELS_SETTLE_MS * 4 });
@@ -1240,7 +1249,9 @@ function _almClockPaint(focus) {
       set('.alm-ck-t', _almClockSegs(cp.tzId, focus, ALM_CK_TIME), 't');
     }
     // The zone, and for the header the place whose clock this is, with the crosshair that chooses it.
-    set('.alm-ck-z', (cp.tz ? (root.getAttribute('data-v') === 'foot' ? ' ' : ' &middot; ') + _almEsc(cp.tz) : '') + (cp.place ? ' &middot; ' + (head ? '<span id="almanac-head-place">' + _almEsc(cp.place) + '</span> ' + _almHereBtnHtml('alm-here-icon') + _almMapBtnHtml(cp.loc) : _almEsc(cp.place)) : ''), 'z');
+    // The zone keeps its room; the place is the part that gives way (ellipsis) in a strip too narrow for both.
+    set('.alm-ck-z', (cp.tz ? '<span class="alm-ck-zn">' + (root.getAttribute('data-v') === 'foot' ? ' ' : ' &middot; ') + _almEsc(cp.tz) + '</span>' : '') +
+      (cp.place ? '<span class="alm-ck-pl"> &middot; ' + (head ? '<span id="almanac-head-place">' + _almEsc(cp.place) + '</span> ' + _almHereBtnHtml('alm-here-icon') + _almMapBtnHtml(cp.loc) : _almEsc(cp.place)) + '</span>' : ''), 'z');
     var r = root.querySelector('.alm-ck-r');
     if (r) {
       var rh = _almEsc(text);   // the rate, away from real time; paused says so in the button (play, to resume)
@@ -2743,7 +2754,7 @@ function _renderAlmanacContent() {
       // The orrery opens spinning as scenery so planets visibly orbit on load (still, where motion is reduced)
       _orreryLastFrame = performance.now();
       _orreryAnimate();
-      _almLoadEarth();   // the orrery's way into the 3D view (its glow, the Earth's tap) needs the view's file: drawn now, wanted soon
+      if (!_almLowPower()) _almLoadEarth();   // the orrery's way into the 3D view (its glow, the Earth's tap) needs the view's file: drawn now, wanted soon
     },
     function () { _startTzClock(); _cacheAlmanacHighlights(now, m); },
     function () { _almPlaceWatch(); _almSecBarInit(); _almRedrawRestore(anchor); _almPanelsReady = true; }
@@ -3629,7 +3640,7 @@ var _sunMapImg = new Image();
 var _sunMapLoaded = false;
 _sunMapImg.onload = function() { _sunMapLoaded = true; _drawSunMap(); };
 _sunMapImg.onerror = function() { _sunMapLoaded = false; };
-_sunMapImg.src = '/static/world-map.svg?v=1';
+_sunMapImg.src = _almAsset('/static/world-map.svg');
 
 var _sunMapCanvas = null;
 var _sunMapFlashTimer = 0;
@@ -3785,7 +3796,7 @@ function _tzBordersEnsure() {
   _tzBordersFetched = true;
   // ?v= matches the world-map.svg convention: /static/ is served immutable
   // for a year, so a regenerated asset must bump the version to bust caches.
-  fetch('/static/tz-borders.json?v=3')
+  fetch(_almAsset('/static/tz-borders.json'))
     .then(function (r) { return r.ok ? r.json() : null; })
     .then(function (data) {
       if (!data || !data.lines || !data.lines.length) return;
@@ -6006,7 +6017,7 @@ function _promptAlmanacLocation() {
   overlay.innerHTML = '<div style="color:var(--text);font-size:16px;font-weight:600;margin-bottom:4px">' + t('alm_set_location_title') + '</div>' +
     '<div style="color:var(--text3);font-size:12px;margin-bottom:12px">' + t('alm_tap_city') + '</div>' +
     '<div id="almanac-map-wrap" style="position:relative;max-width:560px;width:100%;border-radius:10px;overflow:hidden;border:1px solid var(--border);cursor:crosshair">' +
-      '<img src="/static/world-map.svg?v=1" width="800" height="400" style="display:block;width:100%;height:auto" draggable="false" alt="World map">' +
+      '<img src="' + _almAsset('/static/world-map.svg') + '" width="800" height="400" style="display:block;width:100%;height:auto" draggable="false" alt="World map">' +
       '<div id="almanac-map-marker" style="display:none;position:absolute;pointer-events:none">' +
         '<div style="width:20px;height:20px;border:2px solid rgba(210,170,100,0.7);border-radius:50%;position:absolute;left:-10px;top:-10px"></div>' +
         '<div style="width:6px;height:6px;background:#d4aa64;border-radius:50%;position:absolute;left:-3px;top:-3px"></div>' +
@@ -7465,6 +7476,10 @@ function _almDayMonthYear(day, monthName, yearStr) {
     return fill[p.type] != null ? fill[p.type] : p.value;
   }).join('');
 }
+// In a right-to-left line a calendar's Latin month name ("Aban") is its own left-to-right run, or it takes the words around it with it.
+function _almLtrRuns(text) {
+  return text.replace(/[A-Za-z\u00c0-\u024f][A-Za-z\u00c0-\u024f' .-]*[A-Za-z\u00c0-\u024f]/g, '<bdi dir="ltr">$&</bdi>');
+}
 function _almRenderCrossRef(jdn) {
   var greg = _jdnToGregorian(jdn);
   var html = '<div class="alm-crossref">';
@@ -7481,6 +7496,7 @@ function _almRenderCrossRef(jdn) {
       var monthName = _calMonthName(sys, cal.year, cal.month);
       var yearStr = cal.year + _calYearSuffix(sys);
       dateStr = _almDayMonthYear(cal.day, monthName, yearStr);
+      if (document.documentElement.dir === 'rtl') dateStr = _almLtrRuns(dateStr);
       if (sys === 'chinese') {
         // Key the animal to the CHINESE year being displayed (era 2697), which is
         // the Gregorian year of that year's New Year \u2014 so the animal doesn't flip
@@ -8374,7 +8390,7 @@ var _grTouchStartX = 0;
 async function _loadRosettaManifest() {
   if (_rosettaManifest) return _rosettaManifest;
   try {
-    var resp = await fetch('/static/rosetta/manifest.json');
+    var resp = await fetch(_almAsset('/static/rosetta/manifest.json'));
     _rosettaManifest = await resp.json();
   } catch(e) { _rosettaManifest = []; }
   return _rosettaManifest;
@@ -8383,7 +8399,7 @@ async function _loadRosettaManifest() {
 async function _loadInscription(id) {
   if (_rosettaCache[id]) return _rosettaCache[id];
   try {
-    var resp = await fetch('/static/rosetta/' + id + '.json');
+    var resp = await fetch(_almAsset('/static/rosetta/' + id + '.json'));
     _rosettaCache[id] = await resp.json();
   } catch(e) { _rosettaCache[id] = {texts:{}}; }
   return _rosettaCache[id];
@@ -8504,7 +8520,7 @@ function _renderGoldenRecordGallery() {
   html += '<div class="gr-grid">';
   for (var i = 0; i < _GR_IMAGES.length; i++) {
     html += '<div class="gr-thumb" onclick="_openGrLightbox(' + i + ')">' +
-      '<img src="/static/golden-record/' + _GR_IMAGES[i] + '" alt="' + _grCap(i) + '" loading="lazy">' +
+      '<img src="' + _almAsset('/static/golden-record/' + _GR_IMAGES[i]) + '" alt="' + _grCap(i) + '" loading="lazy">' +
       '</div>';
   }
   html += '</div></div>';
@@ -8560,7 +8576,7 @@ function _renderGrLightbox() {
     '<button class="gr-lb-close" onclick="_closeGrLightbox()">&times;</button>' +
     '<button class="gr-lb-arrow gr-lb-prev" onclick="event.stopPropagation();_grNav(-1)"><svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="10,2 4,8 10,14"/></svg></button>' +
     '<div class="gr-lb-main" onclick="event.stopPropagation()">' +
-      '<img src="/static/golden-record/' + file + '" alt="' + cap + '">' +
+      '<img src="' + _almAsset('/static/golden-record/' + file) + '" alt="' + cap + '">' +
       '<div class="gr-lb-cap">' + cap + '</div>' +
       '<div class="gr-lb-num">' + (_grLightboxIdx + 1) + ' / ' + _GR_IMAGES.length + '</div>' +
     '</div>' +

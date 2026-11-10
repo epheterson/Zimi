@@ -28,6 +28,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 ### Almanac
 
 - **Every world, sharp:** the Moon, Mars, Mercury, Venus, Earth by night and every moon and dwarf planet with a NASA mosaic draw from Almanac HD tile by tile as you near them, and the camera comes as close as their pixels allow, within a memory cap that is smaller on a phone.
+- **HD in levels:** Almanac HD sharpens every world; the Moon, Mars and Mercury each add an Ultra part (about 0.8 GB, a switch each in the gear) to fly as close as the data allows.
 - **More worlds to visit:** Vesta, Phobos, Charon, Triton and Saturn's Mimas, Enceladus, Tethys, Dione, Rhea and Iapetus, each in its real orbit.
 - **The Sun close up:** prominences and flares (illustrative, labelled so), loops over sunspot groups and a finer boiling surface.
 
@@ -49,6 +50,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 - The beach scene has clouds that glow after sunset where the Sun still reaches them, and a helicopter with blinking lights.
 - A magnifier on a planet's tip in the solar system opens the sky aimed at it.
+### Added
+
+- Search finds PDF collections' documents (nautilus and zimgit libraries) by their listed title, description and author and by the text inside the PDFs, from an index Zimi reads in the background beside the ZIM (#142).
+- `list_entries` (MCP tool and `/entries`): a source's entries by MIME type or path prefix, paged (#142).
+- **Lighter Docker image:** under 1 GB compressed (was about 2.3 GB unpacked, now about 0.7 GB). The browser, SingleFile, video tools and warc2zim are add-ons, added once from the first-run list or Settings > Server > Add-ons (Ask first, Automatically or Never).
 
 ## [1.15.4]
 

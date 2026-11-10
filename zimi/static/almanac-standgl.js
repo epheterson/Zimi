@@ -11,6 +11,7 @@ var AE_ST_PI = '3.14159265';
 var AE_ST_SNOW_LINE_M = 5000, AE_ST_SNOW_LINE_POW = 2.2, AE_ST_TREE_BELOW_M = 600;   // the snow line over the equator and how it falls with latitude (about 2,250 m at 46 N), the trees stop this far below it
 var AE_ST_COVER_WOBBLE_M = 160, AE_ST_SLOPE_GAIN = 1.6;   // how far the lines wander, and the DEM's slopes made steeper (its cells smooth them)
 var AE_ST_GLARE = [0.3, 0.04];   // the glare round the Sun: its peak (a share of the Sun's light) and the angle (radians) where it has halved twice
+var AE_ST_FAR_HAZE = 0.55;   // the Earth's terrain 20 km and more away keeps this share of the air's in-scatter: a range 50 km off is a blue-grey shape against the sky, not erased by it
 var AE_ST_DISC_K_PER_E = 40;   // the exposure a lit disc is held under, over its sunlight: a mean lunar albedo (0.12) comes out about three quarters bright
 var AE_ST_SUN_DISC_GAIN = 6e4;     // the Sun's disc against the sky's glow: stays a distinct disc where thick dust dims and blues it (Mars at sunset)
 var AE_ST_FINE_SLOPE = 0.045;   // the ground's fine relief: its height over its own wavelength (about 3 degrees), at every scale
@@ -227,7 +228,7 @@ function _aeStTreeFrag(albLines, uniforms) {
   ].join('\n');
 }
 var AE_ST_TREE_FRAG = _aeStTreeFrag([
-  '  vec3 alb = vTree.z < 0.5 ? vec3(0.026, 0.05, 0.03) : vTree.z < 1.5 ? vec3(0.03, 0.05, 0.026) : vTree.z < 2.5 ? vec3(0.05, 0.09, 0.035) : vec3(0.04, 0.028, 0.02);',
+  '  vec3 alb = vTree.z > 3.5 ? vec3(0.12, 0.11, 0.055) : vTree.z < 0.5 ? vec3(0.026, 0.05, 0.03) : vTree.z < 1.5 ? vec3(0.03, 0.05, 0.026) : vTree.z < 2.5 ? vec3(0.05, 0.09, 0.035) : vec3(0.04, 0.028, 0.02);',
   '  alb *= (0.8 + 0.4 * vTree.y) * (0.6 + 0.4 * min(vTree.x, 1.0));'   // each tree its own shade, darker below, paler at the tips
 ].join('\n'), '');
 // Grass: blades in tufts, the ground's own colour (uGrassAlb) darker at the root and paler dry at the tip, swaying a little (uSway: 0 under reduced motion).
@@ -310,10 +311,48 @@ var AE_ST_BODY_VERT = [
   '  gl_Position = projectionMatrix * vec4(mat3(viewMatrix) * l * 10.0, 1.0);',
   '}'
 ].join('\n');
+// A sky object with an angular size (a twilight rocket plume: a sunlit cloud tens of degrees long): a soft billboard in angular units, long along its track.
+var AE_ST_BOARD_FRAG = [
+  'precision highp float; uniform vec2 uAxis, uSize, uSunTan; uniform vec3 uCol, uColBase; uniform float uLum, uHalf, uSeed; varying vec2 vUv;',
+  'float h2(vec2 p) { return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453); }',
+  'float n2(vec2 p) { vec2 i = floor(p), f = fract(p); f = f * f * (3.0 - 2.0 * f); return mix(mix(h2(i), h2(i + vec2(1, 0)), f.x), mix(h2(i + vec2(0, 1)), h2(i + vec2(1, 1)), f.x), f.y); }',
+  // A twilight rocket plume: a small very bright core at the rocket's end (+axis), then a fan that widens and thins along the track behind it, a narrow head and a broad translucent bell,
+  // its edges broken by noise; blue-white where it is lit, going pale gold and pink toward the tail and the Sun's side. Never white but at the core.
+  'void main() {',
+  '  vec2 q = vUv * uHalf, perp = vec2(-uAxis.y, uAxis.x);',
+  '  float u = dot(q, uAxis) / uSize.x, v = dot(q, perp) / uSize.y;',          // u: -1 the tail .. +1 the head; v: across, in the fan's own half-widths
+  '  float t = clamp((u + 1.0) * 0.5, 0.0, 1.0);',
+  '  if (u < -1.05 || u > 1.05) discard;',
+  '  float env = 0.08 + 0.92 * pow(sin(min((1.0 - t) / 0.8, 1.0) * 1.5708), 0.6);',                                // the fan's half-width: narrow at the head, broad behind
+  '  vec2 np = vec2(u * 3.2 + uSeed * 9.0, v * 2.2);',
+  '  float brk = (n2(np) - 0.5) * 0.7 + (n2(np * 2.7 + 5.0) - 0.5) * 0.35;',      // noise-broken edges and the soft banding of a real plume
+  '  float vv = abs(v) / env + brk * (0.25 + 0.6 * (1.0 - t));',
+  '  float across = pow(max(1.0 - vv, 0.0), 1.3);',
+  '  float tail = smoothstep(0.0, 0.28, t);',                                      // the tail end dissolves
+  '  float fan = across * tail * (0.28 + 0.72 * pow(t, 0.9)) * (0.85 + 0.3 * n2(np * 1.3 + 11.0));',
+  '  vec2 hd = vec2((u - 0.98) * uSize.x, v * uSize.y) / (uSize.y * 0.11);',   // the core: tiny and round, at the head
+  '  float core = exp(-dot(hd, hd) * 1.4);',
+  '  float sunSide = clamp(dot(vec2(-uAxis.y, uAxis.x) * sign(v), uSunTan) * 0.5 + 0.5, 0.0, 1.0);',
+  '  float warm = clamp((1.0 - t) * 0.85 + (sunSide - 0.5) * 0.5 * (1.0 - t) + 0.12, 0.0, 1.0);',
+  '  vec3 c = mix(uCol, uColBase, warm);',
+  '  float a = clamp(fan * 0.8, 0.0, 0.8) + core * 0.75;',
+  '  if (a <= 0.003) discard;',
+  '  gl_FragColor = vec4(mix(c * 0.92, vec3(1.0), clamp(core * 0.8, 0.0, 1.0)), clamp(a * uLum, 0.0, 1.0));',   // additive blending multiplies the colour by the alpha itself
+  '}'
+].join('\n');
+// The Moon's dark disc in a total eclipse: near black with a trace of earthshine, over the sky's glow.
+var AE_ST_OCC_FRAG = [
+  'precision highp float; uniform float uHalf, uRho, uPix, uDark; varying vec2 vUv;',
+  'void main() {',
+  '  float a = length(vUv * uHalf), cov = 1.0 - smoothstep(uRho - max(uPix * 0.75, 1e-7), uRho + max(uPix * 0.75, 1e-7), a);',
+  '  if (cov <= 0.002) discard;',
+  '  gl_FragColor = vec4(0.012, 0.014, 0.019, cov * uDark);',
+  '}'
+].join('\n');
 var AE_ST_BODY_FRAG = [
   'precision highp float;', AE_ST_GLSL_TONE,
   'uniform vec3 uDir, uRight, uUp, uSunFrom, uTint, uTrans; uniform float uHalf, uRho, uPix, uE, uK, uEmit, uVis, uGlow, uSkyLit;',
-  'uniform sampler2D uMap; uniform float uMapped, uGrey, uMapGain, uCorona, uSeed; uniform vec3 uOcc; uniform mat3 uBody;',                    // the body's own map, and local -> body-fixed
+  'uniform sampler2D uMap; uniform float uMapped, uGrey, uMapGain, uCorona, uSeed, uPointScale; uniform vec3 uOcc; uniform mat3 uBody;',                    // the body's own map, and local -> body-fixed
   'uniform sampler2D uRingMap; uniform float uRings, uRp; uniform vec3 uRingN, uCen; uniform vec2 uRing;',    // Saturn's rings: plane, centre and size (km)
   'varying vec2 vUv;',
   'const float PI = ' + AE_ST_PI + ';',
@@ -348,7 +387,7 @@ var AE_ST_BODY_FRAG = [
   '      alpha = cov;',
   '    }',
   '  } else {',
-  '    float s = max(uPix * 1.4, uRho * 1.2); float g = exp(-pow(a / s, 2.0) * 1.6);',
+  '    float s = max(uPix * 1.4, uRho * 1.2) * uPointScale; float g = exp(-pow(a / s, 2.0) * 1.6);',
   '    col = uTint * mix(vec3(1.0), uTrans / max(max(uTrans.r, uTrans.g), max(uTrans.b, 1e-6)), 0.7); alpha = g * uVis;',
   '  }',
   // Rings: the plane through the planet's centre, its profile by radius, lit by the Sun and dark in the planet's shadow,
@@ -377,18 +416,27 @@ var AE_ST_BODY_FRAG = [
   // The corona: a ring round the Moon's black disc, pearly white at the edge, thinning to nothing at 3.4 radii (almanac-sky.js _skyPaintCorona).
   '  if (uCorona > 0.0 && uRho > 0.0) {',
   '    float x = a / uRho, t = (x - 0.98) / (3.4 - 0.98);',
+  // Radial: a thin bright ring hugging the limb, a steep fall (r^-2.5 and beyond), fine streamers along the radius, longer near the Sun's equator (the
+  // sprite's horizontal), and small pink prominences ON the limb. Seeded by the day: the same eclipse is the same corona.
+  '    float phi = atan(o.y, o.x);',
   '    if (t > 0.0 && t < 1.0) {',
-  // Bright and close in, thin and far out: a fast falloff and a slow one, and a few streamers (the day's own, seeded) that reach farther than the rest.
-  '      float phi = atan(o.y, o.x), streak = 0.0;',
-  '      for (int i = 0; i < 8; i++) {',
+  '      float streak = 0.0;',
+  '      for (int i = 0; i < 28; i++) {',
   '        float fi = float(i), h1 = fract(sin((uSeed * 91.7 + fi) * 12.9898) * 43758.5453), h2 = fract(sin((uSeed * 53.1 + fi) * 78.233) * 24634.6345), h3 = fract(sin((uSeed * 17.3 + fi) * 39.425) * 51375.2154);',
-  '        float dp = abs(mod(phi - h1 * 6.2832 + 3.1416, 6.2832) - 3.1416), sg = 0.12 + 0.2 * h2;',
-  '        streak += (0.4 + 0.6 * h3) * exp(-dp * dp / (2.0 * sg * sg)) * exp(-(x - 1.0) / (0.7 + 2.0 * h3));',
+  '        float dp = abs(mod(phi - h1 * 6.2832 + 3.1416, 6.2832) - 3.1416), sg = 0.025 + 0.035 * h2;',
+  '        float ln = (0.45 + 1.1 * h3) * (0.65 + 0.9 * pow(abs(cos(h1 * 6.2832)), 2.0));',
+  '        streak += (0.25 + 0.6 * h3) * exp(-dp * dp / (2.0 * sg * sg)) * exp(-(x - 1.0) / ln);',
   '      }',
-  '      float w = 0.85 * (0.6 * exp(-(x - 0.98) * 1.5) + 0.4 * pow(0.98 / x, 2.2)) + 0.45 * streak * smoothstep(1.0, 1.35, x);',
-  '      w *= 1.0 - smoothstep(2.5, 3.4, x);',
+  '      float ring = 0.55 * exp(-pow((x - 1.0) / 0.03, 2.0));',
+  '      float w = 0.85 * pow(0.98 / x, 2.6) + ring + 0.3 * streak * smoothstep(1.02, 1.2, x);',
+  '      w *= 1.0 - smoothstep(2.6, 3.4, x);',
   '      vec3 cc = mix(vec3(250.0, 246.0, 236.0), vec3(235.0, 236.0, 244.0), clamp(t * 1.6, 0.0, 1.0)) / 255.0;',
-  '      col += cc * w * uCorona; alpha = max(alpha, w * uCorona);',
+  '      col += cc * w * uCorona; alpha = max(alpha, clamp(w, 0.0, 1.0) * uCorona);',
+  '    }',
+  '    for (int b = 0; b < 4; b++) {',
+  '      float fb = float(b), ang = 6.2832 * fract(sin((uSeed * 37.1 + fb) * 12.9898) * 43758.5453), sz = 0.035 + 0.04 * fract(sin((uSeed * 11.3 + fb) * 78.233) * 24634.6345);',
+  '      float d = length(o / uRho - vec2(cos(ang), sin(ang)) * (1.0 + sz * 0.4)), bead = smoothstep(sz, sz * 0.35, d);',
+  '      col += vec3(0.95, 0.32, 0.45) * bead * uCorona; alpha = max(alpha, bead * uCorona);',
   '    }',
   '  }',
   '  if (uGlow > 0.0) {',
@@ -403,6 +451,7 @@ var AE_ST_BODY_FRAG = [
 
 // ── The ground ──
 // The small sky stretched over the screen: device pixels over the screen's size.
+var AE_ST_COPY_FRAG = 'precision highp float; uniform sampler2D tMs; varying vec2 vNdc; void main() { gl_FragColor = vec4(texture2D(tMs, vNdc * 0.5 + 0.5).rgb, 1.0); }';
 var AE_ST_BLIT_FRAG = [
   'precision highp float;',
   'uniform sampler2D tSky; uniform vec2 uRes, uTexel;',
@@ -428,7 +477,7 @@ var AE_ST_GROUND_FRAG = [
   'uniform vec3 uCam; uniform float uKg, uPixAng, uTime;',
   'uniform sampler2D uMap; uniform float uMapped, uGrey; uniform vec3 uBase, uGain;',
   'uniform vec3 uAmbient, uSkyHor, uSkyZen, uE2, uDir2;',
-  'uniform vec2 uHead; uniform float uCloudDim; uniform float uGrass, uCanopy; uniform float uLommel, uRough, uRock, uDetail, uCover, uDiffuse, uVis, uDirect; uniform vec3 uDiffSky;',
+  'uniform vec2 uHead; uniform float uCloudDim; uniform float uGrass, uTundra, uCanopy; uniform float uLommel, uRough, uRock, uDetail, uCover, uDiffuse, uVis, uDirect; uniform vec3 uDiffSky;',
   'varying vec3 vP, vN, vDir; varying float vH, vSea, vShade;',
   // Rock, fractal bumps and mottling at the scales a pixel can show, all fixed to the ground (the camera never moves on it).
   'float fine(vec3 p, float foot) {',
@@ -491,6 +540,11 @@ var AE_ST_GROUND_FRAG = [
   '    float lg = min(dot(alb, vec3(0.3, 0.59, 0.11)), 0.2), dull = 1.0 - smoothstep(0.0, 0.06, alb.g - max(alb.r, alb.b));',
   '    alb = mix(alb, vec3(0.72, 1.0, 0.42) * lg * 0.7, uGrass * (0.55 + 0.4 * dull));',
   '  }',
+  // Tundra: low, dull, no green: the map's brightness kept in a brown-olive.
+  '  if (uDetail > 0.5 && vSea < 0.5 && uTundra > 0.0) {',
+  '    float lt = min(dot(alb, vec3(0.3, 0.59, 0.11)), 0.17);',
+  '    alb = mix(alb, vec3(0.62, 0.52, 0.36) * lt * 0.85, uTundra * 0.7);',
+  '  }',
   // Ground cover by height, slope and latitude (the Earth's): snow above the snow line, bare rock on steep ground and above the
   // trees, the Blue Marble's own tint elsewhere; the lines wander with a slow noise so no height is a ruled edge.
   '  if (uCover > 0.5 && vSea < 0.5) {',
@@ -541,7 +595,7 @@ var AE_ST_GROUND_FRAG = [
   '  if (uDiffuse > 0.5) { float T = exp(-dist * 0.001 / uVis); L = L * T + uDiffSky * (1.0 - T); }',
   '  else if (uAtmo > 0.5) {',
   '    vec3 o = uCam * 0.001, d = -V, Tt, ins; float t0, t1;',
-  '    if (airSpan(o, d, t0, t1)) { t1 = min(t1, dist * 0.001); if (t1 > t0) { ins = inscatterGround(o + d * t0, d, t1 - t0, Tt); L = L * Tt + ins; } }',
+  '    if (airSpan(o, d, t0, t1)) { t1 = min(t1, dist * 0.001); if (t1 > t0) { ins = inscatterGround(o + d * t0, d, t1 - t0, Tt); ins *= mix(1.0, ' + AE_ST_FAR_HAZE.toFixed(2) + ', smoothstep(5000.0, 20000.0, dist) * uDetail); L = L * Tt + ins; } }',
   '  }',
   '  gl_FragColor = vec4(tone(L, uKg), 1.0);',
   '}'

@@ -565,6 +565,22 @@ jobs:
           docker compose logs --tail 80
           exit 1
 
+      - name: Image stays under a gig (compressed)
+        run: |
+          # Eric, 2026-11-08: "always stay under a gig". The big optional parts (browser, Node, ffmpeg,
+          # yt-dlp, voices, warc2zim) are add-ons fetched into /config (zimi/addons.py), not image layers.
+          # gzip -6 is close to what a registry stores; the limit is 1 GB (1000 MB).
+          LIMIT=1000000000
+          IMAGE=$(docker inspect --format '{{.Image}}' zimi)
+          UNPACKED=$(docker image inspect --format '{{.Size}}' "$IMAGE")
+          PACKED=$(docker save "$IMAGE" | gzip -6 | wc -c)
+          echo "image: $((UNPACKED / 1000000)) MB unpacked, $((PACKED / 1000000)) MB compressed (limit $((LIMIT / 1000000)) MB)"
+          if [ "$PACKED" -gt "$LIMIT" ]; then
+            echo "::error::the image is $((PACKED / 1000000)) MB compressed, over the 1 GB limit; move the new weight into an add-on (zimi/addons.py)"
+            docker history --no-trunc --format '{{.Size}}\t{{.CreatedBy}}' "$IMAGE" | sort -hr | head -8
+            exit 1
+          fi
+
       - name: Smoke test Docker
         run: |
           echo "Testing /health..."

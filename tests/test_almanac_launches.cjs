@@ -288,7 +288,7 @@ const flight = S._lfAscent(SLC40);
   const f = S._lfAscent(L);
   const o = S._lfStandObjects(f, L, null, L.ms + 150000, 34.05, -118.24);
   const rocket = o.find((x) => x.kind === 'rocket'), plume = o.find((x) => x.kind === 'plume');
-  check(o.length === 2 && rocket && plume && rocket.az === plume.az && rocket.el === plume.el && plume.mag === rocket.mag, 'a lit exhaust is a rocket point and a plume at the same place');
+  check(o.length === 2 && rocket && plume && plume.mag === rocket.mag && (plume.sizeDeg ? Math.abs(plume.az - rocket.az) < 20 : rocket.az === plume.az && rocket.el === plume.el), 'a lit exhaust is a rocket point and a plume at it (a point at the same place, or an extent about it)');
   check(rocket.rgb.every((c) => c >= 0 && c <= 1) && rocket.trail.length > 3 && rocket.name.indexOf('Starlink Group 4-31') >= 0, 'with colours 0 to 1, a trail and a name');
   check(S._lfStandObjects(f, L, null, L.ms + 150000, 34.05, 100).length === 0, 'nothing for a place on the far side of the Earth');
   const L25 = { mission: 'Starlink V1.0-L25', inc: 53.05, n: 60, depKm: 268.5 }, t25 = Date.UTC(2021, 4, 4, 19, 1);
@@ -297,6 +297,27 @@ const flight = S._lfAscent(SLC40);
   const train = S._lfStandObjects(f25, { name: 'Falcon 9', mission: 'Starlink V1.0-L25', ms: t25, lat: 28.608, lon: -80.604, ok: true }, dep, at, 39.22, -121.06);
   check(train.length > 20 && train.every((x) => x.kind === 'train' && x.trail.length >= 1 && x.el >= 0 && x.az >= 0 && x.az < 360 && isFinite(x.mag)), 'the L25 batch over Grass Valley on 6 May: ' + train.length + ' train points');
   check(S._lfStandObjects(f25, { name: 'Falcon 9', ms: t25, lat: 28.608, lon: -80.604, ok: true }, null, at, 39.22, -121.06).length === 0, 'and with the batch not asked for, none');
+}
+
+// ── 7. The plume Stand draws (an extended thing, not a point) ──
+{
+  const L = { tag: '2022-141', name: 'Falcon 9', mission: 'Starlink Group 4-31', ms: Date.UTC(2022, 9, 28, 1, 14), lat: 34.632, lon: -120.611, siteName: 'Vandenberg', incDeg: 53.2, perigeeKm: 230, ok: true };
+  const f = S._lfAscent(L), plumeAt = (s, lat, lon) => S._lfStandObjects(f, L, null, L.ms + s * 1000, lat, lon).filter((o) => o.kind === 'plume')[0];
+  const p = plumeAt(180, 34.05, -118.24), q = plumeAt(180, 34.05, -118.24);
+  check(p && Array.isArray(p.sizeDeg) && p.sizeDeg.length === 2 && p.sizeDeg.every(isFinite), 'a twilight Vandenberg launch seen from Los Angeles at +180 s: a plume with a size in degrees: ' + (p && JSON.stringify(p.sizeDeg.map((v) => +v.toFixed(1)))));
+  check(p.sizeDeg[0] > 5 && p.sizeDeg[0] <= 60 && p.sizeDeg[1] <= 20 && Math.abs(p.sizeDeg[1] - p.sizeDeg[0] / 3) < 1e-9, 'its length is the sky its track covers, its width a third of that, inside 60 by 20');
+  const rocket = S._lfStandObjects(f, L, null, L.ms + 180000, 34.05, -118.24).filter((o) => o.kind === 'rocket')[0];
+  const sep = (a, b) => Math.acos(Math.max(-1, Math.min(1, S._lfDot(S._lfSkyUnit(a.az, a.el), S._lfSkyUnit(b.az, b.el))))) * 180 / Math.PI;
+  check(Math.abs(sep(rocket, { az: p.axisAz, el: p.axisEl }) - p.sizeDeg[0]) < 1e-6, 'the long axis points at a place back along the track, one length from the rocket (' + p.axisAz.toFixed(0) + ', ' + p.axisEl.toFixed(0) + ')');
+  check(Math.abs(sep(p, rocket) - p.sizeDeg[0] / 2) < 0.01, 'and the plume is centred half a length behind the rocket');
+  check(p.rgb.every((c) => c >= 0 && c <= 1) && p.rgb[2] >= p.rgb[0] && p.lum === 1 && JSON.stringify(q) === JSON.stringify(p), 'a cool white, fully lit (the Sun is ' + S._lfSunAlt(L.ms + 180000, 34.05, -118.24).toFixed(1) + ' deg), the same every time');
+  check(Array.isArray(p.rgbBase) && p.rgbBase.length === 3 && p.rgbBase.every((c) => c >= 0 && c <= 1) && p.rgbBase[0] > p.rgbBase[2], 'the plume carries rgbBase, a warm base for Stand to read from the object: ' + JSON.stringify(p.rgbBase));
+  const near = plumeAt(270, 33, -118);
+  check(near && near.sizeDeg[0] === 60 && near.sizeDeg[1] === 20, 'over a long stretch of sky the clamp holds, 60 by 20: ' + (near && JSON.stringify(near.sizeDeg.map((v) => +v.toFixed(1)))));
+  check(S._lfPlumeSunFactor(-1) === 1 && S._lfPlumeSunFactor(-12) === 1 && S._lfPlumeSunFactor(-30) === 0 && S._lfPlumeSunFactor(10) === 0 && S._lfPlumeSunFactor(-14) > 0 && S._lfPlumeSunFactor(-14) < 1, 'the plume glows with the Sun between -1 and -12 degrees and fades to nothing outside');
+  const day = S._lfStandObjects(f, L, null, L.ms + 180000 + 10 * 3600000, 34.05, -118.24);
+  check(day.every((o) => o.kind !== 'plume' || !o.sizeDeg), 'by day there is no extended plume');
+  check(S._lfPlume(f, L, L.ms + 30000, 34.05, -118.24, { sight: 'flame' }) === null, 'a burning engine below the lit cloud has only its point');
 }
 
 if (failures) { console.error(failures + ' failed'); process.exit(1); }

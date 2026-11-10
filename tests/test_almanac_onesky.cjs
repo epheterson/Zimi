@@ -30,6 +30,51 @@ check(Math.abs(tot.sunSemiDeg - 0.2666) < 0.01 && tot.moonSemiDeg > 0.24 && tot.
 const sep = Math.hypot((tot.sunAz - tot.moonAz) * Math.cos(tot.sunAlt * Math.PI / 180), tot.sunAlt - tot.moonAlt);
 check(sep < 0.15, 'and the Moon is on the Sun (' + sep.toFixed(3) + ' deg)');
 
+// The sky darkens steeply over the last seconds, not as a flat cut: a few stops in 30 s on the way in, and the deep twilight of totality.
+const lmAt = (hms) => run('_osSkyState(_osDef({ lat: 30.0474, lon: -99.1403, tMs: Date.parse("2024-04-08T' + hms + 'Z") })).lm');
+const lm0 = lmAt('18:31:00'), lm1 = lmAt('18:31:45'), lm2 = lmAt('18:32:15'), lmT = lmAt('18:34:50'), lmOut = lmAt('18:37:30');
+check(lm0 < lm1 && lm1 < lm2 && lm2 - lm0 > 0.8, 'over the last minute the faintest star shown climbs steadily (' + [lm0, lm1, lm2].map((x) => x.toFixed(2)).join(', ') + ')');
+check(lmT > 1.0 && lmT < 2.0, 'at totality the sky is a Sun -6.5 twilight: the faintest star about +1.4 (Venus at -3.9 and Jupiter at -2 show) (' + lmT.toFixed(2) + ')');
+const twi = run('_sgLimitMag(_sgSkyLum(-6.5, -90, 0, 0, 1, 1))');
+check(Math.abs(lmT - twi) < 0.05, 'the same as a real Sun at -6.5 (' + twi.toFixed(2) + '): one twilight path');
+check(lmOut < lm2 - 0.5, 'and the sky brightens again as the shadow leaves (' + lmOut.toFixed(2) + ')');
+const zen = run('_sgSkyLum(68, -90, 0, 0, _sgSkyShare(1, 68), 1)');
+const twz = run('_sgZenithLum(-6.5)');
+check(Math.abs(zen - twz) / twz < 0.01, 'the zenith at totality is the twilight zenith of a Sun at -6.5 (' + zen.toFixed(2) + ' against ' + twz.toFixed(2) + ' cd/m2)');
+const ks = (o) => run('_sgAdaptShare(_sgSkyShare(' + o + ', 68), ' + o + ')');
+check(Math.abs(ks(1) - run('_sgSkyShare(1, 68)')) < 1e-9 && ks(0.5) > run('_sgSkyShare(0.5, 68)'), 'the eye lags a partial eclipse and takes the twilight exposure in the last few per cent');
+
+// ── The device's capability (ZimiCap), when it is there ──
+{
+  const cover = () => run('_osCloudValues(_osDef({ lat: 40.71, lon: -74, tMs: Date.parse("2026-09-11T20:00:00Z") }), 1).cloud[0]');
+  const oct = () => run('_osCloudValues(_osDef({ lat: 40, lon: -74, tMs: __nowMs }), 1).oct');
+  check(run('typeof ZimiCap') === 'undefined' && oct() === 4, 'without ZimiCap the sky is as designed (4 octaves)');
+  const full = cover();
+  S.__dprCap = 1.5; S.__frames = [];
+  run('var __q = 2; var ZimiCap = { get: function (k) { return k === "skyQuality" ? __q : 2; }, dprCap: function () { return __dprCap; }, frame: function (k, t) { __frames.push([k, t]); } };');
+  check(oct() === 4 && cover() === full, 'at skyQuality 2 the deck is whole');
+  run('__q = 1');
+  check(oct() === 1 && cover() === full, 'at 1 it is the cheap deck: one octave, the same cover');
+  const a1 = run('_osCloudAlphaAt(_osCloudValues(_osDef({ lat: 40, lon: -74, tMs: __nowMs }), 1), 40, 50)');
+  check(a1 >= 0 && a1 <= 1, 'and its CPU port still answers (' + a1.toFixed(2) + ')');
+  run('__q = 0');
+  check(cover() === 0, 'at 0 there is no deck at all');
+  run('__q = 7');
+  check(oct() === 4, 'a level out of range is the full sky');
+  S.window.devicePixelRatio = 3;
+  run('__q = 2');
+  check(run('_osDpr()') === 3, 'at level 2 the card draws at the device ratio, not the 3D view\'s cap');
+  run('__q = 1');
+  check(run('_osDpr()') === 3, 'and at level 1 (the 3D view caps at 1.5 here) the card is cheap: it keeps the device ratio');
+  run('__q = 0');
+  check(run('_osDpr()') === 1.5, 'only the lowest level takes the cap: min(devicePixelRatio, dprCap)');
+  S.window.devicePixelRatio = 1;
+  check(run('_osDpr()') === 1, 'and never raised');
+  run('_osFrame(123)');
+  check(S.__frames.length === 1 && S.__frames[0][0] === 'sky' && S.__frames[0][1] === 123, 'each drawn frame is handed to the governor as "sky"');
+  run('ZimiCap = undefined');
+}
+
 // ── Where a view faces, and the clouds a visit asks for ──
 check(run('_osDefaultHeading(40)') === 180 && run('_osDefaultHeading(-33)') === 0 && run('_osDefaultHeading(0)') === 180, 'a view faces south in the north and north in the south, from one function');
 check(run('_osHandoffFrom(_osDef({}), null).clouds') === 'auto' && run('_osHandoffFrom(_osDef({}), null, { clouds: "clear" }).clouds') === 'clear', 'a hand-off asks for the day\'s clouds unless it asks for a clear sky');

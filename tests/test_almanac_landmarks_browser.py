@@ -140,7 +140,7 @@ def test_fly_to_the_apollo_11_site(served):
             # Off again, a landing site chosen in Go to: the flight there shows that one name and its card, alone.
             pg.evaluate("_aeLmSetLayer(false); _ae.lm = null; _aeRenderCard(); window._almReduceMotion = function () { return true; }; _aePreset('earth'); window._almReduceMotion = undefined;")
             pg.click("#ae-go-btn")
-            pg.click("#ae-go .ae-go-row:has-text('Apollo 11')")
+            pg.click("#ae-go [data-ae-go^='lm:moon:']:has-text('Apollo 11')")
             pg.wait_for_function(
                 "() => { _ae.dirty = true; _aeKick(); return !_ae.fly && _ae.target === 'moon' && (" + LABELS + ")().length > 0; }",
                 timeout=60_000,

@@ -116,7 +116,7 @@ function _oaFill(u, S) {
 }
 // The tables for a state's Sun and Moon (drawn only when a light has moved).
 function _oaBakeFor(o, S) {
-  if (S.lv.sunLux) _oaBake(o, 'sun', S.p.sunAltGeo);
+  if (S.lv.sunLux) _oaBake(o, 'sun', S.lv.skyAlt);
   if (S.lv.moonLux) _oaBake(o, 'moon', S.p.moonAlt);
   if (S.lv.eclGlow) _oaBake(o, 'ecl', 0);
 }
@@ -174,7 +174,7 @@ var _oaAir = {
   },
   // An eclipse: the share of the Sun's light that reaches the place (the ground's light and the Sun's own), the faintest star the dimmed sky shows,
   // and the discs (almanac-onesky.js _osEclipse), for the ground view's Sun and Moon.
-  sunShare: function (st, fr) { return _osSkyState(_oaDef(st, fr)).sunShare; },
+  sunShare: function (st, fr) { return _osSkyState(_oaDef(st, fr)).skyShare; },   // the share the sky is drawn with, so the ground's light and the Sun's glare fall with it (twilight's path)
   limitMag: function (st, fr) { return _osSkyState(_oaDef(st, fr)).lm; },
   eclipse: function (st, fr) { return _osEclipse(_oaDef(st, fr)); },
   // How much of the Moon (or the Sun) the day's deck hides, 0 clear to about 1 solid, from the same field the sky draws; 0 for a visit that
@@ -198,14 +198,14 @@ var OA_CLOUD_GLSL = [
   SG_GLSL_CLOUDS,
   'vec4 osClouds(vec3 d, vec3 o) { vec4 c = cloudDeck(d, o); return vec4(c.rgb / ' + AE_ST_LUX_PER_UNIT.toExponential(3) + ', c.a); }'
 ].join('\n');
-var OA_CLOUD_UNIFORMS = { uCloud: [0, OS_CLOUD_BASE_M, OS_CLOUD_THICK_M, 0], uCloudWind: [0, 0, 0], uCloudSunE: 0, uSunAltDeg: 0, uMoonVec: [0, 0, -1] };
+var OA_CLOUD_UNIFORMS = { uCloud: [0, OS_CLOUD_BASE_M, OS_CLOUD_THICK_M, 0], uCloudWind: [0, 0, 0], uCloudOct: 4, uCloudSunE: 0, uSunAltDeg: 0, uMoonVec: [0, 0, -1] };
 _oaAir.clouds = {
   glsl: OA_CLOUD_GLSL,
   uniforms: OA_CLOUD_UNIFORMS,   // joined by the air's own once the tables exist (wants)
   update: function (st, fr, ph, u) {
     _oaAir.update(st, fr, ph, u);
     var def = _oaDef(st, fr), S = _osSkyState(def), cv = _osCloudValues(def, S.p.sunShare, st.handoff && st.handoff.clouds);
-    u.uCloud.value = cv.cloud; u.uCloudWind.value = cv.wind; u.uCloudSunE.value = cv.sunE; u.uSunAltDeg.value = S.p.sunAltGeo; u.uMoonVec.value = S.lv.moonVec;
+    u.uCloud.value = cv.cloud; u.uCloudWind.value = cv.wind; u.uCloudOct.value = cv.oct; u.uCloudSunE.value = cv.sunE; u.uSunAltDeg.value = S.lv.skyAlt; u.uMoonVec.value = S.lv.moonVec;
   }
 };
 _aeStandAir = _oaAir;
