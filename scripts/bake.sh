@@ -8,6 +8,7 @@
 # replays conflict resolutions made by hand once; CHANGELOG lines merge as a union;
 # the built ZIMs are taken from either side and rebuilt after.
 set -euo pipefail
+export GIT_CONFIG_COUNT=2 GIT_CONFIG_KEY_0=rerere.enabled GIT_CONFIG_VALUE_0=true GIT_CONFIG_KEY_1=rerere.autoupdate GIT_CONFIG_VALUE_1=true   # rerere for the bake only, never in the shared config
 cd "$(dirname "$0")/.."
 BASE=${BAKE_BASE:-origin/v1.16}
 BAKE=${BAKE_BRANCH:-bake/1.16}
@@ -20,9 +21,7 @@ for _ in $(seq 30); do [ -e "$LOCKF" ] || break; sleep 1; done
 [ -e "$LOCKF" ] && [ -n "$(find "$LOCKF" -mmin +1)" ] && rm -f "$LOCKF"
 [ -z "$(git status --porcelain --untracked-files=no)" ] || { echo "commit or stash first" >&2; exit 1; }
 git fetch -q --prune origin
-git config rerere.enabled true
-git config rerere.autoupdate true
-GITDIR=$(git rev-parse --git-common-dir)
+GITDIR=$(cd "$(git rev-parse --git-common-dir)" && pwd)
 mkdir -p "$GITDIR/info"
 grep -qs '^CHANGELOG.md merge=union' "$GITDIR/info/attributes" || echo 'CHANGELOG.md merge=union' >> "$GITDIR/info/attributes"
 # The string tables merge key by key (every lane adds keys at the same end of the same ten files).
