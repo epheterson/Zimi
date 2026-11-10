@@ -193,6 +193,23 @@ function _osObjects(body, lat, lon, tMs) {
 }
 function _osHasSources() { return _osSources.length > 0; }
 
+// ── Whether the 3D view can run here ──
+// Stand here, There and then's ground and Look's way down all need the 3D view, which needs WebGL2. The answer is asked for when a person taps
+// (or after the card's first picture), never before it: a context costs. A page whose 3D view has found it cannot run says so itself.
+var _osGl2 = null, _osButtonsSynced = false;
+function _os3DAvailable() {
+  if (typeof window.openAlmanacEarth === 'function' && window.openAlmanacEarth.unsupported) return false;
+  if (_osGl2 === null) {
+    try { _osGl2 = !!document.createElement('canvas').getContext('webgl2'); } catch (e) { _osGl2 = false; }
+  }
+  return _osGl2;
+}
+// The buttons that lead to the ground are not shown where it cannot be drawn.
+function _osSync3DButtons() {
+  var ok = _os3DAvailable();
+  Array.prototype.forEach.call(document.querySelectorAll('.alm-sky-stand, #look-stand'), function (b) { b.hidden = !ok; });
+}
+
 // ── The card to Stand here, and back ──
 // The card's place, instant and facing, as the hand-off Stand here takes (almanac-stand.js _aeStandOpen).
 // opts.clouds: 'auto' (the day's own deck: the default) or 'clear' (a visit to see something in the sky: an eclipse, a there-and-then, is not left to a coin flip).
@@ -217,6 +234,7 @@ function _osStandHere() {
 }
 // Stand here at a definition (the 3D view's files load on the first ask), then `back` when its own way back is taken.
 function _osStandOpen(def, back) {
+  if (!_os3DAvailable()) return Promise.resolve(false);
   if (typeof _aeStandOpen !== 'function' && typeof _almLoadEarth !== 'function') return Promise.resolve(false);
   var ready = typeof _aeStandOpen === 'function' ? Promise.resolve() : _almLoadEarth().then(function () { return _aeStandReady(); });
   return ready.then(function () { return _aeStandOpen(_osHandoffFrom(def, back)); }).catch(function () { return false; });
@@ -269,6 +287,7 @@ function _osLandRemember(key, land) {
 // The scene to draw: 'plain' | 'beach' | a land class ('broadleaf', 'conifer', 'grass', 'desert', 'snow', 'tundra').
 function _osCardScene(s) {
   if (s.hosted) return 'beach';   // Look's own sphere keeps what it had
+  if (!_osButtonsSynced) { _osButtonsSynced = true; if (typeof requestIdleCallback === 'function') requestIdleCallback(_osSync3DButtons, { timeout: 3000 }); else setTimeout(_osSync3DButtons, 1500); }
   var key = _osLandKey(s);
   if (s.landKey !== key) { s.landKey = key; s.land = _osLandRemembered(key); }
   if (!s.land) { _osLandKick(s, key); return 'plain'; }
@@ -278,6 +297,7 @@ function _osLandKick(s, key) {
   if (_osLandLoading || _osLandFailed || typeof _loadScript !== 'function') return;
   _osLandLoading = true;
   var go = function () {
+    _osSync3DButtons();
     Promise.all(OS_LAND_SRCS.map(function (src) { return _loadScript(src); })).then(function (ok) {
       if (!ok.every(Boolean) || typeof _osLandCoverLoad !== 'function') return false;
       return _osLandCoverLoad();

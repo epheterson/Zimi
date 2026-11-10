@@ -411,6 +411,7 @@ function _lookOpen(opts) {
   _lookEl('look-find').onclick = function () { if (typeof openAlmanacFind === 'function') openAlmanacFind('look'); };
   _lookEl('look-stand').innerHTML = LOOK_STAND_SVG;
   _lookEl('look-stand').setAttribute('aria-label', t('alm_launch_on_ground'));
+  _lookEl('look-stand').hidden = typeof _os3DAvailable === 'function' && !_os3DAvailable();   // no ground where there is no WebGL2
   _lookEl('look-stand').onclick = function () { if (typeof _osStandFromLook === 'function') _osStandFromLook(); };   // the ground at this place, instant and facing (almanac-onesky.js)
   _lookEl('look-ask').textContent = _lookT('look_enable');
   _lookEl('look-place').textContent = _lookPlaceLabel(place);

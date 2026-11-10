@@ -5865,11 +5865,13 @@ function _aeLaunchesLoad() {
 }
 // The there-and-then list, from the live sky: the 3D view opens (its sheet is where the list lives) and the list with it.
 function openAlmanacThens() {
-  if (!_aeIsOpen) openAlmanacEarth({ target: 'earth' });
+  // Without WebGL2 the 3D view cannot open: the list is plain data and is shown over the page (almanac-launches.js _alOpenSheet), its ground button off.
+  var plain = typeof _os3DAvailable === 'function' && !_os3DAvailable();
+  if (!_aeIsOpen && !plain) openAlmanacEarth({ target: 'earth' });
   _aeLaunchesLoad().then(function () {
     var tries = 0;
     (function go() {
-      if (typeof _aeReady === 'function' && _aeReady() && _aeIsOpen) _alOpenThens();
+      if (plain || (typeof _aeReady === 'function' && _aeReady() && _aeIsOpen)) _alOpenThens();
       else if (++tries < 200) setTimeout(go, 150);
     })();
   }).catch(function () {});

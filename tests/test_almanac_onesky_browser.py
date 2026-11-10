@@ -410,6 +410,16 @@ def test_the_card_is_a_plain_horizon_until_the_grid_is_in_and_stays_so_without_i
     ctx.close()
 
 
+def _cloud_change(png_with, png_without):
+    """How much the whole picture changes, in levels, when the deck is taken away (at night the sky is dark either way: a cloud is a few levels)."""
+    import numpy as np
+    from PIL import Image
+
+    a = np.asarray(Image.open(io.BytesIO(png_with)).convert("RGB")).astype(float)
+    b = np.asarray(Image.open(io.BytesIO(png_without)).convert("RGB")).astype(float)
+    return float(np.abs(a - b).mean())
+
+
 CLOUD_PLACE = {"lat": 40.015, "lon": -105.27, "name": "Boulder"}
 CLOUD_MS = 1782075600000  # 2026-06-21 21:00 UTC, 3 PM there: a partly cloudy deck
 CLOUD_DIRS = [(180 + da, al) for da in (-25, 0, 25) for al in (25, 40, 55)]
@@ -523,6 +533,7 @@ def test_the_card_and_the_ground_view_draw_the_same_cloud_field(
     pg.evaluate(clear)
     without = card_shot()
     card_mask = _cloudy(with_clouds, without, pts, levels)
+    card_change = _cloud_change(with_clouds, without)
     ctx.close()
 
     # The ground view.
@@ -570,8 +581,15 @@ def test_the_card_and_the_ground_view_draw_the_same_cloud_field(
     pg.evaluate(clear)
     without = stand_shot()
     stand_mask = _cloudy(with_clouds, without, pts, levels)
+    stand_change = _cloud_change(with_clouds, without)
     ctx.close()
 
+    if (
+        levels < 5
+    ):  # night: the views are compared by how much of the picture the deck is
+        assert card_change > 1.0 and stand_change > 1.0, (card_change, stand_change)
+        assert 0.2 < card_change / stand_change < 5.0, (card_change, stand_change)
+        return
     both = [
         (a, b) for a, b in zip(card_mask, stand_mask) if a is not None and b is not None
     ]
@@ -623,5 +641,50 @@ def test_look_goes_down_to_the_ground_facing_the_same_way_and_comes_back(
     assert abs(((head - 130) + 540) % 360 - 180) < 2, head
     pg.evaluate("() => _aeStandClose()")
     pg.wait_for_function("() => !!_look", timeout=60_000, polling=250)
+    assert not errors, errors
+    ctx.close()
+
+
+def test_without_webgl2_the_there_and_then_list_stands_and_the_ground_buttons_do_not(
+    browser, served
+):
+    """No WebGL2: the card shows no Stand here button, There and then opens its list over the page (not a dead black 3D view), and an entry
+    shows its facts with the ground button off and one short line saying why."""
+    ctx = _context(browser)
+    ctx.add_init_script(
+        "(() => { const g = HTMLCanvasElement.prototype.getContext; HTMLCanvasElement.prototype.getContext = function (t) {"
+        " return /webgl/.test(t) ? null : g.apply(this, arguments); }; })();"
+    )
+    pg = ctx.new_page()
+    errors = []
+    pg.on("pageerror", lambda e: errors.append(str(e)))
+    pg.goto(served + "/#almanac", wait_until="load")
+    pg.wait_for_function(
+        "() => typeof _skyState !== 'undefined' && _skyState && _skyState.eph && typeof openAlmanacThens === 'function'",
+        timeout=120_000,
+    )
+    pg.wait_for_function(
+        "() => document.querySelector('.alm-sky-stand') && document.querySelector('.alm-sky-stand').hidden === true",
+        timeout=30_000,
+        polling=250,
+    )
+    pg.evaluate(
+        "() => document.querySelector('.alm-sky-then').scrollIntoView({ block: 'center' })"
+    )
+    pg.click(".alm-sky-then")
+    pg.wait_for_function(
+        "() => document.querySelectorAll('.al-sheet .at-row').length > 3",
+        timeout=60_000,
+        polling=250,
+    )
+    assert not pg.evaluate(
+        "() => typeof _aeIsOpen !== 'undefined' && _aeIsOpen"
+    ), "the 3D view did not open"
+    pg.click(".al-sheet .at-row")
+    pg.wait_for_function("() => !!document.getElementById('at-no3d')", timeout=30_000)
+    assert pg.evaluate("() => document.getElementById('at-stand').disabled")
+    assert pg.evaluate(
+        "() => document.querySelector('.al-sheet .al-facts li') !== null"
+    )
     assert not errors, errors
     ctx.close()
