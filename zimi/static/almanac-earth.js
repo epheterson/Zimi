@@ -1449,6 +1449,7 @@ var AE_EARTH_VERT = [
   '}'
 ].join('\n');
 
+var AE_HAZE_AIRMASS_MAX = 4;   // the most air the Earth's haze is thickened by toward its limb (the rim glow is the rest)
 var AE_EARTH_FRAG = [
   'precision highp float;',
   'uniform sampler2D dayMap; uniform sampler2D nightMap;',
@@ -1472,7 +1473,10 @@ var AE_EARTH_FRAG = [
   '  float glint = pow(max(dot(N, H), 0.0), 80.0) * 0.35 * ocean;',
   // The air's own blue glow (sunlight scattered toward us) lies over the
   // day side; it is what makes the Moon's shadow show over dark ocean too.
-  '  vec3 haze = vec3(0.05, 0.09, 0.16);',
+  // It grows with the air looked through: one air mass straight down (the
+  // ground clear from orbit, as from the ISS), more toward the horizon.
+  '  float airmass = min(1.0 / max(dot(N, V), 0.01), ' + AE_HAZE_AIRMASS_MAX.toFixed(1) + ');',
+  '  vec3 haze = vec3(0.05, 0.09, 0.16) * airmass;',
   '  vec3 col = day * (0.035 + 1.05 * sun) + haze * sun + vec3(1.0, 0.92, 0.8) * glint * sun;',
   '  col += vec3(1.0, 0.78, 0.45) * pow(lights, 1.6) * 1.25 * night;',
   // Dimmed in Red (AE_RED_EARTH_LIGHT): the ground, not the air's glow at the limb, which keeps its edge.

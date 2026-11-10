@@ -383,3 +383,57 @@ def test_the_hd_craft_list_is_asked_for_only_when_the_set_says_it_has_craft(
         assert not errors, errors
     finally:
         ctx.close()
+
+
+DAY_OVER_LA_MS = 1794340800000  # 2026-11-10 20:00 UTC: noon in Los Angeles
+OVER = """(a) => { _aeGoTo(a.ms); _almClockSetRate(0);
+  _aeFlyTo('earth', a.dist, _aeAzElOf(_aeFixedToScene(_aeGeodeticToFixed(a.lat, a.lon), _aeSceneAt(_aeDisplayMs()).gast)));
+  _ae.preset = null; _ae.dirty = true; _aeKick(); }"""
+# Drawn and read in the same frame (the canvas keeps no buffer): the middle third's mean colour, and, for a whole globe,
+# the bluest point just outside its limb (the air's glow).
+PIXELS = """() => new Promise(res => { _ae.dirty = true; _aeKick(); requestAnimationFrame(() => {
+  const c = document.getElementById('ae-canvas'), w = c.width, h = c.height, t = document.createElement('canvas'); t.width = w; t.height = h;
+  const g = t.getContext('2d'); g.drawImage(c, 0, 0);
+  const d = g.getImageData(Math.floor(w / 3), Math.floor(h / 3), Math.floor(w / 3), Math.floor(h / 3)).data, s = [0, 0, 0];
+  for (let i = 0; i < d.length; i += 4) { s[0] += d[i]; s[1] += d[i + 1]; s[2] += d[i + 2]; }
+  const n = d.length / 4, k = w / _ae.w, mid = _aeProject([0, 0, 0]);
+  let limb = -1;
+  if (mid) { const r = AE_TARGETS.earth.surface * _aeFocalPx() / Math.sqrt(_ae.dist * _ae.dist - 1) * k;
+    for (let a = 0; a < 64; a++) { const x = Math.round(mid.x * k + Math.cos(a / 64 * 2 * Math.PI) * r * 1.012), y = Math.round(mid.y * k + Math.sin(a / 64 * 2 * Math.PI) * r * 1.012);
+      if (x < 0 || y < 0 || x >= w || y >= h) continue; const p = g.getImageData(x, y, 1, 1).data; limb = Math.max(limb, p[2] - p[0]); } }
+  res({ rgb: s.map(v => Math.round(v / n)), limb: limb }); }); })"""
+
+
+def test_the_ground_reads_from_orbit_and_the_far_globe_keeps_its_blue_limb(
+    browser, served
+):
+    ctx, pg, errors = _page(browser, served)
+    try:
+        _open_3d(pg)
+        pg.evaluate(
+            OVER, {"ms": DAY_OVER_LA_MS, "dist": 1.0, "lat": 34.05, "lon": -118.25}
+        )  # as near as the view goes
+        pg.wait_for_function(
+            "() => { _ae.dirty = true; _aeKick(); return !_ae.fly; }",
+            timeout=120_000,
+            polling=250,
+        )
+        pg.wait_for_timeout(1500)
+        near = pg.evaluate(PIXELS)
+        r, g, b = near["rgb"]
+        # The ground, not a pale-blue sheet of air over it (it was 118, 177, 251).
+        assert b - r < 40 and r + g + b < 360, near
+        pg.evaluate(
+            OVER, {"ms": DAY_OVER_LA_MS, "dist": 4.0, "lat": 34.05, "lon": -118.25}
+        )
+        pg.wait_for_function(
+            "() => { _ae.dirty = true; _aeKick(); return !_ae.fly; }",
+            timeout=120_000,
+            polling=250,
+        )
+        pg.wait_for_timeout(1500)
+        far = pg.evaluate(PIXELS)
+        assert far["limb"] > 30, far  # the air's blue at the sunlit limb
+        assert not errors, errors
+    finally:
+        ctx.close()
