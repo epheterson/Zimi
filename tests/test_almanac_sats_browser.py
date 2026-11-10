@@ -195,7 +195,7 @@ def test_the_catalogue_draws_filters_and_answers_a_tap(browser, served):
         # The live sky: at the middle of the first pass, the sky's painter draws that satellite and keeps itself awake.
         painted = pg.evaluate(
             """() => { var p = _as.passes[0]; if (!p) return null; var pl = _asPlace(), cv = document.createElement('canvas'); cv.width = 780; cv.height = 600;
-              var s = { W: 780, H: 600, center: 180, span: 360, dpr: 2, lat: pl.lat, lon: pl.lon, nowTime: p.peak, eph: { sunGeoAlt: -12 } };
+              var s = { W: 780, H: 600, bodies: [], center: 180, span: 360, dpr: 2, lat: pl.lat, lon: pl.lon, nowTime: p.peak, eph: { sunGeoAlt: -12 } };
               var live = window._almFocus; window._almFocus = new Date(p.peak);
               var ctx = cv.getContext('2d'), pix = () => ctx.getImageData(0, 0, 780, 600).data.reduce((n, v, i) => n + (i % 4 === 3 && v ? 1 : 0), 0);
               var before = pix(); _asSkyPaint(ctx, s); window._almFocus = live;

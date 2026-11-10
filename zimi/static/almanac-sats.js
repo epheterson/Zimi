@@ -911,7 +911,7 @@ function _asSkyPaint(ctx, s) {
         var y = _skyY(s, lk.el), near = _aeClamp(1 - (p.mag - 0) / 6, 0.25, 1);
         _asSkyTrail(ctx, s, i, ms, place, x, y, near);
         _skyLight(ctx, x, y, (1.4 + 2 * near) * dpr, [255, 250, 235], 0.6 + 0.4 * near);
-        if (_as.data.norad[i] !== AS_ISS_NORAD) s.bodies.push({ type: 'sat', name: _as.data.name[i], x: x / dpr, y: y / dpr, r: 4, alt: lk.el, az: lk.az, km: _asAltKm(i, ms) });
+        if (s.bodies && _as.data.norad[i] !== AS_ISS_NORAD) s.bodies.push({ type: 'sat', name: _as.data.name[i], x: x / dpr, y: y / dpr, r: 4, alt: lk.el, az: lk.az, km: _asAltKm(i, ms) });
         if (p.members.length < AS_TRAIN_MIN || k === 0) {
           ctx.fillStyle = 'rgba(255,250,235,.8)';
           ctx.font = (11 * dpr) + 'px sans-serif';
