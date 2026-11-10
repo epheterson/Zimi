@@ -30,14 +30,17 @@ var ZimiCap = window.ZimiCap || (function () {
   //   slowMs                 a painted frame this slow counts toward a step down
   var TABLE = {
     low:      { dprMax: 1,   standDprMax: 1,   skyQuality: 0, shadowQuality: 0, materialDetail: 0, satMax: 200,   hdTiles: false, hdMemMB: 0,   textureMax: 2048, mapLabels: 'none',  gpuMB: 96,  fpsMax: 30, slowMs: 50 },
-    standard: { dprMax: 2,   standDprMax: 1.5, skyQuality: 1, shadowQuality: 1, materialDetail: 1, satMax: 3000,  hdTiles: true,  hdMemMB: 96,  textureMax: 4096, mapLabels: 'major', gpuMB: 256, fpsMax: 0,  slowMs: 20 },
-    high:     { dprMax: 3,   standDprMax: 2,   skyQuality: 2, shadowQuality: 2, materialDetail: 2, satMax: 30000, hdTiles: true,  hdMemMB: 384, textureMax: 8192, mapLabels: 'all',   gpuMB: 768, fpsMax: 0,  slowMs: 18 }
+    standard: { dprMax: 2,   standDprMax: 1.5, skyQuality: 1, shadowQuality: 1, materialDetail: 1, satMax: 3000,  hdTiles: true,  hdMemMB: 96,  textureMax: 4096, mapLabels: 'major', gpuMB: 256, fpsMax: 0,  slowMs: 28 },
+    high:     { dprMax: 3,   standDprMax: 2,   skyQuality: 2, shadowQuality: 2, materialDetail: 2, satMax: 30000, hdTiles: true,  hdMemMB: 384, textureMax: 8192, mapLabels: 'all',   gpuMB: 768, fpsMax: 0,  slowMs: 25 }
   };
   var STEP = [1, 0.8, 0.64, 0.5];          // the governor's pixel-ratio factor at each step down
-  var SLOW_RUN = 3;                         // slow frames in a row that cost a step (an idle gap is not a slow frame)
-  var SLOW_CEIL_MS = 250;
-  var FALLBACK_SLOW = 45;                   // slow frames at the last step before the 3D view gives way
+  var STEPPING = { earth: 1, stand: 1 };    // the scenes whose frames can step the 3D pixel ratio; any other name (the sky card, Look) is its own channel and never does
+  var WINDOW_FRAMES = 60, SLOW_IN_WINDOW = 42;   // a step down needs 42 slow frames among the last 60 painted: a hitch while a tile loads is a few
+  var SLOW_CEIL_MS = 250;                   // a gap this long is the person resting, not a slow frame
+  var RECOVER_CALM_MS = 15000, MAX_RECOVERIES = 2;   // 15 s with no slow frame gives a step back, at most twice a session
   var LEVEL_DROP_STEP = 2;                  // from this step down the level itself drops one (features, not only pixels)
+  var MIN_DPR = 1;                          // the pixel ratio never goes below the CSS pixel
+  var HOLD_MS = 1500;                       // frames this long after a load starts or ends are not counted
   var LOSS_WINDOW_MS = 60000, LOSS_LIMIT = 3;   // context losses in a minute before the view gives way
 
   var SOFT_GL_RE = /swiftshader|llvmpipe|softpipe|software|basic render|mesa offscreen|microsoft basic/i;
@@ -45,7 +48,7 @@ var ZimiCap = window.ZimiCap || (function () {
   var BENCH_SIZE = 256, BENCH_DRAWS = 8, BENCH_FAST_MS = 1.5, BENCH_SLOW_MS = 9;
   var MIN_DEVICE_MEM_FOR_HIGH = 8, MIN_CORES_FOR_HIGH = 8, MIN_TEX_FOR_HIGH = 16384, MIN_TEX_FOR_STANDARD = 4096;
 
-  var listeners = [], sig = null, levelNow = null, step = 0, frames = {}, slowTotal = 0, losses = [], started = false, fellBack = false;
+  var listeners = [], sig = null, levelNow = null, baseLevel = null, step = 0, frames = {}, losses = [], started = false, fellBack = false, holdUntil = 0, recoveries = 0;
 
   function store(kind, k, v) {
     try {
@@ -132,8 +135,12 @@ var ZimiCap = window.ZimiCap || (function () {
     if (!s.webgl2 || s.soft || s.maxTex < MIN_TEX_FOR_STANDARD || (s.mem && s.mem <= 2) || (s.cores && s.cores <= 2) || OLD_GPU_RE.test(s.renderer)) return 'low';
     if (s.benchMs && s.benchMs > BENCH_SLOW_MS) return 'low';
     var level = 'standard';
-    var roomy = (s.mem >= MIN_DEVICE_MEM_FOR_HIGH || (!s.mem && s.benchMs && s.benchMs < BENCH_FAST_MS)) && s.cores >= MIN_CORES_FOR_HIGH && s.maxTex >= MIN_TEX_FOR_HIGH;
-    if (roomy && !s.coarse && !s.reduced && !s.saveData) level = 'high';
+    // A big machine with a mouse; or a phone or tablet that is the fast kind: an Apple GPU on six cores or more (every iPhone
+    // since the X; the GPU's name is masked as "Apple GPU" on Safari), or an Android flagship (8 GB, 8 cores). Reduced motion is about
+    // motion, not about resolution: it does not hold a capable device back. Save-Data does (it is about bytes).
+    var desktop = !s.coarse && (s.mem >= MIN_DEVICE_MEM_FOR_HIGH || (!s.mem && s.benchMs && s.benchMs < BENCH_FAST_MS)) && s.cores >= MIN_CORES_FOR_HIGH;
+    var phone = s.coarse && ((/apple/i.test(s.renderer) && s.cores >= 6) || (s.mem >= MIN_DEVICE_MEM_FOR_HIGH && s.cores >= MIN_CORES_FOR_HIGH));
+    if ((desktop || phone) && s.maxTex >= MIN_TEX_FOR_HIGH && !s.saveData) level = 'high';
     return level;
   }
   function level() {
@@ -144,7 +151,7 @@ var ZimiCap = window.ZimiCap || (function () {
     else base = store('session', LEVEL_KEY) || decide();
     if (LEVELS.indexOf(base) < 0) base = 'standard';
     if (s === 'auto') store('session', LEVEL_KEY, base);
-    levelNow = base;
+    levelNow = baseLevel = base;
     return levelNow;
   }
   function row() { return TABLE[level()]; }
@@ -170,22 +177,39 @@ var ZimiCap = window.ZimiCap || (function () {
   }
 
   // ── The governor ──
-  // Every 3D scene calls frame(scene, now) once per painted frame. Slow frames (not idle gaps) three in a row step the
-  // pixel ratio down; the third step also drops the level a notch (fewer satellites, no HD tiles, ...); at the last step a
-  // run of slow frames sets the 3D view aside. Nothing goes back up before the page is reloaded.
+  // The 3D scenes (earth, stand) call frame(scene, now) once per painted frame. A step down in pixel ratio needs sustained trouble:
+  // 42 slow frames among the last 60 painted, not counting frames while something loads (hold()). The third step also drops the
+  // level a notch (fewer satellites, no HD tiles, ...; the pixel ratio stays that of the level the device started on); another
+  // slow window at the last step sets the 3D view aside (not at Full). The pixel ratio can come back: 15 s with no slow frame
+  // gives a step back, twice at most, so one stutter does not leave the view soft for the session. Anything else that calls
+  // frame() (the sky card, Look) is a separate channel and never steps the 3D pixel ratio.
   function frame(scene, now) {
+    if (!STEPPING[scene]) return false;
     started = true;
-    var f = frames[scene] || (frames[scene] = { last: 0, run: 0 });
+    var f = frames[scene] || (frames[scene] = { last: 0, win: [], slow: 0, calmFrom: now });
     var dt = f.last ? now - f.last : 0;
     f.last = now;
+    if (!dt) return false;
+    if (now < holdUntil) { f.win.length = 0; f.slow = 0; f.calmFrom = now; return false; }
     var slow = dt > row().slowMs && dt < SLOW_CEIL_MS;
-    f.run = slow ? f.run + 1 : 0;
-    if (!slow) return false;
-    slowTotal++;
-    if (f.run < SLOW_RUN) return false;
-    f.run = 0;
-    return slower('slow frames in ' + scene);
+    if (dt < SLOW_CEIL_MS) {
+      f.win.push(slow ? 1 : 0); f.slow += slow ? 1 : 0;
+      if (f.win.length > WINDOW_FRAMES) f.slow -= f.win.shift();
+    }
+    if (slow) f.calmFrom = now;
+    if (f.win.length === WINDOW_FRAMES && f.slow >= SLOW_IN_WINDOW) {
+      f.win.length = 0; f.slow = 0;
+      return slower('slow frames in ' + scene);
+    }
+    if (step > 0 && recoveries < MAX_RECOVERIES && now - f.calmFrom >= RECOVER_CALM_MS) {
+      f.calmFrom = now; recoveries++; step--;
+      emit('step', { step: step, level: levelNow, recovered: true });
+      return true;
+    }
+    return false;
   }
+  // A scene that starts a load, an upload or a flight says so: the frames around it are not counted.
+  function hold(ms, now) { holdUntil = (now === undefined ? performance.now() : now) + (ms || HOLD_MS); }
   // Scenes call this when they start over (a new scene's first frame is not a gap to measure).
   function resetFrames(scene) { if (frames[scene]) frames[scene].last = 0; }
   function slower(why) {
@@ -195,16 +219,17 @@ var ZimiCap = window.ZimiCap || (function () {
       emit('step', { step: step, level: levelNow, why: why });
       return true;
     }
-    if (setting() !== 'full' && slowTotal >= FALLBACK_SLOW && !fellBack) {
+    if (setting() !== 'full' && !fellBack) {
       fellBack = true;
       emit('fallback', { why: why });
     }
     return false;
   }
+  // The pixel ratio a scene may draw at: its level's, as the device started (a feature drop mid-session does not shrink it), times the step.
   function dprCap(scene) {
-    var r = row();
-    var base = scene === 'stand' ? r.standDprMax : r.dprMax;
-    return base * STEP[step];
+    level();
+    var r = TABLE[baseLevel], b = scene === 'stand' ? r.standDprMax : r.dprMax;
+    return Math.max(MIN_DPR, b * STEP[step]);
   }
 
   // ── A GL context taken away ──
@@ -297,7 +322,7 @@ var ZimiCap = window.ZimiCap || (function () {
   function choose(v) {
     if (SETTINGS.indexOf(v) < 0) return;
     store('local', SETTING_KEY, v);
-    levelNow = null; step = 0; slowTotal = 0; fellBack = false; frames = {};
+    levelNow = baseLevel = null; step = 0; recoveries = 0; fellBack = false; frames = {};
     store('session', LEVEL_KEY, null);
     emit('setting', { setting: v, level: level() });
   }
@@ -313,6 +338,7 @@ var ZimiCap = window.ZimiCap || (function () {
     view3d: view3d,
     lowPower: lowPower,
     frame: frame,
+    hold: hold,
     resetFrames: resetFrames,
     watchContext: watchContext,
     on: function (fn) { listeners.push(fn); },

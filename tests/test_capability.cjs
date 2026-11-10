@@ -62,8 +62,8 @@ const GL = (o) => Object.assign({ webgl2: true, maxTex: 16384, renderer: 'Apple 
 
 // ── The level from the signals ──
 check(load({ mem: 8, cores: 10, gl: GL() }).cap.level() === 'high', 'a big desktop with a real GPU is high');
-check(load({ mem: 8, cores: 10, gl: GL(), coarse: true }).cap.level() === 'standard', 'a touch screen is never above standard');
-check(load({ mem: 8, cores: 10, gl: GL(), reduced: true }).cap.level() === 'standard', 'reduced motion is never above standard');
+check(load({ mem: 4, cores: 6, gl: GL({ renderer: 'Mali-G78', maxTex: 8192 }), coarse: true }).cap.level() === 'standard', 'a mid touch device is standard');
+check(load({ mem: 8, cores: 10, gl: GL(), reduced: true }).cap.level() === 'high', 'reduced motion is about motion, not resolution: it holds nothing back');
 check(load({ mem: 8, cores: 10, gl: GL(), saveData: true }).cap.level() === 'standard', 'Save-Data is never above standard');
 check(load({ mem: 4, cores: 6, gl: GL({ maxTex: 8192 }) }).cap.level() === 'standard', 'a mid machine is standard');
 check(load({ mem: 8, cores: 8, gl: GL({ renderer: 'Google SwiftShader', strict: true }) }).cap.level() === 'low', 'SwiftShader is low whatever the CPU');
@@ -127,32 +127,68 @@ check(load({ mem: 4, cores: 4, gl: GL({ renderer: 'V3D 4.2' }) }).cap.view3d() =
 // ── The governor ──
 {
   const r = load({ mem: 8, cores: 10, gl: GL() }), c = r.cap, events = [];
-  c.on((e, info) => events.push(e));
+  c.on((e, info) => events.push([e, info]));
   const dpr0 = c.dprCap('earth');
   check(dpr0 === 3 && c.dprCap('stand') === 2, 'high: the pixel ratios are the table\'s');
   let t = 1000;
-  const slow = (scene, n, ms) => { for (let i = 0; i < n; i++) { t += ms || 40; c.frame(scene, t); } };
+  const frames = (scene, n, ms) => { for (let i = 0; i < n; i++) { t += ms; c.frame(scene, t); } };
   c.frame('earth', t);
-  slow('earth', 2);
-  check(c.signals().step === 0 && c.dprCap('earth') === dpr0, 'a slow frame or two costs nothing');
-  slow('earth', 1);
-  check(c.signals().step === 1 && Math.abs(c.dprCap('earth') - dpr0 * 0.8) < 1e-9, 'three slow frames in a row step the pixel ratio down');
-  check(events.indexOf('step') >= 0, 'a step is announced');
+  frames('earth', 30, 40);
+  check(c.signals().step === 0 && c.dprCap('earth') === dpr0, 'a hitch of thirty slow frames costs nothing');
+  frames('earth', 20, 16);
+  frames('earth', 30, 40);
+  check(c.signals().step === 0, 'slow frames among fast ones do not add up across a calm stretch');
+  frames('earth', 60, 40);
+  check(c.signals().step === 1 && Math.abs(c.dprCap('earth') - dpr0 * 0.8) < 1e-9, 'sustained slowness (a window of sixty) steps the pixel ratio down');
+  check(events.some(([e]) => e === 'step'), 'a step is announced');
   t += 5000; c.frame('earth', t);   // an idle gap is not a slow frame
-  t += 16; c.frame('earth', t);
-  check(c.signals().step === 1, 'an idle gap and a fast frame cost nothing');
-  slow('earth', 4);
+  frames('earth', 5, 16);
+  check(c.signals().step === 1, 'an idle gap and fast frames cost nothing');
+  frames('earth', 60, 40);
   check(c.signals().step === 2 && c.level() === 'standard', 'the second step drops the level a notch too (high to standard)');
-  slow('earth', 8);
+  check(c.dprCap('earth') === Math.max(1, 3 * c.STEP[2]), 'the pixel ratio stays that of the level the device started on');
+  frames('earth', 60, 40);
   check(c.signals().step === 3 && c.level() === 'low', 'at the last step the level is low');
-  const capLow = c.dprCap('stand');
-  check(capLow === 1 * c.STEP[3], 'low: Stand draws at the table\'s ratio times the last step');
-  slow('earth', 200, 80);
-  check(events.indexOf('fallback') >= 0 && c.view3d() === 'static', 'forty-five slow frames at the bottom set the view aside');
-  for (let i = 0; i < 400; i++) { t += 8; c.frame('earth', t); }
-  check(c.signals().step === 3 && c.level() === 'low', 'nothing goes back up in the session');
+  check(c.dprCap('stand') === Math.max(1, 2 * c.STEP[3]), 'Stand follows the same steps from its own start');
+  check(c.dprCap('earth') >= 1, 'the pixel ratio never goes below the CSS pixel');
+  frames('earth', 60, 90);
+  check(events.some(([e]) => e === 'fallback') && c.view3d() === 'static', 'another slow window at the bottom sets the view aside');
   c.set('full');
   check(c.signals().step === 0 && c.view3d() === 'open' && c.level() === 'high', 'choosing Full starts over, and tries');
+}
+{
+  // The pixel ratio comes back: one stutter must not leave the view soft for the whole session.
+  const r = load({ mem: 8, cores: 10, gl: GL() }), c = r.cap, events = [];
+  c.on((e, info) => events.push([e, info]));
+  let t = 1000;
+  const frames = (scene, n, ms) => { for (let i = 0; i < n; i++) { t += ms; c.frame(scene, t); } };
+  c.frame('earth', t);
+  frames('earth', 60, 40);
+  check(c.signals().step === 1, 'a bad stretch steps down');
+  frames('earth', 600, 16);   // ten seconds of fast frames
+  check(c.signals().step === 1, 'ten calm seconds is not yet enough');
+  frames('earth', 400, 16);
+  check(c.signals().step === 0 && events.some(([e, i]) => e === 'step' && i.recovered), 'fifteen calm seconds give the step back');
+  frames('earth', 60, 40); frames('earth', 1000, 16);
+  frames('earth', 60, 40); frames('earth', 1000, 16);
+  frames('earth', 60, 40); frames('earth', 1000, 16);
+  check(c.signals().step >= 1, 'it comes back twice a session at most: no thrashing');
+}
+{
+  // Frames while something loads are not the device's pace.
+  const r = load({ mem: 8, cores: 10, gl: GL() }), c = r.cap;
+  let t = 1000;
+  c.frame('earth', t);
+  for (let i = 0; i < 200; i++) { t += 40; if (i % 30 === 0) c.hold(1500, t); c.frame('earth', t); }
+  check(c.signals().step === 0, 'slow frames inside the hold after each load never add up to a step');
+}
+{
+  // The sky card and Look are a separate channel: they never step the 3D pixel ratio.
+  const r = load({ mem: 8, cores: 10, gl: GL() }), c = r.cap;
+  let t = 1000;
+  c.frame('sky', t);
+  for (let i = 0; i < 500; i++) { t += 90; c.frame('sky', t); c.frame('look', t); }
+  check(c.signals().step === 0 && c.dprCap('earth') === 3, 'a slow sky card or Look leaves the 3D view\'s pixel ratio alone');
 }
 {
   // Full never gives way: the person asked for it.
@@ -161,7 +197,7 @@ check(load({ mem: 4, cores: 4, gl: GL({ renderer: 'V3D 4.2' }) }).cap.view3d() =
   c.on((e) => events.push(e));
   let t = 1000;
   c.frame('earth', t);
-  for (let i = 0; i < 400; i++) { t += 60; c.frame('earth', t); }
+  for (let i = 0; i < 800; i++) { t += 60; c.frame('earth', t); }
   check(events.indexOf('fallback') < 0 && c.view3d() === 'open', 'Full keeps trying whatever the frames do');
 }
 {
@@ -172,6 +208,35 @@ check(load({ mem: 4, cores: 4, gl: GL({ renderer: 'V3D 4.2' }) }).cap.view3d() =
   for (let i = 0; i < 100; i++) { t += 34; c.frame('earth', t); }
   check(c.signals().step === 0, 'low: frames at 30 a second are on time');
   check(c.get('fpsMax') === 30, 'low draws 30 frames a second at most');
+}
+{
+  // A frame at 40 a second on a standard phone is on time: no capable phone is made softer for it.
+  const r = load({ mem: 4, cores: 6, gl: GL({ renderer: 'Mali-G78' }), coarse: true }), c = r.cap;
+  let t = 1000;
+  c.frame('earth', t);
+  for (let i = 0; i < 400; i++) { t += 25; c.frame('earth', t); }
+  check(c.signals().step === 0 && c.dprCap('earth') === 2, 'standard: 25 ms frames (40 a second) cost nothing');
+}
+
+// ── The phones ──
+{
+  // A current iPhone: Safari gives no memory figure, six cores, "Apple GPU", 16384, a touch screen.
+  const iphone = { mem: 0, cores: 6, gl: GL({ renderer: 'Apple GPU', maxTex: 16384 }), coarse: true, benchMs: 0.6 };
+  const c = load(iphone).cap;
+  check(c.level() === 'high' && c.dprCap('earth') === 3 && c.dprCap('stand') === 2, 'an iPhone 15 class device is high, at the full device ratio');
+  check(c.view3d() === 'open' && c.get('hdTiles') === true && c.get('fpsMax') === 0, 'and draws everything at the display\'s rate');
+  check(load(Object.assign({}, iphone, { reduced: true })).cap.level() === 'high', 'reduced motion does not hold it back');
+  check(load(Object.assign({}, iphone, { saveData: true })).cap.level() === 'standard', 'Save-Data does');
+  check(load(Object.assign({}, iphone, { cores: 4 })).cap.level() === 'standard', 'an older four-core iPhone is standard');
+  check(load(Object.assign({}, iphone, { benchMs: 12 })).cap.level() === 'low', 'one whose micro-benchmark is slow is low');
+  // A mid-range Android: Chrome reports 4 GB, eight cores, a Mali/Adreno GPU.
+  const mid = load({ mem: 4, cores: 8, gl: GL({ renderer: 'Mali-G78 MP14', maxTex: 8192 }), coarse: true }).cap;
+  check(mid.level() === 'standard' && mid.dprCap('earth') === 2, 'a mid-range Android is standard, at 1.15.4\'s ratio of 2');
+  // An Android flagship.
+  check(load({ mem: 8, cores: 8, gl: GL({ renderer: 'Adreno (TM) 740', maxTex: 16384 }), coarse: true }).cap.level() === 'high', 'an Android flagship is high');
+  // A 2 GB Android.
+  const low = load({ mem: 2, cores: 8, gl: GL({ renderer: 'Mali-G52', maxTex: 8192 }), coarse: true }).cap;
+  check(low.level() === 'low' && low.dprCap('earth') === 1 && low.get('fpsMax') === 30 && low.view3d() === 'open', 'a 2 GB Android is low: the lighter 3D view, not the plain line');
 }
 
 // ── Context loss ──
