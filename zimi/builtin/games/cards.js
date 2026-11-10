@@ -1312,7 +1312,8 @@
 
   // ── The session: undo, clock, stats, keys, the win ────────────────────
   // cfg: { id, els: {undo, newBtn, menu, stat}, board, newGame(), openMenu(),
-  //        statText(sec, state), cascadeOrder(state), winLines(sec, state) }
+  //        statText(sec, state), cascadeOrder(state), winLines(sec, state),
+  //        finished(state), finishNow() }   finished: a kept state that is over though its end never ran; finishNow() runs the game's own end
   // Where a status line of height h goes: where the game's layout put it, or higher if your hand (raised cards
   // included, from board.handTop()) would reach into it.
   var STATUS_GAP = 6;
@@ -1377,7 +1378,9 @@
     function takeUp(kept) {
       s.state = kept.state; s.history = kept.history || []; banked = kept.ms || 0; begun = true; s.ending = kept.ending || null;
       board.render(s.state); paint();
-      if (s.ending) { s.won = true; session_showEnd(s.ending, 0); } else run();
+      if (s.ending) { s.won = true; session_showEnd(s.ending, 0); }
+      else if (cfg.finished && cfg.finished(s.state)) cfg.finishNow();   // over, but the end never ran (an old save): the game's own end builds its sheet from the state
+      else run();
     }
     function keptGame() {
       var kept = root.ZimiShell && root.ZimiShell.saved ? root.ZimiShell.saved() : null;
@@ -1418,7 +1421,8 @@
       s.won = true; halt(); resume = false; clearLater();
       var sec = seconds(), best = s.stats.won(sec, score);
       paint();
-      if (root.ZimiShell && root.ZimiShell.endSheet) s.ending = { result: 'win', text: cfg.winLines(sec, s.state)[0], stats: [[T('cards.stats.time'), fmtTime(sec)], [T('cards.stats.won'), T('cards.stats.wonOf', { won: best.won, played: best.played })]] };
+      var won = cfg.winLines(sec, s.state);
+      if (root.ZimiShell && root.ZimiShell.endSheet) s.ending = { result: 'win', text: won[0], more: won.slice(1), stats: [[T('cards.stats.time'), fmtTime(sec)], [T('cards.stats.won'), T('cards.stats.wonOf', { won: best.won, played: best.played })]] };
       board.cascade(cfg.cascadeOrder(s.state), function () {
         var lines = cfg.winLines(sec, s.state);
         if (s.ending) { session_showEnd(s.ending); return; }

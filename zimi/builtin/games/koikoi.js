@@ -428,8 +428,8 @@
     }
     function gameOver() {
       var st = session.state, w = gameWinner(st.scores), lines = resultLines(st);
-      lines.push(w < 0 ? TX('koikoi.tie') : TX(seats.isYou(w) ? 'cards.result.you' : 'koikoi.result.name', { name: who(w), a: st.scores[w], b: st.scores[1 - w] }));
-      if (seats.isYou(w)) session.win(st.scores[w]); else session.lose(w < 0 ? 'draw' : seats.hotseat() ? { name: who(w) } : '', lines, seats.hotseat() ? undefined : st.scores[0]);
+      lines.unshift(w < 0 ? TX('koikoi.tie') : TX(seats.isYou(w) ? 'cards.result.you' : 'koikoi.result.name', { name: who(w), a: st.scores[w], b: st.scores[1 - w] }));
+      if (seats.isYou(w)) session.win(st.scores[w]); else session.lose(w < 0 ? 'draw' : seats.hotseat() ? { name: who(w) } : '', lines, seats.hotseat() ? undefined : st.scores[0], true);
     }
     var order = function () { return Z.shuffled(Math.random).filter(function (c) { return c < DECK; }); };
     function startNextMonth() {
@@ -474,12 +474,12 @@
     // A fresh deal: nobody has seen it, so two people start at a handoff.
     function deal() { seats.begin(function () { refresh(); drive(); }, session.state.turn); }
     t = T.create({
-      id: 'koikoi', name: 'Koi-Koi', seats: seats, view: view, geo: geo, place: function (st, m, v) { syncView(st); return place(st, m, v); }, hud: hud, newGame: startGame, tap: tap, heightShare: 0.12, face: Z.hanafudaFaceMarkup,
+      id: 'koikoi', name: 'Koi-Koi', finished: function (st) { return st.phase === 'over'; }, finishNow: gameOver, seats: seats, view: view, geo: geo, place: function (st, m, v) { syncView(st); return place(st, m, v); }, hud: hud, newGame: startGame, tap: tap, heightShare: 0.12, face: Z.hanafudaFaceMarkup,
       canPick: function () { return false; },
       // The scores are on the table; a clock that only counts a match has no place in the bar.
       stat: function () { return ''; },
       cascadeOrder: function (st) { return st.captured[0].slice(0, 24).map(function (id) { return { id: id }; }); },
-      winLines: function (sec, st) { return resultLines(st).concat([TX('koikoi.result.won', { a: st.scores[seats.view()], b: st.scores[1 - seats.view()], months: Z.plural(st.months, 'month') })]); },
+      winLines: function (sec, st) { return [TX('koikoi.result.won', { a: st.scores[seats.view()], b: st.scores[1 - seats.view()], months: Z.plural(st.months, 'month') })].concat(resultLines(st)); },
       menuExtra: function () {
         return [T.choiceRow(TX('koikoi.length'), MONTH_KEY, MONTH_CHOICES.map(function (n) { return { value: n, label: TX('koikoi.months', { n: n }) }; }), 6, function () { /* read at the next game */ }),
           Z.h('p', { class: 'zc-note', text: TX('koikoi.lengthNote') })];

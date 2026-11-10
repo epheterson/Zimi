@@ -338,8 +338,8 @@
     }
     function gameOver() {
       var st = session.state, w = gameWinner(st.scores), won = seats.isYou(w), lines = resultLines(st);
-      lines.push(won ? TX('scopa.youWin') : TX('scopa.wins', { name: who(w) }));
-      if (won) session.win(st.scores[0]); else session.lose(seats.hotseat() ? { name: who(w) } : '', lines, seats.hotseat() ? undefined : st.scores[0]);
+      lines.unshift(won ? TX('scopa.youWin') : TX('scopa.wins', { name: who(w) }));
+      if (won) session.win(st.scores[0]); else session.lose(seats.hotseat() ? { name: who(w) } : '', lines, seats.hotseat() ? undefined : st.scores[0], true);
     }
     function startNextHand() {
       var st = session.state;
@@ -386,12 +386,12 @@
     function deal() { seats.begin(function () { refresh(); drive(); }, session.state.turn); }
     var cards40 = function (st) { return [].concat(st.captured[0], st.captured[1]); };
     t = T.create({
-      id: 'scopa', name: 'Scopa', seats: seats, view: view, geo: geo, place: function (st, m, v) { syncView(st); return place(st, m, v); }, hud: hud, newGame: startGame, tap: tap, heightShare: 0.13, face: scopaFace,
+      id: 'scopa', name: 'Scopa', finished: function (st) { return st.phase === 'over'; }, finishNow: gameOver, seats: seats, view: view, geo: geo, place: function (st, m, v) { syncView(st); return place(st, m, v); }, hud: hud, newGame: startGame, tap: tap, heightShare: 0.13, face: scopaFace,
       canPick: function () { return false; },
       // The scores are on the table; a clock that only counts a match has no place in the bar.
       stat: function () { return ''; },
       cascadeOrder: function (st) { return cards40(st).slice(0, 24).map(function (id) { return { id: id }; }); },
-      winLines: function (sec, st) { return resultLines(st).concat([TX('spades.result.won', { a: st.scores[seats.view()], b: st.scores[1 - seats.view()], hands: Z.plural(st.handNo + 1, 'hand') })]); },
+      winLines: function (sec, st) { return [TX('spades.result.won', { a: st.scores[seats.view()], b: st.scores[1 - seats.view()], hands: Z.plural(st.handNo + 1, 'hand') })].concat(resultLines(st)); },
       rules: TX('scopa.rules')
     });
     board = t.board; session = t.session;

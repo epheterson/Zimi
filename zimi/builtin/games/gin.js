@@ -339,9 +339,9 @@
       deal();
     }
     function gameOver() {
-      var st = session.state, f = st.final, lines = [TX('gin.handsWon', { a: who(0), pa: st.boxes[0], b: who(1), pb: st.boxes[1] }), TX('gin.bonus', { name: who(f.winner) }), TX('gin.final', { a: who(0), pa: f.totals[0], b: who(1), pb: f.totals[1] })];
-      if (seats.hotseat()) session.lose({ name: who(f.winner) }, lines);
-      else if (f.winner === 0) session.win(f.totals[0]); else session.lose('', lines, f.totals[0]);
+      var st = session.state, f = st.final, lines = [TX('gin.final', { a: who(0), pa: f.totals[0], b: who(1), pb: f.totals[1] }), TX('gin.handsWon', { a: who(0), pa: st.boxes[0], b: who(1), pb: st.boxes[1] }), TX('gin.bonus', { name: who(f.winner) })];
+      if (seats.hotseat()) session.lose({ name: who(f.winner) }, lines, undefined, true);
+      else if (f.winner === 0) session.win(f.totals[0]); else session.lose('', lines, f.totals[0], true);
     }
     function act(next) { view.sel = null; session.commit(next); drive(); return true; }
     function takeNow() { var st = session.state; if (st.phase === 'offer' && st.turn === seats.view()) act(takeUp(st)); }
@@ -373,7 +373,7 @@
     function deal() { seats.begin(function () { refresh(); drive(); }, session.state.turn); }
 
     t = T.create({
-      id: 'gin', name: 'Gin Rummy', seats: seats, view: view, geo: geo, place: function (st, m, v) { syncView(st); return place(st, m, v); }, hud: hud, newGame: newGame, tap: tap, heightShare: 0.11,
+      id: 'gin', name: 'Gin Rummy', finished: function (st) { return !!st.final; }, finishNow: gameOver, seats: seats, view: view, geo: geo, place: function (st, m, v) { syncView(st); return place(st, m, v); }, hud: hud, newGame: newGame, tap: tap, heightShare: 0.11,
       canPick: function (st, pile) { return st.phase === 'discard' && st.turn === seats.view() && pile.charAt(0) === 'h'; },
       move: function (pile, idx, to) {
         var st = session.state, id = parseInt(pile.slice(1), 10);
@@ -383,7 +383,7 @@
       // The scores are on the table; a clock that only counts a match has no place in the bar.
       stat: function () { return ''; },
       cascadeOrder: function (st) { return st.hands[seats.view()].map(function (id) { return { id: id }; }); },
-      winLines: function (sec, st) { var f = st.final; return [TX('gin.handsWon', { a: TX('cards.you'), pa: st.boxes[0], b: root.ZimiText.ZIMI, pb: st.boxes[1] }), TX('gin.bonus.you'), TX('gin.final', { a: TX('cards.you'), pa: f.totals[0], b: root.ZimiText.ZIMI, pb: f.totals[1] })]; },
+      winLines: function (sec, st) { var f = st.final; return [TX('gin.final', { a: TX('cards.you'), pa: f.totals[0], b: root.ZimiText.ZIMI, pb: f.totals[1] }), TX('gin.handsWon', { a: TX('cards.you'), pa: st.boxes[0], b: root.ZimiText.ZIMI, pb: st.boxes[1] }), TX('gin.bonus.you')]; },
       rules: TX('gin.rules')
     });
     board = t.board; session = t.session;

@@ -281,7 +281,7 @@
       undoOff: cfg.seats ? function () { return cfg.seats.hotseat(); } : null,
       statText: function (sec, st) { paint(); return cfg.stat(sec, st); },
       cascadeOrder: cfg.cascadeOrder || function () { return []; },
-      winLines: cfg.winLines,
+      winLines: cfg.winLines, finished: cfg.finished, finishNow: cfg.finishNow,
       openMenu: function () {
         Z.sheet({
           title: root.ZimiText && root.ZimiText.has('game.' + cfg.id + '.title') ? T('game.' + cfg.id + '.title') : cfg.name,   // the game's name in the player's language
@@ -472,9 +472,9 @@
     // The game is decided for team `w`: the last hand's lines and the result, to the stats and the end sheet.
     tg.teamGameOver = function (w, scores, lines) {
       var vt = tg.viewTeam(), hot = seats.hotseat();
-      lines = lines.concat([T(hot ? 'cards.result.hot' : w === vt ? 'cards.result.you' : 'cards.result.them', { team: hot ? tg.teamNames(w) : '', a: scores[w], b: scores[1 - w] })]);
-      if (hot) session.lose({ name: tg.teamNames(w), team: true }, lines);
-      else if (w === vt) session.win(scores[vt]); else session.lose('', lines, scores[vt]);
+      lines = [T(hot ? 'cards.result.hot' : w === vt ? 'cards.result.you' : 'cards.result.them', { team: hot ? tg.teamNames(w) : '', a: scores[w], b: scores[1 - w] })].concat(lines);
+      if (hot) session.lose({ name: tg.teamNames(w), team: true }, lines, undefined, true);
+      else if (w === vt) session.win(scores[vt]); else session.lose('', lines, scores[vt], true);
     };
 
     // The table for a game: cfg is create()'s, and what a trick game always says is filled in.
@@ -484,7 +484,8 @@
         id: o.id, seats: seats, view: view, tap: tg.tap, liftPlay: function (st) { return st.phase === 'play'; },
         canPick: function (st, pile) { return st.phase === 'play' && pile.charAt(0) === 'h' && o.legal(st, seats.view(), idOf(pile)); },
         move: function (pile, idx, to) { return (to === 'trick' || to === 'deck') && pile.charAt(0) === 'h' ? tg.play(idOf(pile)) : false; },
-        stat: function (sec, st) { return tg.teamStat(sec, st.scores); }
+        stat: function (sec, st) { return tg.teamStat(sec, st.scores); },
+        finished: function (st) { return st.phase === 'over' && !!o.gameOver; }, finishNow: function () { o.gameOver(); }
       }, cfg, { place: function (st, m, v) { tg.syncView(st); return place(st, m, v); } }));
       tg.attach(t);
       return t;

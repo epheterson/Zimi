@@ -326,7 +326,7 @@
     t = tg.create({
       name: 'Euchre', geo: geo, place: place, hud: hud, newGame: newGame, heightShare: 0.13,
       cascadeOrder: function (st) { return st.played.map(function (id) { return { id: id }; }); },
-      winLines: function (sec, st) { return handLines(st).concat([TX('cards.result.you', { a: st.scores[viewTeam()], b: st.scores[1 - viewTeam()] })]); },
+      winLines: function (sec, st) { return [TX('cards.result.you', { a: st.scores[viewTeam()], b: st.scores[1 - viewTeam()] })].concat(handLines(st)); },
       rules: TX('euchre.rules')
     });
     board = t.board; session = t.session;

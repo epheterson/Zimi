@@ -78,7 +78,7 @@ def one(r, game):
             )
             try:
                 pg.goto(r.site + game + ".html")
-                pg.wait_for_timeout(6000)
+                pg.wait_for_timeout(int(os.environ.get("WAIT_MS", 6000)))
                 if not sheet_up(pg):
                     note(
                         game,

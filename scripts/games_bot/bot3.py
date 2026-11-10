@@ -96,6 +96,12 @@ def play(r, game, limit_s=420, seed=1):
             if pick:
                 pg.touchscreen.tap(pick[0], pick[1])
                 continue
+        if mine and s["hand"] and all(h[3] for h in s["hand"]):
+            # nothing in the hand can be played: draw from the stock
+            box = pg.evaluate("() => { const e = document.querySelector('[data-pile=\"stock\"], [data-pile=\"deck\"]'); if (!e) return null; const r = e.getBoundingClientRect(); return [r.x + r.width / 2, r.y + r.height / 2]; }")
+            if box:
+                pg.touchscreen.tap(box[0], box[1])
+                continue
         if mine and s["hand"]:
             ok = [h for h in s["hand"] if not h[3]] or s["hand"]
             h = random.choice(ok)

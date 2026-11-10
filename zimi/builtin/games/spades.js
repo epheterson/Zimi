@@ -297,7 +297,7 @@
     t = tg.create({
       name: 'Spades', geo: geo, place: place, hud: hud, newGame: newGame,
       cascadeOrder: function (st) { return st.played.concat(st.trick.map(function (x) { return x.id; })).map(function (id) { return { id: id }; }); },
-      winLines: function (sec, st) { var vt = viewTeam(); return handLines(st).concat([TX('spades.result.won', { a: st.scores[vt], b: st.scores[1 - vt], hands: Z.plural(st.handNo + 1, 'hand') })]); },
+      winLines: function (sec, st) { var vt = viewTeam(); return [TX('spades.result.won', { a: st.scores[vt], b: st.scores[1 - vt], hands: Z.plural(st.handNo + 1, 'hand') })].concat(handLines(st)); },
       rules: TX('spades.rules')
     });
     board = t.board; session = t.session;

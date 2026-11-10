@@ -221,8 +221,8 @@
     function handOver() { T.lineSheet(TX('cards.fact.hand', { n: session.state.handNo + 1 }), resultLines(session.state), [{ label: TX('cards.nextHand'), primary: true, onclick: startNextHand }]); }
     function gameOver() {
       var st = session.state, w = gameWinner(st.scores), me = seats.view(), hot = seats.hotseat();
-      var lines = resultLines(st).concat([w === me && !hot ? TX('ce.winYou', { n: st.scores[me] }) : TX('ce.winName', { name: name(st, w), n: st.scores[w] })]);
-      if (w === me && !hot) session.win(st.scores[me]); else session.lose(hot ? { name: name(st, w) } : '', lines, hot ? undefined : st.scores[me]);
+      var lines = [w === me && !hot ? TX('ce.winYou', { n: st.scores[me] }) : TX('ce.winName', { name: name(st, w), n: st.scores[w] })].concat(resultLines(st));
+      if (w === me && !hot) session.win(st.scores[me]); else session.lose(hot ? { name: name(st, w) } : '', lines, hot ? undefined : st.scores[me], true);
     }
     function startNextHand() {
       var st = session.state;
@@ -283,13 +283,13 @@
     // A fresh deal: nobody has seen it, so a table of people starts at a handoff.
     function deal() { seats.begin(function () { repaint(); drive(); }, session.state.turn); }
     t = T.create({
-      id: 'crazyeights', name: 'Crazy Eights', seats: seats, view: view, geo: geo, place: function (st, m, v) { syncView(st); return place(st, m, v); }, hud: hud, newGame: newGame, tap: tap, slotTap: drawTap, heightShare: 0.11,
+      id: 'crazyeights', name: 'Crazy Eights', finished: function (st) { return st.phase === 'over'; }, finishNow: gameOver, seats: seats, view: view, geo: geo, place: function (st, m, v) { syncView(st); return place(st, m, v); }, hud: hud, newGame: newGame, tap: tap, slotTap: drawTap, heightShare: 0.11,
       canPick: function (st, pile) { return st.phase === 'play' && pile.charAt(0) === 'h' && isLegal(st, seats.view(), idOf(pile)); },
       move: function (pile, idx, to) { return (to === 'discard' || to === 'stock') && pile.charAt(0) === 'h' ? tryPlay(idOf(pile)) : false; },
       // The scores are on the table; a clock that only counts a match has no place in the bar.
       stat: function () { return ''; },
       cascadeOrder: function (st) { return st.discard.map(function (id) { return { id: id }; }); },
-      winLines: function (sec, st) { return resultLines(st).concat([TX('ce.winYou', { n: st.scores[seats.view()] })]); },
+      winLines: function (sec, st) { return [TX('ce.winYou', { n: st.scores[seats.view()] })].concat(resultLines(st)); },
       menuExtra: function () {
         return [T.choiceRow(TX('cards.seatsAtTable'), PLAYERS_KEY, [{ value: 2, label: '2' }, { value: 3, label: '3' }, { value: 4, label: '4' }], DEFAULT_PLAYERS, function () {}),
           Z.h('p', { class: 'zc-note', text: TX('ce.seatsNote') })];
