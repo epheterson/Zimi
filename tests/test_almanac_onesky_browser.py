@@ -303,7 +303,7 @@ def test_one_tap_from_the_card_stands_at_its_place_instant_and_facing_and_back_r
     )
     assert got["key"] == "earth"
     assert abs(got["lat"] - LAT) < 1e-3 and abs(got["lon"] - LON) < 1e-3, got
-    assert abs(got["ms"] - ms) < 120_000, (got["ms"] - ms)
+    assert abs(got["ms"] - ms) < 120_000, got["ms"] - ms
     diff = abs(((got["head"] - center) + 540) % 360 - 180)
     assert diff < 2, (got["head"], center)
     pg.evaluate("() => _aeStandClose()")
@@ -319,7 +319,8 @@ def test_one_tap_from_the_card_stands_at_its_place_instant_and_facing_and_back_r
 
 def test_the_air_gives_the_ground_its_light_at_every_sun_height(stand):
     """provider.ambient: three radiances (the ground's light from above, the horizon, the zenith) in the view's units, finite at every
-    Sun height; a hundred times brighter by day than at night, and the zenith bluer than the horizon by day."""
+    Sun height; a hundred times brighter by day than at night, and the zenith bluer than the horizon by day.
+    """
     import math
 
     for sa in SUN_ALTS:
@@ -330,3 +331,80 @@ def test_the_air_gives_the_ground_its_light_at_every_sun_height(stand):
     assert lum(stand[("amb", 35)]["amb"]) > 100 * lum(stand[("amb", -18)]["amb"])
     day = stand[("amb", 35)]
     assert day["zenith"][2] / day["zenith"][0] > day["horizon"][2] / day["horizon"][0]
+
+
+FOREGROUNDS = [
+    ("Freudenstadt", 48.46, 8.41, "conifer"),
+    ("Salina", 38.84, -97.61, "grass"),
+    ("Ghat", 25.0, 10.0, "desert"),
+    ("Greenland", 72.0, -40.0, "snow"),
+    ("Tiksi", 71.6, 128.9, "beach"),  # a coast, so the sea; no palms at 71 N
+    ("Lisbon", 38.72, -9.14, "beach"),
+    ("Sydney", -33.87, 151.21, "beach"),
+]
+
+
+@pytest.mark.parametrize(
+    "name,lat,lon,scene", FOREGROUNDS, ids=[f[0] for f in FOREGROUNDS]
+)
+def test_the_cards_foreground_is_the_places_own_land(
+    browser, served, name, lat, lon, scene
+):
+    """Forest, grass, desert and snow where the one grid says so; the sea only where it says there is a coast."""
+    place = json.dumps({"lat": lat, "lon": lon, "name": name})
+    ctx = browser.new_context(
+        viewport=VIEW,
+        device_scale_factor=1,
+        has_touch=True,
+        is_mobile=True,
+        service_workers="block",
+    )
+    ctx.add_init_script(
+        "try { localStorage.setItem('zimi_almanac_place', %r); } catch (e) {}" % place
+    )
+    pg = ctx.new_page()
+    errors = []
+    pg.on("pageerror", lambda e: errors.append(str(e)))
+    pg.goto(served + "/#almanac", wait_until="load")
+    pg.wait_for_function(
+        "() => typeof _skyState !== 'undefined' && _skyState && _skyState.eph && _skyState.land",
+        timeout=120_000,
+        polling=250,
+    )
+    assert pg.evaluate("() => _osCardScene(_skyState)") == scene
+    assert not errors, errors
+    ctx.close()
+
+
+def test_the_card_is_a_plain_horizon_until_the_grid_is_in_and_stays_so_without_it(
+    browser, served
+):
+    """Never the palms by default: with the grid unreachable the card paints a plain horizon, quietly, and does not ask again and again."""
+    place = json.dumps({"lat": 36.7, "lon": -4.4, "name": "Malaga"})
+    ctx = browser.new_context(
+        viewport=VIEW,
+        device_scale_factor=1,
+        has_touch=True,
+        is_mobile=True,
+        service_workers="block",
+    )
+    ctx.add_init_script(
+        "try { localStorage.setItem('zimi_almanac_place', %r); localStorage.removeItem('zimi_sky_land'); } catch (e) {}"
+        % place
+    )
+    asked = []
+    ctx.route("**/landcover-v1.bin", lambda route: (asked.append(1), route.abort())[1])
+    pg = ctx.new_page()
+    errors = []
+    pg.on("pageerror", lambda e: errors.append(str(e)))
+    pg.goto(served + "/#almanac", wait_until="load")
+    pg.wait_for_function(
+        "() => typeof _skyState !== 'undefined' && _skyState && _skyState.eph",
+        timeout=120_000,
+    )
+    pg.wait_for_timeout(4000)
+    assert pg.evaluate("() => _osCardScene(_skyState)") == "plain"
+    assert not pg.evaluate("() => !!_skyState.land")
+    assert len(asked) <= 1, asked
+    assert not errors, errors
+    ctx.close()
