@@ -270,6 +270,7 @@ def test_the_rover_drives_and_its_wheels_stay_on_the_ground(page):
 
 
 def test_the_rover_jumps_in_the_moons_gravity_and_lands_again(page):
+    _visit(page, "moon", "Apollo 15", drive=True)
     page.evaluate(
         "() => { var s = _ae.site; s.input.keys.f = s.input.keys.b = s.input.keys.l = s.input.keys.r = false; s.rover.v = 0; }"
     )
@@ -291,14 +292,20 @@ def test_the_rover_jumps_in_the_moons_gravity_and_lands_again(page):
     assert 3.2 < airborne_s < 4.2, "%.1f s in the air" % airborne_s
     assert page.evaluate("() => _aeSiteState().rover.airborne") is False
     # With its rebound a landing at jump speed lifts the rover again, lower.
-    page.evaluate("() => { AS_BOUNCE_KEEP = window.__keep; _ae.site.input.jump = true; _aeSiteAdvance(1 / 60); }")
-    for _ in range(200):
-        page.evaluate("() => _aeSiteAdvance(1 / 20)")
-        if page.evaluate("() => _ae.site.rover.vz") > 0.3 and page.evaluate("() => _ae.site.rover.z - _ae.site.rover.mean") < 0.5:
+    page.wait_for_timeout(400)  # the jump's cooldown is in real time
+    page.evaluate(
+        "() => { AS_BOUNCE_KEEP = window.__keep; _ae.site.input.jump = true; _aeSiteAdvance(1 / 60); }"
+    )
+    high = False
+    for _ in range(400):
+        r = page.evaluate(
+            "() => { _aeSiteAdvance(1 / 30); var r = _ae.site.rover; return { up: r.z - r.mean, vz: r.vz }; }"
+        )
+        high = high or r["up"] > 1.5
+        if high and r["up"] < 0.1 and r["vz"] > 0.3:
             break
     else:
         pytest.fail("the rover did not rebound")
-
 
 def test_a_mars_rover_has_six_wheels_and_the_ground_there_is_not_the_moons(page):
     st = _visit(page, "mars", "Perseverance", drive=True)
