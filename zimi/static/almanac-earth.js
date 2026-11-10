@@ -566,7 +566,7 @@ var AE_CSS = [
     '#ae-views .ae-chips{flex-direction:column;align-items:flex-start;overflow:visible;gap:4px}' +
     '.ae-spintools{flex-direction:column;gap:4px}' +
     '.ae-mini,.ae-bottom .ae-note{display:none}' +
-    '.ae-card{bottom:auto;top:62px;max-height:min(45vh,calc(100vh - 140px))}' +   // the foot row fills the view here, so a card hung from its top edge went up under the bar: it sits just under the bar instead
+    '.ae-bottom .ae-card{bottom:auto;top:6px;max-height:min(55vh,calc(100vh - 130px))}' +   // the foot row fills the view here, so a card hung from its top edge went up under the bar: it sits just under the bar instead
     '.ae-clock .alm-clock:not(.alm-ck-open) .alm-spd{display:none}' +
   '}',
   '.ae-row{display:flex;gap:6px;flex-wrap:wrap;justify-content:center;pointer-events:auto}',
