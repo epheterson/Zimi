@@ -4,8 +4,8 @@
 
 openZIM and Kiwix take only free content. The Almanac's Golden Record gallery shows 49 of the record's pictures:
 8 NASA photographs (public domain) and 41 that are copyright their owners (golden-record/credits.json). This
-edition keeps the 8 and draws each of the 41 as a card with its caption and credit, so the record's sequence
-stays whole (almanacstage.stage, community). Everything else is the Almanac ``python -m zimi.ownzims`` builds;
+edition keeps the 8 and names each of the 41 in the gallery's list (number, title, credit), so the record's
+sequence stays whole (almanacstage.stage, community). Everything else is the Almanac ``python -m zimi.ownzims`` builds;
 Zimi's own Almanac keeps all 49. Nothing is committed: the file goes to --out.
 """
 

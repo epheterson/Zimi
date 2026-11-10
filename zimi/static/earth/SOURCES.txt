@@ -218,4 +218,4 @@ craft-<model>-v1.bin (scripts/build_craft_models.py)
   page: "All of these images are copyright protected. Reproduction without
   permission of the copyright holder is prohibited."
   The Almanac built for openZIM/Kiwix (scripts/build_almanac_kiwix.py) leaves
-  the 41 out and draws each as a card with its caption and credit.
+  the 41 out and names each in the gallery's list (number, title, credit).

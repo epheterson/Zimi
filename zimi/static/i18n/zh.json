@@ -167,7 +167,7 @@
   "alm_gps_unavailable": "GPS 不可用",
   "alm_gr_subtitle": "唱片上 116 幅图像中的 49 幅，按唱片顺序排列，由卡尔·萨根的团队选定。这张唱片如今距离地球超过 200 亿公里。",
   "alm_gr_pd": "公有领域",
-  "alm_gr_omitted": "本版未收录",
+  "alm_gr_omitted": "本版中，非公有领域的图像只列出名称，不予显示。",
   "alm_gr_note": "其中八幅是 NASA 拍摄的照片，属于公有领域。其余图像的版权归各自所有者，所有者名称标在每幅图像下方：Jon Lomberg、UN Photo、Frank Drake、National Astronomy and Ionosphere Center、Jay M. Pasachoff 和伦敦 Picturepoint。在此展示是为了让人看到唱片发出时的样子；Zimi 不主张对其拥有任何权利。这些是 NASA 对原始图像的扫描，并非从唱片声音中解码而来。来源：NASA，science.nasa.gov。",
   "alm_gr_title": "刻录在唱片上的图像",
   "alm_greatest_elongation": "大距",

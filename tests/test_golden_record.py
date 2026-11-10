@@ -8,7 +8,7 @@ credits.json is the table the gallery draws from: each file, its caption, who it
   2. Exactly 8 are public domain, all NASA's; every owner of the other 41 is named in SOURCES.txt and zimi.txt.
   3. Zimi's own Almanac (the normal stage, and the ZIM built from it) carries all 49.
   4. The community Almanac (openZIM/Kiwix) carries exactly the 8, with the 41 marked omitted in its table (the
-     gallery draws those as cards with caption and credit), and its zimi.txt says so.
+     gallery names those in its list as text), and its zimi.txt says so.
 
 Run: pytest tests/test_golden_record.py -v
 """
@@ -76,6 +76,9 @@ def test_the_gallery_says_no_picture_is_nasa_public_domain_wholesale():
         src = f.read()
     assert "(NASA public domain)" not in src
     assert "_GR_IMAGES" not in src, "the gallery draws from credits.json"
+    gallery = src[src.index("function _renderGoldenRecordGallery") :]
+    gallery = gallery[: gallery.index("\n}\n")]
+    assert "gr-list" in gallery and "gr-row-text" in gallery, "one list; an omitted picture is a line of text"
 
 
 @pytest.fixture(scope="module")
@@ -105,7 +108,7 @@ def test_the_community_almanac_carries_exactly_the_public_domain_eight(staged):
     assert len(omitted) == ALL - PUBLIC_DOMAIN
     assert all(
         not im["pd"] and im["by"] for im in omitted
-    ), "each card keeps its caption and credit"
+    ), "each omitted row keeps its caption and credit"
     assert len(table) == ALL, "the sequence stays whole"
     with open(os.path.join(staged[True], "zimi.txt"), encoding="utf-8") as f:
         meta = f.read()
