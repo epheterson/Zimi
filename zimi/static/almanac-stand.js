@@ -471,6 +471,7 @@ function _aeStCrown(tri, t, sd, kind) {
   }
 }
 // Open country's trees stand in clumps and along draws, not scattered: a density (0..1) at a place round the viewer from two slow noises.
+var AE_STAND_SHRUB_NEAR_M = [15, 60];
 var AE_STAND_SHRUBS = 0.05;   // the share of a dry cell's sites that hold a shrub, in clumps
 function _aeStShrubs(x, y) { var clump = Math.max(0, _aeNoise3(x / 90, y / 90, 7.5, 61)); return Math.min(0.6, AE_STAND_SHRUBS * (0.5 + 10 * clump * clump)); }
 var AE_STAND_GRASS_NEAR_MIN = 24, AE_STAND_SAVANNA_THIN_M = [60, 130];   // open country: trees from 60 m, in their full number by 130
@@ -544,9 +545,10 @@ function _aeStandTrees(st) {
   var R = st.b.km * 1000, h0 = st.h0, lat0 = st.lat, lon0 = st.lon, THREE = _ae.gl.THREE;
   var seed = (Math.round(lat0 * 1e4) * 73856093) ^ (Math.round(lon0 * 1e4) * 19349663), rnd = function () { seed |= 0; seed = seed + 0x6D2B79F5 | 0; var t = Math.imul(seed ^ seed >>> 15, 1 | seed); t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t; return ((t ^ t >>> 14) >>> 0) / 4294967296; };
   var landAt = typeof _osLandCover === 'function' ? _osLandCover(lat0, lon0) : null;
-  var list = [], ratio = AE_STAND_TREES_RANGE_M[1] / AE_STAND_TREES_RANGE_M[0], thin = landAt && landAt.cls === 'grass' ? AE_STAND_SAVANNA_THIN_M : AE_STAND_TREES_THIN_M;
+  var dry = !!landAt && landAt.cls === 'desert', lo = dry ? AE_STAND_SHRUB_NEAR_M[0] : AE_STAND_TREES_RANGE_M[0];   // shrubs are low: seen from 15 m, not 60
+  var list = [], ratio = AE_STAND_TREES_RANGE_M[1] / lo, thin = dry ? AE_STAND_SHRUB_NEAR_M : landAt && landAt.cls === 'grass' ? AE_STAND_SAVANNA_THIN_M : AE_STAND_TREES_THIN_M;
   for (var k = 0, maxTrees = Math.round(AE_STAND_TREES_MAX * _aeStandDetail()); k < AE_STAND_TREES_TRIES && list.length < maxTrees; k++) {
-    var r = AE_STAND_TREES_RANGE_M[0] * Math.pow(ratio, rnd()), th = rnd() * 2 * Math.PI, d = _aeDestination(lat0, lon0, r / R, th);
+    var r = lo * Math.pow(ratio, rnd()), th = rnd() * 2 * Math.PI, d = _aeDestination(lat0, lon0, r / R, th);
     var near = Math.max(0, Math.min(1, (r - thin[0]) / (thin[1] - thin[0])));
     if (rnd() > near * near) continue;   // thinner near the viewer: the first frame is not a wall
     var wood = _aeStForest(px, d.lat, d.lon), land = typeof _osLandCover === 'function' ? _osLandCover(d.lat, d.lon) : null;
@@ -1434,7 +1436,7 @@ function _aeStandHudText(st) {
   var el = _aeById('ae-stand-text'), fr = st.fr;
   if (!el) return;
   var head = ((st.yaw + st.userYaw) * 180 / Math.PI % 360 + 360) % 360;   // where the view faces; the Sun's own bearing follows its height
-  var line2 = (fr ? '☀ ' + Math.round(fr.sunAlt) + '°' + (fr.sunAlt < 0 ? ' ↓' : '') + ' · ' + _aeCompassPoint(fr.sunAz) + '    ' : '') + Math.round(head) + '° ' + _aeCompassPoint(head);
+  var line2 = (fr ? '☀ ' + Math.round(fr.sunAlt) + '°' + (fr.sunAlt < 0 ? ' ↓' : '') + ' · ' + _aeCompassPoint(_aeDeg(fr.sunAz)) + '    ' : '') + Math.round(head) + '° ' + _aeCompassPoint(head);
   var local = _aeStPlaceTime(st), html = '<b>' + _almEsc(_aeInfoName(st.key)) + '</b><span>' + _almEsc(_aeFmtLatLon({ lat: st.lat, lon: st.lon })) + ' · ' + _almEsc(_aeStHeightText(st.h0)) + '</span><span>' + _almEsc(line2) + '</span>' + (local ? '<span>' + _almEsc(local) + '</span>' : '');
   var rise = fr && fr.sunAlt < -AE_STAND_RISE_OFFER_DEG && st.key !== 'earth' ? _aeStNextSunrise(st, _aeDisplayMs()) : null;
   if (rise) html += '<span><a href="#" class="ae-stand-sunrise" data-ae-sunrise>' + _almEsc(_aeT('alm_lm_night_until', { date: _aeFmtWhen(rise) })) + '</a></span>';
