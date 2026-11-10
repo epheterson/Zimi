@@ -1,7 +1,9 @@
 """Apollo 11's powered descent, from the state at powered descent initiation that mission_apollo11_stage3.py saved."""
 
+import faulthandler
 import json
 import os
+import sys
 
 import numpy as np
 
@@ -12,6 +14,7 @@ from mission_apollo11_descent import descent
 from mission_flight import Flight
 
 if __name__ == "__main__":
+    faulthandler.dump_traceback_later(240, repeat=True, file=sys.stderr)
     d = json.load(open(os.path.join(mp.CACHE, "apollo11_stage3.json")))
     moon, sun = path.ephemerides()
     fl = Flight(moon, sun, mp.earth_pole_ecl(ZERO_JD))

@@ -15,6 +15,7 @@ is mwoffliner's Parsoid HTML (tests/wiki_fixture.py).
 Run: pytest tests/test_wiki_reader.py -v
 """
 
+import json
 import os
 import sys
 import threading
@@ -374,7 +375,30 @@ def test_languages_by_qid_land_on_the_same_section_and_sit_side_by_side(served):
             br.close()
 
 
-def test_one_topic_every_wiki_a_strip_after_the_lead(served):
+@pytest.fixture
+def installed_map(served):
+    """A map of France and its neighbours in the library for one test, taken out again after (the strip asks the
+    server which map holds a place, so it must be a real ZIM, not a row in the page)."""
+    from conftest_zim import build_fixture_zim
+
+    path = os.path.join(srv.ZIM_DIR, "osm-test.zim")
+    build_fixture_zim(
+        path,
+        {"Scraper": "maps2zim v0.2.1", "Title": "Test map"},
+        files={
+            "content/config.json": json.dumps(
+                {"boundingBox": [[-5.0, 40.0], [10.0, 55.0]], "maxzoom": 12}
+            ).encode()
+        },
+        main_path="content/config.json",
+    )
+    srv.load_cache(force=True)
+    yield "osm-test"
+    os.unlink(path)
+    srv.load_cache(force=True)
+
+
+def test_one_topic_every_wiki_a_strip_after_the_lead(served, installed_map):
     from playwright.sync_api import sync_playwright
 
     with sync_playwright() as pw:
@@ -404,9 +428,6 @@ def test_one_topic_every_wiki_a_strip_after_the_lead(served):
                 timeout=15000,
             )
             # A place, with a map of there installed: a way onto the map at it.
-            pg.evaluate(
-                "() => { zimsCache.push({ name: 'osm-test', title: 'Test map', kind: 'map', map_bounds: [-5, 40, 10, 55], main_path: 'index.html' }); }"
-            )
             _from_zimipedia(pg, "wikipedia", "Paris")
             pg.wait_for_function(
                 "() => !!document.getElementById('reader-frame').contentDocument.querySelector('.zw-strip .zw-map')",
@@ -414,7 +435,7 @@ def test_one_topic_every_wiki_a_strip_after_the_lead(served):
             )
             fr.locator(".zw-strip .zw-map").click()
             pg.wait_for_timeout(300)
-            assert pg.evaluate("() => currentArticle.zim") == "osm-test"
+            assert pg.evaluate("() => currentArticle.zim") == installed_map
             assert "map=12.00/48.85670/2.35080" in pg.evaluate("() => location.hash")
         finally:
             br.close()
