@@ -4022,5 +4022,17 @@
   "tb_kn_airliner_v": "Geschwindigkeit eines Verkehrsflugzeugs",
   "tb_kn_heli_h": "Flughöhe eines Hubschraubers",
   "tb_kn_heli_v": "Geschwindigkeit eines Hubschraubers",
-  "tb_kn_heli_beacon": "Blinktakt des Hubschrauber-Rundumlichts"
+  "tb_kn_heli_beacon": "Blinktakt des Hubschrauber-Rundumlichts",
+  "alm_ms_ph_separation": "Trennung der Reisestufe",
+  "alm_ms_ph_touchdown": "Aufsetzen",
+  "alm_ms_ev_cruise_sep": "Trennung der Reisestufe",
+  "alm_ms_ev_m20_entry": "Atmosphäreneintritt",
+  "alm_ms_ev_peak_heat": "Maximale Erhitzung",
+  "alm_ms_ev_chute": "Fallschirm geöffnet",
+  "alm_ms_ev_hs_sep": "Hitzeschild abgeworfen",
+  "alm_ms_ev_bs_sep": "Rückschale abgetrennt",
+  "alm_ms_ev_skycrane": "Sky-Crane",
+  "alm_ms_ev_m20_touchdown": "Aufsetzen",
+  "tb_kn_ms_m20": "Perseverance: Eintritt und Landung",
+  "tb_kn_ms_m20_v": "Folgt den veröffentlichten Ereignissen der Landung und endet am Perseverance-Punkt; Eintrittsrichtung sowie Höhe und Geschwindigkeit zwischen den Ereignissen sind angenommen, nicht simuliert"
 }

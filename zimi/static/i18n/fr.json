@@ -4022,5 +4022,17 @@
   "tb_kn_airliner_v": "Vitesse d'un avion de ligne",
   "tb_kn_heli_h": "Altitude d'un hélicoptère",
   "tb_kn_heli_v": "Vitesse d'un hélicoptère",
-  "tb_kn_heli_beacon": "Clignotement du feu d'un hélicoptère"
+  "tb_kn_heli_beacon": "Clignotement du feu d'un hélicoptère",
+  "alm_ms_ph_separation": "Séparation de l'étage de croisière",
+  "alm_ms_ph_touchdown": "Atterrissage",
+  "alm_ms_ev_cruise_sep": "Séparation de l'étage de croisière",
+  "alm_ms_ev_m20_entry": "Entrée atmosphérique",
+  "alm_ms_ev_peak_heat": "Pic de chauffe",
+  "alm_ms_ev_chute": "Parachute déployé",
+  "alm_ms_ev_hs_sep": "Séparation du bouclier thermique",
+  "alm_ms_ev_bs_sep": "Séparation de la coque arrière",
+  "alm_ms_ev_skycrane": "Grue céleste",
+  "alm_ms_ev_m20_touchdown": "Atterrissage",
+  "tb_kn_ms_m20": "Perseverance : entrée et atterrissage",
+  "tb_kn_ms_m20_v": "Suit les événements publiés de l'atterrissage et finit au repère de Perseverance ; le cap d'entrée et l'altitude et la vitesse entre les événements sont supposés, non simulés"
 }

@@ -121,7 +121,7 @@ def phases():
             1.0,
             10,
             "csmlm",
-            {"d": 70, "az": 80, "el": 10, "look": [0, 12, 0]},
+            {"d": 70, "az": 80, "el": 10, "look": [0, 26, 0]},
             ref="moon",
             far=False,
         ),
@@ -174,8 +174,8 @@ def phases():
         ph(E["tei"] - 400, "tei", "Trans-Earth injection", 0.8, 3, "columbia", {"d": 55, "az": 80, "el": 10, "look": [0, 0, 0]}, ref="moon", far=False),
         ph(E["tei"] + 500, "home", "Coast home", 1.0, 5000, "columbia", {"body": "moon", "d": 4e7, "az": 0.4, "el": 0.2, "mix": 0.4}),
         ph(E["cm_sm_sep"] - 30, "entry", "Entry", 1.0, 4, "cm", {"d": 40, "az": 100, "el": 12, "look": [0, 0, 0]}, far=False),
-        ph(G["drogue"] - 10, "chutes", "Parachutes", 0.9, 4, "cm", {"d": 170, "az": 60, "el": 4, "look": [0, 0, 24]}, far=False),
-        ph(E["splash"] - 40, "splash", "Splashdown", 0.5, 1, "cm", {"d": 130, "az": 50, "el": 4, "look": [0, 0, 22]}, far=False),
+        ph(G["drogue"] - 10, "chutes", "Parachutes", 0.9, 4, "cm", {"d": 170, "az": 92, "el": 4, "look": [0, 0, 24]}, far=False),
+        ph(E["splash"] - 40, "splash", "Splashdown", 0.5, 1, "cm", {"d": 130, "az": 92, "el": 4, "look": [0, 0, 22]}, far=False),
     ]
 
 

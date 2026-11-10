@@ -99,3 +99,28 @@ def test_apollo_11_parking_orbit_is_the_reports(missions):
     assert abs(a * (1 + e) - 6378.137 - 100.7 * nm) < 8.0   # the fit leaves 7 km on the perigee and about a degree of plane: tighten these when the ascent plane is solved
     assert abs(a * (1 - e) - 6378.137 - 99.2 * nm) < 8.0
     assert abs(inc - 32.521) < 1.2
+
+
+def test_perseverance_touches_down_on_the_sites_own_pin(missions):
+    """The landing ends where the 3D view's Perseverance pin is (landmarks-v1.json, the one the site visit and Stand here use), on the Mars-fixed ground, at the time
+    sites-v1.json gives for it. The pin is given to 4 decimals (about 6 m); the flown point must be within 0.01 degrees (600 m)."""
+    import math
+
+    m = missions.get("perseverance")
+    if not m:
+        pytest.skip("the Perseverance table is not in this build")
+    root = os.path.join(ROOT, "zimi", "static", "earth")
+    with open(os.path.join(root, "landmarks-v1.json"), encoding="utf-8") as fh:
+        pin = [r for r in json.load(fh)["mars"] if r[0] == "Perseverance"][0]
+    with open(os.path.join(root, "sites-v1.json"), encoding="utf-8") as fh:
+        site = [s for s in json.load(fh)["sites"] if s["name"] == "Perseverance"][0]
+    sky = [v for v in m["vehicles"] if v["id"] == "sky"][0]
+    last = sky["legs"][-1]["s"][-1]
+    assert sky["legs"][-1]["frame"] == "mfix"
+    x, y, z = last[1:4]
+    r = math.sqrt(x * x + y * y + z * z)
+    assert abs(r - 3396.2) < 0.05   # on the sphere a site stands on
+    lat, lon = math.degrees(math.asin(z / r)), math.degrees(math.atan2(y, x))
+    assert abs(lat - pin[1]) < 0.01 and abs(((lon - pin[2] + 180) % 360) - 180) < 0.01, (lat, lon, pin)
+    t_touch = m["zeroMs"] / 1000.0 + last[0]
+    assert abs(t_touch * 1000 - site["ms"]) < 2000, (t_touch, site["ms"])

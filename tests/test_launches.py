@@ -203,7 +203,7 @@ def _write_cache(tmp_path, age_s, monkeypatch):
     """A cache `age_s` old, newer than a shipped snapshot a year old."""
     payload = dict(launches.read_snapshot())
     monkeypatch.setattr(launches, "read_snapshot", lambda: dict(payload, fetched_at=time.time() - 365 * 86400))
-    (tmp_path / launches.CACHE_FILENAME).write_text(json.dumps(dict(payload, fetched_at=time.time() - age_s)))
+    (tmp_path / launches.CACHE_FILENAME).write_text(json.dumps(dict(payload, fetched_at=time.time() - age_s)), encoding="utf-8")
 
 
 def test_get_answers_from_the_snapshot_and_fetches_nothing(isolated, monkeypatch):
@@ -368,4 +368,4 @@ def test_a_gzip_snapshot_roundtrips_byte_for_byte(tmp_path):
     launches.write_snapshot(a, p)
     launches.write_snapshot(b, p)
     assert open(a, "rb").read() == open(b, "rb").read()
-    assert json.loads(gzip.open(a, "rt").read())["l"][0] == p["l"][0]
+    assert json.loads(gzip.open(a, "rt", encoding="utf-8").read())["l"][0] == p["l"][0]
