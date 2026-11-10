@@ -495,3 +495,8 @@ def test_a_part_must_be_a_known_one_named_for_it():
         dict(REL, parts="moon"),
     ):
         assert almanachd.parse_manifest(json.dumps(bad), "1.15.4") is None, bad
+def test_every_part_is_a_data_pack_so_it_is_never_on_home_or_searched():
+    from zimi import server
+
+    for part in almanachd.PARTS:
+        assert almanachd.part_name(part) in server.DATA_PACKS, part
