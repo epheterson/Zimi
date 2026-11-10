@@ -51,10 +51,15 @@ def test_the_row_lists_the_latest_release_only(browser, served):
     # Directly under the table, ahead of the Daily row.
     order = page.eval_on_selector_all(
         ".sh-top > section",
-        "els => els.map(e => e.className.split(' ').filter(c => /^ar-(continue|new|daily)$/.test(c))[0])",
+        "els => els.map(e => e.className.split(' ').filter(c => /^ar-(continue|world|new|daily)$/.test(c))[0])",
     )
-    assert order.index("ar-new") == order.index("ar-continue") + 1
+    # The table, the world's favorites, what is new, then the rest: the games that use your library are not what the shelf opens on.
+    assert order[:3] == ["ar-continue", "ar-world", "ar-new"], order
     assert order.index("ar-new") < order.index("ar-daily")
+    world = page.eval_on_selector_all(".ar-world a.ar-game", "els => els.map(e => e.getAttribute('href'))")
+    assert world[:3] == ["sudoku.html", "minesweeper.html", "backgammon.html"] and len(world) == 10, world   # the idle table shows the classics
+    sections = page.eval_on_selector_all(".sh-list > section", "els => els.map(e => e.querySelector('h2').id)")
+    assert sections[-1] == "ar-library" and sections[0] != "ar-library", sections
     # Not one picture ten times: the first six are not all one kind.
     kinds = {r["path"]: r["kind"] for r in rows() if "kind" in r}
     assert len({kinds[p] for p in got[:6]}) >= 3

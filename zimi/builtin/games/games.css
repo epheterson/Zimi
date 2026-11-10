@@ -338,28 +338,28 @@ html.gs-hosted .ar-shelf header:not(:has(.sh-tools)) { display: none; }
 .sh-top .ar-section { margin: 0; }
 .ar-continue[hidden] { display: none; }
 /* Daily: today's edition of each game, one row you scroll sideways only; the ones done carry a tick and sit at the end. */
-.ar-daily, .ar-new { flex: 1 1 100%; min-width: 0; }
-.ar-daily[hidden], .ar-new[hidden] { display: none; }
+.ar-daily, :is(.ar-new, .ar-world) { flex: 1 1 100%; min-width: 0; }
+.ar-daily[hidden], :is(.ar-new, .ar-world)[hidden] { display: none; }
 .ar-daily > h2 { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 10px; }
 .ar-daily-line { color: var(--ink2); font-size: var(--fs-small); font-weight: 500; font-variant-numeric: tabular-nums; }
 .ar-daily-stats { margin-inline-start: auto; font: inherit; font-size: var(--fs-small); font-weight: 600; color: var(--accent); background: none; border: 0; padding: 6px 2px; min-height: 44px; cursor: pointer; }
-.ar-daily .ar-games, .ar-new .ar-games { display: flex; gap: 10px; overflow-x: auto; overflow-y: hidden; overscroll-behavior-x: contain; touch-action: pan-x; scrollbar-width: none; scroll-snap-type: x proximity; scroll-padding-inline: 16px; margin: 0 -16px; padding: 2px 16px 6px; }
-.ar-daily, .ar-new { --daily-w: 132px; }
-.ar-daily .ar-game, .ar-new .ar-game { flex: 0 0 var(--daily-w); position: relative; scroll-snap-align: start; }
-.ar-daily .ar-game-text span, .ar-new .ar-game-text span { display: none; }
+.ar-daily .ar-games, :is(.ar-new, .ar-world) .ar-games { display: flex; gap: 10px; overflow-x: auto; overflow-y: hidden; overscroll-behavior-x: contain; touch-action: pan-x; scrollbar-width: none; scroll-snap-type: x proximity; scroll-padding-inline: 16px; margin: 0 -16px; padding: 2px 16px 6px; }
+.ar-daily, :is(.ar-new, .ar-world) { --daily-w: 132px; }
+.ar-daily .ar-game, :is(.ar-new, .ar-world) .ar-game { flex: 0 0 var(--daily-w); position: relative; scroll-snap-align: start; }
+.ar-daily .ar-game-text span, :is(.ar-new, .ar-world) .ar-game-text span { display: none; }
 .ar-daily .ar-game.ar-done .ar-game-art { opacity: 0.5; }
 /* Every Daily tile the same size: the same art crop, a name on one line. The day's game wears a small badge along the foot of its art (the done tick has the top corner). */
-.ar-daily .ar-game-text strong, .ar-new .ar-game-text strong { display: block; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.ar-daily .ar-game-art, .ar-new .ar-game-art { aspect-ratio: 16 / 9; height: auto; }
+.ar-daily .ar-game-text strong, :is(.ar-new, .ar-world) .ar-game-text strong { display: block; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.ar-daily .ar-game-art, :is(.ar-new, .ar-world) .ar-game-art { aspect-ratio: 16 / 9; height: auto; }
 .ar-feature-tag { position: absolute; top: calc(var(--daily-w) * 9 / 16 - 26px); inset-inline-start: 6px; max-width: calc(100% - 12px); padding: 2px 8px; border-radius: 999px; background: var(--accent); color: var(--accent-ink); font-size: 11px; font-weight: 650; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 /* Where the everyday seven end and the rest begin: a little more room, no label. */
 .ar-daily .ar-daily-main + .ar-game:not(.ar-daily-main) { margin-inline-start: 14px; }
 .ar-done-mark { position: absolute; top: 6px; inset-inline-end: 6px; width: 24px; height: 24px; display: grid; place-items: center; border-radius: 50%; background: var(--accent); color: var(--accent-ink); font-size: 14px; font-weight: 700; line-height: 1; }
-[data-view="index"] .ar-daily .ar-games, [data-view="index"] .ar-new .ar-games { display: flex; }
-[data-view="index"] .ar-daily .ar-game, [data-view="index"] .ar-new .ar-game { flex: 0 0 var(--daily-w); flex-direction: column; align-items: stretch; gap: 0; padding: 0; }
-[data-view="index"] .ar-daily .ar-game-art, [data-view="index"] .ar-new .ar-game-art { flex: none; width: 100%; height: auto; aspect-ratio: 16 / 9; border-radius: 0; }
-[data-view="index"] .ar-daily .ar-game-text, [data-view="index"] .ar-new .ar-game-text { padding: 8px 10px 10px; }
-.ar-daily .ar-game .sh-meta, .ar-new .ar-game .sh-meta, [data-view="index"] :is(.ar-daily, .ar-new) .ar-game-text span, [data-view="index"] :is(.ar-daily, .ar-new) .ar-game::after { display: none; }
+[data-view="index"] .ar-daily .ar-games, [data-view="index"] :is(.ar-new, .ar-world) .ar-games { display: flex; }
+[data-view="index"] .ar-daily .ar-game, [data-view="index"] :is(.ar-new, .ar-world) .ar-game { flex: 0 0 var(--daily-w); flex-direction: column; align-items: stretch; gap: 0; padding: 0; }
+[data-view="index"] .ar-daily .ar-game-art, [data-view="index"] :is(.ar-new, .ar-world) .ar-game-art { flex: none; width: 100%; height: auto; aspect-ratio: 16 / 9; border-radius: 0; }
+[data-view="index"] .ar-daily .ar-game-text, [data-view="index"] :is(.ar-new, .ar-world) .ar-game-text { padding: 8px 10px 10px; }
+.ar-daily .ar-game .sh-meta, :is(.ar-new, .ar-world) .ar-game .sh-meta, [data-view="index"] :is(.ar-daily, :is(.ar-new, .ar-world)) .ar-game-text span, [data-view="index"] :is(.ar-daily, :is(.ar-new, .ar-world)) .ar-game::after { display: none; }
 
 /* Index: rows, one section at a time. */
 @media (max-width: 899px) {
