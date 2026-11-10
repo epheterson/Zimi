@@ -714,7 +714,7 @@ def test_in_totality_the_sky_is_deep_twilight_and_venus_and_jupiter_are_drawn(
         "() => typeof _aeStandOpen === 'function' && typeof _osEclipse === 'function' && typeof _jdToJulianCentury === 'function'",
         timeout=120_000,
     )
-    ms = _ms("2024-04-08T18:34:50")
+    ms = _ms("2024-04-08T18:33:15")  # the Stand clock runs on while the test works: start early in the four minutes
     pg.evaluate(
         "(ms) => _aeStandOpen({ body: 'earth', lat: 30.0474, lon: -99.1403, ms: ms, heading: 180, pitch: 20, clouds: 'clear', direct: true })",
         ms,
