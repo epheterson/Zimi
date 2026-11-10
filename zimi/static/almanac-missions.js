@@ -443,18 +443,20 @@ function _aeMissionDraw() {
 
 // ── The hand-off at touchdown ──
 // On the Moon the mission gives way to the ground's site visit (almanac-sites.js), at the landing instant, with a chip that comes back to the mission at lift-off.
-var AM_SITE_WAIT_MS = 6000, AM_BACK_ID = 'am-back', AM_BACK_WATCH_MS = 600, AM_POLL_MS = 100;
+var AM_SITE_WAIT_MS = 6000, AM_BACK_ID = 'am-back', AM_BACK_WATCH_MS = 600, AM_POLL_MS = 100, AM_RESUME_PAST_S = 25;   // the ascent phase begins 20 s before lift-off: the way back lands just after it
 function _amLandingRow(name) {
   var rows = (typeof _aeLm !== 'undefined' && _aeLm && _aeLm.moon) || [];
   return rows.filter(function (r) { return r[3] === 'landing' && r[0] === name; })[0] || null;
 }
 function _amHandoff(m, pi) {
-  var id = _ae.mission.id, row = _amLandingRow(m.handoff.site), resume = (m.phases[pi + 1] || m.phases[pi]).t, landed = m.phases[pi].t, zero = _ae.mission.zeroMs;
-  if (!row || typeof _aeSitesLoad !== 'function') return;
+  var id = _ae.mission.id, resume = (m.phases[pi + 1] || m.phases[pi]).t + AM_RESUME_PAST_S, landed = m.phases[pi].t, zero = _ae.mission.zeroMs;
+  if (typeof _aeSitesLoad !== 'function') return;
   _aeSitesLoad();
+  if (typeof _aeLmLoad === 'function') _aeLmLoad();
   var waited = 0;
   var go = function () {
-    if (typeof _aeSiteVisit !== 'function' || typeof _asData === 'undefined' || !_asData) {
+    var row = _amLandingRow(m.handoff.site);
+    if (!row || typeof _aeSiteVisit !== 'function' || typeof _asData === 'undefined' || !_asData) {
       if ((waited += AM_POLL_MS) < AM_SITE_WAIT_MS) setTimeout(go, AM_POLL_MS);
       return;
     }
