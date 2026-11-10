@@ -55,6 +55,7 @@ def page(served):
             is_mobile=True,
             service_workers="block",
         )
+        ctx.add_init_script("try { if (!localStorage.getItem('zimi_cap')) localStorage.setItem('zimi_cap', 'auto'); } catch (e) {}")   # a test browser gets Full unless it says Auto
         pg = ctx.new_page()
         pg.errors = []
         pg.on("pageerror", lambda e: pg.errors.append(str(e)))
@@ -111,5 +112,5 @@ def test_the_gear_offers_the_three_choices_and_Full_tries_the_view(page):
 def test_Auto_puts_the_plain_line_back(page):
     page.evaluate("() => ZimiCap.set('auto')")
     page.wait_for_function("() => _ae.capStatic && _ae.failed", timeout=20_000)
-    assert page.evaluate("() => localStorage.getItem('zimi_cap')") is None
+    assert page.evaluate("() => localStorage.getItem('zimi_cap')") == "auto"
     assert not page.errors, page.errors

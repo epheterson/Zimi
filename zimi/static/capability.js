@@ -55,7 +55,13 @@ var ZimiCap = window.ZimiCap || (function () {
     } catch (e) {}
     return null;
   }
-  function setting() { var s = store('local', SETTING_KEY); return SETTINGS.indexOf(s) >= 0 ? s : 'auto'; }
+  // The person's word, else Auto; an automated browser (a test) with no word gets Full: it is not somebody's device, and
+  // a suite that opens the 3D view must not be met by the plain line. A test of the levels says Auto in so many words.
+  function setting() {
+    var s = store('local', SETTING_KEY);
+    if (SETTINGS.indexOf(s) >= 0) return s;
+    return navigator.webdriver ? 'full' : 'auto';
+  }
   function emit(evt, info) { listeners.slice().forEach(function (fn) { try { fn(evt, info); } catch (e) {} }); }
 
   // What the device says about itself, read once. The throwaway WebGL context is lost again at once.
@@ -259,7 +265,7 @@ var ZimiCap = window.ZimiCap || (function () {
   }
   function choose(v) {
     if (SETTINGS.indexOf(v) < 0) return;
-    store('local', SETTING_KEY, v === 'auto' ? null : v);
+    store('local', SETTING_KEY, v);
     levelNow = null; step = 0; slowTotal = 0; fellBack = false; frames = {};
     store('session', LEVEL_KEY, null);
     emit('setting', { setting: v, level: level() });

@@ -24,7 +24,7 @@ function load(sig, stored) {
   const gl = sig.gl;
   const ctx = {
     window: {},
-    navigator: { deviceMemory: sig.mem, hardwareConcurrency: sig.cores, connection: { saveData: !!sig.saveData } },
+    navigator: { deviceMemory: sig.mem, hardwareConcurrency: sig.cores, webdriver: !!sig.webdriver, connection: { saveData: !!sig.saveData } },
     matchMedia: (q) => ({ matches: /coarse/.test(q) ? !!sig.coarse : /reduce/.test(q) ? !!sig.reduced : false }),
     localStorage: mkStorage(store),
     sessionStorage: mkStorage(session),
@@ -82,6 +82,13 @@ check(load({ mem: 0, cores: 8, gl: GL(), benchMs: 20 }).cap.level() === 'low', '
   check(r.cap.signals().benchMs === 0, 'the benchmark does not run when the signals settle it');
 }
 
+// ── An automated browser is a test, not a device ──
+{
+  const sw = { mem: 8, cores: 8, gl: GL({ renderer: 'SwiftShader' }), webdriver: true };
+  check(load(sw).cap.setting() === 'full' && load(sw).cap.view3d() === 'open', 'a test browser (webdriver) gets Full unless it says otherwise');
+  check(load(sw, { zimi_cap: 'auto' }).cap.view3d() === 'static', 'a test of the levels says Auto in so many words');
+}
+
 // ── The 3D view opens, or gives a plain line ──
 check(load({ mem: 8, cores: 8, gl: GL({ renderer: 'SwiftShader' }) }).cap.view3d() === 'static', 'Auto on software GL: the plain line, not a tab crash');
 check(load({ mem: 8, cores: 8, gl: null }).cap.view3d() === 'static', 'no WebGL: the plain line');
@@ -94,7 +101,7 @@ check(load({ mem: 4, cores: 4, gl: GL({ renderer: 'V3D 4.2' }) }).cap.view3d() =
   check(r.cap.view3d() === 'open' && r.cap.level() === 'low', 'Light tries the view at the low level');
   check(r.store.zimi_cap === 'light', 'the choice is kept on the device');
   r.cap.set('auto');
-  check(r.cap.view3d() === 'static' && !('zimi_cap' in r.store), 'Auto asks the signals again and forgets the choice');
+  check(r.cap.view3d() === 'static' && r.store.zimi_cap === 'auto', 'Auto asks the signals again');
 }
 {
   const r = load({ mem: 8, cores: 10, gl: GL() });
