@@ -418,6 +418,18 @@ def test_a_provider_eclipse_dims_the_sun_shows_stars_and_draws_the_moon_over_the
     ), got  # the Sun at its true semi-diameter
     assert any(g["occ"] > 0 for g in got), got  # with the Moon's disc over it
     assert any(g["cor"] == 1 for g in got), got  # and the corona on the Moon
+    # Without the provider's ambient the ground's sky light is this view's own, dimmed by the share; with it, the provider's, as given.
+    dim = page.evaluate("() => _ae.stand.photo.amb.map(function (x) { return x; })")
+    page.evaluate(
+        """() => { _aeStandAir.ambient = function () { return { amb: [0.0123, 0.0123, 0.0123], horizon: [0.02, 0.02, 0.02], zenith: [0.03, 0.03, 0.03] }; };
+          _ae.stand.fr = null; _ae.stand.dirty = true; _ae.dirty = true; _aeKick(); }"""
+    )
+    page.wait_for_function(
+        "() => _ae.stand.photo && _ae.stand.photo.amb[0] === 0.0123 && _ae.stand.photo.zen[0] === 0.03 && _ae.stand.photo.hor[0] === 0.02",
+        timeout=30_000,
+        polling=250,
+    )
+    assert max(dim) < 0.01, dim  # the own march under a 0.003 share is dim, not a day's
     page.evaluate("() => { _aeStandAir = null; }")
     _leave(page)
     assert not page.errors, page.errors

@@ -267,6 +267,19 @@ land-v1.bin (scripts/build_landmask.py)
   polygons (ne_10m_land, public domain, naturalearthdata.com), rasterised to
   8192 x 4096 and stored as runs (214 KB). The Great Lakes read as land.
 
+landcover-v1.bin (scripts/build_landcover.py)
+  What the land is, one degree a cell, for the live sky's foreground and Stand here's
+  trees (read by almanac-oneland.js): the Blue Marble colour map (NASA Earth Observatory,
+  public domain, earth-day-v1.webp) classified by colour into broadleaf and conifer forest,
+  grass, shrub and desert, snow and ice, and tundra, with each cell's mean colour, and
+  Natural Earth's land polygons (land-v1.bin) for sea and coast. 36 KB. A classification
+  of a picture, not a survey: a cell is the class most of its land pixels look like.
+  Tundra is not found by colour: it is land that is not snow and lies poleward of the
+  Arctic tree line, a coarse longitude table (about 68 N across Eurasia, 58 N round
+  Hudson Bay and Labrador, 60 N in western Alaska; all of Greenland and Iceland) after the
+  CAFF Circumpolar Arctic Vegetation Map (CAVM Team 2003) and Callaghan et al. 2002
+  (Ambio 31), good to a couple of degrees, and the ground south of 55 S.
+
 missions-v1.json, craft-ms-*-v1.bin (scripts/build_missions.py, scripts/build_mission_models.py)
   Apollo 11: NASA Apollo 11 Mission Report MSC-00171 (events, states, masses), public
   domain; the Moon's and Sun's places from JPL Horizons (NASA/JPL, public domain). The
