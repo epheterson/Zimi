@@ -331,7 +331,7 @@ function _aeStandGroundMesh(st, pend, U, mat) {
     uMap: { value: pend.tex || null }, uMapped: { value: pend.tex ? 1 : 0 }, uGrey: { value: AE_STAND_GREY_MAP[st.key] ? 1 : 0 },
     uBase: { value: AE_STAND_BASE[st.key] || [0.5, 0.5, 0.5] }, uGain: { value: AE_STAND_TINT[st.key] || [1, 1, 1] },
     uAmbient: { value: [0, 0, 0] }, uSkyHor: { value: [0, 0, 0] }, uSkyZen: { value: [0, 0, 0] }, uE2: { value: [0, 0, 0] }, uDir2: { value: [0, 0, 1] },
-    uLommel: { value: a ? 0 : 1 }, uRough: { value: AE_STAND_ROUGH[st.key] || (st.b.fbm.amp > 100 ? 1.3 : 1) }, uRock: { value: AE_STAND_ROCK[st.key] || 0.25 }, uDetail: { value: st.key === 'earth' ? 1 : 0 }, uCloudDim: { value: 1 }, uKg: { value: 1 }, uGrass: { value: 0 }, uCanopy: { value: 0 }, uHead: { value: [0, 1] }, uCover: { value: st.key === 'earth' ? 1 : 0 },
+    uLommel: { value: a ? 0 : 1 }, uRough: { value: AE_STAND_ROUGH[st.key] || (st.b.fbm.amp > 100 ? 1.3 : 1) }, uRock: { value: AE_STAND_ROCK[st.key] || 0.25 }, uDetail: { value: st.key === 'earth' ? 1 : 0 }, uCloudDim: { value: 1 }, uKg: { value: 1 }, uGrass: { value: 0 }, uTundra: { value: 0 }, uCanopy: { value: 0 }, uHead: { value: [0, 1] }, uCover: { value: st.key === 'earth' ? 1 : 0 },
     uDiffuse: { value: d ? 1 : 0 }, uVis: { value: d ? d.vis : 1 }, uDirect: { value: 1 }, uDiffSky: { value: [0, 0, 0] }
   }, U);
   var ground = st.groundMesh = new THREE.Mesh(g, mat(AE_ST_GROUND_VERT, AE_ST_GROUND_FRAG, gu, {}));
@@ -427,6 +427,12 @@ function _aeStForest(px, lat, lon) {   // 0..1: how much of this place the map s
 // What grows where: firs and spruce in the north and the mountains (20 to 40 m), round-crowned broadleaves in the temperate lowlands
 // (10 to 25 m), palms in the tropics (8 to 18 m); nothing where the map is not green, above the tree line or beyond the high latitudes.
 var AE_STAND_GRASS_TREES = 0.08, AE_STAND_FOREST_TREES = 0.6;   // the share of a grass cell's sites that hold a tree, and the least of a forest cell's
+// Bare ground the map shows dark and grey (lava, scree, burn): 0..1. Grass and trees thin out on it whatever the class says.
+function _aeStRock(px, lat, lon) {
+  var x = Math.min(px.w - 1, Math.max(0, Math.floor((lon + 180) / 360 * px.w))), y = Math.min(px.h - 1, Math.max(0, Math.floor((lat + 90) / 180 * px.h))), i = 4 * (y * px.w + x);
+  var r = px.d[i] / 255, g = px.d[i + 1] / 255, b = px.d[i + 2] / 255, hi = Math.max(r, g, b), lo = Math.min(r, g, b), lum = 0.3 * r + 0.59 * g + 0.11 * b, sat = hi > 0.02 ? (hi - lo) / hi : 0;
+  return Math.max(0, Math.min(1, (0.3 - lum) / 0.15)) * Math.max(0, Math.min(1, (0.28 - sat) / 0.14));
+}
 function _aeStTreeKind(lat, h, rnd, cls) {
   var a = Math.abs(lat);
   if (a > 66) return null;
@@ -474,9 +480,11 @@ function _aeStSavanna(x, y) {
 var AE_STAND_GRASS_COUNT = 18000, AE_STAND_GRASS_RANGE_M = [1.0, 15], AE_STAND_GRASS_DENSITY = { grass: 1, broadleaf: 0.5, conifer: 0.35, tundra: 0.2 };
 function _aeStandGround(st, land, px) {
   var g = st.ground, cls = land && land.cls;
-  g.uGrass.value = cls === 'grass' ? 1 : 0;
+  var rock = px ? _aeStRock(px, st.lat, st.lon) : 0;   // lava and scree under a green class: next to no grass
+  g.uGrass.value = cls === 'grass' ? 1 - rock : 0;
+  g.uTundra.value = cls === 'tundra' ? 1 : 0;
   g.uCanopy.value = cls === 'broadleaf' ? 0.9 : cls === 'conifer' ? 1 : cls === 'grass' ? 0.3 : 0;
-  var dens = land ? (AE_STAND_GRASS_DENSITY[cls] || 0) * (land.coast ? 0.6 : 1) : 0.4;
+  var dens = (land ? (AE_STAND_GRASS_DENSITY[cls] || 0) * (land.coast ? 0.6 : 1) : 0.4) * (1 - 0.95 * rock);
   if (dens > 0) _aeStandGrass(st, dens, cls, px);
 }
 function _aeStandGrass(st, dens, cls, px) {
@@ -543,6 +551,7 @@ function _aeStandTrees(st) {
       if (land.cls === 'sea' || land.cls === 'desert' || land.cls === 'snow' || land.cls === 'tundra') continue;
       wood = land.cls === 'grass' ? _aeStSavanna(r * Math.sin(th), r * Math.cos(th)) : Math.max(wood, AE_STAND_FOREST_TREES);
     }
+    wood *= 1 - _aeStRock(px, d.lat, d.lon);
     if (wood <= 0 || rnd() > wood) continue;
     var ht = _aeTerrainHeight('earth', d.lat, d.lon, r * 0.0005);
     if (ht.sea || ht.h > AE_ST_SNOW_LINE_M * Math.pow(Math.cos(_aeRad(d.lat)), AE_ST_SNOW_LINE_POW) - AE_ST_TREE_BELOW_M) continue;

@@ -428,7 +428,7 @@ var AE_ST_GROUND_FRAG = [
   'uniform vec3 uCam; uniform float uKg, uPixAng, uTime;',
   'uniform sampler2D uMap; uniform float uMapped, uGrey; uniform vec3 uBase, uGain;',
   'uniform vec3 uAmbient, uSkyHor, uSkyZen, uE2, uDir2;',
-  'uniform vec2 uHead; uniform float uCloudDim; uniform float uGrass, uCanopy; uniform float uLommel, uRough, uRock, uDetail, uCover, uDiffuse, uVis, uDirect; uniform vec3 uDiffSky;',
+  'uniform vec2 uHead; uniform float uCloudDim; uniform float uGrass, uTundra, uCanopy; uniform float uLommel, uRough, uRock, uDetail, uCover, uDiffuse, uVis, uDirect; uniform vec3 uDiffSky;',
   'varying vec3 vP, vN, vDir; varying float vH, vSea, vShade;',
   // Rock, fractal bumps and mottling at the scales a pixel can show, all fixed to the ground (the camera never moves on it).
   'float fine(vec3 p, float foot) {',
@@ -490,6 +490,11 @@ var AE_ST_GROUND_FRAG = [
   '  if (uDetail > 0.5 && vSea < 0.5 && uGrass > 0.0) {',
   '    float lg = min(dot(alb, vec3(0.3, 0.59, 0.11)), 0.2), dull = 1.0 - smoothstep(0.0, 0.06, alb.g - max(alb.r, alb.b));',
   '    alb = mix(alb, vec3(0.72, 1.0, 0.42) * lg * 0.7, uGrass * (0.55 + 0.4 * dull));',
+  '  }',
+  // Tundra: low, dull, no green: the map's brightness kept in a brown-olive.
+  '  if (uDetail > 0.5 && vSea < 0.5 && uTundra > 0.0) {',
+  '    float lt = min(dot(alb, vec3(0.3, 0.59, 0.11)), 0.17);',
+  '    alb = mix(alb, vec3(0.62, 0.52, 0.36) * lt * 0.85, uTundra * 0.7);',
   '  }',
   // Ground cover by height, slope and latitude (the Earth's): snow above the snow line, bare rock on steep ground and above the
   // trees, the Blue Marble's own tint elsewhere; the lines wander with a slow noise so no height is a ruled edge.
