@@ -37,7 +37,7 @@ function _osSkyState(def) {
   var s = { eph: f.eph, moonData: f.moonData, now: now, lat: def.lat, lon: def.lon };
   _skyBrightness(s);
   var p = _skyLightParams(s);
-  var state = { eph: s.eph, moonData: s.moonData, now: now, p: p, lv: _sgLightValues(p), lm: s.lm, lum: s.lum, obsc: s.obsc, sunShare: s.sunShare, moonShare: s.moonShare };
+  var state = { eph: s.eph, moonData: s.moonData, now: now, p: p, lv: _sgLightValues(p), lm: s.lm, lum: s.lum, obsc: s.obsc, sunShare: s.sunShare, skyShare: s.skyShare, moonShare: s.moonShare };
   _osStateCache = { lat: def.lat, lon: def.lon, t: def.tMs, dial: p.dial, state: state };
   return state;
 }

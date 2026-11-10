@@ -174,7 +174,7 @@ var _oaAir = {
   },
   // An eclipse: the share of the Sun's light that reaches the place (the ground's light and the Sun's own), the faintest star the dimmed sky shows,
   // and the discs (almanac-onesky.js _osEclipse), for the ground view's Sun and Moon.
-  sunShare: function (st, fr) { return _osSkyState(_oaDef(st, fr)).sunShare; },
+  sunShare: function (st, fr) { return _osSkyState(_oaDef(st, fr)).skyShare; },   // the share the sky is drawn with, so the ground's light and the Sun's glare fall with it (twilight's path)
   limitMag: function (st, fr) { return _osSkyState(_oaDef(st, fr)).lm; },
   eclipse: function (st, fr) { return _osEclipse(_oaDef(st, fr)); },
   // How much of the Moon (or the Sun) the day's deck hides, 0 clear to about 1 solid, from the same field the sky draws; 0 for a visit that
