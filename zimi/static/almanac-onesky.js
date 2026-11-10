@@ -105,17 +105,29 @@ function _osCloudNoise(x, y) {
   return (a + (b - a) * fx) * (1 - fy) + (c + (d - c) * fx) * fy;
 }
 function _osSmoothstep(a, b, x) { var t = Math.max(0, Math.min(1, (x - a) / (b - a))); return t * t * (3 - 2 * t); }
-function _osCloudDensity(v, x, y) {
-  var px = (x - v.wind[0] * v.wind[2]) / SG_CLOUD_SCALE_M + v.cloud[3], py = (y - v.wind[1] * v.wind[2]) / SG_CLOUD_SCALE_M + v.cloud[3], s = 0, a = 0.5;
-  for (var i = 0; i < 4; i++) { s += a * _osCloudNoise(px, py); px = px * 2.03 + 17.1; py = py * 2.03 + 17.1; a *= 0.5; }
+function _osCloudFbm(px, py, size, fp) {   // each octave fades to its mean once its cells are smaller than the ground a pixel covers (the GLSL's sum)
+  var s = 0, a = 0.5;
+  for (var i = 0; i < 4; i++) { s += a * (0.5 + (_osCloudNoise(px, py) - 0.5) * (1 - _osSmoothstep(0.25, 1, fp / size))); px = px * 2.03 + 17.1; py = py * 2.03 + 17.1; a *= 0.5; size /= 2.03; }
+  return s / 0.9375;
+}
+function _osCloudDensity(v, x, y, t) {
+  var D = SG_CLOUD_DETAIL, qx = (x - v.wind[0] * v.wind[2]) / SG_CLOUD_SCALE_M + v.cloud[3], qy = (y - v.wind[1] * v.wind[2]) / SG_CLOUD_SCALE_M + v.cloud[3];
+  var n = (1 - D.share) * _osCloudFbm(qx, qy, SG_CLOUD_SCALE_M, t * SG_CLOUD_FOOTPRINT) + D.share * _osCloudFbm(qx * D.scale + D.offset, qy * D.scale + D.offset, SG_CLOUD_SCALE_M / D.scale, t * SG_CLOUD_FOOTPRINT);
+  n = (n - 0.47) * D.stretch + 0.47;
   var th = SG_CLOUD_THRESHOLD[0] + (SG_CLOUD_THRESHOLD[1] - SG_CLOUD_THRESHOLD[0]) * v.cloud[0];
-  return _osSmoothstep(th, th + SG_CLOUD_EDGE, s / 0.9375);
+  return _osSmoothstep(th, th + SG_CLOUD_EDGE, n);
 }
 function _osCloudAlphaAt(v, azDeg, altDeg) {
   var az = azDeg * Math.PI / 180, alt = altDeg * Math.PI / 180, dz = Math.sin(alt);
   if (dz <= 0.003 || v.cloud[0] <= 0) return 0;
   var t = Math.min(v.cloud[1] / dz, SG_CLOUD_FAR_M), c = Math.cos(alt);
-  return _osSmoothstep(0, 0.6, _osCloudDensity(v, Math.sin(az) * c * t, Math.cos(az) * c * t)) * 0.94 * _osSmoothstep(0.003, 0.03, dz);
+  return (1 - Math.exp(-SG_CLOUD_TAU * _osCloudDensity(v, Math.sin(az) * c * t, Math.cos(az) * c * t, t))) * 0.94 * _osSmoothstep(0.003, 0.03, dz);
+}
+
+// How much of the Moon the day's deck hides (0 clear to about 1 solid), at its place in the sky.
+function _osMoonVeil(s) {
+  var m = s.eph.moon;
+  return m.altitude > 0 ? _osCloudAlphaAt(_osCloudValues(_osDef({ lat: s.lat, lon: s.lon, tMs: s.nowTime }), s.sunShare), m.azimuth, m.altitude) : 0;
 }
 
 // ── The sky's objects ──

@@ -2550,7 +2550,7 @@ function _skyPaintBase(s, ts) {
   if (gl) _skyPaintStarBodies(s, M, ctx);
   _skyPaintPlanets(ctx, s);
   _skyPaintSun(ctx, s);
-  _skyPaintMoon(ctx, s, _skyMoonAt(s, ts));
+  ctx.save(); ctx.globalAlpha = 1 - _osMoonVeil(s); _skyPaintMoon(ctx, s, _skyMoonAt(s, ts)); ctx.restore();   // behind the deck it shows as much as the deck lets through
   if (s.hosted) _skyPaintBelowLens(ctx, s);   // the phone's Look: what is under the ground, under glass
   if (beach) _skyPaintGround(ctx, s); else _skyPaintHorizon(ctx, s, !!gl);   // clouds: almanac-skyscene.js
   s.baseBodies = s.bodies;
