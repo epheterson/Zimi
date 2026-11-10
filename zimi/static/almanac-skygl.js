@@ -446,7 +446,7 @@ var SG_GLSL_RADIANCE = [
   '  L += vec3(0.55, 1.0, 0.7) * uAirglow * (1.0 / sqrt(1.0 - pow(' + (SG_EARTH_R / (SG_EARTH_R + SG_AIRGLOW_H)).toFixed(5) + ' * cos(alt), 2.0))) * exp(-' + SG_AIRGLOW_EXTINCTION + ' * (airmassDeg(degrees(alt)) - 1.0));',
   '  L += uGlow * (1.0 + 2.0 * exp(-degrees(alt) / 14.0));',
   // Totality: the light from beyond the Moon's shadow rings the whole horizon, as a sunset does, the same at every bearing.
-  '  if (uEclGlow > 0.0) L += uEclGlow * ' + SG_SUN_LUX + ' * lutLight(texture(uSkyE, unitToTex(vec2(0.5, sqrt(clamp(alt, 0.0, PI * 0.5) / (PI * 0.5))), vec2(' + SG_VIEW_W + '.0, ' + SG_VIEW_H + '.0))).rgb);',
+  '  if (uEclGlow > 0.0) L += uEclGlow * ' + SG_SUN_LUX.toFixed(1) + ' * lutLight(texture(uSkyE, unitToTex(vec2(0.5, sqrt(clamp(alt, 0.0, PI * 0.5) / (PI * 0.5))), vec2(' + SG_VIEW_W + '.0, ' + SG_VIEW_H + '.0))).rgb);',
   '  return L;',
   '}',
   // The eye in the dark: its blue shift, applied to the light before the exposure.
