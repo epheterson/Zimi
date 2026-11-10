@@ -1992,7 +1992,7 @@ function _aeAddLight(m) {
 // canvas is see-through (the view's own black is behind it), so the Moon
 // can stand over the page in the hero's place before the view grows.
 function _aeBuildGl(THREE, canvas) {
-  var renderer, dpr = Math.min(window.devicePixelRatio || 1, AE_MAX_DPR);
+  var renderer, dpr = Math.min(window.devicePixelRatio || 1, AE_MAX_DPR, _aeCapDpr('earth'));
   try {
     renderer = new THREE.WebGLRenderer({ canvas: canvas, alpha: true, antialias: dpr < AE_MSAA_BELOW_DPR, powerPreference: 'high-performance' });
   } catch (e) {
@@ -2296,7 +2296,7 @@ function _aeReliefFrag(frag) {
 function _aeHdBudget() {
   var phone = false;
   try { phone = (typeof matchMedia === 'function' && matchMedia('(pointer: coarse)').matches) || (navigator.deviceMemory || 8) <= 4; } catch (e) {}
-  return (phone ? AE_HD_GPU_MB_PHONE : AE_HD_GPU_MB_DESKTOP) * 1048576;
+  return Math.min(phone ? AE_HD_GPU_MB_PHONE : AE_HD_GPU_MB_DESKTOP, _aeCapGet('hdMemMB', 1e9)) * 1048576;
 }
 function _aeHdTexBytes(tx, red) { return Math.round(AE_HD_TILE_PX * AE_HD_TILE_PX * (red ? 1 : AE_HD_RGBA_BYTES) * AE_HD_MIP_FACTOR); }
 function _aeHdKey(z, x, y) { return z + '/' + x + '/' + y; }
@@ -5964,7 +5964,9 @@ function _aeRenderSettings() {
   html += '</div>';
   var why = _aeSettingsWhy(m);
   if (why) html += '<p class="ae-set-why">' + _almEsc(why) + '</p>';
+  if (typeof ZimiCap !== 'undefined') html += ZimiCap.gearHtml();   // Auto / Light / Full, and what the network adds (capability.js)
   panel.innerHTML = html;
+  if (typeof ZimiCap !== 'undefined') ZimiCap.gearBind(panel);
   var get = _aeById('ae-set-hd-get');
   if (get) get.onclick = _aeHdGet;
   if (panel.querySelectorAll) Array.prototype.forEach.call(panel.querySelectorAll('.ae-ultra-sw'), function (box) { box.onchange = function () { _aeUltraToggle(box); }; });
@@ -7710,7 +7712,7 @@ function _aeDraw(now, busy) {
     return;
   }
   _aeUpdate(_aeDisplayMs());
-  if (_ae.gl.hd && !(_ae.site && _ae.site.pose)) _aeHdUpdate(_ae.gl);
+  if (_ae.gl.hd && !(_ae.site && _ae.site.pose) && _aeCapGet('hdTiles', true)) _aeHdUpdate(_ae.gl);
   _aeMapsFrame(_ae.gl);
   if (!(_ae.site && typeof _aeHostRender === 'function' && _aeHostRender())) _ae.gl.renderer.render(_ae.gl.scene, _ae.gl.camera);   // a landing site is drawn on Stand here's ground once that is ready
   _aeDrawMini();
@@ -7724,6 +7726,8 @@ function _aeFrame() {
   if (!_aeIsOpen || document.hidden) return;
   if (typeof _almanacOpen !== 'undefined' && !_almanacOpen) { _aeFinishClose(); return; }
   var now = performance.now();
+  var fpsMax = _aeCapGet('fpsMax', 0);   // a light device draws 30 a second, not 60
+  if (fpsMax && _ae.lastDraw && now - _ae.lastDraw < 1000 / fpsMax - AE_FPS_SLACK_MS) { _ae.raf = requestAnimationFrame(_aeFrame); return; }
   var dt = _ae.lastTs ? Math.min(now - _ae.lastTs, 1000) : 0;
   _ae.lastTs = now;
   var handDone = _aeStepHand(now);
@@ -7731,6 +7735,8 @@ function _aeFrame() {
   var busy = _aeStepFly(now) || _aeBusy() || !!handDone || shifting;
   if (_ae.standPending) _aeStandStep();
   _aeDraw(now, busy);
+  _ae.lastDraw = busy ? now : 0;
+  if (busy && !_ae.stand && typeof ZimiCap !== 'undefined') ZimiCap.frame('earth', now);   // the governor sees every frame that was really painted
   if (now - _ae.lastText >= AE_TEXT_TICK_MS) { _aeUpdateText(_aeDisplayMs()); _ae.lastText = now; }
   // The last frame of a swap is drawn; what follows it (the page covered,
   // or the view gone and the hero back) happens on it, not a frame later.
@@ -7873,6 +7879,7 @@ function _aeAdoptPointer(id, x, y) {
 // The canvas's own listeners: bound again to the fresh canvas that replaces
 // one whose context was given back (_aeDisposeGl).
 function _aeBindCanvas(canvas) {
+  if (typeof ZimiCap !== 'undefined') ZimiCap.watchContext(canvas, _aeContextLost);   // a context taken away: rebuilt, or the plain line
   canvas.addEventListener('pointerdown', function (e) {
     if (_ae.setOpen) _aeShowSettings(false);   // a touch on the globe puts the panel away
     if (_ae.spin) return;                       // side by side: nothing to turn
@@ -8113,12 +8120,76 @@ function _aeMessage(text) {
 // at never loads them (almanac.js _almMoonPrepare). Ready means a context with its shaders compiled and its maps
 // uploaded, drawing to a single pixel until the view opens.
 var _aePreparing = null;
+// ── Capability levels (capability.js) ──
+var AE_FPS_SLACK_MS = 3;   // a frame this early is still on time (the display's rate does not divide the cap evenly)
+function _aeCapGet(key, dflt) { return typeof ZimiCap !== 'undefined' ? ZimiCap.get(key) : dflt; }
+function _aeCapDpr(scene) { return typeof ZimiCap !== 'undefined' ? ZimiCap.dprCap(scene) : Infinity; }
+function _aeNoGlText() { return _aeT(_ae && _ae.capStatic ? 'cap_static' : 'alm_earth_nogl'); }
+// What the 3D scenes on the canvas give up before the GL behind them goes.
+function _aeDropScenes() {
+  try {
+    if (_ae.site) _aeSiteLeave(true);
+    if (_ae.mission) _amStop(true);
+    if (_ae.stand || _ae.standPending) _aeStandDrop(true);
+  } catch (e) {}
+}
+// The view sets itself aside (software drawing, a device too slow, a GPU that keeps resetting): the GPU goes back, the plain
+// line says so, and the gear (Full) is the way to try again.
+function _aeCapAside() {
+  if (!_ae) return;
+  _ae.failed = _ae.capStatic = true;
+  _aeDropScenes();
+  try { _aeDisposeGl(); } catch (e) { _ae.gl = null; _ae.ready = false; }
+  _aePreparing = null;
+  if (_aeIsOpen) { _aeCoverAlmanac(true); _aeMessage(_aeNoGlText()); }
+}
+// The GPU took the context back. The scene is rebuilt on a fresh canvas and the view opens again where it was; losses in a
+// row mean this device cannot hold it, and the view gives way.
+function _aeContextLost(give) {
+  if (!_ae || !_ae.gl) return;
+  if (give) { _aeCapAside(); return; }
+  _aeDropScenes();
+  try { _aeDisposeGl(); } catch (e) { _ae.gl = null; _ae.ready = false; }
+  _aePreparing = null;
+  if (_aeIsOpen) _aeOpenWhenReady();
+}
+// Prepare the scene, then enter it (the view is open and covers the page): the end of _aeShow, and a rebuild's.
+function _aeOpenWhenReady() {
+  _aeMessage(_aeT('alm_earth_loading'));
+  _aePrepare(true).then(function (ok) {
+    if (!_aeIsOpen) return;
+    if (!ok) {
+      _aeMessage(_ae.failed ? _aeNoGlText() : _aeT(navigator.onLine === false ? 'alm_earth_unavailable' : 'alm_earth_failed'));
+      return;
+    }
+    _aeMessage('');
+    _aeResize();
+    _aeEnter();
+    _aeKick();
+  });
+}
+function _aeCapEvent(evt) {
+  if (!_ae) return;
+  if (evt === 'fallback') { _aeCapAside(); return; }
+  if (evt === 'setting' && _ae.capStatic && ZimiCap.view3d() === 'open') {   // Full or Light on a device Auto set the view aside on: it tries
+    _ae.failed = _ae.capStatic = false;
+    if (_aeIsOpen) _aeOpenWhenReady();
+    return;
+  }
+  if (evt === 'setting' && !_ae.capStatic && ZimiCap.view3d() === 'static') { _aeCapAside(); return; }
+  var S = _ae.gl;
+  if (!S) return;
+  S.renderer.setPixelRatio(Math.min(S.dpr, ZimiCap.dprCap(_ae.stand ? 'stand' : 'earth')));
+  _aeResize();
+}
+
 function _aeEnsure() {
   if (_ae) return true;
   _aeEnsureStyles();
   var el = _aeBuildDom();
   if (!el) return false;
   _ae = _aeNewState(el);
+  if (typeof ZimiCap !== 'undefined') { ZimiCap.on(_aeCapEvent); if (ZimiCap.view3d() === 'static') _ae.failed = _ae.capStatic = true; }
   _aeBindControls();
   _aeBindKeys();
   _aeBindInfo();
@@ -8506,23 +8577,11 @@ function _aeShow(fromHero, fromOrrery) {
   if (typeof updateTopbar === 'function') updateTopbar();
   var cv = _aeById('ae-canvas');
   if (cv) cv.focus({ preventScroll: true });
-  _aeLoadSats();
+  if (!_ae.capStatic) _aeLoadSats();
   if (_aeReady()) { _aeLoadMaps(_ae.gl); _aeResize(); _aeEnter(); _aeKick(); return; }
   _aeCoverAlmanac(true);
-  if (_ae.failed) { _aeMessage(_aeT('alm_earth_nogl')); return; }
-  _aeMessage(_aeT('alm_earth_loading'));
-  _aePrepare(true).then(function (ok) {
-    if (!_aeIsOpen) return;
-    if (!ok) {
-      // "Reconnect" only when the device is offline; connected, the files did not load, and the way on is to try again.
-      _aeMessage(_aeT(_ae.failed ? 'alm_earth_nogl' : navigator.onLine === false ? 'alm_earth_unavailable' : 'alm_earth_failed'));
-      return;
-    }
-    _aeMessage('');
-    _aeResize();
-    _aeEnter();
-    _aeKick();
-  });
+  if (_ae.failed) { _aeMessage(_aeNoGlText()); return; }
+  _aeOpenWhenReady();   // "Reconnect" shows only when the device is offline; connected, the files did not load and the way on is to try again
 }
 
 // Close: back into the hero when the view came from it and it is there to

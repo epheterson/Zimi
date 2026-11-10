@@ -7475,11 +7475,18 @@ var _moonHiLoad = null;
 var _MOON_SLICE_MS = 12;   // the longest a slice of background drawing runs before it lets the page breathe
 var _MOON_TEX_HI_IMG = null;   // the 4096 map's Image while its tone tables are built; _MOON_TEX_HI once they are
 function _moonIdle(fn, priority) { whenQuiet(fn, { priority: priority == null ? QUIET_PRI_LOAD : priority }); }
+var _MOON_HI_TEXTURE_PX = 4096;   // the map's width: a device whose capability level allows less never fetches it (capability.js)
 function _moonLoadHiMap() {
   if (_moonHiLoad) return _moonHiLoad;
+  _moonHiLoad = _loadScript('/static/capability.js?v=45').then(function () {
+    return typeof ZimiCap === 'undefined' || ZimiCap.textureOk(_MOON_HI_TEXTURE_PX) ? _moonLoadHiMapNow() : null;
+  });
+  return _moonHiLoad;
+}
+function _moonLoadHiMapNow() {
   var im = new Image();
   im.src = _MOON_MAP_HI_URL;
-  _moonHiLoad = im.decode().then(function () {
+  return im.decode().then(function () {
     _MOON_TEX_HI_IMG = im;
     // Discs switch to the 4096 map only once its tone tables exist: a disc drawn in between would build them whole,
     // in one task, in the middle of whatever the person was doing.
@@ -7489,7 +7496,6 @@ function _moonLoadHiMap() {
     });
     return im;
   }, function () { return null; });   // without it every disc keeps the 1024 map
-  return _moonHiLoad;
 }
 function _moonAfterFirstPaint(fn) {
   var go = function () {
@@ -8310,6 +8316,7 @@ var _ALM_EARTH_SRCS = ['/static/almanac-ephem.js?v=45', '/static/almanac-earth.j
 // round trip instead of six on a phone away from home. One load, however many
 // ask: the promise is kept, and dropped when it fails so the next ask tries again.
 var _ALMANAC_MODULES = [
+  '/static/capability.js?v=45',
   '/static/almanac-links.js?v=45',
   '/static/almanac-orrery.js?v=45',
   '/static/almanac-sky.js?v=45',
