@@ -2761,7 +2761,15 @@ function _aeHostOf(k) { var b = _aePlanetBody(k); return b ? b.parent || b.key :
 // How much of an orbit line shows now, 0..1, for every line the scene draws: `key` a planet (its path round the Sun),
 // a moon (round its planet), a probe (its path and ellipse), or 'moon' for the Earth's own (the Moon's path, the GPS
 // and station rings). Off is off everywhere, the Planets view too (the minimap keeps its own little rings).
-function _aeOrbitShow(key) {
+function _aeOrbitShow(key) { return _aeOrbitShowRaw(key) * _aeSunLineFade(); }
+// Close to the Sun its disc fills the view and the orbit lines (and the trails) cross it edge-on as thin white strokes:
+// they are a far-view aid, out before the Sun fills the screen, never drawn over its disc.
+var AE_SUN_LINES_GONE = 2.6, AE_SUN_LINES_FULL = 6;   // the Sun's radii from it
+function _aeSunLineFade() {
+  if (_ae.target !== 'sun') return 1;
+  return _aeClamp((_ae.dist / AE_SUN_SHOW_R - AE_SUN_LINES_GONE) / (AE_SUN_LINES_FULL - AE_SUN_LINES_GONE), 0, 1);
+}
+function _aeOrbitShowRaw(key) {
   var b = _aePlanetBody(key);
   // The Planets view is a map of the orbits: the planets' always show there, whatever the setting (Eric: Off hiding them
   // there "is dumb"); the moons' never (they are drawn on their planets). The setting governs the scene near a body.
@@ -4115,6 +4123,7 @@ function _aeInfoHtml(k, rows) {
       return '<div class="ae-info-row" data-bi="' + r.id + '"><dt>' + _almEsc(r.label) + '</dt><dd>' + r.html + '</dd></div>';
     }).join('') + '</dl>' +
     (_aeLinked(_aeArrivalKey(k)) ? '<p class="ae-info-read">' + _aeLink(_aeArrivalKey(k), _almEsc(_aeT('alm_bi_read', { body: _aeInfoName(k) }))) + '</p>' : '') +
+    (k === 'jwst' ? p('ae-info-credit', _aeT('alm_earth_webb_lit')) : '') +
     p('ae-info-credit', [_aeT('alm_earth_credit'), _aePlanetCredit()].filter(Boolean).join(' · ')) + '</div>';
 }
 function _aeRenderInfo() {
@@ -4366,6 +4375,8 @@ function _aeRefAxesRows() {
   add('ms.a11_land', _aeT('tb_kn_ms_land'), '102:45:39.9 · 0.67408 N 23.473 E', '', MR + ', table 5-I; LROC');
   add('ms.a11_ei', _aeT('tb_kn_ms_ei'), '195:03:05.7 · 3.19 S 171.96 E · 36,194 ft/s · −6.48', 'h:mm:ss · ° · °', MR + ', table 7-VII');
   add('ms.a11_entry_note', _aeT('tb_kn_ms_entry'), _aeT('tb_kn_ms_entry_v'), '', MR + ', table 7-VII');
+  add('ms.a11_tli_time', _aeT('tb_kn_ms_tli'), _aeT('tb_kn_ms_tli_v'), '', MR + ', table 7-II');
+  add('ms.a11_rendezvous', _aeT('tb_kn_ms_rdv'), _aeT('tb_kn_ms_rdv_v'), '', MR + ', table 3-I');
   add('ms.a11_splash', _aeT('tb_kn_ms_splash'), '195:18:35 · 13.30 N 169.15 W', '', MR + ', table 7-VII');
   add('ms.a11_fit', _aeT('tb_kn_ms_fit'), '× 1.055 (first stage), × 0.983 (second and third)', '', 'Zimi (scripts/mission_ascent_fit.py), fitted to the first-stage cut-off of the Saturn V AS-506 flight evaluation (67 km, 2.4 km/s)');
   add('ms.voyager_flybys', _aeT('tb_kn_ms_voyager'), 'Jupiter 348,435 · Saturn 184,030 km (Voyager 1)', 'km', 'NASA/JPL Horizons');
@@ -4679,7 +4690,7 @@ function _aeRenderLmCard(card) {
   var night = lm.morning ? '<p class="ae-lm-dark"><a href="#" id="ae-lm-morning">' +
     _almEsc(_aeT('alm_lm_night_until', { date: _aeFmtWhen(lm.morning) })) + '</a></p>' : '';
   var site = typeof _aeSiteCardHtml === 'function' ? _aeSiteCardHtml(lm) : '';   // a landing's date, and the way down to it (almanac-sites.js)
-  if (!site && row[3] === 'landing') _aeSitesLoad();
+  if (!site && (row[3] === 'landing' || row[3] === 'launch')) _aeSitesLoad();   // a launch pad has its way down too (Cape Canaveral)
   card.innerHTML = '<button type="button" class="ae-card-x" id="ae-card-x" aria-label="' + _almEsc(_aeT('alm_tm_close')) + '">×</button>' +
     '<h3>' + (lm.hit ? '<a href="#" id="ae-lm-read">' + name + '</a>' : name) + '</h3>' +
     '<p class="ae-lm-line"><span>' + _almEsc(line) + '</span></p>' + site + night + (_aeStandable(lm.body) && !site ? '<p>' + _aeStandButtonHtml() + '</p>' : '');
@@ -5496,12 +5507,29 @@ function _aeCraftWorldBasis(model, pos) {
 }
 // A craft's authored view: the direction to look from, in its own model axes (what the picture is of: Webb's mirror seen
 // three-quarter from the cold side, the sunshield edge-on below). Null for a craft without one, or before its model is here.
+// Webb's primary mirror: the middle of its 18 hexagonal segments in the model's units (y, z; the mirror faces x) and a
+// segment's 1.32 m flat to flat. The shader draws the lattice in the mirror material's object space, the centre one missing.
+var AE_CRAFT_MIRROR = { webb: { c: [6.275, 0.0], pitchM: 1.32 } };
+function _aeCraftMirrorHex(THREE, d, model) {
+  var m = AE_CRAFT_MIRROR[model];
+  return m ? new THREE.Vector3(m.c[0] * d.metres, m.c[1] * d.metres, m.pitchM) : new THREE.Vector3(0, 0, 0);
+}
+var AE_CRAFT_HERO_FRAME = { cassini: [0.35, 0.85, 0.5] };   // the same, in the world axes the craft's pointing sets (to its target, across, third)
 var AE_CRAFT_HERO = { webb: [1.0, 0.55, 0.45] };
 function _aeCraftHeroDir(name, pp) {
-  var model = AE_CRAFT_MODEL[name], hero = AE_CRAFT_HERO[model], d = hero && _aeCraftData(model);
+  var model = AE_CRAFT_MODEL[name], hero = AE_CRAFT_HERO[model], frame = AE_CRAFT_HERO_FRAME[model];
+  if (frame && _ae.scene && pp) {   // along what it points at, across and the third: its dish is never seen end-on
+    var B = _aeCraftWorldBasis(model, pp);
+    return _aeNorm(_aeAdd(_aeAdd(_aeScale(B[0], frame[0]), _aeScale(B[1], frame[1])), _aeScale(B[2], frame[2])));
+  }
+  return hero ? _aeCraftModelToWorld(model, pp, hero) : null;
+}
+// A direction in a craft's model axes as the world sees it at pp (null before its model is here).
+function _aeCraftModelToWorld(model, pp, v) {
+  var d = _aeCraftData(model);
   if (!d || !_ae.scene || !pp) return null;
   var B = _aeCraftWorldBasis(model, pp), t = [d.aim[1] * d.across[2] - d.aim[2] * d.across[1], d.aim[2] * d.across[0] - d.aim[0] * d.across[2], d.aim[0] * d.across[1] - d.aim[1] * d.across[0]];
-  var c = [_aeDot(hero, d.aim), _aeDot(hero, d.across), _aeDot(hero, t)];
+  var c = [_aeDot(v, d.aim), _aeDot(v, d.across), _aeDot(v, t)];
   return _aeNorm(_aeAdd(_aeAdd(_aeScale(B[0], c[0]), _aeScale(B[1], c[1])), _aeScale(B[2], c[2])));
 }
 function _aeFlyToCraft(name, pp, span, waitModel) {
@@ -6024,6 +6052,7 @@ var AE_CRAFT_SHADOW_NORMAL = 0.012;                         // the surface moved
 var AE_CRAFT_ROUGH_MIN = 0.08;
 var AE_CRAFT_MAX_SHINE = 1.0;                               // the strongest planetshine
 var AE_CRAFT_SHINE_REFLECT = 1.7;                           // a world's own light, as a share of what lands on a surface facing it
+var AE_CRAFT_SOFTBOX = 'normalize(vec3(0.4, 0.5, 0.75))', AE_CRAFT_SOFTBOX_K = 0.9;   // a studio's soft light in the world, for shiny things to reflect (every picture of these has one)
 var AE_CRAFT_STARS = 0.35;                                  // the star field a mirror reflects, faintly
 var AE_CRAFT_KIND_STEP = 8;                                 // surf.z = flags + 8 * kind (cells, foil, quilt, radiator, metal: scripts/craftmesh.py KIND_*)
 var AE_CRAFT_CELL_M = 0.35, AE_CRAFT_CRINKLE_M = [0.15, 0.05], AE_CRAFT_SEAM_M = 0.6, AE_CRAFT_RIB_M = 0.04;   // the patterns' scales, in metres
@@ -6045,6 +6074,7 @@ var AE_CRAFT_GLSL_NOISE = [
 // where its detail is under a pixel (the pattern's scale against how far an object-space step is per pixel).
 var AE_CRAFT_GLSL_SURFACE = [
   '  float kd = floor(sp.z / ' + AE_CRAFT_KIND_STEP.toFixed(1) + ');',
+  '  float envMul = 1.0;',
   '  vec3 po = vObj * unitM;',
   '  float pw = length(fwidth(po));',
   '  vec3 on = abs(vONrm);',
@@ -6063,7 +6093,7 @@ var AE_CRAFT_GLSL_SURFACE = [
   '    metal = mix(0.35, metal, fadeC);',
   '  } else if (kd > 1.5 && kd < 2.5) {',   // foil
   '    float fadeF = clamp(pw / ' + AE_CRAFT_CRINKLE_M[0].toFixed(2) + ' * 1.5, 0.0, 1.0);',
-  '    vec3 bump = 1.1 * aeVnv(po / ' + AE_CRAFT_CRINKLE_M[0].toFixed(2) + ') + 0.7 * aeVnv(po / ' + AE_CRAFT_CRINKLE_M[1].toFixed(2) + ');',
+  '    vec3 bump = 1.1 * aeVnv(po / ' + AE_CRAFT_CRINKLE_M[0].toFixed(2) + ') + 0.7 * aeVnv(po / ' + AE_CRAFT_CRINKLE_M[1].toFixed(2) + ') + 0.4 * aeVnv(po / 0.9);',
   '    n = normalize(n + (1.0 - fadeF) * bump);',
   '    a *= 0.85 + 0.3 * aeVn(po / 0.1);',
   '    rough = mix(rough * 0.8, rough, fadeF);',
@@ -6077,13 +6107,38 @@ var AE_CRAFT_GLSL_SURFACE = [
   '    float fadeR = clamp(pw / ' + AE_CRAFT_RIB_M.toFixed(2) + ' * 2.0, 0.0, 1.0);',
   '    float rib = 0.5 + 0.5 * sin(q.x / ' + AE_CRAFT_RIB_M.toFixed(2) + ' * 6.2832);',
   '    a *= 1.0 - 0.08 * rib * (1.0 - fadeR);',
-  '  } else if (kd > 5.5) {',   // a telescope mirror: nearly a perfect reflector of the sky
-  '    rough = 0.06; a *= 0.75;',
+  '  } else if (kd > 6.5) {',   // a sunshield layer: smooth, billowed, magenta-silver
+  '    float fadeS = clamp(pw / 0.3 * 1.5, 0.0, 1.0);',
+  '    n = normalize(n + 0.45 * aeVnv(po / 1.4) + (1.0 - fadeS) * 0.1 * aeVnv(po / 0.3));',
+  '    a = mix(vec3(0.7, 0.7, 0.76), vec3(0.85, 0.35, 0.7), pow(1.0 - abs(facing), 2.2)) * (0.9 + 0.2 * aeVn(po / 0.6));',
+  '    metal = 0.65; rough = 0.28;',
+  '  } else if (kd > 5.5) {',   // a telescope mirror: a near perfect reflector, in hexagonal segments with gaps, the middle one missing
+  '    rough = 0.05; a *= 0.85;',
+  AE_CRAFT_GLSL_HEX,
   '  } else if (kd > 4.5) {',   // bare metal
   '    float fadeM = clamp(pw / 0.05 * 2.0, 0.0, 1.0);',
   '    float streak = aeVn(vec3(q.x * 40.0, q.y * 1.5, 0.0));',
   '    a *= 1.0 + (streak - 0.5) * 0.14 * (1.0 - fadeM);',
   '    rough = mix(rough * (0.8 + 0.4 * streak), rough, fadeM);',
+  '  }'
+].join('\n');
+// The mirror's hexagonal segments (flat to flat mirrorHex.z, centred on mirrorHex.xy in the mirror's plane): a dark gap between
+// them, a hair's tilt for each (so each catches the sky differently), and the middle segment gone.
+var AE_CRAFT_GLSL_HEX = [
+  '  if (mirrorHex.z > 0.0) {',
+  '    vec2 pc = q - mirrorHex.xy; float P = mirrorHex.z;',
+  '    vec2 e1 = vec2(1.0, 0.0), e2 = vec2(0.5, 0.8660254);',
+  '    float hv = pc.y / (P * 0.8660254); float hu = pc.x / P - 0.5 * hv; float hy = -hu - hv;',
+  '    float rx = floor(hu + 0.5), ry = floor(hy + 0.5), rz = floor(hv + 0.5);',
+  '    float dx = abs(rx - hu), dy = abs(ry - hy), dz = abs(rz - hv);',
+  '    if (dx > dy && dx > dz) rx = -ry - rz; else if (dy > dz) ry = -rx - rz; else rz = -rx - ry;',
+  '    if (rx == 0.0 && rz == 0.0) discard;',
+  '    vec2 dd = pc - P * (rx * e1 + rz * e2);',
+  '    float edge = 0.5 * P - max(max(abs(dot(dd, e1)), abs(dot(dd, e2))), abs(dot(dd, vec2(-0.5, 0.8660254))));',
+  '    float gw = max(0.012, pw * 1.2);',
+  '    a = mix(a, vec3(0.012), 1.0 - smoothstep(0.35 * gw, gw, edge));',
+  '    n = normalize(n + 0.05 * (vec3(aeH13(vec3(rx, rz, 1.0)), aeH13(vec3(rx, rz, 2.0)), aeH13(vec3(rx, rz, 3.0))) - 0.5));',
+  '    envMul = 1.0 - 0.8 * smoothstep(0.9, 0.99, dot(n, v));',   // looking straight in, it mirrors its own secondary
   '  }'
 ].join('\n');
 var AE_CRAFT_VERT = [
@@ -6151,6 +6206,7 @@ var AE_CRAFT_FRAG = [
   'varying vec3 vObj;',
   'varying vec3 vONrm;',
   'uniform float unitM;',
+  'uniform vec3 mirrorHex;',
   'const float PI = 3.14159265;',
   AE_CRAFT_GLSL_NOISE,
   'float aeShadow() {',
@@ -6204,7 +6260,10 @@ var AE_CRAFT_FRAG = [
   '  vec3 ps = shineCol * earthLight;',                       // the nearest world's light: from its side, in its colour
   '  col += diff * ps * (0.5 + 0.5 * dot(n, nadirView));',
   '  vec3 r = reflect(-v, n);',
-  '  vec3 env = ps * (0.2 + 1.1 * smoothstep(-0.4, 1.0, dot(r, nadirView))) + vec3(' + AE_CRAFT_SKY.toFixed(3) + ' + fill * ' + AE_CRAFT_ENV_FILL.toFixed(1) + ') + aeStars(r) * ' + AE_CRAFT_STARS.toFixed(2) + ' * (rough < 0.1 ? 4.0 : 1.0);',
+  '  vec3 env = ps * (0.2 + 1.1 * smoothstep(-0.4, 1.0, dot(r, nadirView))) + vec3(' + AE_CRAFT_SKY.toFixed(3) + ' + fill * ' + AE_CRAFT_ENV_FILL.toFixed(1) + ') ;',
+  '  vec3 rw = transpose(mat3(viewMatrix)) * r;',
+  '  vec3 soft = pow(max(dot(rw, ' + AE_CRAFT_SOFTBOX + '), 0.0), 3.0) * vec3(1.0, 0.92, 0.78) * ' + AE_CRAFT_SOFTBOX_K.toFixed(2) + ' * (1.0 - rough);',
+  '  env = env * envMul + (aeStars(rw) * ' + AE_CRAFT_STARS.toFixed(2) + ' * (rough < 0.1 ? 4.0 : 1.0) + soft) * envMul;',
   '  vec3 fe = f0 + (max(vec3(1.0 - rough), f0) - f0) * pow(1.0 - nv, 5.0);',
   '  col += fe * env * (1.0 - 0.5 * rough);',
   '  col += diff * (' + AE_CRAFT_SKY.toFixed(3) + ' + fill * nv);',   // fill: from the camera, gentle
@@ -6298,7 +6357,7 @@ function _aeCraftUniforms(S, d, model) {
   return { sunView: { value: new THREE.Vector3(1, 0, 0) }, nadirView: { value: new THREE.Vector3(0, -1, 0) }, shineCol: { value: new THREE.Vector3(0.55, 0.7, 1.0) },
     lit: { value: 1 }, fill: { value: model === 'iss' ? AE_ISS_FILL : AE_CRAFT_FILL_OF[model] || AE_CRAFT_FILL }, earthLight: { value: 0 }, fade: { value: 1 }, sel: { value: -1 },
     shadowOn: { value: 0 }, shadowTexel: { value: 1 / AE_CRAFT_SHADOW_PX }, shadowMap: { value: null }, shadowMat: { value: new THREE.Matrix4() },
-    shadowOffset: { value: d.radius * AE_CRAFT_SHADOW_NORMAL }, unitM: { value: d.metres || 1 },
+    shadowOffset: { value: d.radius * AE_CRAFT_SHADOW_NORMAL }, unitM: { value: d.metres || 1 }, mirrorHex: { value: _aeCraftMirrorHex(THREE, d, model) },
     albedo: { value: pal.map(function (l) { return new THREE.Vector3(l.rgb[0], l.rgb[1], l.rgb[2]); }) },
     surf: { value: pal.map(function (l) { return new THREE.Vector3(l.rough, l.metal, l.flags + AE_CRAFT_KIND_STEP * (l.kind || 0)); }) } };
 }
@@ -6492,7 +6551,7 @@ function _aeCraftLight(I, pos, nadir, show) {
 // model's frame so the pointing and the size hold. Fetched the first time a craft is close enough to show it, drawn in
 // place of the stock mesh when ready; without the ZIM (or for a craft it lacks) nothing changes. craft/index.json lists
 // them: { models: { <key>: { file } } }.
-var AE_CRAFT_SHARED_UNIFORMS = ['unitM', 'sunView', 'nadirView', 'shineCol', 'lit', 'fill', 'earthLight', 'fade', 'shadowOn', 'shadowMap', 'shadowMat', 'shadowTexel', 'shadowOffset'];
+var AE_CRAFT_SHARED_UNIFORMS = ['unitM', 'mirrorHex', 'sunView', 'nadirView', 'shineCol', 'lit', 'fill', 'earthLight', 'fade', 'shadowOn', 'shadowMap', 'shadowMat', 'shadowTexel', 'shadowOffset'];
 var AE_CRAFT_HD_DIR = 'craft/';
 var AE_CRAFT_HD_PX = 120;                                   // a craft this wide on screen asks for its full model
 var AE_CRAFT_HD_ANISO = 4;
@@ -6509,7 +6568,7 @@ function _aeCraftHdTexture(S, name) {
     return tx;
   });
 }
-function _aeCraftHdBuild(I, d2, textures) {
+function _aeCraftHdMeshes(I, d2, textures) {
   var S = _ae.gl, THREE = S.THREE, d = I.d;
   var shift = [0, 1, 2].map(function (k) { return d2.mid[k] - d.mid[k]; });   // HD positions are about HD's own box middle: into the stock model's
   for (var i = 0; i < d2.pos.length; i += 3) for (var k = 0; k < 3; k++) d2.pos[i + k] += shift[k];
@@ -6526,6 +6585,10 @@ function _aeCraftHdBuild(I, d2, textures) {
     parts.push({ mesh: mesh, local: local });
   });
   if (turning) { pivot.position.set(d2.axis[0] + shift[0], d2.axis[1] + shift[1], 0); group.add(pivot); }
+  return { group: group, pivot: pivot, parts: parts, turning: turning, shift: shift };
+}
+function _aeCraftHdBuild(I, d2, textures) {
+  var S = _ae.gl, d = I.d, m = _aeCraftHdMeshes(I, d2, textures), group = m.group, pivot = m.pivot, parts = m.parts, turning = m.turning, shift = m.shift;
   I.stock.forEach(function (p) { p.mesh.visible = false; });
   I.root.add(group);
   I.hdGroup = group; I.hdPivot = turning ? pivot : null; I.parts = parts; I.hd = true;
@@ -6533,17 +6596,50 @@ function _aeCraftHdBuild(I, d2, textures) {
   if (turning) I.pivot = pivot;
   if (_ae) { _ae.dirty = true; _aeKick(); }
 }
+// craft/index.json once (null: the HD ZIM is not there, or has no craft).
+function _aeCraftHdIndexLoad() {
+  var H = _aeCraftHd;
+  if (H.index !== undefined) return Promise.resolve();
+  if (!H.promise) {
+    H.promise = fetch(_aeCraftHdUrl('index.json')).then(function (r) { if (!r.ok) throw new Error('hd'); return r.json(); })
+      .then(function (j) { H.index = j && j.models ? j.models : null; }, function () { H.index = null; });
+  }
+  return H.promise;
+}
+// A landing site's model with the HD ZIM's full one (almanac-sites-ground.js clones one root for every place the model
+// stands and calls this on each clone): the stock meshes stay in the clone, hidden, and the full model is added; the clones
+// that were made before the file arrived get it when it does. Without the file nothing changes.
+function _aeCraftSiteHd(I, root) {
+  var c = I.siteHd = I.siteHd || { roots: [], group: null, state: 0 };
+  c.roots.push(root);
+  if (c.group) { _aeCraftSiteHdAttach(c, root); return; }
+  if (c.state || typeof fetch !== 'function') return;
+  c.state = 1;
+  var S = _ae.gl;
+  _aeCraftHdIndexLoad().then(function () {
+    var entry = _aeCraftHd.index && _aeCraftHd.index[I.model];
+    if (!entry) return null;
+    return fetch(_aeCraftHdUrl(entry.file)).then(function (r) { if (!r.ok) throw new Error(I.model); return r.arrayBuffer(); }).then(function (buf) {
+      var d2 = _aeCraftParse(buf);
+      return Promise.all((d2.textures || []).map(function (name) { return _aeCraftHdTexture(S, name); })).then(function (tx) { return _aeCraftHdMeshes(I, d2, tx).group; });
+    });
+  }).then(function (group) {
+    if (!group) { c.state = 2; return; }
+    c.group = group; c.state = 3;
+    c.roots.forEach(function (r) { _aeCraftSiteHdAttach(c, r); });
+    if (_ae) { _ae.dirty = true; _aeKick(); }
+  }).catch(function () { c.state = 2; });
+}
+function _aeCraftSiteHdAttach(c, root) {
+  root.children.slice().forEach(function (ch) { if (ch.isMesh) ch.visible = false; });
+  root.add(c.group.clone());
+}
 function _aeCraftHdRequest(I, pos) {
   if (I.hd !== undefined || I.hdLoading || typeof fetch !== 'function') return;
   if (_aeCraftPx(I.d.span * I.d.metres / 1000 / AE_EARTH_RADIUS_KM, pos) < AE_CRAFT_HD_PX) return;
   var H = _aeCraftHd;
   if (H.index === undefined) {
-    if (!H.loading) {
-      H.loading = true;
-      fetch(_aeCraftHdUrl('index.json')).then(function (r) { if (!r.ok) throw new Error('hd'); return r.json(); })
-        .then(function (j) { H.index = j && j.models ? j.models : null; }, function () { H.index = null; })
-        .then(function () { H.loading = false; if (_ae) { _ae.dirty = true; _aeKick(); } });
-    }
+    _aeCraftHdIndexLoad().then(function () { if (_ae) { _ae.dirty = true; _aeKick(); } });
     return;
   }
   var entry = H.index && H.index[I.model];
@@ -7125,6 +7221,7 @@ function _aeSatShortName(s) {
 
 // ── Taps ──
 function _aeTap(x, y) {
+  if (_ae.stand && _ae.stand.live && typeof _aeStandSkyTap === 'function' && _aeStandSkyTap(x, y)) return;   // an object other lanes put in the sky
   if (_aeRecordTap(x, y)) return;
   var best = null, bestD = AE_TAP_RADIUS_PX;
   // Satellites are picked at the Earth; from the Moon or the Sun they are a

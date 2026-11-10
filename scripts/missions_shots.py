@@ -49,6 +49,8 @@ def main():
     ap.add_argument("--width", type=int, default=0)
     ap.add_argument("--wait", type=float, default=2.0)
     ap.add_argument("--light", action="store_true")
+    ap.add_argument("--handoff", action="store_true", help="play into touchdown, shoot the site visit, press the back chip, shoot the mission again")
+    ap.add_argument("--frames", action="store_true", help="a GPU-synchronised frame time at each time (draw, then a pixel read-back)")
     args = ap.parse_args()
     os.makedirs(args.out, exist_ok=True)
     from playwright.sync_api import sync_playwright
@@ -108,6 +110,21 @@ def main():
             httpd.shutdown()
             return
         pg.wait_for_function("() => !!(_ae.mission)", timeout=120000, polling=200)
+        if args.handoff:
+            t_land = pg.evaluate("() => { const m = _amMission(); const p = m.phases.filter(q => q.k === m.handoff.phase)[0]; return p.t; }")
+            pg.evaluate("(t) => { _amJump(_amMission(), t - 5); }", t_land)
+            pg.wait_for_function("() => !!_ae.site", timeout=60000, polling=200)
+            time.sleep(args.wait + 4)
+            pg.screenshot(path=os.path.join(args.out, "handoff-site.png"))
+            print("site", pg.evaluate("() => ({ mission: !!_ae.mission, chip: !!document.getElementById('am-back'), site: _ae.site && _ae.site.def && _ae.site.def.name, ms: _aeDisplayMs() })"))
+            pg.evaluate("() => document.getElementById('am-back').click()")
+            pg.wait_for_function("() => !!_ae.mission && !_ae.site", timeout=60000, polling=200)
+            time.sleep(args.wait)
+            pg.screenshot(path=os.path.join(args.out, "handoff-back.png"))
+            print("back", pg.evaluate("() => ({ t: _ae.mission.t, phase: _ae.mission.phaseIdx, chip: !!document.getElementById('am-back') })"))
+            br.close()
+            httpd.shutdown()
+            return
         times = [float(v) for v in args.times.split(",") if v] or [None]
         for t in times:
             if t is not None:
@@ -128,6 +145,13 @@ def main():
             )
             pg.screenshot(path=os.path.join(args.out, name))
             print(name, json.dumps(info), flush=True)
+            if args.frames:
+                ms = pg.evaluate(
+                    """() => { const gl = _ae.gl.renderer.getContext(), px = new Uint8Array(4), n = 60, out = [];
+                    for (let i = 0; i < n; i++) { const a = performance.now(); _ae.dirty = true; _aeDraw(a, true); gl.readPixels(0, 0, 1, 1, gl.RGBA, gl.UNSIGNED_BYTE, px); out.push(performance.now() - a); }
+                    out.sort((x, y) => x - y); return [out[Math.floor(n / 2)], out[Math.floor(n * 0.95)]]; }"""
+                )
+                print("  frame ms (GPU-synced) median %.1f  p95 %.1f" % (ms[0], ms[1]), flush=True)
         # a frame time, on this GPU, with the shot the phase gives
         ft = pg.evaluate(
             """async () => { const n = 90; const t0 = performance.now(); for (let i = 0; i < n; i++) { _ae.dirty = true; _aeDraw(performance.now(), true); }

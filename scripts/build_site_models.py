@@ -41,6 +41,17 @@ MAX_PALETTE = 8
 
 # key: (path in the repo's 3D Models folder, the model page's credit line).
 VIKING_M_PER_UNIT = 0.245  # the file's feet-ish units: the lander's 2.2 m height is its 9 units
+LM_SPLIT_Y, LM_TRIS = 2.05, (5000, 3200)  # the NASA file's y where the ascent stage's parts begin; triangles of each stage
+# The file's materials are Maya's blinn names: what each is (colour, roughness, metalness, kind), from where it is on the vehicle.
+LM_LOOK = {
+    "blinn1SG": ((0.77, 0.53, 0.06), 0.3, 1.0, cm.KIND_FOIL),  # the descent stage's gold Kapton
+    "blinn6SG": ((0.06, 0.06, 0.07), 0.4, 0.4, cm.KIND_FOIL),  # black foil
+    "blinn9SG": ((0.62, 0.34, 0.06), 0.35, 0.9, cm.KIND_FOIL),  # bronze foil
+    "blinn10SG": ((0.9, 0.85, 0.5), 0.35, 0.8, cm.KIND_FOIL),  # light gold insulation
+    "blinn4SG": ((0.62, 0.62, 0.6), 0.45, 0.55, cm.KIND_METAL),  # aluminium skin
+    "blinn3SG": ((0.66, 0.66, 0.64), 0.45, 0.55, cm.KIND_METAL),  # ascent stage panels
+    "blinn2SG": ((0.22, 0.22, 0.22), 0.6, 0.2, cm.KIND_NONE),  # dark structure
+}
 NASA = {
     "lm": (
         "Apollo Lunar Module/Apollo Lunar Module.glb",
@@ -115,8 +126,15 @@ def parts_named(glb):
     return j, blob, out
 
 
+def footprint_origin(v):
+    """The middle of the footprint on the lowest point: what a model standing on the ground wants as its origin."""
+    return np.array([(v[:, 0].min() + v[:, 0].max()) / 2, (v[:, 1].min() + v[:, 1].max()) / 2, v[:, 2].min()])
+
+
 # ── Writing ZCR2 in the view's frame ──
 FLAT_ROUGH_REF, FLAT_ROUGH_MIN, FLAT_ROUGH_MAX = 110.0, 0.15, 0.8  # the palettes below give (specular strength, sharpness):
+HD_OUT, TRI_SCALE, HD_INDEX = None, 1.0, {}  # --hd: where the Almanac HD craft folder is, how many more triangles, what was written
+HD_TRI_SCALE = 12.0
 SITE_CREASE_DEG = 58.0  # wider than the probes' 38: lander parts are boxy and a split at every edge doubles the vertices
 FLAT_METAL_FROM, FLAT_METAL_SPAN = 0.5, 1.5  # the viewer's roughness and metalness are those, the way _aeCraftParse reads an old ZCRF
 
@@ -134,7 +152,7 @@ def write_zcrf(name, v, f, cls, entries, origin=None):
     view where its body says). Written as ZCR2 (smooth normals with creases, a roughness and a metalness per entry)."""
     v = np.asarray(v, dtype=np.float64)
     if isinstance(origin, str):
-        origin = np.array([(v[:, 0].min() + v[:, 0].max()) / 2, (v[:, 1].min() + v[:, 1].max()) / 2, v[:, 2].min()])
+        origin = footprint_origin(v)
     if origin is not None:
         v = v - origin
     f = np.asarray(f)
@@ -143,9 +161,11 @@ def write_zcrf(name, v, f, cls, entries, origin=None):
     lo, hi = v.min(0), v.max(0)
     looks = [e if len(e) >= 7 else _flat_look(*e) for e in entries]
     data = cm.pack(1.0, lo, hi, (0, 0, 1), (1, 0, 0), looks, v, n, cls, f)
-    path = os.path.join(EARTH, "craft-site-%s-v1.bin" % name)
+    path = os.path.join(HD_OUT, "site-%s.zcr2" % name) if HD_OUT else os.path.join(EARTH, "craft-site-%s-v1.bin" % name)
     with open(path, "wb") as fh:
         fh.write(data)
+    if HD_OUT:
+        HD_INDEX["site-" + name] = {"file": "site-%s.zcr2" % name, "tris": len(f), "bytes": len(data), "credit": "NASA 3D Resources"}
     print(
         "  %-22s %6d triangles %4.1f x %4.1f x %4.1f m  %5.1f KB"
         % (name, len(f), *(hi - lo), len(data) / 1024)
@@ -201,7 +221,7 @@ def nasa_model_parts(j, blob, ps, tris, forward, recolour=None, scale=1.0, min_d
     area = sum(c[3] for c in cooked) or 1.0
     verts, faces, cls = [], [], []
     for k, v, f, ar in cooked:
-        want = max(12, int(tris * ar / area))
+        want = max(12, int(tris * TRI_SCALE * ar / area))
         if len(f) > want * 1.3:
             v, f = fast_simplification.simplify(v, f, target_reduction=1 - want / len(f))
         if len(f) == 0:
@@ -299,11 +319,14 @@ def build_nasa(key, src, only):
     path, credit = NASA[key]
     glb = bcm._fetch(REPO + urllib.parse.quote(path), src, os.path.basename(path))
     if key == "lm":
-        # The descent stage: what stayed. Its parts are those whose middle is under the ascent stage's floor.
-        v, f, c, e = nasa_model(
-            glb, 4200, "+z", keep=lambda p, v: v[:, 1].mean() < 2.05, scale=1.45
-        )
-        meta["lm"] = write_zcrf("lm", v, f, c, e, "auto")
+        # Two models in one frame (the descent stage's footprint on the ground is their origin): the descent stage, what
+        # stayed, and the ascent stage on top of it, which the site shows from the landing until the liftoff. The parts of
+        # each are those whose middle is under, or over, the ascent stage's floor.
+        v, f, c, e = nasa_model(glb, LM_TRIS[0], "+z", keep=lambda p, v: v[:, 1].mean() < LM_SPLIT_Y, scale=1.45, recolour=LM_LOOK)
+        origin = footprint_origin(v)
+        meta["lm"] = write_zcrf("lm", v, f, c, e, origin)
+        v, f, c, e = nasa_model(glb, LM_TRIS[1], "+z", keep=lambda p, v: v[:, 1].mean() >= LM_SPLIT_Y, scale=1.45, recolour=LM_LOOK)
+        meta["lm-ascent"] = write_zcrf("lm-ascent", v, f, c, e, origin)
     elif key == "perseverance":
         meta.update(_perseverance(glb))
     elif key == "curiosity":
@@ -526,9 +549,22 @@ def m_lrv_body():
 
 
 def m_lrv_wheel():
+    """The woven-wire wheel: two rims, crossing wires between them (the mesh), chevron treads, the hub and its spokes."""
     m = Mesh([GREY, ALU])
-    m.cyl((0, 0, 0), 0.41, 0.23, 0, n=20, axis="x")
-    m.cyl((0, 0, 0), 0.12, 0.3, 1, n=8, axis="x")
+    r, half, n = 0.41, 0.115, 28
+    for k in range(n):
+        a0, a1 = 2 * math.pi * k / n, 2 * math.pi * (k + 1) / n
+        for x in (-half, half):  # the rims
+            m.tube((x, r * math.cos(a0), r * math.sin(a0)), (x, r * math.cos(a1), r * math.sin(a1)), 0.012, 1)
+        a2 = a0 + 2 * math.pi * 3 / n  # a wire crosses the wheel's width, three wires round
+        m.tube((-half, r * math.cos(a0), r * math.sin(a0)), (half, r * math.cos(a2), r * math.sin(a2)), 0.006, 0)
+        m.tube((half, r * math.cos(a0), r * math.sin(a0)), (-half, r * math.cos(a2), r * math.sin(a2)), 0.006, 0)
+        if k % 2 == 0:  # a chevron tread
+            m.box((0, (r + 0.01) * math.cos(a0), (r + 0.01) * math.sin(a0)), (0.2, 0.02, 0.02), 1, rotz=0.0)
+    m.cyl((0, 0, 0), 0.07, 0.26, 1, n=10, axis="x")
+    for k in range(6):  # the spokes
+        a = 2 * math.pi * k / 6
+        m.tube((0, 0.07 * math.cos(a), 0.07 * math.sin(a)), (0, (r - 0.02) * math.cos(a), (r - 0.02) * math.sin(a)), 0.01, 1)
     return m.write("lrv-wheel")
 
 
@@ -954,13 +990,25 @@ def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--only", default="")
     ap.add_argument("--src", default="")
+    ap.add_argument("--hd", default="", help="write the Almanac HD versions (NASA's models with HD_TRI_SCALE times the triangles) into this craft folder")
     a = ap.parse_args()
     want = set(filter(None, a.only.split(",")))
     meta = {}
+    if a.hd:
+        global HD_OUT, TRI_SCALE
+        HD_OUT, TRI_SCALE = a.hd, HD_TRI_SCALE
+        os.makedirs(HD_OUT, exist_ok=True)
     for key in NASA:
         if not want or key in want or any(w.startswith(key) for w in want):
             print(key)
             meta.update(build_nasa(key, a.src, want))
+    if a.hd:
+        idx_path = os.path.join(HD_OUT, "index.json")
+        models = json.load(open(idx_path))["models"] if os.path.exists(idx_path) else {}
+        models.update(HD_INDEX)
+        with open(idx_path, "w") as fh:
+            json.dump({"models": models}, fh, indent=1, sort_keys=True)
+        return
     for key, fn in PROCEDURAL.items():
         if not want or key in want:
             print(key)

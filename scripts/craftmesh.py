@@ -25,7 +25,7 @@ import struct
 import numpy as np
 
 FLAG_UV, FLAG_TEXTURES = 1, 2
-KIND_NONE, KIND_CELLS, KIND_FOIL, KIND_QUILT, KIND_RADIATOR, KIND_METAL, KIND_MIRROR = range(7)  # a palette entry's surface, drawn procedurally by the viewer
+KIND_NONE, KIND_CELLS, KIND_FOIL, KIND_QUILT, KIND_RADIATOR, KIND_METAL, KIND_MIRROR, KIND_SHIELD = range(8)  # a palette entry's surface, drawn procedurally by the viewer
 MAT_DOUBLE_SIDED, MAT_CUTOUT, MAT_AMBER_BACK = 1, 2, 4  # the last: the side its normals do not face is the amber of a solar array's back
 NO_TURN = 255
 CREASE_DEG = 38.0
@@ -202,7 +202,9 @@ def kind_of(name):
         return KIND_MIRROR
     if any(s in n for s in ("rad_", "radiator")):
         return KIND_RADIATOR
-    if any(s in n for s in ("gold", "foil", "krinkle", "kapton", "mylar", "mli", "shld")):
+    if "shld" in n:
+        return KIND_SHIELD
+    if any(s in n for s in ("gold", "foil", "krinkle", "kapton", "mylar", "mli")):
         return KIND_FOIL
     if any(s in n for s in ("white", "blanket", "beta")):
         return KIND_QUILT

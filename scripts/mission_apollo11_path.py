@@ -10,7 +10,7 @@ import os
 import numpy as np
 from scipy.optimize import least_squares
 
-from mission_apollo11 import EVENTS, ZERO_JD, fit_ascent
+from mission_apollo11 import EVENTS, TLI_IGNITION, ZERO_JD, fit_ascent
 from mission_flight import Burn, Flight, burn_mdot
 from mission_physics import (
     CACHE,
@@ -104,6 +104,9 @@ def moon_pole_ecl():
     return moon_fixed_to_ecl(ZERO_JD + 3.2) @ np.array([0.0, 0.0, 1.0])
 
 
+IGNITION_SLIP_S = 400.0  # how far the ignition may move from the report's time
+
+
 def build_translunar(verbose=True):
     """Parking orbit, TLI, coast, MCC-2. Returns the pieces other stages continue from."""
     moon, sun = ephemerides()
@@ -116,7 +119,18 @@ def build_translunar(verbose=True):
     t_cut = EVENTS["tli_cut"]
     t_inj = EVENTS["tli"]
     t_loi = EVENTS["loi1"]
-    t_park, y_park = fl.run(y_cut, tc, t_ign, (), step=10.0)
+    t_park, y_park = fl.run(y_cut, tc, t_ign + IGNITION_SLIP_S, (), step=10.0)
+    # The parking orbit's phase is what the ascent leaves it; the ignition is where the report puts it (8.03 S), so its time moves to when the orbit gets there.
+    lats = np.array([geodetic_of(tt, yy[0:3])[0] for tt, yy in zip(t_park, y_park)])
+    near = np.where(abs(t_park - t_ign) <= IGNITION_SLIP_S)[0]
+    k = near[int(np.argmin(abs(lats[near] - TLI_IGNITION["lat"]))) ]
+    slip = float(t_park[k] - t_ign)
+    if verbose:
+        print("TLI ignition time moved %.0f s from the report's, to meet its latitude" % slip)
+    for key in ("tli_ign", "tli_cut", "tli"):
+        EVENTS[key] += slip
+    t_ign, t_cut, t_inj = EVENTS["tli_ign"], EVENTS["tli_cut"], EVENTS["tli"]
+    t_park, y_park = t_park[: k + 1], y_park[: k + 1]
     lat, lon, alt = geodetic_of(t_ign, y_park[-1, 0:3])
     if verbose:
         print(

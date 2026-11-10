@@ -7,7 +7,7 @@ ground's large shape is real: a global height map of the body, public-domain dat
 (plate carree, longitude -180..180 eastward, latitude +90 at the top, metres above the body's mean radius). Two things
 come from that one master per body:
 
-  * zimi/static/earth/terrain-<body>-v1.bin, 256 x 128, shipped with Zimi (about 64 KB each). Format: "ZTRN", u8
+  * zimi/static/earth/terrain-<body>-v1.bin, 1024 x 512, shipped with Zimi (about 1 MB each, a fifth of that compressed). Format: "ZTRN", u8
     version, u8 flags (0), u16 width, u16 height, then width x height little-endian int16 metres, rows from the north.
   * the Almanac HD tiles ``terrain/<body>/<z>/<x>/<y>.webp`` (build_almanac_hd.py calls ``terrain_tiles``): 256 px
     tiles on the same plate carree grid as the HD maps (level z holds 2^(z+1) x 2^z tiles), a height as a 16-bit
@@ -42,9 +42,16 @@ ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 EARTH_DIR = os.path.join(ROOT, "zimi", "static", "earth")
 
 MASTER_W, MASTER_H = 4096, 2048
-COARSE_W, COARSE_H = 256, 128
+COARSE_W, COARSE_H = 1024, 512   # the shipped map: about 20 km a cell (it was 256 x 128, 156 km: most mountains were not there)
 TILE = 256
-TERRAIN_MAX = 3  # the deepest HD level: the master holds 256 * 2^3 = 2048 rows
+TERRAIN_MAX = 3  # the deepest HD level unless TERRAIN_LEVELS says more: the master holds 256 * 2^3 = 2048 rows
+#: Each body's deepest HD level where its source holds more than that: a level's tile rows are 256 * 2^level, so the Earth's
+#: ETOPO 2022 (10800 rows, 60 arc-seconds, about 1.8 km) is held at 6 (16384 rows, every source pixel) and Mars's MOLA (463 m, 23040 rows) at 6 (16384 rows).
+TERRAIN_LEVELS = {"earth": 6, "mars": 6}
+
+
+def levels_for(key):
+    return TERRAIN_LEVELS.get(key, TERRAIN_MAX)
 TILE_OFFSET = 32768
 MAGIC = b"ZTRN"
 
@@ -207,8 +214,8 @@ def master(key, cache, update=False):
     path = source_path(key, cache, update)
     w, h, rows = _rows_reader(path)
     xe = np.linspace(0, w, MASTER_W + 1)
-    total = np.zeros((MASTER_H, MASTER_W))
-    weight = np.zeros((MASTER_H, MASTER_W))
+    total = np.zeros((MASTER_H, MASTER_W), dtype=np.float32)   # float32: the Earth's master is 32768 x 16384
+    weight = np.zeros((MASTER_H, MASTER_W), dtype=np.float32)
     band = 64
     for y0 in range(0, h, band):
         y1 = min(h, y0 + band)
@@ -303,9 +310,18 @@ def _save_tile(arr, path):
     Image.fromarray(rgb, "RGB").save(path, "WEBP", lossless=True, method=4)
 
 
-def terrain_tiles(key, cache, out, update=False, max_level=TERRAIN_MAX):
+def terrain_tiles(key, cache, out, update=False, max_level=None):
     """terrain/<body>/<z>/<x>/<y>.webp for z = 0..max_level under ``out``; returns the deepest level."""
-    m = master(key, cache, update)
+    global MASTER_W, MASTER_H
+    max_level = levels_for(key) if max_level is None else max_level
+    rows = TILE * 2**max_level
+    old = (MASTER_W, MASTER_H)
+    if rows > MASTER_H:   # the master holds the deepest level's pixels
+        MASTER_W, MASTER_H = 2 * rows, rows
+    try:
+        m = master(key, cache, update)
+    finally:
+        MASTER_W, MASTER_H = old
     for z in range(max_level + 1):
         rows, cols = TILE * 2**z, TILE * 2 ** (z + 1)
         lvl = block_mean(m, cols, rows) if (rows, cols) != m.shape else m

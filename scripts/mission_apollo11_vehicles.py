@@ -83,7 +83,7 @@ def assemble(verbose=False):
     ]
     lm_parts = [
         part("site-lm", rx=-90, **{"from": E["csm_siv_sep"], "to": E["eject"]}),
-        part("ms-lm-ascent", rx=-90, **{"from": E["csm_siv_sep"], "to": E["eject"]}),
+        part("site-lm-ascent", rx=-90, **{"from": E["csm_siv_sep"], "to": E["eject"]}),
     ]
     # the lunar module parts ride the keyframes of lm_anim, the ascent stage a little above the descent stage
     lm_parts[0]["anim"] = lm_anim
@@ -227,7 +227,7 @@ def assemble(verbose=False):
             "legs": [pair_leg],
             "parts": [
                 part("site-lm", rx=-90),
-                part("ms-lm-ascent", B.LM_ASC_Z, rx=-90),
+                part("site-lm-ascent", B.LM_ASC_Z, rx=-90),
                 part("ms-csm", 8.0 + 12.4, rx=180),
             ],
             "flames": [
@@ -302,7 +302,7 @@ def lunar_and_return(fl, out, V):
                          eci(col_rows[col_rows[:, 0] >= E["tei"] - 400], 0.05, ref="earth", max_gap=900.0)],
                 "parts": [part("ms-csm", 0.0)] + [dict(part("site-lm", 0.0), **{"from": 1e12})],
                 "flames": [{"from": t0, "to": t0 + ret.TEI_S, "at": [0, -2.8, 0], "len": 9, "r": 1.1}]}
-    columbia["parts"] = [part("ms-csm", 0.0), part("ms-lm-ascent", 12.4 + 2.2, rx=90, **{"from": B.EXTRA["dock2"], "to": B.EXTRA["jettison"]})]
+    columbia["parts"] = [part("ms-csm", 0.0), part("site-lm-ascent", 12.4 + 2.2, rx=90, **{"from": B.EXTRA["dock2"], "to": B.EXTRA["jettison"]})]
     res.append(columbia)
     # ── Eagle ──
     (t_l, Y_l), y_pdi = lm.lm_to_pdi(fl, y_undock, st3["kappa_doi"])
@@ -315,12 +315,12 @@ def lunar_and_return(fl, out, V):
     leg_desc = {"frame": "mcmf", "ref": "moon", "s": pack(thin(km[:, 0:7], 0.003, 20.0), 4, 6), "sd": 150}
     leg_desc["s"] = _with_up(km, leg_desc["s"])
     res.append({"id": "eagle", "on": E["undock"], "off": E["landing"], "legs": [leg_eci, leg_desc],
-                "parts": [part("site-lm"), dict(part("ms-lm-ascent"), at=[0.0, 0.0, B.LM_ASC_Z])],
+                "parts": [part("site-lm"), dict(part("site-lm-ascent"), at=[0.0, 0.0, B.LM_ASC_Z])],
                 "flames": [{"from": E["doi"], "to": E["doi"] + lm.DOI_S, "at": [0, 0, 1.0], "len": 3.0, "r": 0.4, "rx": 90},
                            {"from": E["pdi"], "to": E["landing"], "at": [0, 0, 1.0], "len": 7.0, "r": 0.7, "rx": 90}]})
     site = km[-1]
     stay = {"frame": "mcmf", "ref": "moon", "att": "level", "s": [[E["landing"], *[round(float(v), 5) for v in site[1:4]], 0, 0, 0], [E["liftoff_moon"] + 5.0, *[round(float(v), 5) for v in site[1:4]], 0, 0, 0]]}
-    res.append({"id": "eagle_surface", "on": E["landing"], "off": E["liftoff_moon"], "legs": [stay], "parts": [part("site-lm"), dict(part("ms-lm-ascent"), at=[0.0, 0.0, B.LM_ASC_Z])], "flames": [], "dot": False})
+    res.append({"id": "eagle_surface", "on": E["landing"], "off": E["liftoff_moon"], "legs": [stay], "parts": [part("site-lm"), dict(part("site-lm-ascent"), at=[0.0, 0.0, B.LM_ASC_Z])], "flames": [], "dot": False})
     stay2 = dict(stay, s=[[E["liftoff_moon"], *[round(float(v), 5) for v in site[1:4]], 0, 0, 0], [E["splash"] + 120.0, *[round(float(v), 5) for v in site[1:4]], 0, 0, 0]])
     res.append({"id": "eagle_base", "on": E["liftoff_moon"], "off": E["splash"] + 120.0, "legs": [stay2], "parts": [part("site-lm")], "flames": [], "dot": False})
     # ── Eagle's ascent stage: the climb, the coast, and the arc of the terminal phase to Columbia ──
@@ -350,14 +350,24 @@ def lunar_and_return(fl, out, V):
             alt = 3.0 * (1 - (tt - main_t) / (splash_t - main_t))
         chute_rows.append((tt, alt))
     base_dir = p0[1:4] / np.linalg.norm(p0[1:4])
+    lat_d, lon_d = lat0[0], lat0[1]
     prows = []
-    for (tt, alt) in chute_rows:
-        r = base_dir * (mp.R_EARTH + alt + 0.0)
-        prows.append(np.concatenate([[tt], r, [0, 0, 0]]))
+    for tt, alt in chute_rows:
+        lon = lon_d + math.degrees(CHUTE_DRIFT_KMS * (tt - drogue_t) / (mp.R_EARTH * math.cos(math.radians(lat_d))))
+        prows.append(np.concatenate([[tt], mp.geodetic_to_ecef(lat_d, lon, alt)]))
     prows = np.array(prows)
+    prows = np.hstack([prows, np.gradient(prows[:, 1:4], prows[:, 0], axis=0)])
     cm_leg3 = {"frame": "ecef", "ref": "earth", "att": "level", "s": pack(prows, 4, 6), "sd": 8}
-    res.append({"id": "cm", "on": E["cm_sm_sep"], "off": E["splash"] + 90.0, "legs": [cm_leg1, cm_leg2, cm_leg3],
-                "parts": [part("ms-cm", 0.0, to=drogue_t), dict(part("ms-cm", 0.0, rx=90, **{"from": drogue_t}))], "flames": [], "dot": True})
+    hang = dict(rx=90, **{"from": drogue_t})
+    apex = [0.0, 0.0, 3.2]
+    cm_parts = [
+        part("ms-cm", 0.0, to=drogue_t),
+        part("ms-cm", 0.0, **hang),
+        dict(part("ms-apollo-drogues"), at=apex, rx=90, **{"from": drogue_t, "to": main_t}),
+        dict(part("ms-apollo-mains"), at=apex, rx=90, **{"from": main_t}),
+    ]
+    plasma = {"from": E["entry"] + 20.0, "to": E["entry"] + 20.0 + PLASMA_S, "at": [0, 3.4, 0], "len": 30.0, "r": 1.7, "rx": 180}
+    res.append({"id": "cm", "on": E["cm_sm_sep"], "off": E["splash"] + 90.0, "legs": [cm_leg1, cm_leg2, cm_leg3], "parts": cm_parts, "flames": [plasma], "dot": True})
     return res
 
 
@@ -407,7 +417,7 @@ def ascent_vehicle(fl, t_c, Y_c):
         out.append(np.concatenate([[ti], yi[0:3] - off * sm, yi[3:6] - offv * sm - off * dsm]))
     rows = np.array(out)
     return {"id": "eagle_asc", "on": tl, "off": dock, "legs": [leg1, eci(rows, 0.03, ref="moon", max_gap=120.0, sd=120)],
-            "parts": [part("ms-lm-ascent", 0.0)],
+            "parts": [part("site-lm-ascent", 0.0)],
             "flames": [{"from": tl, "to": tl + asc.BURN_S, "at": [0, 0, -0.4], "len": 3.0, "r": 0.35, "rx": 90}]}
 
 
@@ -415,6 +425,10 @@ def moon_fixed_matrix(t):
     from mission_apollo11_moon import fixed_matrix
 
     return fixed_matrix(t)
+
+
+CHUTE_DRIFT_KMS = 0.008  # the wind carries the capsule along the surface a little: its attitude needs a horizontal heading
+PLASMA_S = 330.0  # the entry heating: from about 20 s after the interface to the end of the high-speed run (the blackout lasted about 3.5 minutes)
 
 
 def entry_profile():
