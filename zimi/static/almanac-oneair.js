@@ -27,12 +27,20 @@ var OA_GLSL = [
   '}'
 ].join('\n');
 
+// The 3D view's three build exports no half-float or RGBA constants, no raw-shader material and no orthographic camera: the numbers are
+// three's own (HalfFloatType, RGBAFormat), the material is a ShaderMaterial (three writes the version, the precision and the fragment
+// output; the card's shader text is taken without its own), and any camera does for a pass that ignores it.
+var OA_THREE_HALF_FLOAT = 1016, OA_THREE_RGBA = 1023;
 function _oaTarget(T, w, h) {
-  return new T.WebGLRenderTarget(w, h, { type: T.HalfFloatType, format: T.RGBAFormat, minFilter: T.LinearFilter, magFilter: T.LinearFilter,
+  return new T.WebGLRenderTarget(w, h, { type: OA_THREE_HALF_FLOAT, format: OA_THREE_RGBA, minFilter: T.LinearFilter, magFilter: T.LinearFilter,
     depthBuffer: false, stencilBuffer: false, generateMipmaps: false });
 }
+// A card shader as a ShaderMaterial's source: without its #version, its precision lines and its own output (gl_FragColor is three's).
+function _oaSource(src) {
+  return src.replace(/^#version 300 es\n/, '').replace(/precision highp (float|sampler2D);\n/g, '').replace('out vec4 outColor;\n', '').replace(/outColor/g, 'gl_FragColor');
+}
 function _oaMaterial(T, fs, uniforms) {
-  return new T.RawShaderMaterial({ vertexShader: SG_VS_QUAD, fragmentShader: fs, uniforms: uniforms, depthTest: false, depthWrite: false });
+  return new T.ShaderMaterial({ vertexShader: _oaSource(SG_VS_QUAD), fragmentShader: _oaSource(fs), uniforms: uniforms, depthTest: false, depthWrite: false });
 }
 // One full-screen pass into a target (the quad's four corners come from gl_VertexID, as in the card).
 function _oaRun(o, mat, target) {
@@ -47,7 +55,7 @@ function _oaBuild(S) {
   var T = S.THREE, geo = new T.BufferGeometry();
   geo.setAttribute('position', new T.BufferAttribute(new Float32Array(12), 3));
   geo.setIndex([0, 1, 2, 2, 1, 3]);   // gl_VertexID is the index: the corners of the card's triangle strip
-  var o = { S: S, scene: new T.Scene(), camera: new T.OrthographicCamera(-1, 1, 1, -1, 0, 1), failed: false, sunKey: null, moonKey: null };
+  var o = { S: S, scene: new T.Scene(), camera: new T.PerspectiveCamera(), failed: false, sunKey: null, moonKey: null };
   o.mesh = new T.Mesh(geo, null); o.mesh.frustumCulled = false; o.scene.add(o.mesh);
   o.trans = _oaTarget(T, SG_TRANS_W, SG_TRANS_H);
   o.multi = _oaTarget(T, SG_MS_N, SG_MS_N);
