@@ -4119,5 +4119,6 @@
   "lib_hd_where": "Se elige en los ajustes del Almanaque",
   "lib_hd_meta": "{n} archivos · {size}",
   "older_copies_title": "Copias antiguas guardadas",
-  "older_copies_row": "Sustituida por {file}"
+  "older_copies_row": "Sustituida por {file}",
+  "zim_missing_chunk": "No se puede abrir: falta {file}"
 }

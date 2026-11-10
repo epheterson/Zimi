@@ -4119,5 +4119,6 @@
   "lib_hd_where": "Выбирается в настройках Альманаха",
   "lib_hd_meta": "Файлов: {n} · {size}",
   "older_copies_title": "Старые копии",
-  "older_copies_row": "Заменена: {file}"
+  "older_copies_row": "Заменена: {file}",
+  "zim_missing_chunk": "Не открывается: нет файла {file}"
 }

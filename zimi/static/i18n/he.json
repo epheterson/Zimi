@@ -4119,5 +4119,6 @@
   "lib_hd_where": "נבחר בהגדרות האלמנך",
   "lib_hd_meta": "{n} קבצים · {size}",
   "older_copies_title": "עותקים ישנים שנשמרו",
-  "older_copies_row": "הוחלף ב־{file}"
+  "older_copies_row": "הוחלף ב־{file}",
+  "zim_missing_chunk": "לא ניתן לפתוח: הקובץ {file} חסר"
 }

@@ -6765,6 +6765,7 @@ function renderInstalled(filterText) {
       const dateStr = z.date ? (_isZimiExport(z) ? z.date : z.date.substring(0, 7)) : null;
       if (dateStr) meta.push(dateStr);
       if (z.unreadable) meta.push('<span class="ci-bad">' + esc(t('zim_unreadable_' + z.unreadable)) + '</span>');
+      if (z.missing_part) meta.push('<span class="ci-bad">' + esc(t('zim_missing_chunk', { file: z.missing_part })) + '</span>');
       if (z.also_in) meta.push('<span>' + esc(t('zim_also_in', { label: z.also_in })) + '</span>');
       if (z.via) meta.push('<span>' + esc(t('zim_via', { label: z.via })) + '</span>');
       // Flavor badge from filename. When catalog variants exist, the current

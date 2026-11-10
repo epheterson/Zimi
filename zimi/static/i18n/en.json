@@ -4119,5 +4119,6 @@
   "lib_hd_where": "Chosen in the Almanac's settings",
   "lib_hd_meta": "{n} files · {size}",
   "older_copies_title": "Older copies kept",
-  "older_copies_row": "Replaced by {file}"
+  "older_copies_row": "Replaced by {file}",
+  "zim_missing_chunk": "Can't open: {file} is missing"
 }

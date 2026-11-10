@@ -4119,5 +4119,6 @@
   "lib_hd_where": "पंचांग की सेटिंग में चुनें",
   "lib_hd_meta": "{n} फ़ाइलें · {size}",
   "older_copies_title": "रखी गई पुरानी प्रतियाँ",
-  "older_copies_row": "{file} ने इसकी जगह ली"
+  "older_copies_row": "{file} ने इसकी जगह ली",
+  "zim_missing_chunk": "खुल नहीं रहा: {file} नहीं मिली"
 }

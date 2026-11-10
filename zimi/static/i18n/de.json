@@ -4119,5 +4119,6 @@
   "lib_hd_where": "Wird in den Einstellungen des Almanach gewählt",
   "lib_hd_meta": "{n} Dateien · {size}",
   "older_copies_title": "Ältere Kopien",
-  "older_copies_row": "Ersetzt durch {file}"
+  "older_copies_row": "Ersetzt durch {file}",
+  "zim_missing_chunk": "Lässt sich nicht öffnen: {file} fehlt"
 }
