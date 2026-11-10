@@ -3266,7 +3266,7 @@ def get_zim_files():
 
 #: ZIMs that are data for a part of Zimi, not something to read: served at /w/<name>/ to the part that uses them,
 #: never on Home, in the library's grid, in search or in the title indexes (Almanac HD: the Almanac's tiles, in the Almanac's maxi flavour or 1.15.3's tile ZIM).
-DATA_PACKS = frozenset(("zimi_almanac_maxi", "zimi_almanac_hd"))
+DATA_PACKS = frozenset(("zimi_almanac_maxi", "zimi_almanac_hd", "zimi_almanac_hd_moon", "zimi_almanac_hd_mars", "zimi_almanac_hd_mercury"))   # the last three: parts of a split set (almanachd.PARTS)
 
 
 def content_zims():

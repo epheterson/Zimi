@@ -1,4 +1,4 @@
-"""scripts/build_terrain.py: heights from a source raster to the shipped 256 x 128 map and the Almanac HD tiles.
+"""scripts/build_terrain.py: heights from a source raster to the shipped 1024 x 512 map and the Almanac HD tiles.
 
 Synthetic rasters stand in for the downloads (they are hundreds of MB to 2 GB): an uncompressed 16-bit strip file
 (the planetary mosaics' layout, read straight off the disk), a raster whose left edge is longitude 0 (Mercury's, rolled
@@ -161,12 +161,11 @@ def test_the_sources_are_pinned_and_public_domain_bodies_only():
     ).read()
     for k in mod.SOURCES:
         assert "'%s'" % k in src.split("var AE_STAND_KEYS = ")[1].split(";")[0]
-        assert (
-            os.path.getsize(
-                os.path.join(ROOT, "zimi", "static", "earth", "terrain-%s-v1.bin" % k)
-            )
-            == 10 + 256 * 128 * 2
-        )
+        path = os.path.join(ROOT, "zimi", "static", "earth", "terrain-%s-v1.bin" % k)
+        with open(path, "rb") as fh:
+            head = fh.read(10)
+        w, h = struct.unpack("<HH", head[6:10])   # each shipped map's own size: the file is whole
+        assert os.path.getsize(path) == 10 + w * h * 2 and w >= 256
 
 
 def test_the_land_mask_survives_its_runs_and_the_shipped_file_is_whole():
