@@ -2243,7 +2243,7 @@ function _skyLightParams(s) {
   return { sunAltGeo: e.sunGeoAlt, sunAz: e.sun.az,
     moonAlt: e.moon.altitude, moonAz: e.moon.azimuth, moonIllum: md.phase.illumination, moonDist: _moonDistance(s.now),
     horizon: M, eclPole: up, sunVec: _skyEnu(e.sun.az, e.sunGeoAlt), dial: _skySetting('dial'),
-    lm: s.lm, sunShare: s.sunShare, moonShare: s.moonShare };
+    lm: s.lm, sunShare: s.sunShare, moonShare: s.moonShare, obsc: s.obsc };
 }
 function _skyGLParams(s) {
   return Object.assign(_skyLightParams(s), { W: s.W, H: s.H, dpr: s.dpr, view: _skyGLView(s), seed: s.twinkle, scint: !_skyReduceMotion(), moonDisc: s.moonDisc,

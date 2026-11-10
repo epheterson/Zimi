@@ -407,8 +407,8 @@ var SG_GLSL_VIEW = [
 // make it (everything but the Milky Way): one function for the card's shader and for Stand here's Earth, so they cannot differ.
 // Needs SG_GLSL_LUT_UTIL and PI; the uniforms are set by _sgDraw here and by almanac-oneair.js there.
 var SG_GLSL_RADIANCE = [
-  'uniform sampler2D uSkyS, uSkyM;',
-  'uniform float uSunAz, uSunLux, uMoonAz, uMoonLux;',
+  'uniform sampler2D uSkyS, uSkyM, uSkyE;',
+  'uniform float uSunAz, uSunLux, uMoonAz, uMoonLux, uEclGlow;',
   'uniform vec3 uGlow;',                     // the place's own light, cd/m2
   'uniform vec3 uEclPole, uSunVec;',         // the ecliptic's pole and the Sun, in (east, north, up)
   'uniform float uZodiScale, uAirglow;',
@@ -445,6 +445,8 @@ var SG_GLSL_RADIANCE = [
   '  L += vec3(1.0, 0.93, 0.8) * zodiS10(clamp(elong, radians(15.0), PI)) * ' + SG_S10_LUM.toExponential(2) + ' * exp(-0.5 * pow(beta / w, 2.0)) * uZodiScale * ext;',
   '  L += vec3(0.55, 1.0, 0.7) * uAirglow * (1.0 / sqrt(1.0 - pow(' + (SG_EARTH_R / (SG_EARTH_R + SG_AIRGLOW_H)).toFixed(5) + ' * cos(alt), 2.0))) * exp(-' + SG_AIRGLOW_EXTINCTION + ' * (airmassDeg(degrees(alt)) - 1.0));',
   '  L += uGlow * (1.0 + 2.0 * exp(-degrees(alt) / 14.0));',
+  // Totality: the light from beyond the Moon's shadow rings the whole horizon, as a sunset does, the same at every bearing.
+  '  if (uEclGlow > 0.0) L += uEclGlow * ' + SG_SUN_LUX + ' * lutLight(texture(uSkyE, unitToTex(vec2(0.5, sqrt(clamp(alt, 0.0, PI * 0.5) / (PI * 0.5))), vec2(' + SG_VIEW_W + '.0, ' + SG_VIEW_H + '.0))).rgb);',
   '  return L;',
   '}',
   // The eye in the dark: its blue shift, applied to the light before the exposure.
@@ -914,7 +916,9 @@ var SG_STAR_SATURATION = 1.2;    // a catalogue's blackbody colours are pale; th
 
 // The sky-view table of a light, drawn only when the light has moved enough to matter.
 function _sgBakeLight(sg, which, altDeg) {
-  var gl = sg.gl, key = Math.round(altDeg / SG_LIGHT_ALT_STEP), k = which + 'Key', t = which === 'sun' ? sg.viewS : sg.viewM;
+  var gl = sg.gl, key = Math.round(altDeg / SG_LIGHT_ALT_STEP), k = which + 'Key';
+  if (which === 'ecl' && !sg.viewE) sg.viewE = _sgTarget(gl, SG_VIEW_W, SG_VIEW_H);   // the totality ring's table, made the first time one is wanted
+  var t = which === 'sun' ? sg.viewS : which === 'moon' ? sg.viewM : sg.viewE;
   if (sg[k] === key) return;
   sg[k] = key;
   gl.useProgram(sg.pView);
@@ -936,7 +940,8 @@ function _sgLightValues(p) {
     moonLux: p.moonAlt > -12 && p.moonIllum > 0.5 ? _sgMoonLux(p.moonIllum, p.moonDist) * SG_MOON_GAIN * moonShare : 0,
     // The eye has not time to adapt to an eclipse's dimming: it keeps most of the daylight's exposure (the square root of the share).
     exposure: _sgExposure(p.sunAltGeo, p.moonAlt, p.moonIllum, p.dial, p.sunShare == null ? 1 : Math.sqrt(p.sunShare), Math.sqrt(moonShare)),
-    glow: [glow * 1.0, glow * 0.82, glow * 0.6]
+    glow: [glow * 1.0, glow * 0.82, glow * 0.6],
+    eclGlow: SG_ECL_GLOW_MAX * Math.max(0, Math.min(1, ((p.obsc || 0) - SG_ECL_GLOW_FROM) / (1 - SG_ECL_GLOW_FROM)))
   };
 }
 // The zodiacal light's table as the shader reads it: elongation (rad) and S10 brightness, the far rows first.
@@ -945,6 +950,7 @@ function _sgZodiTable() {
   for (var i = SG_ZODI_S10.length - 1; i >= 0; i--) zt.push(SG_ZODI_S10[i][0] * DEG_TO_RAD, SG_ZODI_S10[i][1]);
   return zt;
 }
+var SG_ECL_GLOW_MAX = 0.02, SG_ECL_GLOW_FROM = 0.97;   // the sunset-coloured ring's share of a sunset sky's light at totality, and the cover from which it comes up
 var SG_NO_CLOUDS = { cloud: [0, 2500, 700, 0], wind: [0, 0, 0], sunE: 0 };   // a sky with no cloud field to ask (the clouds' own values: almanac-onesky.js _osCloudValues)
 // One frame. p: { W, H, dpr, view, sunAltGeo, sunAz, moonAlt, moonAz, moonIllum,
 // moonDist, horizon (the 9 numbers of _sgHorizonMatrix), eclPole, sunVec,
@@ -961,12 +967,14 @@ function _sgDraw(p) {
   var lv = _sgLightValues(p), sunLux = lv.sunLux, moonLux = lv.moonLux;
   if (sunLux) _sgBakeLight(sg, 'sun', p.sunAltGeo);
   if (moonLux) _sgBakeLight(sg, 'moon', p.moonAlt);
+  if (lv.eclGlow) _sgBakeLight(sg, 'ecl', 0);
   // The sky itself.
   gl.bindFramebuffer(gl.FRAMEBUFFER, null);
   gl.viewport(0, 0, p.W, p.H);
   gl.useProgram(sg.pSky);
   var u = sg.pSky.u;
   _sgBind(gl, 0, sg.viewS.tex, u.uSkyS); _sgBind(gl, 1, sg.viewM.tex, u.uSkyM); _sgBind(gl, 2, sg.mwTex, u.uMilky);
+  _sgBind(gl, 3, sg.viewE ? sg.viewE.tex : sg.viewS.tex, u.uSkyE); gl.uniform1f(u.uEclGlow, sg.viewE ? lv.eclGlow : 0);
   _sgViewUniforms(gl, sg.pSky, p);
   gl.uniform1f(u.uSunAz, p.sunAz * DEG_TO_RAD); gl.uniform1f(u.uSunLux, sunLux);
   gl.uniform1f(u.uMoonAz, p.moonAz * DEG_TO_RAD); gl.uniform1f(u.uMoonLux, moonLux);

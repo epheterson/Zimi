@@ -61,6 +61,7 @@ function _oaBuild(S) {
   o.multi = _oaTarget(T, SG_MS_N, SG_MS_N);
   o.viewS = _oaTarget(T, OA_VIEW_W, OA_VIEW_H);
   o.viewM = _oaTarget(T, OA_VIEW_W, OA_VIEW_H);
+  o.viewE = _oaTarget(T, OA_VIEW_W, OA_VIEW_H);   // the totality ring's table: the Sun at the horizon, baked once
   var matTrans = _oaMaterial(T, SG_FS_TRANS, {});
   var matMulti = _oaMaterial(T, SG_FS_MULTI, { uTrans: { value: o.trans.texture } });
   o.matView = _oaMaterial(T, SG_FS_SKYVIEW, { uTrans: { value: o.trans.texture }, uMulti: { value: o.multi.texture }, uLightAlt: { value: 0 }, uObsHeight: { value: SG_OBSERVER_KM } });
@@ -68,7 +69,7 @@ function _oaBuild(S) {
   _oaRun(o, matMulti, o.multi);
   matTrans.dispose(); matMulti.dispose();
   o.uniforms = {
-    uSkyS: o.viewS.texture, uSkyM: o.viewM.texture, uSunAz: 0, uSunLux: 0, uMoonAz: 0, uMoonLux: 0, uGlow: [0, 0, 0], uEclPole: [0, 0, 1],
+    uSkyS: o.viewS.texture, uSkyM: o.viewM.texture, uSkyE: o.viewE.texture, uEclGlow: 0, uSunAz: 0, uSunLux: 0, uMoonAz: 0, uMoonLux: 0, uGlow: [0, 0, 0], uEclPole: [0, 0, 1],
     uSunVec: [0, 0, 1], uZodiScale: 1, uAirglow: SG_AIRGLOW_LUM, uZodi: _sgZodiTable()
   };
   return o;
@@ -79,7 +80,7 @@ function _oaBake(o, which, altDeg) {
   if (o[k] === key) return;
   o[k] = key;
   o.matView.uniforms.uLightAlt.value = key * SG_LIGHT_ALT_STEP * DEG_TO_RAD;
-  _oaRun(o, o.matView, which === 'sun' ? o.viewS : o.viewM);
+  _oaRun(o, o.matView, which === 'sun' ? o.viewS : which === 'moon' ? o.viewM : o.viewE);
 }
 function _oaDef(st, fr) { return _osDef({ body: OA_BODY, lat: st.lat, lon: st.lon, heightM: st.altKm * 1000, tMs: fr && fr.at != null ? fr.at : _aeDisplayMs() }); }
 
@@ -101,6 +102,8 @@ var _oaAir = {
     var S = _osSkyState(_oaDef(st, fr)), p = S.p, lv = S.lv, o = _oa;
     if (lv.sunLux) _oaBake(o, 'sun', p.sunAltGeo);
     if (lv.moonLux) _oaBake(o, 'moon', p.moonAlt);
+    if (lv.eclGlow) _oaBake(o, 'ecl', 0);
+    u.uEclGlow.value = lv.eclGlow;
     u.uSunAz.value = p.sunAz * DEG_TO_RAD; u.uSunLux.value = lv.sunLux;
     u.uMoonAz.value = p.moonAz * DEG_TO_RAD; u.uMoonLux.value = lv.moonLux;
     u.uGlow.value = lv.glow; u.uEclPole.value = p.eclPole; u.uSunVec.value = p.sunVec;
