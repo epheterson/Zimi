@@ -162,3 +162,29 @@ def test_go_to_search_stands_on_the_keyboard_with_its_answers_in_view(
             ctx.close()
         finally:
             br.close()
+
+
+def test_in_short_landscape_the_go_to_list_shows_at_least_six_rows(library):
+    """844 x 390: the sheet used to be capped at half the height, with the field at its foot: one and a half rows."""
+    from playwright.sync_api import sync_playwright
+
+    with sync_playwright() as pw:
+        br = pw.chromium.launch(args=GL_ARGS)
+        try:
+            ctx, pg, errors = _open(br, library, LANDSCAPE)
+            pg.click("#ae-go-btn")
+            pg.wait_for_selector("#ae-go-q", state="visible")
+            pg.wait_for_function("() => !!_aeLm", timeout=60_000)
+            rows = pg.evaluate("""() => {
+                var sheet = document.getElementById('ae-go').getBoundingClientRect(), find = document.getElementById('ae-go-q').getBoundingClientRect();
+                var tops = {};
+                document.querySelectorAll('#ae-go .ae-go-list:not([hidden]) .ae-go-row').forEach(function (b) {
+                    var r = b.getBoundingClientRect();
+                    if (r.top >= sheet.top - 1 && r.bottom <= find.top + 1) tops[Math.round(r.top)] = 1;
+                });
+                return Object.keys(tops).length;
+            }""")
+            assert rows >= 6, rows
+            ctx.close()
+        finally:
+            br.close()
