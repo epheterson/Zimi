@@ -920,7 +920,7 @@
   .create-where { font-size: 12px; color: var(--text2); }
   .create-where[hidden] { display: none; }
   .create-where summary { cursor: pointer; width: max-content; }
-  .create-where .create-caption { margin-top: 4px; overflow-wrap: anywhere; }
+  .create-where .create-caption { margin-top: 4px; }
   .create-ftree-more { padding: 6px 0; font: inherit; font-size: 13px; color: var(--amber); background: none; border: 0; cursor: pointer; }
   .create-ftree-summary { padding: 8px 12px 4px; }
   .create-left-out { margin: 6px 0 0; padding-inline-start: 18px; font-size: 13px; color: var(--text2); }
@@ -1018,7 +1018,8 @@
   @media (max-width: 720px) { .create-field { font-size: 16px; } }
   .create-pick { width: auto; flex: 0 0 auto; padding-right: 6px; }
   .create-field:disabled { opacity: 0.5; cursor: not-allowed; }
-  .create-caption { font-size: 12px; color: var(--text2); }
+  /* anywhere: a caption can carry a command with the data folder in it, one unbroken word as wide as the path. */
+  .create-caption { font-size: 12px; color: var(--text2); overflow-wrap: anywhere; }
   /* "Advanced" is a sentence you can open, not a control: the default marker is
      replaced by a caret and there is deliberately no box, border or button
      around it — the simple form has to stay the thing you see. The run pane's
@@ -2097,7 +2098,10 @@
   .ms-nav-item { padding: 8px 16px; font-size: 13px; color: var(--text2); cursor: pointer; border: none; background: none; text-align: left; transition: all 0.15s; font-family: inherit; }
   .ms-nav-item:hover { color: var(--text); background: var(--amber-glow); }
   .ms-nav-item.active { color: var(--amber); background: var(--amber-glow); }
-  .ms-pane { flex: 1; padding: 16px 20px; }
+  /* min-width:0: a flex item's automatic minimum is its widest unbreakable line. The Capture pane's install
+     commands (nowrap, with the folder Zimi sits in in them) made the pane wider than the card, which clips:
+     the switches and the lower sections were cut off on a Pi whose path was long enough (#150). */
+  .ms-pane { flex: 1; min-width: 0; padding: 16px 20px; }
   .ms-pane .ms-actions { margin-top: 14px; display: flex; gap: 8px; flex-wrap: wrap; }
   /* Settings' on/off rows: the sharing card's row shape, the whole row the
      label of its switch. Apps add their icon at the start. */

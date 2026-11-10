@@ -21,6 +21,7 @@ import posixpath
 import re
 import struct
 import sys
+import urllib.parse
 
 from zimi.libzimcompat import entry_by_id
 
@@ -43,6 +44,8 @@ DATE_RE = re.compile(r"^\d{4}-\d{2}-\d{2}$")
 NON_MARKUP_RE = re.compile(r"<(script|style)\b.*?</\1>|<!--.*?-->", re.I | re.S)
 HREF_RE = re.compile(r"""<[a-z][^>]*?\s(?:href|src)\s*=\s*["']([^"']*)["']""", re.I)
 PNG_MAGIC = b"\x89PNG\r\n\x1a\n"
+#: The IHDR width and height end here (8-byte signature, chunk length and type, then two 4-byte numbers).
+PNG_SIZE_END = 24
 # A page with a thousand broken links is one finding, not a thousand lines.
 MAX_LINK_FINDINGS = 25
 ILLUSTRATION_SIZE = 48
@@ -113,7 +116,9 @@ def _check_icon(archive):
         return []  # the metadata check already says it is missing
     if png[:8] != PNG_MAGIC:
         return [_finding(ERROR, "icon", "the 48x48 illustration is not a PNG")]
-    size = struct.unpack(">II", png[16:24])
+    if len(png) < PNG_SIZE_END:
+        return [_finding(ERROR, "icon", "the 48x48 illustration is cut short")]
+    size = struct.unpack(">II", png[PNG_SIZE_END - 8 : PNG_SIZE_END])
     if size != (ILLUSTRATION_SIZE, ILLUSTRATION_SIZE):
         return [_finding(ERROR, "icon", "the 48x48 illustration is %dx%d" % size)]
     return []
@@ -122,7 +127,7 @@ def _check_icon(archive):
 def _resolve(base_path, ref):
     """A page's reference as an entry path, or None for what is not one (an
     address, data, a mailto, an anchor)."""
-    ref = ref.split("#", 1)[0].split("?", 1)[0].strip()
+    ref = urllib.parse.unquote(ref.split("#", 1)[0].split("?", 1)[0].strip())
     if not ref or ref.startswith("//") or re.match(r"^[a-z][a-z0-9+.-]*:", ref, re.I):
         return None
     if ref.startswith("/"):

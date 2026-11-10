@@ -99,3 +99,11 @@ def test_purging_them_keeps_the_torrent_of_an_installed_zim(data_dir, tmp_path, 
     assert (tdir / "installed.zim.torrent").exists()
     assert not (tdir / "elsewhere.zim.torrent").exists() and not (data_dir / "catalog_cache.json").exists()
     assert manage._cache_info_payload()["catalog_copies"] == {"count": 0, "size_bytes": 0}
+
+
+def test_purging_keeps_the_torrent_of_a_zim_installed_in_a_subfolder(data_dir, tmp_path, monkeypatch):
+    tdir = _catalog_files(data_dir, tmp_path, monkeypatch)
+    (tdir / "nested.zim.torrent").write_bytes(b"t" * 7)
+    monkeypatch.setattr(server, "get_zim_files", lambda: {"nested": str(tmp_path / "zims" / "sub" / "nested.zim")})
+    manage._purge_catalog_copies()
+    assert (tdir / "nested.zim.torrent").exists() and not (tdir / "elsewhere.zim.torrent").exists()

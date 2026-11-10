@@ -232,3 +232,34 @@ def test_serve_host_flag_binds_the_given_address():
         _boot_serve(["--zim-dir", zim_dir, "--host", "127.0.0.1"], {})
     finally:
         shutil.rmtree(zim_dir, ignore_errors=True)
+
+
+def test_serve_takes_the_folder_as_an_argument_and_it_beats_the_env_var():
+    """`zimi serve /path/to/zims`, as kiwix-serve is run: the same as --zim-dir (#152)."""
+    given = tempfile.mkdtemp(prefix="zimi-cli-given-")
+    env_dir = tempfile.mkdtemp(prefix="zimi-cli-env-")
+    try:
+        _boot_serve([given], {"ZIM_DIR": env_dir})
+        assert os.path.isdir(os.path.join(given, ".zimi"))
+        assert not os.path.exists(os.path.join(env_dir, ".zimi"))
+    finally:
+        for p in (given, env_dir):
+            shutil.rmtree(p, ignore_errors=True)
+
+
+def test_serve_refuses_a_folder_argument_that_disagrees_with_the_flag():
+    a = tempfile.mkdtemp(prefix="zimi-cli-a-")
+    b = tempfile.mkdtemp(prefix="zimi-cli-b-")
+    try:
+        r = subprocess.run(
+            [sys.executable, "-m", "zimi", "serve", a, "--zim-dir", b],
+            cwd=REPO_ROOT,
+            capture_output=True,
+            text=True,
+            timeout=60,
+            env={**os.environ, "ZIMI_TORRENT": "0", "ZIMI_PEER_DISCOVERY": "0"},
+        )
+        assert r.returncode == 2 and "different folders" in r.stderr
+    finally:
+        for p in (a, b):
+            shutil.rmtree(p, ignore_errors=True)

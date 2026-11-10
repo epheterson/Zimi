@@ -22,34 +22,42 @@ OWN_LABELS = {
     "zimi_almanac": ("almanac", "tides", "sky"),
 }
 _RELEASE = re.compile(r"^## \[(\d+\.\d+\.\d+)\]")
+_AREA = re.compile(r"^\*\*([^*]+)\*\*$")
 # "- **Label:** text", or the plain "- Label: text" the 1.15.0 highlights are written in.
 _HIGHLIGHT = re.compile(r"^- (?:\*\*([^*]+?):\*\*|([^*:]{1,40}):)\s*(.+)$")
 
 
+def _own(label):
+    """The own ZIM a label (a highlight's, or an area heading's) is about, or None."""
+    low = label.lower()
+    return next((o for o, words in OWN_LABELS.items() if any(w in low for w in words)), None)
+
+
 def build(text):
-    out, version, in_highlights = {}, None, False
+    out, version, in_highlights, area = {}, None, False, None
     for line in text.splitlines():
         m = _RELEASE.match(line)
         if m:
-            version, in_highlights = m.group(1), False
+            version, in_highlights, area = m.group(1), False, None
             continue
         if line.startswith("### "):
-            in_highlights = line.strip() == "### Highlights"
+            in_highlights, area = line.strip() == "### Highlights", None
             continue
-        h = _HIGHLIGHT.match(line) if version and in_highlights else None
-        if not h:
+        if not (version and in_highlights):
             continue
-        label, rest = (h.group(1) or h.group(2)).strip(), h.group(3).strip()
-        own = next(
-            (
-                o
-                for o, words in OWN_LABELS.items()
-                if any(w in label.lower() for w in words)
-            ),
-            None,
-        )
-        if own:
-            out.setdefault(version, {}).setdefault(own, []).append(label + ": " + rest)
+        # The grouped Highlights (1.15.4 on): a bold area heading, then plain bullets that belong to it.
+        heading = _AREA.match(line.strip())
+        if heading:
+            area = _own(heading.group(1))
+            continue
+        h = _HIGHLIGHT.match(line)
+        if h:
+            label, rest = (h.group(1) or h.group(2)).strip(), h.group(3).strip()
+            own = _own(label) or area
+            if own:
+                out.setdefault(version, {}).setdefault(own, []).append(label + ": " + rest)
+        elif area and line.startswith("- "):
+            out.setdefault(version, {}).setdefault(area, []).append(line[2:].strip())
     return out
 
 

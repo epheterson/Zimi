@@ -987,6 +987,8 @@ var ALM_RATE_SECS = [31557600, 86400, 3600, 60];
 var ALM_RATE_STOPS = ALM_RATE_SECS.map(function (s) { return -s; }).concat([1], ALM_RATE_SECS.slice().reverse());
 var ALM_RATE_REAL = 4;                 // the real-time stop's index: the slider's middle
 var ALM_RATE_SNAP = 0.2;               // a drag within this of a stop lands on it
+var ALM_RATE_REAL_SNAP_PX = 20;        // real time's detent is a fingertip wide, either side, whatever the slider's width
+var ALM_RATE_REAL_SNAP_MAX = 0.45;     // ...but never past halfway to the next stop
 var ALM_RATE_STEP = 0.01;              // the slider's resolution, in stops
 var ALM_RATE_REAL_EPS = 0.1;           // a rate this close to 1 is real time
 var ALM_RATE_FAST = 120;               // from here the page is pinned and repainted by tiers; slower, a tick a quarter second keeps up
@@ -1626,9 +1628,16 @@ function _almClockKey(e) {
   }
 }
 
+// How far a drag still lands on a stop: real time's band is measured in pixels, so a thumb let go a finger's width short
+// of the middle is back at 1x (at 0.2 of a stop, 8 px on a phone, travel left it at 3x).
+function _almSpdSnap(spd, rng, n) {
+  if (n !== ALM_RATE_REAL) return ALM_RATE_SNAP;
+  var th = parseFloat(getComputedStyle(spd).getPropertyValue('--spd-thumb')) || 0, perStop = (rng.clientWidth - th) / (ALM_RATE_STOPS.length - 1);
+  return perStop > 0 ? Math.max(ALM_RATE_SNAP, Math.min(ALM_RATE_REAL_SNAP_MAX, ALM_RATE_REAL_SNAP_PX / perStop)) : ALM_RATE_SNAP;
+}
 function _almSpdInput(rng) {
   var spd = rng.closest('.alm-spd'), v = parseFloat(rng.value), n = Math.round(v);
-  if (spd.classList.contains('alm-spd-drag') && Math.abs(v - n) < ALM_RATE_SNAP) { v = n; rng.value = n; }
+  if (spd.classList.contains('alm-spd-drag') && Math.abs(v - n) < _almSpdSnap(spd, rng, n)) { v = n; rng.value = n; }
   _almClockSetRate(v === ALM_RATE_REAL ? 1 : _almRateAt(v));
 }
 
@@ -7425,7 +7434,10 @@ function _almSelectDay(jdn) {
   // there, never running through the hours between: a near day ran through the night and a far one did not (Eric
   // 2026-11-08: "be consistent").
   var g = _jdnToGregorian(jdn), from = _almFocusInstant(), tz = _almClockTz(), P = _almTzParts(from, tz);
-  var to = _almClampInstant(_almInstantFromTz(g.year, g.month, g.day, P.h, P.mi, tz).date);
+  // The seconds go with it: dropped, each pick would land up to a minute behind the clock, and today picked again would
+  // no longer be within a minute of now, so the clock would not come back to live.
+  var secs = ((from.getTime() % ALM_MINUTE_MS) + ALM_MINUTE_MS) % ALM_MINUTE_MS;
+  var to = _almClampInstant(new Date(_almInstantFromTz(g.year, g.month, g.day, P.h, P.mi, tz).date.getTime() + secs));
   var cal = _jdnToCalendar(_almSystem, jdn);
   _almYear = cal.year;
   _almMonth = cal.month;

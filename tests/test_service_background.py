@@ -100,3 +100,27 @@ def test_background_start_reports_ready_refuses_a_second_and_a_failed_start_says
         dead.stdout,
         dead.stderr,
     )
+
+
+@posix
+def test_a_pid_file_locked_but_not_yet_written_is_not_removed(tmp_path):
+    """A server locks its pid file, then writes its pid: a second start in between must leave the file (and so the
+    lock) alone, not unlink the live server's file and claim a new one."""
+    import fcntl
+
+    pid_path = tmp_path / "zimi.pid"
+    pid_path.write_text("", encoding="utf-8")
+    with open(pid_path) as holder:
+        fcntl.flock(holder, fcntl.LOCK_EX)
+        with pytest.raises(SystemExit):
+            service._clear_left_behind(str(pid_path))
+    assert pid_path.exists()
+
+
+@posix
+def test_a_pid_file_nobody_holds_is_cleared(tmp_path):
+    pid_path = tmp_path / "zimi.pid"
+    pid_path.write_text("4242", encoding="utf-8")
+    service._clear_left_behind(str(pid_path))
+    assert not pid_path.exists()
+    service._clear_left_behind(str(pid_path))  # none: nothing to do

@@ -101,6 +101,42 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 - Search finds PDF collections' documents (nautilus and zimgit libraries) by their listed title, description and author and by the text inside the PDFs, from an index Zimi reads in the background beside the ZIM (#142).
 - `list_entries` (MCP tool and `/entries`): a source's entries by MIME type or path prefix, paged (#142).
 - **Lighter Docker image:** under 1 GB compressed (was about 2.3 GB unpacked, now about 0.7 GB). The browser, SingleFile, video tools and warc2zim are add-ons, added once from the first-run list or Settings > Server > Add-ons (Ask first, Automatically or Never).
+## [1.15.5]
+
+### Highlights
+
+**Zimi**
+
+- Search finds documents in PDF collections, by title and by the text inside them (#142).
+- Voices work on the portable Linux build, and Settings says why when one can't be installed (#151).
+- Settings pages stay inside their cards, so Capture's switches are no longer cut off (#150).
+- `zimi serve /path/to/zims` works, the same as `--zim-dir` (#152).
+- `zimi check` checks a ZIM the way openZIM's zimcheck does.
+- Manage can clear cached catalog copies.
+- The Docker image builds again with Playwright 1.65.
+
+### Added
+
+- **PDF collections:** search finds the documents in nautilus and zimgit libraries by their listed title, description and author and by the text inside the PDFs, from an index Zimi builds in the background beside the ZIM (#142).
+- **`list_entries`:** an MCP tool and `/entries` endpoint that lists a source's entries by MIME type or path prefix, paged (#142).
+- **`zimi check FILE...`:** a ZIM's checksum, metadata, icon, redirects and internal links, the checks openZIM's zimcheck makes; `--quick` skips the slow ones.
+- **`zimi serve DIR`:** the ZIM folder as an argument, like `--zim-dir` (#152).
+- **Clear catalog copies:** Manage's cache panel frees the cached catalog and the kept .torrent files of ZIMs that are not installed.
+
+### Fixed
+
+- Voices on the portable Linux build: the helper it was missing is included, a first voice download sets up its engine with the machine's Python or uv, and a disk mounted noexec is named instead of failing (#151).
+- Settings > Language says why a voice can't be installed instead of doing nothing (#151).
+- Settings panes no longer grow wider than their card, so Capture's switches are no longer cut off, and they match the switches everywhere else (#150).
+- Create's setup commands wrap inside their card (#150).
+- Reddot, Zimipedia, ZimiTube, the PDF reader and Manage's Maps pane follow a setting changed in another window.
+- A second `zimi serve -d` started while the first is still starting no longer removes its pid file.
+- The portable build includes Pillow.
+- With Playwright 1.65, a stalled rendered capture's browser can be stopped again, and the Docker image builds.
+- Place search handles long place words, and small holes in region outlines are kept.
+- Almanac: the solar system is sized by its box, so a phone's tables page no longer scrolls sideways.
+- Almanac clock: picking today returns it to live time.
+- Almanac clock: back to 1x by touch is easier: the speed slider's thumb is grabbed in a fingertip-tall band, and let go within a fingertip of the middle it lands on real time.
 
 ## [1.15.4]
 
