@@ -388,32 +388,34 @@ def test_the_3d_view_makes_its_first_frame_in_time_under_a_4x_throttle(phone, se
 # four seconds for what comes once the globe is up; no HD installed. 1.15.4 transferred 45 files (47 requests counting two
 # data: URLs, which this test does not count), 2,651,518 bytes in that walk (tests/data/globe_cold_1154.json holds them by file; the Mac mini, real GPU).
 #
-# BYTES: 1.15.4 plus 5 percent. 1.16 is 2,136,507 (19 percent under: the 730 KB Moon map and the probe tracks wait for the Moon
+# BYTES: 1.15.4 plus 5 percent. 1.16 is 2,131,592 (20 percent under: the 730 KB Moon map and the probe tracks wait for the Moon
 # and for the satellite layer). A hard gate; the failure names every file that is new or grew.
 # REQUESTS, two tests:
 #   - the honest ceiling (GLOBE_REQUESTS_CEILING): what 1.16 fetches for the first screen of this walk, argued below. Hard.
 #   - 1.15.4 plus 5 percent (47 files: 49 counting the two data: URLs): where we want to be; a strict xfail until the small files that need no part of the first
 #     frame move behind their triggers. The day it passes it says so, and the marker and the ceiling above go.
-# The honest ceiling, with what is in the 55 requests (53 files, no data: URLs) measured on the merged stack tip (Mac mini, real
-# GPU, 390x844):
-#   47  1.15.4 plus 5 percent (49 with the data: URLs);
+# The honest ceiling, in files (data: URLs are not counted; 1.15.4 fetched 45), from the merged stack tip on the Mac mini:
+#   45  1.15.4;
+#   -2  moon-4k-v1.webp and space-tracks-v1.json, which now wait for the Moon and for the satellite layer;
 #   +1  capability.js (the level decision, before the view is made);
-#   +5  onesky's: almanac-onesky.js, almanac-oneland.js, almanac-skyland.js, landcover-v1.bin, nightlights-v1.bin. The Almanac's
-#       sky card is in the first screen of a phone and its land layer draws there: the page's, not the globe's, and 1.15.4 had
-#       no land under the sky;
 #   +1  moon-2k-v1.webp (the Almanac hero's map, which replaced the 4096 one on Home);
-#   +2  almanac-sun.js and almanac-orrery3d.js, which are NOT legitimate and are going:
-#         almanac-sun.js is asked for by the warm render, not by the view: _aeSunFxWanted runs in _aeUpdate while the scene is
-#         made (ready is false, the camera is at its default distance of 40, where the Sun is inside the frame) and sets
-#         sunFxAsked before the opening pose exists. At the opening pose the Sun is 33 degrees off the axis (the frame's corner
-#         is 19), 16.6 px wide (the close-up asks for 28): it would not be asked. The fix is one line, return while !_ae.ready;
-#         almanac-orrery3d.js is the orrery's hand-over (the lane's lazy-load, pending);
-# The two 1.15.4 files 1.16 no longer fetches (moon-4k, space-tracks) are already out of that count. So: 53 files today, 51 once
-# those two move; 47 only if the onesky five leave the first screen as well.
+#   +6  onesky's: almanac-onesky.js, almanac-skyscene.js, almanac-oneland.js, almanac-skyland.js, landcover-v1.bin,
+#       nightlights-v1.bin. The Almanac's sky card is in the first screen of a phone and its land layer draws there: the
+#       page's, not the globe's, and 1.15.4 had no land under the sky;
+#   +1  almanac-orrery3d.js, the orrery's hand-over: its lane's lazy-load is pending (51 once it lands).
+# That is 52. Two more files can arrive, and both are one defect, not a need: almanac-sun.js and, depending on the hour, the
+# Moon's 4096 map (moon-4k-v1.webp, 730 KB: it takes the bytes over the ceiling) are asked for by the warm render. _aeSunFxWanted
+# and _aeMoonHiWanted run in _aeUpdate while the scene is being made (ready is false, the camera is at its default distance of
+# 40, where the Sun is inside the frame and the Moon's disc is wide) and set their "asked" flags before the opening pose exists.
+# At the opening pose the Sun is 33 degrees off the axis (the frame's corner is 19) and 16.6 px wide (the close-up asks for 28),
+# and the Moon is small. One condition fixes both: call the two only while `_ae.ready && _aeIsOpen`. With it, the walk is 54
+# requests (52 files), 2,131,592 bytes, first frame 152 ms, 24.1 MB of textures; without it, up to 2.87 MB. Until it lands
+# the bytes and requests tests can fail on the hour. 47 files (1.15.4 plus 5 percent) needs the onesky six off the first
+# screen as well.
 GLOBE_BASELINE = os.path.join(ROOT, "tests", "data", "globe_cold_1154.json")
 GLOBE_SLACK = 1.05
 GLOBE_GROWN_BYTES = 2048  # a file that grew by more than this is named
-GLOBE_REQUESTS_CEILING = 55   # see above; argued, not forced. Lower it as files move behind their triggers.
+GLOBE_REQUESTS_CEILING = 52   # see above: 51 once the orrery hand-over is lazy; argued, not forced
 
 
 @pytest.fixture(scope="module")
