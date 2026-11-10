@@ -106,7 +106,9 @@
   }
 
   // ── Layout ──────────────────────────────────────────────────────────────
-  var ROW_STEP_SHARE = 0.5, ROW_STEP_MAX = 0.6, HEIGHT_SHARE = 0.125;
+  // A covered card shows its index and clean paper, never its body's suit cut by the two cards on it (the suit starts at 0.49 of
+  // the card; Z.FAN_UP_SHARE is the most a fan opens): the rows step at least ROW_STEP_SHARE, at most the fan's widest.
+  var ROW_STEP_SHARE = 0.4, ROW_STEP_MAX = Z.FAN_UP_SHARE, HEIGHT_SHARE = 0.125;
 
   function place(state, m, view) {
     var P = state.piles, cw = m.cw, ch = m.ch, picked = view && view.picked;
@@ -162,7 +164,7 @@
 
     page = Z.solitairePage({
       refuse: function () { page.note(TX('pyr.why.noRedeals')); },
-      rules: api, id: 'pyramid', fact: true, cols: COLS, heightShare: HEIGHT_SHARE, enterTaps: true, newGame: newGame, tap: tap, stock: drawStock,
+      rules: api, id: 'pyramid', fact: true, cols: COLS, gapShare: 0, heightShare: HEIGHT_SHARE, enterTaps: true, newGame: newGame, tap: tap, stock: drawStock,
       place: function (st, m) { return place(st, m, view); },
       settle: function () { view.picked = null; paintSub(); },
       score: function (st) { return st.score; },
