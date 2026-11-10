@@ -380,35 +380,53 @@ def test_the_3d_view_makes_its_first_frame_in_time_under_a_4x_throttle(phone, se
     finally:
         ctx.close()
     assert took <= FIRST_FRAME_MS_MAX_THROTTLED, "%.0f ms" % took
+
+
 # ── The 3D Earth opens as light as 1.15.4's ─────────────────────────────────────────────────────────────────────
 # Eric, 2026-11-09: "by default almanac 3D should ideally be same weight as existing release, with extra kicking in on zoom
 # or with layers, but lightweight." Cold (nothing cached), from navigation: Home, a tap on the Almanac, a tap on the Earth,
-# four seconds for what comes once the globe is up; no HD installed. 1.15.4 transferred 45 files, 2,651,518 bytes in that
-# walk (tests/data/globe_cold_1154.json holds them by file); the budget is that plus 5 percent. What 1.16 adds that the
-# first globe frame does not need belongs behind its own trigger (a layer switched on, a Go to row, a zoom, Stand here).
-# The test names every file that is new or grew, so the lane that owns it can move it. Expected to fail until they have:
-# strict, so the day it passes it says so and the marker goes.
+# four seconds for what comes once the globe is up; no HD installed. 1.15.4 transferred 45 files (47 requests counting two
+# data: URLs, which this test does not count), 2,651,518 bytes in that walk (tests/data/globe_cold_1154.json holds them by file; the Mac mini, real GPU).
+#
+# BYTES: 1.15.4 plus 5 percent. 1.16 is 2,136,507 (19 percent under: the 730 KB Moon map and the probe tracks wait for the Moon
+# and for the satellite layer). A hard gate; the failure names every file that is new or grew.
+# REQUESTS, two tests:
+#   - the honest ceiling (GLOBE_REQUESTS_CEILING): what 1.16 fetches for the first screen of this walk, argued below. Hard.
+#   - 1.15.4 plus 5 percent (47 files: 49 counting the two data: URLs): where we want to be; a strict xfail until the small files that need no part of the first
+#     frame move behind their triggers. The day it passes it says so, and the marker and the ceiling above go.
+# The honest ceiling, with what is in the 55 requests (53 files, no data: URLs) measured on the merged stack tip (Mac mini, real
+# GPU, 390x844):
+#   47  1.15.4 plus 5 percent (49 with the data: URLs);
+#   +1  capability.js (the level decision, before the view is made);
+#   +5  onesky's: almanac-onesky.js, almanac-oneland.js, almanac-skyland.js, landcover-v1.bin, nightlights-v1.bin. The Almanac's
+#       sky card is in the first screen of a phone and its land layer draws there: the page's, not the globe's, and 1.15.4 had
+#       no land under the sky;
+#   +1  moon-2k-v1.webp (the Almanac hero's map, which replaced the 4096 one on Home);
+#   +2  almanac-sun.js and almanac-orrery3d.js, which are NOT legitimate and are going:
+#         almanac-sun.js is asked for by the warm render, not by the view: _aeSunFxWanted runs in _aeUpdate while the scene is
+#         made (ready is false, the camera is at its default distance of 40, where the Sun is inside the frame) and sets
+#         sunFxAsked before the opening pose exists. At the opening pose the Sun is 33 degrees off the axis (the frame's corner
+#         is 19), 16.6 px wide (the close-up asks for 28): it would not be asked. The fix is one line, return while !_ae.ready;
+#         almanac-orrery3d.js is the orrery's hand-over (the lane's lazy-load, pending);
+# The two 1.15.4 files 1.16 no longer fetches (moon-4k, space-tracks) are already out of that count. So: 53 files today, 51 once
+# those two move; 47 only if the onesky five leave the first screen as well.
 GLOBE_BASELINE = os.path.join(ROOT, "tests", "data", "globe_cold_1154.json")
 GLOBE_SLACK = 1.05
 GLOBE_GROWN_BYTES = 2048  # a file that grew by more than this is named
-
-
-@pytest.mark.xfail(
-    strict=True,
-    reason="1.16 adds files to the globe's cold open that 1.15.4 did not fetch; see the list this test prints",
+GLOBE_REQUESTS_CEILING = (
+    55  # see above; argued, not forced. Lower it as files move behind their triggers.
 )
-def test_opening_the_globe_cold_stays_within_5_percent_of_1_15_4(served):
+
+
+@pytest.fixture(scope="module")
+def globe_walk(served):
+    """The cold walk once: {url path: transferred bytes} (data: URLs not counted), the baseline's numbers and a report."""
     import json
 
     from playwright.sync_api import sync_playwright
 
     with open(GLOBE_BASELINE, encoding="utf-8") as fh:
         base = json.load(fh)
-    base_requests, base_bytes, base_files = (
-        base["requests"],
-        base["bytes"],
-        base["files"],
-    )
     with sync_playwright() as pw:
         br = pw.chromium.launch(
             args=[
@@ -446,30 +464,52 @@ def test_opening_the_globe_cold_stays_within_5_percent_of_1_15_4(served):
         pg.wait_for_timeout(4000)
         got = {u.split("?")[0]: b for u, b in counter.by.items()}
         br.close()
-    requests, total = len(got), sum(got.values())
-    new = sorted(((b, u) for u, b in got.items() if u not in base_files), reverse=True)
+    files = base["files"]
+    new = sorted(((b, u) for u, b in got.items() if u not in files), reverse=True)
     grown = sorted(
         (
-            (b - base_files[u], u)
+            (b - files[u], u)
             for u, b in got.items()
-            if u in base_files and b - base_files[u] > GLOBE_GROWN_BYTES
+            if u in files and b - files[u] > GLOBE_GROWN_BYTES
         ),
         reverse=True,
     )
-    report = (
-        "requests %d (1.15.4: %d, ceiling %d); bytes %d (1.15.4: %d, ceiling %d)\nnew: %s\ngrown: %s"
+    lines = ["  new   %7d B  %s" % (b, u) for b, u in new] + [
+        "  grown %+7d B  %s" % (d, u) for d, u in grown
+    ]
+    return {"got": got, "base": base, "offenders": "\n".join(lines)}
+
+
+def test_opening_the_globe_cold_bytes_stay_within_5_percent_of_1_15_4(globe_walk):
+    got, base = globe_walk["got"], globe_walk["base"]
+    total, ceiling = sum(got.values()), int(base["bytes"] * GLOBE_SLACK)
+    assert total <= ceiling, (
+        "the globe's cold open moved %d bytes; 1.15.4 moved %d, ceiling %d. New or grown files:\n%s"
+        % (total, base["bytes"], ceiling, globe_walk["offenders"])
+    )
+
+
+def test_opening_the_globe_cold_requests_stay_within_the_honest_ceiling(globe_walk):
+    got = globe_walk["got"]
+    assert len(got) <= GLOBE_REQUESTS_CEILING, (
+        "the globe's cold open made %d requests; ceiling %d (1.15.4: %d). New or grown files:\n%s"
         % (
-            requests,
-            base_requests,
-            int(base_requests * GLOBE_SLACK),
-            total,
-            base_bytes,
-            int(base_bytes * GLOBE_SLACK),
-            ["%s %d KB" % (u, b // 1024) for b, u in new],
-            ["%s +%d KB" % (u, d // 1024) for d, u in grown],
+            len(got),
+            GLOBE_REQUESTS_CEILING,
+            globe_walk["base"]["requests"],
+            globe_walk["offenders"],
         )
     )
-    print(report)
-    assert (
-        requests <= base_requests * GLOBE_SLACK and total <= base_bytes * GLOBE_SLACK
-    ), report
+
+
+@pytest.mark.xfail(
+    strict=True,
+    reason="1.16 still fetches small files at the open that the first globe frame does not need (the Sun's effects, the orrery hand-over, the sky's land grids)",
+)
+def test_opening_the_globe_cold_requests_stay_within_5_percent_of_1_15_4(globe_walk):
+    got, base = globe_walk["got"], globe_walk["base"]
+    ceiling = int(base["requests"] * GLOBE_SLACK)
+    assert len(got) <= ceiling, (
+        "the globe's cold open made %d requests; 1.15.4 made %d, ceiling %d. New or grown files:\n%s"
+        % (len(got), base["requests"], ceiling, globe_walk["offenders"])
+    )
