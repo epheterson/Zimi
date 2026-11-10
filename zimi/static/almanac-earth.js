@@ -2378,7 +2378,7 @@ function _aeHdKeepAbove(S, b) {
 // An installed map's roads and names fade in over the globe as the camera comes down, and over such a map the camera may
 // come much nearer: the lines stay sharp where the picture of the ground blurs. Needs the app shell (the map is a ZIM
 // of the library); the Almanac ZIM on its own has none, and then nothing here runs.
-var AE_MAPS_SRC = '/static/almanac-maps.js?v=1';
+var AE_MAPS_SRC = _almAsset('/static/almanac-maps.js');
 var AE_MAPS = {
   loadDist: 1.6,        // Earth radii from the centre: the module is fetched below this
   startKm: 3000,        // altitude where the roads and names begin to show ...
