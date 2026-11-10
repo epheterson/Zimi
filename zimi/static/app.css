@@ -2104,6 +2104,10 @@
   .set-row .share-row-title, .set-row .share-row-desc { display: block; }
   .set-row .share-row-title { font-weight: 500; font-size: 14px; }
   .set-row-icon { display: flex; flex-shrink: 0; color: var(--amber); }
+  .addon-row { flex-wrap: wrap; }
+  .addon-act { margin-inline-start: auto; display: flex; align-items: center; gap: 8px; color: var(--text2); font-size: 12px; }
+  .addon-row .dl-progress { flex-basis: 100%; }
+  .addon-failed { color: var(--red, #e5484d); }
   .set-row-icon svg { width: 22px; height: 22px; }
   .set-row.share-locked { cursor: default; }
   /* Apps: shut, one disclosure row (title, how many are on, a chevron);
