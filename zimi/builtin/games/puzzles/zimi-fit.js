@@ -733,7 +733,7 @@
   var STATUS = [
     [/\bMoves(?: since auto-solve)?: \d+\s*/g, function () { return ""; }],
     [/\bCannot move!\s*/i, function () { return T("cards.noMoves", "No moves left") + ". "; }],
-    [/^COMPLETED!\s*/i, function () { return T("pz.solved", "Solved") + ". "; }],
+    [/^COMPLETED?!\s*/i, function () { return T("pz.solved", "Solved") + ". "; }],
     [/\bAuto-solve[dr]( used)?\.?/i, function () { return T("pz.solutionShown", "Solution shown") + "."; }],
     [/^\[(\d+:\d\d)\]\s*/, function (m, clock) { return clock + " · "; }],
     [/\bBalls marked: (\d+) \/ (\d+)-(\d+)\.?/, function (m, a, lo, hi) { return T("pz.ballsRange", "Balls marked: {a} of {lo} to {hi}", { a: num(a), lo: num(lo), hi: num(hi) }); }],
@@ -880,7 +880,7 @@
     frame.parentNode.insertBefore(line, frame.nextSibling);
     function sync() {
       var raw = bar.textContent, t = sayStatus(raw);
-      if (/^(\[\d+:\d\d\]\s*)?COMPLETED!/i.test(raw)) declareWin(); else if (solved && !/COMPLETED!/i.test(raw)) { solved = false; }
+      if (/^(\[\d+:\d\d\]\s*)?COMPLETED?!/i.test(raw)) declareWin(); else if (solved && !/COMPLETED?!/i.test(raw)) { solved = false; }
       if (/Cannot move!/i.test(raw)) declareStuck(raw); else stuck = false;
       if (line.textContent !== t) line.textContent = t;
       line.hidden = !t;
