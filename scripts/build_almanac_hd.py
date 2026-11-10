@@ -1050,14 +1050,20 @@ INDEX = """<!doctype html><html lang="en"><head><meta charset="utf-8"><title>Alm
 </ul></body></html>
 """
 
-ZIMI_TXT = """Title: Almanac HD · Zimi
+def _almanac_title():
+    """The Almanac's ZIM Title, defined once in its source folder's zimi.txt (every flavour and part shares it)."""
+    with open(os.path.join(ROOT, "zimi", "builtin", "almanac", "zimi.txt"), encoding="utf-8") as f:
+        return f.readline().split(": ", 1)[1].strip()
+
+
+ZIMI_TXT = """Title: %s
 Description: Sharper Earth, Moon and planets for the Almanac's 3D view, as tiles
 Language: eng
 Creator: NASA
 Publisher: Zimi
 Tags: _category:education;astronomy;zimi;zimi:own;zimi:almanac-hd
 Icon: icon.png
-"""
+""" % _almanac_title()
 
 
 # The Apollo sites at the Narrow Angle Camera's half a metre: LRO NAC mosaics (NASA/GSFC/Arizona State University,

@@ -3493,7 +3493,7 @@ def _read_faces(archive):
 
 
 def _own_display_title(title, tags):
-    """Zimi's own ZIMs show their short name inside Zimi (the file's Title keeps " · Zimi" for other readers)."""
+    """Zimi's own ZIMs show their short name inside Zimi (the file's Title keeps "Zimi " for other readers)."""
     from zimi import ownzims
     return ownzims.display_title(title) if ownzims.OWN_TAG in (tags or "").split(";") else title
 
