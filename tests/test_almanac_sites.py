@@ -40,16 +40,23 @@ def landmarks():
 
 
 def _parse(name):
-    """A ZCR2 file as (palette entries, vertex count, indices, box)."""
+    """A site model (ZCR2, or the older flat-shaded ZCRF) as (palette entries, vertex count, indices, box)."""
     with open(os.path.join(EARTH, "craft-site-%s-v1.bin" % name), "rb") as fh:
         b = fh.read()
-    assert b[:4] == b"ZCR2"
+    magic = b[:4]
+    assert magic in (b"ZCR2", b"ZCRF")
     version, metres = struct.unpack_from("<If", b, 4)
-    assert version == 2 and metres > 0
+    assert version == (2 if magic == b"ZCR2" else 1) and metres > 0
     box = struct.unpack_from("<6f", b, 12)
-    palette_n, nv, nt, flags = struct.unpack_from("<4I", b, 60)
-    assert flags == 0, "a site's model has no UVs or textures"
-    o = 88 + 24 * palette_n + nv * 9
+    if magic == b"ZCR2":
+        palette_n, nv, nt, flags = struct.unpack_from("<4I", b, 60)
+        assert flags == 0, "a site's model has no UVs or textures"
+        o = 88 + 24 * palette_n + nv * 9
+    else:
+        palette_n = struct.unpack_from("<I", b, 60)[0]
+        o = 64 + 20 * palette_n
+        nv, nt = struct.unpack_from("<II", b, o)
+        o += 8 + nv * 8
     width = 4 if nv > 65535 else 2
     assert (
         len(b) == o + nt * 3 * width
