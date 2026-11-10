@@ -344,7 +344,7 @@ var AE_ST_GROUND_FRAG = [
   '    L = mix(deep, sky, F) + sT * pow(max(dot(R, uSunDir), 0.0), 1400.0) * 10.0;',
   '  } else {',
   '    float vis = uLommel > 0.5 ? max(vShade, ' + AE_ST_BACKSCATTER.toFixed(2) + ') : vShade;',   // a shadow on regolith is lit by the ground around it
-  '    vec3 sT = sunTrans(pk) * uSunE * vis;',
+  '    vec3 sT = sunTrans(pk) * uSunE * vis * smoothstep(-0.03, 0.02, dot(upF, uSunDir));',   // a Sun under the horizon lights no slope, however it leans
   '    float ndl = dot(N, uSunDir), mu0 = max(ndl, 0.0), mu = max(dot(N, V), 0.03);',
   '    float lam = uLommel > 0.5 ? 2.0 * mu0 / (mu0 + mu) : mu0;',
   '    float surge = uLommel > 0.5 ? 1.0 + ' + AE_ST_SURGE.toFixed(2) + ' * exp(-acos(clamp(dot(uSunDir, V), -1.0, 1.0)) / ' + AE_ST_SURGE_WIDTH.toFixed(2) + ') : 1.0;',
