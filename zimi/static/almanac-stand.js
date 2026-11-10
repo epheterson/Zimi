@@ -40,15 +40,16 @@ var AE_STAND_STAR_FLOOR_MS = 400;
 // ── The way in ──
 // Called by the Stand here button, and by anything that wants a body's ground (the models lane). Opens the 3D view if it
 // is not up, flies to the place, and drops to the ground once the terrain's mesh is built; resolves true when it started.
-function _aeStandStart(key, lat, lon) {
+function _aeStandStart(key, lat, lon, handoff) {
   if (!_aeStandable(key)) return Promise.resolve(false);
   if (_ae && _ae.stand) _aeStandDrop();
   return _aeStandViewUp().then(function (up) {
     if (!up) return false;
+    if (handoff && handoff.ms !== undefined && handoff.ms !== null && typeof _aeGoTo === 'function') _aeGoTo(handoff.ms);
     // A body with no place for this date (a dwarf planet whose table does not reach it) has no sky to stand under.
     var frame = _aeStBodyNow(key);
     if (!frame) return false;
-    var pend = _ae.standPending = { key: key, lat: lat, lon: lon, ready: false, t0: performance.now(), builder: null, mesh: null, tex: null };
+    var pend = _ae.standPending = { key: key, lat: lat, lon: lon, ready: false, t0: performance.now(), builder: null, mesh: null, tex: null, handoff: handoff || null };
     _ae.pick = null; _ae.lm = null; _ae.place = null; _ae.selected = null;
     _aeRenderCard();
     var body = AE_STAND_BODIES[key];
@@ -57,7 +58,7 @@ function _aeStandStart(key, lat, lon) {
     var minDist = AE_TARGETS[key].min, surface = AE_TARGETS[key].surface;
     pend.alt0 = Math.max(30, (minDist - surface) * AE_EARTH_RADIUS_KM);
     _aeStandBuild(pend, body);
-    _aeFlyTo(key, minDist, _aeAzElOf(_aeStToScene(frame, _aeUnitVec(lat, lon))));
+    _aeFlyTo(key, minDist, _aeAzElOf(_aeStToScene(frame, _aeStPlaceVec(key, lat, lon))));
     _ae.preset = null;
     _aeMarkViews();
     _aeKick();
@@ -83,7 +84,7 @@ function _aeStandBuild(pend, body) {
   _aeTerrainLoad(pend.key).then(function () {
     if (!_aeStandPendAlive(pend)) return;
     var man = _ae.gl && _ae.gl.hd && _ae.gl.hd.man, layer = man && man.layers && man.layers[AE_TERRAIN_HD_LAYER + pend.key];
-    return layer ? _aeTerrainHdLoad(pend.key, pend.lat, pend.lon, _aeHdBase(), layer.max) : null;
+    return layer ? _aeTerrainHdLoad(pend.key, pend.lat, pend.lon, layer.base || _aeHdBase(), layer.max) : null;   // each ZIM of the set stamps its layers with its own folder
   }).catch(function () {}).then(function () {
     if (!_aeStandPendAlive(pend)) return;
     pend.builder = _aeMeshBuilder(pend.key, pend.lat, pend.lon, _aeMeshCap(body.km, pend.alt0), pend.flat);
@@ -100,6 +101,14 @@ function _aeStandBuild(pend, body) {
       });
     });
   });
+}
+// A place (geodetic latitude, longitude) in the body's own frame, in the body's equatorial radii: for the Earth the point of
+// its flattened globe, the very point a landmark's pin and a visit's origin (almanac-sites.js _asFrame) take, so the flight
+// aims at what the map shows; for a round body the unit vector.
+function _aeStPlaceVec(key, lat, lon) {
+  if (key !== 'earth') return _aeUnitVec(lat, lon);
+  var v = _aeLatLonVec(lat, lon, AE_EARTH_FLATTENING);
+  return [v[0], v[1], v[2] * (1 - AE_EARTH_FLATTENING)];
 }
 // The body's colour map: the one the orbit view has already, else fetched.
 function _aeStandMapFor(pend) {
@@ -157,11 +166,18 @@ function _aeStandEnter(st) {
   _aeFullStepIn();
   S.renderer.setClearColor(0x000000, 1);
   st.prevRatio = S.renderer.getPixelRatio();
-  S.renderer.setPixelRatio(Math.min(S.dpr, AE_STAND_DPR_MAX));
+  S.renderer.setPixelRatio(Math.min(S.dpr, _aeStandDprCap));
   _aeResize();
   var fr = _aeStFrame(st, _aeDisplayMs());
   st.yaw = fr.sunAlt > AE_STAND_SUN_FACE_DEG ? fr.sunAz : 0;
+  var ho = st.pend && st.pend.handoff;
+  if (ho) {   // a hand-off from the live sky card: its facing, not the Sun's
+    st.handoff = ho;
+    if (typeof ho.heading === 'number') st.yaw = _aeRad(ho.heading);
+    if (typeof ho.pitch === 'number') st.userPitch = _aeRad(ho.pitch) - _aeRad(AE_STAND_PITCH_DEG);
+  }
   st.yaw0 = 0;
+  if (st.key === 'earth') setTimeout(function () { if (_ae.stand === st || (_ae.site && _ae.site.host && _ae.site.host.st === st)) _aeStandTrees(st); }, AE_STAND_TREES_DELAY_MS);
   _ae.dirty = true;
   _aeKick();
 }
@@ -190,6 +206,7 @@ function _aeStandFinishLeave(st) {
 function _aeStandDrop(closing) {
   var st = _ae && _ae.stand;
   if (_ae) _ae.standPending = null;
+  if (!closing) setTimeout(_aeStandAfterClose, 0);   // the way back, when _aeStandClose asked for it
   if (!st) return;
   _ae.stand = null;
   var S = _ae.gl;
@@ -221,8 +238,11 @@ function _aeStandGl(st, pend) {
   };
   st.geo = [];
   scene.add(_aeStandSkyMesh(st, U, mat));
+  scene.add(st.skyBlit);
   // The stars: the Bright Star Catalogue as it arrives (the page's 518 first).
   st.starUni = { uRot: { value: [1, 0, 0, 0, 1, 0, 0, 0, 1] }, uLim: { value: 7 }, uExtinct: { value: 0 }, uDpr: { value: S.renderer.getPixelRatio() }, uStarScale: { value: 1 } };
+  st.skyPtMat = mat(AE_ST_SKYOBJ_VERT, AE_ST_STARS_FRAG, st.starUni, { depthTest: false, depthWrite: false, blending: THREE.AdditiveBlending });
+  st.skyLineMat = mat(AE_ST_SKYOBJ_VERT, AE_ST_SKYLINE_FRAG, st.starUni, { depthTest: false, depthWrite: false, blending: THREE.AdditiveBlending });
   st.starMat = mat(AE_ST_STARS_VERT, AE_ST_STARS_FRAG, st.starUni, { depthTest: false, depthWrite: false, blending: THREE.AdditiveBlending });
   _aeStandStars(st, _aeStarList());
   scene.add(st.stars);
@@ -255,6 +275,14 @@ function _aeStandSkyMesh(st, U, mat) {
   var sky = st.skyMesh = new THREE.Mesh(tri, mat(AE_ST_SKY_VERT, AE_ST_SKY_FRAG, uni, { depthTest: false, depthWrite: false }));
   sky.frustumCulled = false; sky.renderOrder = -3;
   st.geo.push(tri);
+  // The same sky drawn small into a target, and a triangle that stretches it back: the air is smooth, the ground stays sharp.
+  var low = new THREE.Mesh(tri, sky.material);
+  low.frustumCulled = false;
+  st.skyLowMesh = low; st.skyMatOwn = sky.material;
+  st.skyScene = new THREE.Scene(); st.skyScene.add(low);
+  var blit = st.skyBlit = new THREE.Mesh(tri, new THREE.ShaderMaterial({ uniforms: { tSky: { value: null }, uRes: { value: [1, 1] } }, vertexShader: AE_ST_SKY_VERT, fragmentShader: AE_ST_BLIT_FRAG, depthTest: false, depthWrite: false }));
+  blit.frustumCulled = false; blit.renderOrder = -3; blit.visible = false;
+  st.mats.push(blit.material);
   _aeLoadTexture(THREE, SG_MILKYWAY_URL).then(function (t) { uni.uMilky.value = t; st.dirty = true; if (_ae) { _ae.dirty = true; _aeKick(); } }, function () {});
   return sky;
 }
@@ -293,7 +321,7 @@ function _aeStandGroundMesh(st, pend, U, mat) {
     uMap: { value: pend.tex || null }, uMapped: { value: pend.tex ? 1 : 0 }, uGrey: { value: AE_STAND_GREY_MAP[st.key] ? 1 : 0 },
     uBase: { value: AE_STAND_BASE[st.key] || [0.5, 0.5, 0.5] }, uGain: { value: AE_STAND_TINT[st.key] || [1, 1, 1] },
     uAmbient: { value: [0, 0, 0] }, uSkyHor: { value: [0, 0, 0] }, uSkyZen: { value: [0, 0, 0] }, uE2: { value: [0, 0, 0] }, uDir2: { value: [0, 0, 1] },
-    uLommel: { value: a ? 0 : 1 }, uRough: { value: AE_STAND_ROUGH[st.key] || (st.b.fbm.amp > 100 ? 1.3 : 1) }, uRock: { value: AE_STAND_ROCK[st.key] || 0.25 },
+    uLommel: { value: a ? 0 : 1 }, uRough: { value: AE_STAND_ROUGH[st.key] || (st.b.fbm.amp > 100 ? 1.3 : 1) }, uRock: { value: AE_STAND_ROCK[st.key] || 0.25 }, uDetail: { value: st.key === 'earth' ? 1 : 0 }, uHead: { value: [0, 1] }, uCover: { value: st.key === 'earth' ? 1 : 0 },
     uDiffuse: { value: d ? 1 : 0 }, uVis: { value: d ? d.vis : 1 }, uDirect: { value: 1 }, uDiffSky: { value: [0, 0, 0] }
   }, U);
   var ground = st.groundMesh = new THREE.Mesh(g, mat(AE_ST_GROUND_VERT, AE_ST_GROUND_FRAG, gu, {}));
@@ -305,6 +333,15 @@ var AE_STAND_GREY_MAP = { moon: true };   // maps of one channel (the Moon's), r
 // What the ground's colour map is multiplied by (linear): the Mars map is a salmon grey where the ground is rust, Titan's is grey
 // under orange light and a darker ground than it.
 var AE_STAND_TINT = { mars: [1.9, 0.85, 0.34], titan: [4.2, 3.0, 1.6], earth: [2.2, 2.2, 2.2] };
+var AE_STAND_SKY_SCALE = 0.5;              // the sky is drawn at this share of the screen's size and stretched (the ground is not)
+var AE_STAND_DPR_STEPS = [1.5, 1.25, 1, 0.75];   // the pixel ratios the ground view steps down through if frames run long
+var AE_STAND_SLOW_MS = [20, 250], AE_STAND_SLOW_RUN = 3;   // a frame this slow (not an idle gap) three times running drops a step
+var _aeStandDprCap = AE_STAND_DPR_MAX;     // for the rest of the session: it goes down, never back up
+var AE_STAND_STATION_MIN_LIM = 3;           // the station is marked once the sky is dark enough for stars of this magnitude
+var AE_STAND_PROBE_MARKS = false;          // deep-space probes are pinpoints nobody could see: not marked (the station's pass is, near Earth)
+var AE_STAND_SKY_MATCH_SHARE = 0.55;      // and how far (in log) toward it: a view with sunlit ground in it cannot be exposed for the sky alone
+var AE_STAND_SKY_MATCH_DEG = [-20, 6];     // the Sun's height over which the Earth's exposure goes from this view's own to the 2D sky's
+var AE_STAND_NIGHT_GLOW = 9e-7;           // the least light the Earth's ground has (starlight and airglow, in this view's units: the Sun at the Earth is 1): a dark-adapted eye makes out the ground and its horizon
 var AE_STAND_SLICE_MS = 8;                 // a slice of building between breaths of the page
 var AE_STAND_SHADE_LOD = 1.5;              // the shadow grids hold wavelengths down to this many cells
 var AE_STAND_SHADE_MOVE = 0.0044, AE_STAND_SHADE_EVERY_MS = 300, AE_STAND_SHADE_SLICE_MS = 5;   // the Sun has moved a quarter degree; not again sooner than this; the work a frame
@@ -337,7 +374,76 @@ function _aeStandDispose(st) {
   Object.keys(st.discMaps || {}).forEach(function (k) { var m = st.discMaps[k]; if (m && m !== true) m.dispose(); });
   if (st.craftHost && st.craftHost.parentNode) st.craftHost.parentNode.removeChild(st.craftHost);
   if (st.stars) st.stars.geometry.dispose();
+  if (st.skyRT) st.skyRT.dispose();
+  if (st.skyMatAir) st.skyMatAir.dispose();
+  if (st.skyPts) st.skyPts.mesh.geometry.dispose();
+  if (st.skyLines) st.skyLines.mesh.geometry.dispose();
+  if (st.skyTag && st.skyTag.parentNode) st.skyTag.parentNode.removeChild(st.skyTag);
+  clearTimeout(st.skyTagTimer);
   st.geo = st.mats = null; st.scene = st.camera = null;
+}
+
+// ── Trees ──
+// Where the Blue Marble says forest (a dark green), below the trees' line, not in the sea: dark cones scattered in rings out to a few
+// kilometres, a tree to a few metres at the feet and a wood at the horizon. The same trees every visit to a place (seeded by it).
+var AE_STAND_TREES_DELAY_MS = 40, AE_STAND_TREES_MAX = 3000, AE_STAND_TREES_TRIES = 16000;
+var AE_STAND_TREES_RANGE_M = [55, 4000], AE_STAND_TREES_H_M = [7, 24], AE_STAND_TREES_CONE = 0.2, AE_STAND_TREES_SIDES = 6;
+function _aeStCoverPixels(tex) {   // the colour map's pixels, once
+  if (!tex || !tex.image) return null;
+  var im = tex.image, w = im.width || im.naturalWidth, h = im.height || im.naturalHeight;
+  if (!w || !h) return null;
+  var c = document.createElement('canvas'), mw = Math.min(w, 2048), mh = Math.round(mw * h / w);
+  c.width = mw; c.height = mh;
+  var cx = c.getContext('2d', { willReadFrequently: true });
+  cx.drawImage(im, 0, 0, mw, mh);
+  return { w: mw, h: mh, d: cx.getImageData(0, 0, mw, mh).data };
+}
+function _aeStForest(px, lat, lon) {   // 0..1: how much of this place the map shows as forest (the bitmap is flipped, south first, as the ground's own lookup assumes)
+  var x = Math.min(px.w - 1, Math.max(0, Math.floor((lon + 180) / 360 * px.w))), y = Math.min(px.h - 1, Math.max(0, Math.floor((lat + 90) / 180 * px.h))), i = 4 * (y * px.w + x);
+  var r = px.d[i] / 255, g = px.d[i + 1] / 255, b = px.d[i + 2] / 255, lum = 0.3 * r + 0.59 * g + 0.11 * b;
+  if (g < r * 1.02 || g < b * 1.08) return 0;
+  return Math.max(0, Math.min(1, (0.42 - lum) / 0.2));
+}
+function _aeStandTrees(st) {
+  if (!st || !st.scene || st.trees || st.key !== 'earth') return;
+  var px = null;
+  try { px = _aeStCoverPixels(st.pend && st.pend.tex); } catch (e) { px = null; }
+  if (!px) return;
+  var R = st.b.km * 1000, h0 = st.h0, lat0 = st.lat, lon0 = st.lon, THREE = _ae.gl.THREE;
+  var seed = (Math.round(lat0 * 1e4) * 73856093) ^ (Math.round(lon0 * 1e4) * 19349663), rnd = function () { seed |= 0; seed = seed + 0x6D2B79F5 | 0; var t = Math.imul(seed ^ seed >>> 15, 1 | seed); t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t; return ((t ^ t >>> 14) >>> 0) / 4294967296; };
+  var list = [], ratio = AE_STAND_TREES_RANGE_M[1] / AE_STAND_TREES_RANGE_M[0];
+  for (var k = 0; k < AE_STAND_TREES_TRIES && list.length < AE_STAND_TREES_MAX; k++) {
+    var r = AE_STAND_TREES_RANGE_M[0] * Math.pow(ratio, rnd()), th = rnd() * 2 * Math.PI, d = _aeDestination(lat0, lon0, r / R, th);
+    var wood = _aeStForest(px, d.lat, d.lon);
+    if (wood <= 0 || rnd() > wood) continue;
+    var x = r * Math.sin(th), y = r * Math.cos(th), ht = _aeTerrainHeight('earth', d.lat, d.lon, r * 0.0005);
+    if (ht.sea || ht.h > AE_ST_SNOW_LINE_M * Math.pow(Math.cos(_aeRad(d.lat)), AE_ST_SNOW_LINE_POW) - AE_ST_TREE_BELOW_M) continue;
+    var z = _aeTerrainLocal('earth', lat0, lon0, h0, x, y, r * 0.0005, st.pend && st.pend.flat);
+    list.push([x, y, z, AE_STAND_TREES_H_M[0] + (AE_STAND_TREES_H_M[1] - AE_STAND_TREES_H_M[0]) * Math.pow(rnd(), 1.4), rnd()]);
+  }
+  if (!list.length) return;
+  var n = AE_STAND_TREES_SIDES, per = n * 3, pos = new Float32Array(list.length * per * 3), nrm = new Float32Array(list.length * per * 3), at = new Float32Array(list.length * per * 2);
+  list.forEach(function (t, i) {
+    var rad = t[3] * AE_STAND_TREES_CONE, apex = [t[0], t[1], t[2] + t[3]], ring = [];
+    for (var s = 0; s < n; s++) { var a = s / n * 2 * Math.PI; ring.push([t[0] + Math.cos(a) * rad, t[1] + Math.sin(a) * rad, t[2] + t[3] * 0.1]); }
+    for (var f = 0; f < n; f++) {
+      var A = ring[f], B = ring[(f + 1) % n], v = [A, B, apex], mid = Math.atan2((A[1] + B[1]) / 2 - t[1], (A[0] + B[0]) / 2 - t[0]);
+      var nx = Math.cos(mid) * t[3], ny = Math.sin(mid) * t[3], nz = rad, nl = Math.hypot(nx, ny, nz);
+      for (var q = 0; q < 3; q++) {
+        var o = ((i * n + f) * 3 + q);
+        pos.set(v[q], o * 3); nrm.set([nx / nl, ny / nl, nz / nl], o * 3);
+        at[o * 2] = q === 2 ? 1 : 0; at[o * 2 + 1] = t[4];
+      }
+    }
+  });
+  var g = new THREE.BufferGeometry();
+  g.setAttribute('position', new THREE.BufferAttribute(pos, 3)); g.setAttribute('aNrm', new THREE.BufferAttribute(nrm, 3)); g.setAttribute('aTree', new THREE.BufferAttribute(at, 2));
+  var m = new THREE.ShaderMaterial({ uniforms: st.ground, vertexShader: AE_ST_TREE_VERT, fragmentShader: AE_ST_TREE_FRAG, side: AE_THREE_DOUBLE_SIDE });
+  var mesh = new THREE.Mesh(g, m);
+  mesh.frustumCulled = false; mesh.renderOrder = 1;
+  st.scene.add(mesh); st.trees = { mesh: mesh, count: list.length };
+  st.geo.push(g); st.mats.push(m);
+  st.dirty = true; _ae.dirty = true; _aeKick();
 }
 
 // ── The sky and the bodies in it, for an instant ──
@@ -417,6 +523,12 @@ function _aeStFrame(st, ms) {
   fr.crafts = _aeStCrafts(sc, all, O, local, ms);
   return fr;
 }
+// A craft in the Earth's shadow (its cylinder, away from the Sun) is dark: nothing to mark. earthPos: the Earth's heliocentric place (km); rel: the craft from the Earth's centre in Earth radii.
+function _aeStationSunlit(earthPos, rel) {
+  var sun = _aeNorm(_aeScale(earthPos, -1)), along = _aeDot(rel, sun);
+  if (along >= 0) return true;
+  return _aeLen(_aeSub(rel, _aeScale(sun, along))) > 1;
+}
 // Spacecraft where they are: the probes from the Horizons tables, the station from its orbit, each as a direction and a name.
 function _aeStCrafts(sc, all, O, local, ms) {
   var out = [], toScene = function (v) { return _ephEclJ2000ToEqOfDate(v, sc.jde); };
@@ -430,7 +542,7 @@ function _aeStCrafts(sc, all, O, local, ms) {
   }
   var iss = _ae.sats && _ae.sats.lib && _ae.sats.list.filter(function (s) { return s.iss; })[0];
   var r = iss ? _aeSatAt(iss, ms, _aeEqEq(sc)) : null;
-  if (r && _aeLen(_aeSub(_aeAdd(all.earth.pos, _aeScale(r.pos, AE_EARTH_RADIUS_KM)), O)) < AE_STAND_STATION_REACH_KM) {
+  if (r && _aeLen(_aeSub(_aeAdd(all.earth.pos, _aeScale(r.pos, AE_EARTH_RADIUS_KM)), O)) < AE_STAND_STATION_REACH_KM && _aeStationSunlit(all.earth.pos, r.pos)) {
     var di = _aeSub(_aeAdd(all.earth.pos, _aeScale(r.pos, AE_EARTH_RADIUS_KM)), O);
     out.push({ key: 'iss', name: _aeT('alm_earth_iss_short'), dir: _aeNorm(local(di)), dist: _aeLen(di) });
   }
@@ -476,6 +588,17 @@ function _aeStPhoto(st, fr) {
   var ref = Math.max(AE_ST_GROUND_ALBEDO_REF * ((directG + e2) / Math.PI + AE_STAND_GROUND_AMBIENT_SHARE * Math.max(p.amb[0], p.amb[1], p.amb[2])),
     1.2 * Math.max(p.zen[0], p.zen[1], p.zen[2]), AE_STAND_NEAR_SUN_SHARE * Math.max(p.near ? p.near[0] : 0, p.near ? p.near[1] : 0, p.near ? p.near[2] : 0), AE_ST_NIGHT_FLOOR);
   p.k = AE_ST_EXPOSURE_TARGET / ref;
+  // The Earth's sky is the 2D sky's, and so is its exposure there by day (the same eye: almanac-skygl.js _sgExposure, converted to this
+  // view's units); through twilight it hands over to this view's own, which sets the exposure by the ground.
+  if (a && st.key === 'earth' && typeof _sgExposure === 'function') {
+    var w = AE_STAND_SKY_MATCH_SHARE * _smoothstep(AE_STAND_SKY_MATCH_DEG[0], AE_STAND_SKY_MATCH_DEG[1], fr.sunAlt), k2 = _sgExposure(fr.sunAlt, -90, 0, 0, 1, 1) * AE_ST_LUX_PER_UNIT;
+    if (w > 0 && k2 > 0) p.k = Math.exp(Math.log(p.k) * (1 - w) + Math.log(k2) * w);
+  }
+  if (_aeStandAirOn(st) && _aeStandAir.exposureK) {   // a provider's atmosphere brings its own exposure, for everything in the picture
+    var kp = null;
+    try { kp = _aeStandAir.exposureK(st, fr, p); } catch (e) {}
+    if (kp > 0) p.k = kp;
+  }
   p.e2 = e2;
   p.mwStrength = _aeClamp((p.lim - 5.2) / 2.5, 0, 1) * p.mw;
   return p;
@@ -530,15 +653,49 @@ function _aeStandPaint(st, now, moving, place) {
   if (!(moving || st.dirty || stale || st.size !== _ae.w + 'x' + _ae.h)) return;   // nothing changed: the last picture stands
   st.size = _ae.w + 'x' + _ae.h;
   if (stale) { st.fr = _aeStFrame(st, ms); st.fr.at = ms; st.photo = _aeStPhoto(st, st.fr); }
+  _aeStandSkyUpdate(st, ms, now);
   var view = place(st);
   _aeStandApplyAir(st, st.fr, st.photo, view);
   _aeStandApplyGround(st, st.fr, st.photo, view, now);
   _aeStandShadeTick(st, st.fr, now);
   _aeStandSprites(st, st.fr, st.photo, view.pixAng, view.pos[2]);
   _aeStandCraftMarks(st, st.fr, view);
+  _aeStandSkyPass(st);
   _ae.gl.renderer.render(st.scene, st.camera);
+  _aeStandBudget(st, now);
   st.dirty = false;
   if (st.hud && now - st.hudAt > AE_STAND_HUD_MS) { st.hudAt = now; _aeStandHudText(st); }
+}
+// The sky into its small target (or, with no way to make one, straight to the screen as before).
+function _aeStandSkyPass(st) {
+  _aeStandAirSelect(st);
+  var S = _ae.gl, r = S.renderer, THREE = S.THREE, use = AE_STAND_SKY_SCALE < 1 && !!st.skyBlit && typeof THREE.WebGLRenderTarget === 'function';
+  st.skyMesh.visible = !use; st.skyBlit.visible = use;
+  if (!use) return;
+  var ratio = r.getPixelRatio(), W = Math.max(1, Math.round(_ae.w * ratio)), H = Math.max(1, Math.round(_ae.h * ratio));
+  var w = Math.max(1, Math.round(W * AE_STAND_SKY_SCALE)), h = Math.max(1, Math.round(H * AE_STAND_SKY_SCALE));
+  if (!st.skyRT || st.skyRT.width !== w || st.skyRT.height !== h) {
+    if (st.skyRT) st.skyRT.dispose();
+    st.skyRT = new THREE.WebGLRenderTarget(w, h, { minFilter: THREE.LinearFilter, magFilter: THREE.LinearFilter, depthBuffer: false, stencilBuffer: false });
+  }
+  var u = st.skyBlit.material.uniforms;
+  u.tSky.value = st.skyRT.texture; u.uRes.value = [W, H];
+  r.setRenderTarget(st.skyRT); r.render(st.skyScene, st.camera); r.setRenderTarget(null);
+}
+// Frames that run long step the pixel ratio down, for good: a phone that cannot keep up is not asked to try again.
+function _aeStandBudget(st, now) {
+  var dt = now - (st.paintAt || now);
+  st.paintAt = now;
+  if (dt > AE_STAND_SLOW_MS[0] && dt < AE_STAND_SLOW_MS[1]) st.slow = (st.slow || 0) + 1; else st.slow = 0;
+  if (st.slow < AE_STAND_SLOW_RUN) return;
+  st.slow = 0;
+  var lower = AE_STAND_DPR_STEPS.filter(function (x) { return x < _aeStandDprCap; })[0];
+  if (!lower) return;
+  _aeStandDprCap = lower;
+  var S = _ae.gl;
+  S.renderer.setPixelRatio(Math.min(S.dpr, lower));
+  st.starUni.uDpr.value = S.renderer.getPixelRatio();
+  _aeResize();
 }
 // The camera at its height and heading: returns what the shaders want of it (height in metres, the view's axes, the tangent of
 // half the field, the angle a pixel covers).
@@ -587,8 +744,10 @@ function _aeStandShadeTick(st, fr, now) {
 }
 function _aeStandApplyGround(st, fr, ph, view, now) {
   var g = st.ground;
-  g.uCam.value = view.pos; g.uPixAng.value = view.pixAng; g.uTime.value = now / 1000;
-  g.uAmbient.value = ph.amb; g.uSkyHor.value = ph.hor; g.uSkyZen.value = ph.zen; g.uDiffSky.value = ph.diffSky;
+  g.uCam.value = view.pos; g.uPixAng.value = view.pixAng;
+  var hl = Math.hypot(view.e[8], view.e[9]) || 1;
+  g.uHead.value = [-view.e[8] / hl, -view.e[9] / hl]; g.uTime.value = now / 1000;
+  g.uAmbient.value = st.key === 'earth' ? ph.amb.map(function (x) { return Math.max(x, AE_STAND_NIGHT_GLOW); }) : ph.amb; g.uSkyHor.value = ph.hor; g.uSkyZen.value = ph.zen; g.uDiffSky.value = ph.diffSky;
   if (fr.light2) { g.uDir2.value = fr.light2.dir; g.uE2.value = fr.light2.rgb; }
   else g.uE2.value = [0, 0, 0];
 }
@@ -657,6 +816,8 @@ function _aeStandCraftMarks(st, fr, view) {
   var host = st.craftHost || (st.craftHost = (function () { var h = document.createElement('div'); h.className = 'ae-stand-crafts'; _ae.el.appendChild(h); return h; })());
   var cam = st.camera, V = _ae.gl.THREE.Vector3, shown = 0, W = _ae.w, H = _ae.h, placed = [];
   (fr.crafts || []).forEach(function (c) {
+    if (c.key !== 'iss' && !AE_STAND_PROBE_MARKS) return;
+    if (c.key === 'iss' && st.photo && st.photo.lim < AE_STAND_STATION_MIN_LIM) return;   // by day the station is not a thing to see
     var p = new V(view.pos[0] + c.dir[0] * AE_STAND_CRAFT_RANGE, view.pos[1] + c.dir[1] * AE_STAND_CRAFT_RANGE, view.pos[2] + c.dir[2] * AE_STAND_CRAFT_RANGE).project(cam);
     var x = (p.x + 1) / 2 * W, y = (1 - p.y) / 2 * H;
     var on = p.z > -1 && p.z < 1 && Math.abs(p.x) < 1 && y > AE_STAND_CRAFT_TOP_PX && y < H - AE_STAND_CRAFT_BOTTOM_PX && (c.dir[2] > -0.02 || st.altKm > 1);
@@ -677,6 +838,171 @@ function _aeStandCraftMarks(st, fr, view) {
     shown++;
   });
   for (var i = shown; i < host.children.length; i++) host.children[i].hidden = true;
+}
+
+// ── The live sky card's hand-off, and the way back ──
+//   window._osHandoff = { body?: 'earth', lat, lon, ms?, heading?, pitch?, back?() }   the card's place, instant, facing (degrees: heading
+//                                from north clockwise, pitch up) and a function that puts the card back
+//   _aeStandOpen(h?)    opens the 3D view if it is not up, goes to that place and instant, drops to the ground facing that way;
+//                       h defaults to window._osHandoff (which is then cleared); resolves true when it started
+//   _aeStandClose()     the one way back: climbs out of Stand here, closes the 3D view if _aeStandOpen opened it, then calls h.back()
+function _aeStandOpen(h) {
+  h = h || (typeof window !== 'undefined' ? window._osHandoff : null);
+  if (typeof window !== 'undefined' && h && h === window._osHandoff) window._osHandoff = null;
+  if (!h || typeof h.lat !== 'number' || typeof h.lon !== 'number') return Promise.resolve(false);
+  h.openedView = !(typeof _aeIsOpen !== 'undefined' && _aeIsOpen);
+  return _aeStandStart(h.body || 'earth', h.lat, h.lon, h);
+}
+function _aeStandClose() {
+  var st = _ae && _ae.stand, h = (st && st.handoff) || (_ae && _ae.standPending && _ae.standPending.handoff) || null;
+  if (!_ae) return;
+  _ae.standBack = h;
+  if (_ae.stand || _ae.standPending) _aeStandLeave(); else _aeStandAfterClose();
+}
+function _aeStandAfterClose() {
+  var h = _ae && _ae.standBack;
+  if (!h) return;
+  _ae.standBack = null;
+  if (h.openedView && typeof _aeClose === 'function' && typeof _aeIsOpen !== 'undefined' && _aeIsOpen) _aeClose();
+  if (typeof h.back === 'function') { try { h.back(); } catch (e) {} }
+}
+
+// ── An atmosphere from outside (the 2D sky's, for the Earth) ──
+// A provider is an object at `_aeStandAir`; while provider.wants(st) is true (called at every picture) the sky pass is drawn with ITS
+// light and ONE exposure for the sky, the ground and the sprites; otherwise, and with no provider, this view's own ray march.
+//     wants(st) -> bool        st.key, st.altKm (camera height over the ground), st.lat, st.lon are what it will want to know
+//     glsl                     a chunk that defines  vec3 oaSky(vec3 d)  (d: unit view direction in the local frame, x east, y north, z up),
+//                              the sky's radiance there in the units its exposureK goes with (tone is 1 - exp(-L * uK), then gamma);
+//                              it may read this view's uniforms uCam (km, the camera in the local frame), uSunDir (unit, local frame),
+//                              uSunE, uR, uRc, uTop, uAtmo and declare its own `uniform`s, which `uniforms` supplies
+//     uniforms                 { name: initial value } for the chunk's own uniforms (numbers, arrays of 2-4 or 9 numbers, textures)
+//     update(st, fr, ph, u)    optional, at every picture: set u[name].value from the frame (fr: sun and body positions, ph: its photometry)
+//     exposureK(st, fr, ph)    the one uK (a positive number), or null for this view's own
+// The chunk is compiled on first use; a provider whose glsl changes is rebuilt.
+var _aeStandAir = (typeof _aeStandAir !== 'undefined') ? _aeStandAir : null;
+function _aeStandAirOn(st) {
+  var P = _aeStandAir;
+  try { return !!(P && P.glsl && P.wants && P.wants(st)); } catch (e) { return false; }
+}
+function _aeStandAirSelect(st) {
+  var THREE = _ae.gl.THREE, on = _aeStandAirOn(st), P = _aeStandAir;
+  if (on && (!st.skyMatAir || st.skyAirSrc !== P.glsl)) {
+    if (st.skyMatAir) st.skyMatAir.dispose();
+    var own = {};
+    Object.keys(P.uniforms || {}).forEach(function (k) { own[k] = { value: P.uniforms[k] }; });
+    st.skyMatAir = new THREE.ShaderMaterial({ uniforms: Object.assign({}, st.sky, own), vertexShader: AE_ST_SKY_VERT, fragmentShader: _aeStSkyAirFrag(P.glsl), depthTest: false, depthWrite: false });
+    st.skyAirSrc = P.glsl;
+  }
+  var m = on ? st.skyMatAir : st.skyMatOwn;
+  if (st.skyMesh.material !== m) { st.skyMesh.material = m; if (st.skyLowMesh) st.skyLowMesh.material = m; }
+  if (on && P.update) { try { P.update(st, st.fr, st.photo, st.skyMatAir.uniforms); } catch (e) {} }
+  st.airOn = on;
+}
+
+// ── Objects in the sky from other lanes ──
+// One hook: _aeStandSkySource(src) puts things in the sky Stand here draws (satellites, the station, a train of them, a rocket, a
+// plume) and returns a function that takes the source out again. A source is either
+//     { ask(lat, lon, tMs) -> Promise | answer,   called about once a second (and when the clock jumps), never overlapping itself:
+//                                                 lat, lon are the place's geodetic degrees, tMs the displayed instant;
+//       at(answer, tMs) -> [object] }             called at every picture with the latest answer: move things by their rates,
+//                                                 drop what has set (cheap; no I/O)
+// or, for something that is cheap to work out anywhere, a plain function  fn(body, lat, lon, tMs) -> [object]  called at every picture.
+// An object is
+//     { az, el,                  degrees: azimuth from north clockwise, elevation over the horizon
+//       mag,                     apparent magnitude (smaller is brighter; a plume may be -6 or less)
+//       kind,                    'sat' | 'train' | 'rocket' | 'plume': points, a point with its trail, a large soft glow
+//       rgb,                     optional [r, g, b] 0..1 (white by default)
+//       trail,                   optional path behind it, [[az, el], ...] or [{az, el, mag?}, ...]; a point's own mag dims the tail there
+//       name }                   optional: what a tap on it says (while the sky is dark enough to see it)
+// They are drawn as stars are: dimmed by the air mass, gone once the sky is brighter than their magnitude (so by day they are
+// hidden), gone under the horizon, the same on a phone's small canvas. With no source nothing is drawn and nothing costs.
+var AE_STAND_SKY_EVERY_MS = 1000, AE_STAND_SKY_TAP_PX = 30, AE_STAND_SKY_TAG_MS = 4000;
+var AE_STAND_SKYOBJ_SIZE = { sat: 1, train: 1.2, rocket: 1.6, plume: 7 };   // a point's size by kind
+var _aeStandSkySources = [];
+function _aeStandSkySource(src) {
+  var entry = typeof src === 'function' ? { fn: src } : { ask: src.ask, at: src.at, answer: null, pending: false, askedAt: 0 };
+  _aeStandSkySources.push(entry);
+  var st = _ae && _ae.stand;
+  if (st) { st.skyDirty = true; st.dirty = true; _ae.dirty = true; if (typeof _aeKick === 'function') _aeKick(); }
+  return function () { var k = _aeStandSkySources.indexOf(entry); if (k >= 0) _aeStandSkySources.splice(k, 1); if (_ae && _ae.stand) { _ae.stand.skyDirty = true; _ae.stand.dirty = true; _ae.dirty = true; } };
+}
+function _aeStandSkyDir(az, el) {   // the local frame: x east, y north, z up
+  var a = _aeRad(az), e = _aeRad(el), c = Math.cos(e);
+  return [Math.sin(a) * c, Math.cos(a) * c, Math.sin(e)];
+}
+function _aeStandSkyAsk(st, ms, now) {
+  _aeStandSkySources.forEach(function (e) {
+    if (!e.ask || e.pending || (now - e.askedAt < AE_STAND_SKY_EVERY_MS && !st.skyJump)) return;
+    e.pending = true; e.askedAt = now;
+    var done = function (a) { e.answer = a; e.pending = false; st.dirty = true; if (_ae) { _ae.dirty = true; if (typeof _aeKick === 'function') _aeKick(); } };
+    try { Promise.resolve(e.ask(st.lat, st.lon, ms)).then(done, function () { e.pending = false; }); } catch (x) { e.pending = false; }
+  });
+  st.skyJump = false;
+}
+function _aeStandSkyUpdate(st, ms, now) {
+  if (!_aeStandSkySources.length && !st.skyObjs) return;
+  _aeStandSkyAsk(st, ms, now);
+  var list = [];
+  _aeStandSkySources.forEach(function (e) {
+    try {
+      var r = e.fn ? e.fn(st.key, st.lat, st.lon, ms) : (e.at && e.answer ? e.at(e.answer, ms) : null);
+      if (r && r.length) for (var i = 0; i < r.length; i++) list.push(r[i]);
+    } catch (x) {}
+  });
+  st.skyObjs = list.length ? list : null;
+  var THREE = _ae.gl.THREE, n = list.length, pos = new Float32Array(3 * n), mag = new Float32Array(n), scl = new Float32Array(n), col = new Float32Array(3 * n), tr = [];
+  list.forEach(function (o, i) {
+    var d = _aeStandSkyDir(o.az, o.el), c = o.rgb || [1, 1, 1];
+    o.dir = d;
+    pos.set(d, 3 * i); mag[i] = o.mag === undefined ? 3 : o.mag; scl[i] = AE_STAND_SKYOBJ_SIZE[o.kind] || 1; col.set(c, 3 * i);
+    if (o.trail && o.trail.length) {
+      var prev = d, pm = mag[i];
+      o.trail.forEach(function (q) { var az = q.az !== undefined ? q.az : q[0], el = q.el !== undefined ? q.el : q[1], v = _aeStandSkyDir(az, el), qm = q.mag !== undefined ? q.mag : mag[i]; tr.push([prev, v, c, pm, qm]); prev = v; pm = qm; });
+    }
+  });
+  var m = tr.length, lp = new Float32Array(6 * m), lm = new Float32Array(2 * m), ls = new Float32Array(2 * m).fill(1), lc = new Float32Array(6 * m);
+  tr.forEach(function (t, i) { lp.set(t[0], 6 * i); lp.set(t[1], 6 * i + 3); lm[2 * i] = t[3]; lm[2 * i + 1] = t[4]; lc.set(t[2], 6 * i); lc.set(t[2], 6 * i + 3); });
+  // The same count as the picture before: the buffers are filled in place; a different one makes new geometry.
+  var put = function (key, make, arrays, count) {
+    var cur = st[key];
+    if (cur && cur.count === count && count > 0) {
+      var at = cur.mesh.geometry.attributes;
+      Object.keys(arrays).forEach(function (a) { at[a].array.set(arrays[a]); at[a].needsUpdate = true; });
+      return;
+    }
+    if (cur) { st.scene.remove(cur.mesh); cur.mesh.geometry.dispose(); st[key] = null; }
+    if (count > 0) { var mesh = make(); st.scene.add(mesh); st[key] = { mesh: mesh, count: count }; }
+  };
+  var geo = function (a) {
+    var g = new THREE.BufferGeometry();
+    g.setAttribute('position', new THREE.BufferAttribute(a.position, 3)); g.setAttribute('aMag', new THREE.BufferAttribute(a.aMag, 1));
+    g.setAttribute('aScale', new THREE.BufferAttribute(a.aScale, 1)); g.setAttribute('aColor', new THREE.BufferAttribute(a.aColor, 3));
+    return g;
+  };
+  var pa = { position: pos, aMag: mag, aScale: scl, aColor: col }, la = { position: lp, aMag: lm, aScale: ls, aColor: lc };
+  put('skyPts', function () { var p = new THREE.Points(geo(pa), st.skyPtMat); p.frustumCulled = false; p.renderOrder = -1; return p; }, pa, n);
+  put('skyLines', function () { var l = new THREE.LineSegments(geo(la), st.skyLineMat); l.frustumCulled = false; l.renderOrder = -1; return l; }, la, m);
+}
+// A tap on one of them names it (while it can be seen): true if the tap was theirs.
+function _aeStandSkyTap(x, y) {
+  var st = _ae.stand;
+  if (!st || !st.live || !st.skyObjs || !st.camera || !st.photo) return false;
+  var V = _ae.gl.THREE.Vector3, best = null, bestD = AE_STAND_SKY_TAP_PX, W = _ae.w, H = _ae.h;
+  st.skyObjs.forEach(function (o) {
+    if (!o.name || o.dir[2] < -0.02 || st.photo.lim - (o.mag === undefined ? 3 : o.mag) <= 0) return;
+    var p = new V(o.dir[0] * 10, o.dir[1] * 10, o.dir[2] * 10).project(st.camera);
+    if (p.z < -1 || p.z > 1) return;
+    var d = Math.hypot((p.x + 1) / 2 * W - x, (1 - p.y) / 2 * H - y);
+    if (d < bestD) { bestD = d; best = o; }
+  });
+  if (!best) return false;
+  var tag = st.skyTag || (st.skyTag = (function () { var h = document.createElement('div'); h.className = 'ae-stand-crafts'; var sp = document.createElement('span'); sp.className = 'ae-stand-craft'; h.appendChild(sp); _ae.el.appendChild(h); return h; })());
+  var sp = tag.firstChild, p2 = new V(best.dir[0] * 10, best.dir[1] * 10, best.dir[2] * 10).project(st.camera);
+  sp.innerHTML = '<i></i>' + _almEsc(best.name);
+  sp.style.transform = 'translate(' + ((p2.x + 1) / 2 * W).toFixed(1) + 'px,' + ((1 - p2.y) / 2 * H).toFixed(1) + 'px)';
+  sp.hidden = false;
+  clearTimeout(st.skyTagTimer); st.skyTagTimer = setTimeout(function () { sp.hidden = true; }, AE_STAND_SKY_TAG_MS);
+  return true;
 }
 
 // ── Looking around ──
@@ -761,12 +1087,26 @@ function _aeStandMotionButton(st, hud) {
   };
   if (_aeMotionKept() && !_aeMotionAsks()) _aeMotionStart(st).then(set);
 }
+// The time at the place itself (its zone, by the Almanac's own nearest-city table), for the Earth: the clock below is the person's.
+function _aeStPlaceTime(st) {
+  if (st.key !== 'earth' || typeof _almTzForLocation !== 'function') return '';
+  try {
+    var tz = _almTzForLocation(st.lat, st.lon), twelve = typeof _almClock12h === 'function' ? _almClock12h() : false;
+    return new Intl.DateTimeFormat(typeof _currentLang !== 'undefined' ? _currentLang : undefined, { hour: 'numeric', minute: '2-digit', hour12: twelve, timeZone: tz, timeZoneName: 'short' }).format(_aeDisplayMs());
+  } catch (e) { return ''; }
+}
 function _aeStandHudText(st) {
   var el = _aeById('ae-stand-text'), fr = st.fr;
   if (!el) return;
-  var line2 = (fr ? '☀ ' + Math.round(fr.sunAlt) + '°' : '') + ' · ' + Math.round(((st.yaw + st.userYaw) * 180 / Math.PI % 360 + 360) % 360) + '°';
-  var html = '<b>' + _almEsc(_aeInfoName(st.key)) + '</b><span>' + _almEsc(_aeFmtLatLon({ lat: st.lat, lon: st.lon })) + ' · ' + _almEsc(_aeStHeightText(st.h0)) + '</span><span>' + _almEsc(line2) + '</span>';
+  var head = ((st.yaw + st.userYaw) * 180 / Math.PI % 360 + 360) % 360;   // where the view faces; the Sun's own bearing follows its height
+  var line2 = (fr ? '☀ ' + Math.round(fr.sunAlt) + '° ' + _aeCompassPoint(fr.sunAz) + '  ·  ' : '') + Math.round(head) + '° ' + _aeCompassPoint(head);
+  var local = _aeStPlaceTime(st), html = '<b>' + _almEsc(_aeInfoName(st.key)) + '</b><span>' + _almEsc(_aeFmtLatLon({ lat: st.lat, lon: st.lon })) + ' · ' + _almEsc(_aeStHeightText(st.h0)) + '</span><span>' + _almEsc(line2) + '</span>' + (local ? '<span>' + _almEsc(local) + '</span>' : '');
   if (el._html !== html) { el._html = html; el.innerHTML = html; }
+}
+// The eight points of the compass, from the app's own cardinal letters (NE = N then E).
+var AE_POINT_KEYS = ['n', 'ne', 'e', 'se', 's', 'sw', 'w', 'nw'];
+function _aeCompassPoint(az) {
+  return AE_POINT_KEYS[Math.round(((az % 360) + 360) % 360 / 45) % 8].split('').map(function (c) { return _aeT('alm_dir_' + c); }).join('');
 }
 // A height above the mean radius, short: metres under a kilometre.
 function _aeStHeightText(m) {
@@ -832,7 +1172,7 @@ function _aeStandMarkPick() {
   }
   var pk = _ae.pick, frame = _aeStBodyNow(pk.body), centre = _aeBodyPos(pk.body);
   if (!frame || !centre) { dot.hidden = true; return; }
-  var n = _aeStToScene(frame, _aeUnitVec(pk.lat, pk.lon)), r = AE_TARGETS[pk.body].surface, p = _aeAdd(centre, _aeScale(n, r));
+  var n = _aeStToScene(frame, _aeStPlaceVec(pk.body, pk.lat, pk.lon)), r = AE_TARGETS[pk.body].surface, p = _aeAdd(centre, _aeScale(n, r));
   var cam = _ae.gl.camera, eye = [cam.position.x, cam.position.y, cam.position.z], s = _aeProject(p);
   if (!s || _aeDot(n, _aeSub(eye, p)) <= 0) { dot.hidden = true; return; }
   dot.hidden = false;

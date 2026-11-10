@@ -110,6 +110,11 @@ function _asFrame(st, b, sc) {
   east = _aeLen(east) < 1e-6 ? [1, 0, 0] : _aeNorm(east);
   var north = _aeCross(up, east);
   var origin = _aeAdd(b.center, _aeScale(up, b.r + AS_PATCH_LIFT_M * AS_MRE));   // a little over the body's own sphere, whose facets are never above the true radius
+  if (st.body === 'earth') {   // the Earth's globe is flattened: the origin is the map's point on it, the up its true vertical
+    var sv = _aeStPlaceVec('earth', st.lat, st.lon);
+    var on = [ax[0][0] * sv[0] + ax[1][0] * sv[1] + ax[2][0] * sv[2], ax[0][1] * sv[0] + ax[1][1] * sv[1] + ax[2][1] * sv[2], ax[0][2] * sv[0] + ax[1][2] * sv[1] + ax[2][2] * sv[2]];
+    origin = _aeAdd(_aeAdd(b.center, _aeScale(on, b.r)), _aeScale(up, AS_PATCH_LIFT_M * AS_MRE));
+  }
   var sun = _asSunWorld(b, sc);
   return { origin: origin, e: east, n: north, u: up, sun: sun, sunLocal: [_aeDot(sun, east), _aeDot(sun, north), _aeDot(sun, up)], center: b.center, r: b.r };
 }
@@ -126,6 +131,7 @@ function _asWorldToLocal(fr, w) {
 function _asLatLon(st, b, local) {
   var w = _asToWorld(st.fr, local), v = _aeNorm(_aeSub(w, b.center)), ax = _asAxes(b);
   var n = [_aeDot(ax[0], v), _aeDot(ax[1], v), _aeDot(ax[2], v)];
+  if (st.body === 'earth') { var g = _aeSphereLatLon(n[0], n[1], n[2] / (1 - AE_EARTH_FLATTENING), AE_EARTH_FLATTENING); return { lat: g.lat, lon: g.lon }; }   // the flattened globe's own latitude
   return { lat: _aeDeg(Math.asin(_aeClamp(n[2], -1, 1))), lon: _aeDeg(Math.atan2(n[1], n[0])) };
 }
 
@@ -312,6 +318,7 @@ function _aeSiteLight(sc) {
   sh.ambient.value = st.info.ambient;
   sh.sun.value.set(fr.sunLocal[0], fr.sunLocal[1], fr.sunLocal[2]);
   sh.lit.value = lit;
+  if (typeof _asPartsByTime === 'function') _asPartsByTime(st);
   sh.fade.value = _aeFadeU.value;
   // The Sun low: shadows are long and not longer.
   var ss = Math.max(AS_SHADOW_MIN_SUN_Z, sunZ), sl = Math.hypot(fr.sunLocal[0], fr.sunLocal[1]) || 1, k = Math.sqrt(Math.max(0, 1 - ss * ss)) / sl;
@@ -381,7 +388,11 @@ var AS_CSS = [
   '.as-stick{position:absolute;width:' + (AS_STICK_R_PX * 2) + 'px;height:' + (AS_STICK_R_PX * 2) + 'px;margin:-' + AS_STICK_R_PX + 'px 0 0 -' + AS_STICK_R_PX + 'px;border-radius:50%;border:2px solid rgba(255,255,255,.35);background:rgba(255,255,255,.07);pointer-events:none}',
   '.as-stick i{position:absolute;left:50%;top:50%;width:46px;height:46px;margin:-23px 0 0 -23px;border-radius:50%;background:rgba(245,158,11,.55);border:2px solid rgba(255,255,255,.6)}',
   '.as-rest{position:absolute;left:calc(14px + env(safe-area-inset-left));bottom:calc(14px + env(safe-area-inset-bottom));width:' + (AS_STICK_R_PX * 2) + 'px;height:' + (AS_STICK_R_PX * 2) + 'px;border-radius:50%;border:2px dashed rgba(255,255,255,.18);pointer-events:none}',
-  '.as-speed{position:absolute;left:50%;bottom:calc(22px + env(safe-area-inset-bottom));transform:translateX(-50%);font-size:22px;font-weight:600;color:rgba(255,255,255,.9);text-shadow:0 1px 8px rgba(0,0,0,.7);pointer-events:none;font-variant-numeric:tabular-nums;white-space:nowrap}',
+  '.as-speed{position:absolute;left:50%;bottom:calc(20px + env(safe-area-inset-bottom));transform:translateX(-50%);padding:4px 12px;border-radius:999px;background:rgba(14,14,16,.6);border:1px solid var(--border);font-size:12px;font-weight:500;letter-spacing:.02em;color:rgba(255,255,255,.82);pointer-events:none;font-variant-numeric:tabular-nums;white-space:nowrap}',
+  '.as-earthhint{position:absolute;left:0;top:0;width:38px;height:38px;padding:0;pointer-events:auto;display:flex;align-items:center;justify-content:center}',
+  '.as-earthhint b{width:16px;height:16px;border-radius:50%;background:radial-gradient(circle at 35% 35%,#8fb8ff,#2f5fc4 70%,#1b3a7a)}',
+  '.as-earthhint-arrow{position:absolute;inset:0;pointer-events:none}',
+  '.as-earthhint-arrow:before{content:"";position:absolute;left:50%;top:-5px;margin-left:-5px;border:5px solid transparent;border-bottom:7px solid rgba(255,255,255,.85);border-top:0}',
   '.as-reset{position:absolute;right:calc(21px + env(safe-area-inset-right));bottom:calc(86px + env(safe-area-inset-bottom));width:46px;height:46px;pointer-events:auto}',
   '.as-jump{position:absolute;right:calc(14px + env(safe-area-inset-right));bottom:calc(14px + env(safe-area-inset-bottom));width:60px;height:60px;pointer-events:auto}',
   '.as-hud.as-driving .as-cap{bottom:auto;top:calc(env(safe-area-inset-top) + 66px)}',

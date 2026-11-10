@@ -151,7 +151,9 @@ def test_enter_and_leave(page, body):
 
 def test_terrain_heights(page):
     """The loaded maps: Olympus Mons is high, Hellas is low, the sea is at zero."""
-    page.evaluate("() => _aeStandReady()")   # the terrain module comes with Stand here's, on first use
+    page.evaluate(
+        "() => _aeStandReady()"
+    )  # the terrain module comes with Stand here's, on first use
     page.evaluate(
         "() => Promise.all(['mars', 'earth', 'moon'].map(function (k) { return _aeTerrainLoad(k); }))"
     )
@@ -215,11 +217,16 @@ def test_hd_terrain_tiles_sharpen_the_heights(page):
     buf = io.BytesIO()
     Image.fromarray(rgb, "RGB").save(buf, "WEBP", lossless=True)
     body = buf.getvalue()
-    page.route("**/hdtest/terrain/moon/3/*/*.webp", lambda route: route.fulfill(status=200, content_type="image/webp", body=body))
+    page.route(
+        "**/hdtest/terrain/moon/3/*/*.webp",
+        lambda route: route.fulfill(status=200, content_type="image/webp", body=body),
+    )
     page.evaluate("() => _aeStandReady()")
     page.evaluate("() => _aeTerrainLoad('moon')")
     before = page.evaluate("() => _aeTerrainHeight('moon', 20.19, 30.77, 1e9).h")
-    loaded = page.evaluate("() => _aeTerrainHdLoad('moon', 20.19, 30.77, '/hdtest/', 3)")
+    loaded = page.evaluate(
+        "() => _aeTerrainHdLoad('moon', 20.19, 30.77, '/hdtest/', 3)"
+    )
     after = page.evaluate("() => _aeTerrainHeight('moon', 20.19, 30.77, 1e9).h")
     far = page.evaluate("() => _aeTerrainHeight('moon', -60, -120, 1e9).h")
     page.evaluate("() => { _aeTerr.moon.hd = null; }")
@@ -231,15 +238,25 @@ def test_hd_terrain_tiles_sharpen_the_heights(page):
 # ── The sky and the ground, the later pieces ──
 def _stand_anywhere(pg, body, lat, lon):
     pg.evaluate("([b, la, lo]) => _aeStandAt(b, la, lo)", [body, lat, lon])
-    pg.wait_for_function("() => _ae.stand && _ae.stand.live && _ae.stand.mode === 'ground' && _ae.stand.fr", timeout=GROUND_MS, polling=200)
+    pg.wait_for_function(
+        "() => _ae.stand && _ae.stand.live && _ae.stand.mode === 'ground' && _ae.stand.fr",
+        timeout=GROUND_MS,
+        polling=200,
+    )
 
 
 def test_charon_hangs_over_pluto_and_saturn_shows_its_rings(page):
     _stand_anywhere(page, "pluto", 10, 10)
-    charon = page.evaluate("() => { var o = _ae.stand.fr.objs.filter(function (x) { return x.key === 'charon'; })[0]; return o && { rho: o.rho, z: o.dir[2], dist: o.dist }; }")
+    charon = page.evaluate(
+        "() => { var o = _ae.stand.fr.objs.filter(function (x) { return x.key === 'charon'; })[0]; return o && { rho: o.rho, z: o.dir[2], dist: o.dist }; }"
+    )
     assert charon, "Charon is among the bodies in Pluto's sky"
-    assert 0.029 < charon["rho"] < 0.033, "its disc is about 1.8 degrees in radius (606 km at 19,591 km)"
-    assert charon["z"] > 0.9 and abs(charon["dist"] - (19591 - 1188)) < 700, "from a place near the sub-Charon point it is almost overhead (centre distance less Pluto's radius)"
+    assert (
+        0.029 < charon["rho"] < 0.033
+    ), "its disc is about 1.8 degrees in radius (606 km at 19,591 km)"
+    assert (
+        charon["z"] > 0.9 and abs(charon["dist"] - (19591 - 1188)) < 700
+    ), "from a place near the sub-Charon point it is almost overhead (centre distance less Pluto's radius)"
     _leave(page)
     _stand_anywhere(page, "titan", -10.6, 192.3)
     page.wait_for_function("() => !!_ae.stand.ringTex", timeout=60_000, polling=200)
@@ -248,7 +265,9 @@ def test_charon_hangs_over_pluto_and_saturn_shows_its_rings(page):
           st.dirty = true; _aeStandDraw(performance.now()); var sp = st.sprites[i + 1];
           return { rho: st.fr.objs[i].rho, rings: sp.uni.uRings.value, ringMap: !!sp.uni.uRingMap.value, half: sp.uni.uHalf.value, ring: sp.uni.uRing.value }; }"""
     )
-    assert sat["rings"] == 1 and sat["ringMap"] and sat["half"] > sat["rho"] * 1.8, "Saturn's quad is wide enough for its rings, which are drawn"
+    assert (
+        sat["rings"] == 1 and sat["ringMap"] and sat["half"] > sat["rho"] * 1.8
+    ), "Saturn's quad is wide enough for its rings, which are drawn"
     _leave(page)
     assert not page.errors, page.errors
 
@@ -256,11 +275,25 @@ def test_charon_hangs_over_pluto_and_saturn_shows_its_rings(page):
 def test_spacecraft_are_marked_where_they_are(page):
     _stand_anywhere(page, "moon", 20.19, 30.77)
     page.evaluate("() => { _aeTracksLoad(); }")
-    page.wait_for_function("() => !!_aeTracks && !!_aeTracks.probes && _aeTracks.probes.length > 0", timeout=60_000, polling=200)
-    page.evaluate("() => { _ae.stand.fr = null; _ae.stand.dirty = true; _ae.dirty = true; _aeKick(); }")
-    page.wait_for_function("() => _ae.stand.fr && _ae.stand.fr.crafts && _ae.stand.fr.crafts.length > 0", timeout=60_000, polling=200)
-    crafts = page.evaluate("() => _ae.stand.fr.crafts.map(function (c) { return [c.key, c.dist > 1, Math.abs(Math.hypot(c.dir[0], c.dir[1], c.dir[2]) - 1) < 1e-6]; })")
-    assert any(c[0] == "voyager1" for c in crafts) and all(c[1] and c[2] for c in crafts)
+    page.wait_for_function(
+        "() => !!_aeTracks && !!_aeTracks.probes && _aeTracks.probes.length > 0",
+        timeout=60_000,
+        polling=200,
+    )
+    page.evaluate(
+        "() => { _ae.stand.fr = null; _ae.stand.dirty = true; _ae.dirty = true; _aeKick(); }"
+    )
+    page.wait_for_function(
+        "() => _ae.stand.fr && _ae.stand.fr.crafts && _ae.stand.fr.crafts.length > 0",
+        timeout=60_000,
+        polling=200,
+    )
+    crafts = page.evaluate(
+        "() => _ae.stand.fr.crafts.map(function (c) { return [c.key, c.dist > 1, Math.abs(Math.hypot(c.dir[0], c.dir[1], c.dir[2]) - 1) < 1e-6]; })"
+    )
+    assert any(c[0] == "voyager1" for c in crafts) and all(
+        c[1] and c[2] for c in crafts
+    )
     _leave(page)
 
 
@@ -272,17 +305,128 @@ def test_a_low_sun_throws_the_reliefs_shadows(page):
     )
     assert ms, "the Sun rises there within a lunar month"
     page.evaluate("(ms) => _aeGoTo(ms)", ms)
-    page.wait_for_function("() => { var sh = _ae.stand.shade; return !!sh && !sh.job && _ae.stand.fr && _ae.stand.fr.sunAlt < 7 && Math.abs(_ae.stand.fr.sunAlt - 4) < 3; }", timeout=GROUND_MS, polling=500)
-    stats = page.evaluate("() => { var a = _ae.stand.shade.arr, lo = 0, n = a.length, s = 0; for (var i = 0; i < n; i++) { s += a[i]; if (a[i] < 0.5) lo++; } return { shadowed: lo / n, mean: s / n }; }")
-    assert 0.002 < stats["shadowed"] < 0.6, "some of the ground is in shadow at a Sun 4 degrees up, most is not (%s)" % stats
+    page.wait_for_function(
+        "() => { var sh = _ae.stand.shade; return !!sh && !sh.job && _ae.stand.fr && _ae.stand.fr.sunAlt < 7 && Math.abs(_ae.stand.fr.sunAlt - 4) < 3; }",
+        timeout=GROUND_MS,
+        polling=500,
+    )
+    stats = page.evaluate(
+        "() => { var a = _ae.stand.shade.arr, lo = 0, n = a.length, s = 0; for (var i = 0; i < n; i++) { s += a[i]; if (a[i] < 0.5) lo++; } return { shadowed: lo / n, mean: s / n }; }"
+    )
+    assert 0.002 < stats["shadowed"] < 0.6, (
+        "some of the ground is in shadow at a Sun 4 degrees up, most is not (%s)"
+        % stats
+    )
     _leave(page)
+
+
+def test_other_lanes_put_objects_in_the_sky_and_a_tap_names_them(page):
+    """_aeStandSkySource: what a source returns is drawn in the sky and named on a tap, hidden by day, gone once taken out."""
+    _stand_anywhere(page, "earth", 37.77, -122.42)
+    seen = page.evaluate(
+        """() => { window.__calls = []; window.__ats = 0; window.__off = _aeStandSkySource({
+          ask: function (lat, lon, ms) { window.__calls.push(['earth', lat, lon, typeof ms]); return Promise.resolve({ t: ms }); },
+          at: function (answer, ms) { window.__ats++; return [{ az: 180, el: 40, mag: -3, kind: 'sat', name: 'Test one', trail: [{ az: 190, el: 38 }, { az: 200, el: 36 }] }, { az: 90, el: 10, mag: 1, kind: 'plume', name: 'Glow' }]; } }); return 1; }"""
+    )
+    page.wait_for_function(
+        "() => !!_ae.stand.skyPts && !!_ae.stand.skyLines", timeout=30_000, polling=250
+    )
+    calls = page.evaluate("() => window.__calls[0]")
+    assert (
+        calls[0] == "earth" and abs(calls[1] - 37.77) < 1e-6 and calls[3] == "number"
+    ), calls
+    # By night it is visible and a tap on it names it; by day the rule hides it.
+    page.evaluate(
+        "() => { _ae.stand.photo.lim = 6; _ae.stand.starUni.uLim.value = 6; _ae.stand.skyDirty = true; _ae.stand.dirty = true; }"
+    )
+    spot = page.evaluate(
+        """() => { var st = _ae.stand, V = _ae.gl.THREE.Vector3, o = st.skyObjs[0], d = o.dir; st.userYaw = Math.atan2(d[0], d[1]) - st.yaw; st.userPitch = Math.asin(d[2]) - 0.05; st.dirty = true; _aeStandDraw(performance.now()); st.photo.lim = 6;
+          var p = new V(d[0] * 10, d[1] * 10, d[2] * 10).project(st.camera); return [(p.x + 1) / 2 * _ae.w, (1 - p.y) / 2 * _ae.h]; }"""
+    )
+    assert page.evaluate("([x, y]) => _aeStandSkyTap(x, y)", spot) is True
+    assert "Test one" in page.inner_text(".ae-stand-craft")
+    page.evaluate("() => { _ae.stand.photo.lim = -6; }")
+    assert (
+        page.evaluate("([x, y]) => _aeStandSkyTap(x, y)", spot) is False
+    ), "by day it is not there to tap"
+    page.evaluate("() => window.__off()")
+    page.evaluate(
+        "() => { _ae.stand.skyDirty = true; _ae.stand.dirty = true; _aeStandDraw(performance.now()); }"
+    )
+    assert page.evaluate("() => !_ae.stand.skyPts && !_ae.stand.skyObjs")
+    _leave(page)
+    assert not page.errors, page.errors
+
+
+def test_a_provider_atmosphere_takes_over_the_sky_and_the_exposure(page):
+    """_aeStandAir: while it wants the stand, its chunk is the sky and its exposureK the one exposure; taken away, the own march."""
+    _stand_anywhere(page, "earth", 37.77, -122.42)
+    own_k = page.evaluate(
+        "() => { _ae.stand.dirty = true; _aeStandDraw(performance.now()); return _ae.stand.photo.k; }"
+    )
+    page.evaluate(
+        """() => { window.__upd = 0; _aeStandAir = { wants: function (st) { return st.key === 'earth'; },
+          glsl: 'uniform vec3 uTest; vec3 oaSky(vec3 d) { return uTest; }', uniforms: { uTest: [0.2, 0.1, 0.05] },
+          update: function (st, fr, ph, u) { window.__upd++; u.uTest.value = [0.2, 0.1, 0.05]; }, exposureK: function () { return 1234; } };
+          _ae.stand.fr = null; _ae.stand.dirty = true; _ae.dirty = true; _aeKick(); }"""
+    )
+    page.wait_for_function(
+        "() => _ae.stand.airOn === true && _ae.stand.photo && _ae.stand.photo.k === 1234",
+        timeout=30_000,
+        polling=250,
+    )
+    assert page.evaluate("() => window.__upd") > 0
+    page.evaluate(
+        "() => { _aeStandAir = null; _ae.stand.fr = null; _ae.stand.dirty = true; _ae.dirty = true; _aeKick(); }"
+    )
+    page.wait_for_function(
+        "() => _ae.stand.airOn === false && _ae.stand.photo && _ae.stand.photo.k !== 1234",
+        timeout=30_000,
+        polling=250,
+    )
+    assert abs(page.evaluate("() => _ae.stand.photo.k") / own_k - 1) < 0.5
+    _leave(page)
+    assert not page.errors, page.errors
+
+
+def test_the_live_sky_cards_handoff_opens_stand_facing_its_way_and_close_goes_back(
+    page,
+):
+    """window._osHandoff -> _aeStandOpen: the card's place, instant and facing; _aeStandClose: down again, then back()."""
+    page.evaluate(
+        "() => { window.__back = 0; window._osHandoff = { lat: 46.0, lon: 6.85, ms: Date.UTC(2026, 5, 21, 10, 0), heading: 123, pitch: 17, back: function () { window.__back++; } }; }"
+    )
+    assert page.evaluate("() => _aeStandOpen()") is True
+    page.wait_for_function(
+        "() => _ae.stand && _ae.stand.live && _ae.stand.mode === 'ground'",
+        timeout=GROUND_MS,
+        polling=250,
+    )
+    got = page.evaluate(
+        "() => ({ head: ((_ae.stand.yaw + _ae.stand.userYaw) * 180 / Math.PI % 360 + 360) % 360, pitch: (_ae.stand.pitch + _ae.stand.userPitch) * 180 / Math.PI, ms: _aeDisplayMs(), handoff: window._osHandoff, lat: _ae.stand.lat })"
+    )
+    assert (
+        abs(got["head"] - 123) < 1
+        and got["handoff"] is None
+        and abs(got["lat"] - 46.0) < 1e-6
+    ), got
+    assert abs(got["ms"] - 1_782_036_000_000) < 3_600_000, got
+    page.evaluate("() => _aeStandClose()")
+    page.wait_for_function(
+        "() => !_ae.stand && window.__back === 1", timeout=60_000, polling=250
+    )
+    assert not page.errors, page.errors
 
 
 def test_the_earths_coast_is_where_natural_earth_puts_it(page):
     page.evaluate("() => _aeStandReady()")
     page.evaluate("() => _aeTerrainLoad('earth')")
-    sea = page.evaluate("() => ({ sf: _aeTerrainHeight('earth', 37.77, -122.42, 0), off: _aeTerrainHeight('earth', 37.77, -123.3, 0) })")
-    assert sea["sf"]["sea"] is False and sea["sf"]["h"] >= 3, "San Francisco is on land (the shipped map alone says sea)"
+    sea = page.evaluate(
+        "() => ({ sf: _aeTerrainHeight('earth', 37.77, -122.42, 0), off: _aeTerrainHeight('earth', 37.77, -123.3, 0) })"
+    )
+    assert (
+        sea["sf"]["sea"] is False and sea["sf"]["h"] >= 3
+    ), "San Francisco is on land (the shipped map alone says sea)"
     assert sea["off"]["sea"] is True, "the ocean off the Golden Gate is sea"
 
 
@@ -290,7 +434,9 @@ def test_the_phone_turns_the_view(page):
     _stand_anywhere(page, "moon", 20.19, 30.77)
     ok = page.evaluate("() => _aeMotionStart(_ae.stand)")
     assert ok
-    page.evaluate("() => window.dispatchEvent(new DeviceOrientationEvent('deviceorientationabsolute', { alpha: 90, beta: 90, gamma: 0, absolute: true }))")
+    page.evaluate(
+        "() => window.dispatchEvent(new DeviceOrientationEvent('deviceorientationabsolute', { alpha: 90, beta: 90, gamma: 0, absolute: true }))"
+    )
     page.wait_for_function(
         "() => { var st = _ae.stand; st.dirty = true; _aeStandDraw(performance.now()); var h = ((st.yaw + st.userYaw) * 180 / Math.PI % 360 + 360) % 360; return Math.abs(h - 270) < 6; }",
         timeout=30_000,

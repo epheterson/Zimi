@@ -28,7 +28,8 @@ function check(ok, label) {
 const bodies = ['earth', 'moon', 'mars', 'venus', 'mercury'];
 bodies.forEach((k) => {
   const p = T('_aeTerrainParse(__bin("' + k + '"))');
-  check(!!p && p.w === 256 && p.h === 128 && p.data.length === 256 * 128, k + ': a 256 x 128 map that parses');
+  const fine = ['earth', 'moon', 'mars'].indexOf(k) >= 0, mw = fine ? 1024 : 256, mh = fine ? 512 : 128;   // the maps rebuilt at 1024 x 512; the rest are still 256 x 128
+  check(!!p && p.w === mw && p.h === mh && p.data.length === mw * mh, k + ': a ' + mw + ' x ' + mh + ' map that parses');
   T('_aeTerrainSet("' + k + '", _aeTerrainParse(__bin("' + k + '")))');
 });
 check(T('_aeTerrainParse(new ArrayBuffer(10))') === null, 'a map of the wrong size is refused');

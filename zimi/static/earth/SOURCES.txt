@@ -188,11 +188,11 @@ craft-<model>-v1.bin (scripts/build_craft_models.py)
   "These assets are free and without copyright"), each page's Source credit:
   voyager: "Voyager Probe (A)", NASA/Christopher R. Meaney
   pioneer: "Pioneer 10", NASA/JPL/Eyes on the Solar System
-  juno: "Juno (A)", NASA/JPL-Caltech
+  juno: "Juno (B)" (no individual credit listed)
   parker: "Parker Solar Probe", NASA/Matthew J. Garcia
   webb: "James Webb Space Telescope (A)", NASA/Christopher R. Meaney
   galileo: "Galileo", NASA/JPL/Solar System Simulator
-  cassini: "Cassini-Huygens (A)", NASA/JPL/Solar System Simulator
+  cassini: "Cassini Assembly" (454,000 triangles), no individual credit listed
   Each material as a palette entry of up to twelve (colour, roughness,
   metalness: gold foil, silver blanket, solar cell, aluminium, paint; a
   texture's mean colour, so no printed logo carries over), simplified to
@@ -207,11 +207,11 @@ hd/craft/ in the Almanac HD ZIM (scripts/build_craft_hd.py)
   iss: "International Space Station (ISS) (B)", NASA/Michael D. Carbajal
   voyager: "Voyager Probe (A)", NASA/Christopher R. Meaney
   pioneer: "Pioneer 10", NASA/JPL/Eyes on the Solar System
-  juno: "Juno (A)", NASA/JPL-Caltech
+  juno: "Juno (B)" (no individual credit listed)
   parker: "Parker Solar Probe", NASA/Matthew J. Garcia
   webb: "James Webb Space Telescope (A)", NASA/Christopher R. Meaney
   galileo: "Galileo", NASA/JPL/Solar System Simulator
-  cassini: "Cassini-Huygens (A)", NASA/JPL/Solar System Simulator
+  cassini: "Cassini Assembly" (453,987 triangles, 259,000 kept), no individual credit listed
   All NASA 3D Resources: "free and without copyright".
 
   - The Apollo 11, 12, 15, 16 and 17 sites, past the global map: LRO Narrow
@@ -224,7 +224,8 @@ craft-site-<model>-v1.bin, sites-v1.json (scripts/build_site_models.py)
   The landers, rovers, flags and the Saturn V the 3D view stands on the Moon and
   the planets (almanac-sites.js), in the ZCRF format of the probes above.
   From NASA 3D Resources ("These assets are free and without copyright"):
-  lm: "Apollo Lunar Module" (descent stage only: it is what stayed), no credit listed
+  lm, lm-ascent: "Apollo Lunar Module", no credit listed: the descent stage (what stayed) and the ascent stage as two
+    models in one frame, so a site can show the ascent stage until the liftoff
   perseverance-body, perseverance-wheel: "Mars 2020 Perseverance Rover", NASA/JPL-Caltech;
     also the Curiosity site's rover (the same family; the wheels split off to turn)
   ingenuity: "Ingenuity Mars Helicopter", NASA/JPL-Caltech
@@ -273,3 +274,46 @@ missions-v1.json, craft-ms-*-v1.bin (scripts/build_missions.py, scripts/build_mi
   Columbia or Eagle. Voyager 1 and 2, flyby dates and distances: JPL Horizons. The
   vehicles are written from published dimensions (Saturn V Flight Manual, Apollo
   Operations Handbook, Grumman LM press kit).
+  - Jupiter and Saturn at 8192 px: Solar System Scope's 8k maps, CC BY 4.0,
+    credited on the view while drawn (a gas giant has no public-domain surface
+    mosaic).
+  - Every other world, from NASA/USGS global mosaics (public domain,
+    planetarymaps.usgs.gov/mosaic/), at the mosaic's own pixel size or, where it
+    is far finer, reduced to what a phone can use:
+      Mercury  Mercury_MESSENGER_MDIS_Basemap_BDR_Mosaic_Global_166m.tif
+               (to 32768 px; colour ratios from mercury-v1)
+      Venus    Venus_Magellan_C3-MDIR_Colorized_Global_Mosaic_4641m.tif
+      Mars     Mars_Viking_MDIM21_ClrMosaic_global_232m.tif (to 32768 px)
+      Moon     Lunar_LRO_LROC-WAC_Mosaic_global_100m_June2013.tif (to 65536 px)
+      Io       Io_GalileoSSI-Voyager_Global_Mosaic_ClrMerge_1km.tif
+      Europa   Europa_Voyager_GalileoSSI_global_mosaic_500m.tif
+      Ganymede Ganymede_Voyager_GalileoSSI_global_mosaic_1km.tif (colour from ganymede-v1)
+      Callisto Callisto_Voyager_GalileoSSI_global_mosaic_1km.tif
+      Titan    Titan_ISS_P19658_Mosaic_Global_4km.tif
+      Mimas    Mimas/Cassini_DLR_Mimas.zip: MI_170630_DLR_basemap_degrees.tif (Cassini ISS, DLR)
+      Enceladus Enceladus_Cassini_ISS_Global_Mosaic_100m_HPF.tif
+      Tethys   Tethys_Cassini_mosaic_global_293m.tif
+      Dione    Dione_Cassini_Voyager_mosaic_global_154m.tif
+      Rhea     Rhea_Cassini_Voyager_mosaic_global_417m.tif
+      Iapetus  Iapetus_Cassini_Voyager_mosaic_global_783m.tif
+      Triton   Triton_Voyager2_ClrMosaic_GlobalFill_600m.tif
+      Pluto    Pluto_NewHorizons_Global_Mosaic_300m_Jul2017_8bit.tif (colour from pluto-v1)
+      Charon   Charon_NewHorizons_Global_Mosaic_300m_Jul2017_8bit.tif
+      Vesta    Vesta_Dawn_FC_HAMO_Mosaic_Global_74ppd.tif
+      Ceres    Ceres_Dawn_FC_HAMO_DTM_DLR_Global_60ppd_Oct2016.tif (elevation, drawn
+               as shaded relief: no albedo mosaic is in the public domain)
+      Phobos   Phobos_Viking_Mosaic_40ppd_DLRcontrol.tif
+    The Cassini mosaics of Enceladus, Tethys, Dione and Rhea are high-pass
+    filtered by their makers: relief without the large-scale tone. Greyscale
+    mosaics take their colour from the small map shipped here
+    (scripts/build_almanac_hd.py FileMosaic): the colour ratios, never the
+    brightness. Sources are pinned by SHA-256 in that script. The small maps of
+    Enceladus, Tethys, Dione, Rhea, Iapetus, Triton, Charon, Phobos, Vesta and
+    Ceres (<name>-v1.webp, 1024 x 512) are the same mosaics reduced
+    (build_almanac_hd.py --small-maps).
+
+almanac-sun.js
+  Code, not data: the Sun's prominences, flares and finer surface, made up by
+  the Sun's own rules (like the sunspots) and labelled illustrative in the view.
+  Rotation: IAU WGCCRE 2015 (Carrington rate), differential rotation from
+  Snodgrass and Ulrich 1990.

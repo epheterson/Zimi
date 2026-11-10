@@ -1,7 +1,7 @@
 // ── Almanac: terrain ──
 // The ground "Stand here" (almanac-stand.js) walks on. A body's large shape is real: a global height map shipped with
 // Zimi (scripts/build_terrain.py: LOLA for the Moon, MOLA for Mars, Magellan for Venus, MESSENGER for Mercury, ETOPO
-// 2022 for the Earth; 256 x 128, metres above the body's mean radius), sharpened near the viewer by the Almanac HD
+// 2022 for the Earth; 1024 x 512, metres above the body's mean radius), sharpened near the viewer by the Almanac HD
 // release's terrain tiles when they are installed. Below what those hold, the height is generated: craters on the
 // bodies that have them, fractal hills everywhere, seeded by the place so the same spot is always the same ground.
 // The bodies with no usable height map in the public domain (Titan, Pluto, the big moons) stand on their sphere with
@@ -22,7 +22,7 @@ var AE_TERRAIN_OCTAVE = 2.1;                            // wavelengths of the ge
 // rough the real map is round the place; craters: the share of grid cells holding one, the biggest radius (km), and
 // depth over radius.
 var AE_STAND_BODIES = {
-  earth: { km: 6371.0, flat: 0.00335281, terrain: true, sea: true, relief: true, fbm: { amp: 160, lam: [24, 0.002], H: 0.85, ridge: 0.45 } },
+  earth: { km: 6371.0, flat: 0.00335281, terrain: true, sea: true, relief: true, fbm: { amp: 260, lam: [24, 0.002], H: 0.85, ridge: 0.65 } },
   moon: { km: 1737.4, terrain: true, fbm: { amp: 70, lam: [24, 0.002], H: 0.9, ridge: 0 }, craters: { density: 0.6, rMax: 14, depth: 0.17 } },
   mercury: { km: 2439.7, terrain: true, fbm: { amp: 110, lam: [24, 0.002], H: 0.9, ridge: 0 }, craters: { density: 0.6, rMax: 14, depth: 0.15 } },
   venus: { km: 6051.8, terrain: true, relief: true, fbm: { amp: 70, lam: [24, 0.002], H: 0.8, ridge: 0.6 } },
@@ -70,7 +70,7 @@ function _aeTerrainLoad(key) {
 // The shipped map is 156 km a pixel: a coastal cell averages land with the sea and reads below zero. Where the water is
 // comes from Natural Earth's 1:10 million land polygons (scripts/build_landmask.py), 8192 x 4096, stored as runs: a coast
 // stands where the coast is, to a few kilometres. Lakes read as land.
-var AE_TERRAIN_LAND_URL = '/static/earth/land-v1.bin', AE_TERRAIN_LAND_MAGIC = 'ZLND', AE_TERRAIN_COAST_M = 3;
+var AE_TERRAIN_LAND_URL = '/static/earth/land-v1.bin', AE_TERRAIN_LAND_MAGIC = 'ZLND', AE_TERRAIN_COAST_M = 3, AE_TERRAIN_COAST_RISE = 0.8;   // land at least this high, reached as the land share runs from a half to this
 // The runs as a bit mask (one bit a pixel, rows from the north), or null if the bytes are not this format.
 function _aeTerrainLandParse(buf) {
   if (!buf || buf.byteLength < 10) return null;
@@ -206,7 +206,7 @@ function _aeCraterHeight(u, km, c, lodKm) {
   return sum;
 }
 // How rough the real map is round a place: its distance from the mean of the four cells a step away (metres).
-var AE_TERRAIN_RELIEF_STEP_DEG = 1.4, AE_TERRAIN_RELIEF_SCALE = 500, AE_TERRAIN_RELIEF_MIN = 0.05, AE_TERRAIN_RELIEF_MAX = 3;
+var AE_TERRAIN_RELIEF_STEP_DEG = 0.7, AE_TERRAIN_RELIEF_SCALE = 400, AE_TERRAIN_RELIEF_MIN = 0.012, AE_TERRAIN_RELIEF_MAX = 3;
 function _aeTerrainRelief(t, lat, lon) {
   var s = AE_TERRAIN_RELIEF_STEP_DEG, c = _aeTerrainCoarse(t, lat, lon);
   var m = (_aeTerrainCoarse(t, lat + s, lon) + _aeTerrainCoarse(t, lat - s, lon) + _aeTerrainCoarse(t, lat, lon + s) + _aeTerrainCoarse(t, lat, lon - s)) / 4;
@@ -227,9 +227,9 @@ function _aeTerrainHeight(key, lat, lon, lodKm) {
     base = hd === null ? _aeTerrainCoarse(t, lat, lon) : hd;
   }
   if (b.sea && ready) {
-    var wet = t.land ? _aeTerrainLandAt(t.land, lat, lon) < 0.5 : base < 0;
-    if (wet) return { h: 0, sea: true };
-    if (t.land && base < AE_TERRAIN_COAST_M) base = AE_TERRAIN_COAST_M;
+    var lf = t.land ? _aeTerrainLandAt(t.land, lat, lon) : (base < 0 ? 0 : 1);
+    if (lf < 0.5) return { h: 0, sea: true };
+    if (t.land) { var ru = Math.max(0, Math.min(1, (lf - 0.5) / (AE_TERRAIN_COAST_RISE - 0.5))); base = Math.max(base, AE_TERRAIN_COAST_M) * ru * ru * (3 - 2 * ru); }   // the land rises from the water line, not in a step
   }
   var u = _aeUnitVec(lat, lon), amp = b.fbm.amp * (b.relief && ready ? _aeTerrainRelief(t, lat, lon) : 1);
   var h = base + _aeFbmHeight(u, b.km, b.fbm, lodKm || 0, amp) + (b.craters ? _aeCraterHeight(u, b.km, b.craters, lodKm || 0) : 0);
