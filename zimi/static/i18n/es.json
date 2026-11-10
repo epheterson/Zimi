@@ -2284,7 +2284,7 @@
   "alm_earth_sat_ask_hint": "No se descarga nada hasta que se pida",
   "alm_earth_sat_auto": "Automáticamente",
   "alm_earth_sat_auto_hint": "Datos precisos de {src}",
-  "alm_earth_sat_never": "Aproximar con datos sin conexión",
+  "alm_earth_sat_never": "Nunca",
   "alm_earth_sat_never_hint": "Posiciones a partir de los datos que este Zimi ya tiene, menos exactas con el tiempo",
   "alm_earth_sat_admin_only": "Solo un administrador puede cambiar esto",
   "alm_earth_sat_offline": "Zimi está sin conexión (ZIMI_OFFLINE), así que nunca descarga nada",
@@ -3757,5 +3757,7 @@
   "alm_earth_webb_lit": "El lado del espejo siempre está a la sombra del parasol: aquí se muestra iluminado.",
   "tb_kn_craft_models": "Modelos de naves",
   "tb_kn_craft_sun": "Luz del Sol sobre una nave (irradiancia)",
-  "tb_kn_craft_shine": "Luz planetaria sobre una nave (parte de una superficie que lo mira)"
+  "tb_kn_craft_shine": "Luz planetaria sobre una nave (parte de una superficie que lo mira)",
+  "alm_craft_loading": "Cargando la sonda",
+  "alm_craft_failed": "Sin modelo aquí: se muestra un punto"
 }

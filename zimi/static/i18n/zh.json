@@ -2284,7 +2284,7 @@
   "alm_earth_sat_ask_hint": "在请求之前不获取任何数据",
   "alm_earth_sat_auto": "自动",
   "alm_earth_sat_auto_hint": "来自 {src} 的精确数据",
-  "alm_earth_sat_never": "用离线数据估算",
+  "alm_earth_sat_never": "从不",
   "alm_earth_sat_never_hint": "根据此 Zimi 已有的数据给出位置，时间越久越不精确",
   "alm_earth_sat_admin_only": "只有管理员可以更改此项",
   "alm_earth_sat_offline": "Zimi 处于离线模式（ZIMI_OFFLINE），因此从不获取数据",
@@ -3757,5 +3757,7 @@
   "alm_earth_webb_lit": "镜面一侧始终处于遮阳罩的阴影中：此处以被照亮的样子呈现。",
   "tb_kn_craft_models": "航天器模型",
   "tb_kn_craft_sun": "太阳照在航天器上的光（辐照度）",
-  "tb_kn_craft_shine": "行星反照光（正对表面所受光的比例）"
+  "tb_kn_craft_shine": "行星反照光（正对表面所受光的比例）",
+  "alm_craft_loading": "正在加载航天器",
+  "alm_craft_failed": "这里没有它的模型，以一个点显示"
 }

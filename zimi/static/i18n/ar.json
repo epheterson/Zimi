@@ -2284,7 +2284,7 @@
   "alm_earth_sat_ask_hint": "لا يُجلب شيء حتى يُطلب",
   "alm_earth_sat_auto": "تلقائيًا",
   "alm_earth_sat_auto_hint": "بيانات دقيقة من {src}",
-  "alm_earth_sat_never": "تقريب بالبيانات دون اتصال",
+  "alm_earth_sat_never": "أبدًا",
   "alm_earth_sat_never_hint": "مواقع من البيانات الموجودة لدى Zimi هذا، وتقل دقتها مع الوقت",
   "alm_earth_sat_admin_only": "لا يمكن تغيير هذا إلا لمشرف",
   "alm_earth_sat_offline": "Zimi في وضع عدم الاتصال (ZIMI_OFFLINE)، لذا لا يجلب أي شيء",
@@ -3757,5 +3757,7 @@
   "alm_earth_webb_lit": "جانب المرآة دائمًا في ظل الدرع الشمسي: يُعرض هنا مضاءً.",
   "tb_kn_craft_models": "نماذج المركبات الفضائية",
   "tb_kn_craft_sun": "ضوء الشمس على مركبة (الإشعاع)",
-  "tb_kn_craft_shine": "ضوء الكوكب على مركبة (حصة سطح مواجه له)"
+  "tb_kn_craft_shine": "ضوء الكوكب على مركبة (حصة سطح مواجه له)",
+  "alm_craft_loading": "جارٍ تحميل المركبة",
+  "alm_craft_failed": "لا نموذج لها هنا: تظهر نقطة"
 }
