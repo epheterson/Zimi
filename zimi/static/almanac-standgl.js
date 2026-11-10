@@ -311,6 +311,17 @@ var AE_ST_BODY_VERT = [
   '  gl_Position = projectionMatrix * vec4(mat3(viewMatrix) * l * 10.0, 1.0);',
   '}'
 ].join('\n');
+// A sky object with an angular size (a twilight rocket plume: a sunlit cloud tens of degrees long): a soft billboard in angular units, long along its track.
+var AE_ST_BOARD_FRAG = [
+  'precision highp float; uniform vec2 uAxis, uSize; uniform vec3 uCol; uniform float uLum, uHalf; varying vec2 vUv;',
+  'void main() {',
+  '  vec2 q = vUv * uHalf, perp = vec2(-uAxis.y, uAxis.x);',
+  '  float al = dot(q, uAxis) / uSize.x, ac = dot(q, perp) / uSize.y, r = sqrt(al * al + ac * ac);',
+  '  float a = pow(max(1.0 - r, 0.0), 1.7) * (0.55 + 0.45 * smoothstep(0.0, 0.5, 1.0 - r));',
+  '  if (a <= 0.002) discard;',
+  '  gl_FragColor = vec4(uCol * uLum * a * 0.8, a * uLum);',
+  '}'
+].join('\n');
 // The Moon's dark disc in a total eclipse: near black with a trace of earthshine, over the sky's glow.
 var AE_ST_OCC_FRAG = [
   'precision highp float; uniform float uHalf, uRho, uPix, uDark; varying vec2 vUv;',

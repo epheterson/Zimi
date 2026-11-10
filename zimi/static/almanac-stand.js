@@ -1072,7 +1072,7 @@ function _aeStandEclipseLabel(st, ecl) {
     el = st.eclLabel = document.createElement('span'); el.className = 'ae-stand-craft'; el.style.pointerEvents = 'none'; el.innerHTML = '<i></i>';
     el.appendChild(document.createTextNode(_aeInfoName('sun'))); _ae.el.appendChild(el);
   }
-  var p = new _ae.gl.THREE.Vector3(st.fr.sun[0] * 10, st.fr.sun[1] * 10, st.fr.sun[2] * 10).project(st.camera);
+  var p = new _ae.gl.THREE.Vector3(st.fr.sun[0] * AE_STAND_SKY_AT_M, st.fr.sun[1] * AE_STAND_SKY_AT_M, st.fr.sun[2] * AE_STAND_SKY_AT_M).project(st.camera);
   el.hidden = p.z < -1 || p.z > 1;
   el.style.transform = 'translate(' + ((p.x + 1) / 2 * _ae.w).toFixed(1) + 'px,' + ((1 - p.y) / 2 * _ae.h).toFixed(1) + 'px)';
 }
@@ -1255,7 +1255,37 @@ function _aeStandCloudSelect(st) {
 //       name }                   optional: what a tap on it says (while the sky is dark enough to see it)
 // They are drawn as stars are: dimmed by the air mass, gone once the sky is brighter than their magnitude (so by day they are
 // hidden), gone under the horizon, the same on a phone's small canvas. With no source nothing is drawn and nothing costs.
+var AE_STAND_SKY_AT_M = 50000;   // a direction in the sky as a point to project: far enough that the camera's 1.7 m of height is not a parallax of ten degrees
 var AE_STAND_SKY_EVERY_MS = 1000, AE_STAND_SKY_TAP_PX = 30, AE_STAND_SKY_TAG_MS = 4000;
+// Sky objects with an angular size (optional): { kind, az, el, sizeDeg: n | [along, across], axisAz, axisEl (a point on its track: the long axis points toward it), rgb, lum 0..1 }.
+// A soft additive billboard in angular units, lit as the sky says: only in twilight (gone by day, and by the Sun's last degrees under the horizon it is the lane's `lum`).
+var AE_STAND_BOARD_MAX = 6, AE_STAND_BOARD_SUN_DEG = [-0.5, -4];   // the most boards, and the Sun heights over which they come in
+function _aeStandSkyBoards(st, boards) {
+  var THREE = _ae.gl.THREE, fr = st.fr, tw = fr ? 1 - _smoothstep(AE_STAND_BOARD_SUN_DEG[1], AE_STAND_BOARD_SUN_DEG[0], fr.sunAlt) : 0;
+  if (!st.boards) st.boards = [];
+  boards.slice(0, AE_STAND_BOARD_MAX).forEach(function (o, i) {
+    var b = st.boards[i];
+    if (!b) {
+      var uni = { uDir: { value: [0, 1, 0] }, uRight: { value: [1, 0, 0] }, uUp: { value: [0, 0, 1] }, uHalf: { value: 0.1 }, uAxis: { value: [1, 0] }, uSize: { value: [0.1, 0.05] }, uCol: { value: [1, 1, 1] }, uLum: { value: 0 } };
+      var m = new THREE.ShaderMaterial({ uniforms: uni, vertexShader: AE_ST_BODY_VERT, fragmentShader: AE_ST_BOARD_FRAG, transparent: true, depthTest: false, depthWrite: false, blending: AE_THREE_ADDITIVE_BLENDING });
+      var mesh = new THREE.Mesh(st.sprites[0].mesh.geometry, m);
+      mesh.frustumCulled = false; mesh.renderOrder = -1;
+      st.scene.add(mesh); st.mats.push(m);
+      b = st.boards[i] = { mesh: mesh, uni: uni };
+    }
+    var d = o.dir, Z = [0, 0, 1], Y = [0, 1, 0], right = _aeNorm(_aeCross(d, Math.abs(d[2]) > 0.999 ? Y : Z)), up = _aeCross(right, d);
+    var sz = typeof o.sizeDeg === 'number' ? [o.sizeDeg, o.sizeDeg] : o.sizeDeg, A = _aeRad(sz[0]) / 2, B = _aeRad(sz[1] !== undefined ? sz[1] : sz[0]) / 2, ax = [1, 0];
+    if (o.axisAz !== undefined && o.axisEl !== undefined) {
+      var t = _aeStandSkyDir(o.axisAz, o.axisEl), k = _aeDot(t, d), tv = [t[0] - d[0] * k, t[1] - d[1] * k, t[2] - d[2] * k], l = Math.hypot(tv[0], tv[1], tv[2]) || 1;
+      ax = [_aeDot(tv, right) / l, _aeDot(tv, up) / l];
+    }
+    var u = b.uni;
+    u.uDir.value = d; u.uRight.value = right; u.uUp.value = up; u.uHalf.value = Math.max(A, B) * 1.05; u.uAxis.value = ax; u.uSize.value = [A, B];
+    u.uCol.value = o.rgb || [1, 0.85, 0.7]; u.uLum.value = (o.lum === undefined ? 1 : o.lum) * tw;
+    b.mesh.visible = u.uLum.value > 0.002 && o.el > -3;
+  });
+  for (var j = boards.length; j < st.boards.length; j++) st.boards[j].mesh.visible = false;
+}
 var AE_STAND_SKYOBJ_SIZE = { sat: 1, train: 1.2, rocket: 1.6, plume: 7 };   // a point's size by kind
 var _aeStandSkySources = [];
 function _aeStandSkySource(src) {
@@ -1290,10 +1320,12 @@ function _aeStandSkyUpdate(st, ms, now) {
   });
   st.skyObjs = list.length ? list : null;
   var THREE = _ae.gl.THREE, n = list.length, pos = new Float32Array(3 * n), mag = new Float32Array(n), scl = new Float32Array(n), col = new Float32Array(3 * n), tr = [];
+  var boards = [];
   list.forEach(function (o, i) {
     var d = _aeStandSkyDir(o.az, o.el), c = o.rgb || [1, 1, 1];
     o.dir = d;
-    pos.set(d, 3 * i); mag[i] = o.mag === undefined ? 3 : o.mag; scl[i] = AE_STAND_SKYOBJ_SIZE[o.kind] || 1; col.set(c, 3 * i);
+    if (o.sizeDeg) boards.push(o);   // an extended thing is a billboard, not a point
+    pos.set(d, 3 * i); mag[i] = o.sizeDeg ? 99 : o.mag === undefined ? 3 : o.mag; scl[i] = AE_STAND_SKYOBJ_SIZE[o.kind] || 1; col.set(c, 3 * i);
     if (o.trail && o.trail.length) {
       var prev = d, pm = mag[i];
       o.trail.forEach(function (q) { var az = q.az !== undefined ? q.az : q[0], el = q.el !== undefined ? q.el : q[1], v = _aeStandSkyDir(az, el), qm = q.mag !== undefined ? q.mag : mag[i]; tr.push([prev, v, c, pm, qm]); prev = v; pm = qm; });
@@ -1320,6 +1352,7 @@ function _aeStandSkyUpdate(st, ms, now) {
   };
   var pa = { position: pos, aMag: mag, aScale: scl, aColor: col }, la = { position: lp, aMag: lm, aScale: ls, aColor: lc };
   put('skyPts', function () { var p = new THREE.Points(geo(pa), st.skyPtMat); p.frustumCulled = false; p.renderOrder = -1; return p; }, pa, n);
+  _aeStandSkyBoards(st, boards);
   put('skyLines', function () { var l = new THREE.LineSegments(geo(la), st.skyLineMat); l.frustumCulled = false; l.renderOrder = -1; return l; }, la, m);
 }
 // A tap on one of them names it (while it can be seen): true if the tap was theirs.
@@ -1329,7 +1362,7 @@ function _aeStandBodyAt(st, x, y) {
   var V = _ae.gl.THREE.Vector3, best = null, bestD = AE_STAND_BODY_TAP_PX;
   [{ dir: st.fr.sun, name: 'sun' }].concat(st.fr.objs.filter(function (o) { return o.key === AE_STAND_MOON_NAME; }).map(function (o) { return { dir: o.dir, name: 'moon' }; })).forEach(function (o) {
     if (o.dir[2] < -0.02) return;
-    var p = new V(o.dir[0] * 10, o.dir[1] * 10, o.dir[2] * 10).project(st.camera);
+    var p = new V(o.dir[0] * AE_STAND_SKY_AT_M, o.dir[1] * AE_STAND_SKY_AT_M, o.dir[2] * AE_STAND_SKY_AT_M).project(st.camera);
     if (p.z < -1 || p.z > 1) return;
     var d = Math.hypot((p.x + 1) / 2 * _ae.w - x, (1 - p.y) / 2 * _ae.h - y);
     if (d < bestD) { bestD = d; best = o; }
@@ -1366,14 +1399,14 @@ function _aeStandSkyTap(x, y) {
   var V = _ae.gl.THREE.Vector3, best = null, bestD = AE_STAND_SKY_TAP_PX, W = _ae.w, H = _ae.h;
   st.skyObjs.forEach(function (o) {
     if (!o.name || o.dir[2] < -0.02 || st.photo.lim - (o.mag === undefined ? 3 : o.mag) <= 0) return;
-    var p = new V(o.dir[0] * 10, o.dir[1] * 10, o.dir[2] * 10).project(st.camera);
+    var p = new V(o.dir[0] * AE_STAND_SKY_AT_M, o.dir[1] * AE_STAND_SKY_AT_M, o.dir[2] * AE_STAND_SKY_AT_M).project(st.camera);
     if (p.z < -1 || p.z > 1) return;
     var d = Math.hypot((p.x + 1) / 2 * W - x, (1 - p.y) / 2 * H - y);
     if (d < bestD) { bestD = d; best = o; }
   });
   if (!best) return false;
   var tag = st.skyTag || (st.skyTag = (function () { var h = document.createElement('div'); h.className = 'ae-stand-crafts'; var sp = document.createElement('span'); sp.className = 'ae-stand-craft'; h.appendChild(sp); _ae.el.appendChild(h); return h; })());
-  var sp = tag.firstChild, p2 = new V(best.dir[0] * 10, best.dir[1] * 10, best.dir[2] * 10).project(st.camera);
+  var sp = tag.firstChild, p2 = new V(best.dir[0] * AE_STAND_SKY_AT_M, best.dir[1] * AE_STAND_SKY_AT_M, best.dir[2] * AE_STAND_SKY_AT_M).project(st.camera);
   sp.innerHTML = '<i></i>' + _almEsc(best.name);
   sp.style.transform = 'translate(' + ((p2.x + 1) / 2 * W).toFixed(1) + 'px,' + ((1 - p2.y) / 2 * H).toFixed(1) + 'px)';
   sp.hidden = false;

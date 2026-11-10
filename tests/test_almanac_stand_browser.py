@@ -341,7 +341,7 @@ def test_other_lanes_put_objects_in_the_sky_and_a_tap_names_them(page):
     )
     spot = page.evaluate(
         """() => { var st = _ae.stand, V = _ae.gl.THREE.Vector3, o = st.skyObjs[0], d = o.dir; st.userYaw = Math.atan2(d[0], d[1]) - st.yaw; st.userPitch = Math.asin(d[2]) - 0.05; st.dirty = true; _aeStandDraw(performance.now()); st.photo.lim = 6;
-          var p = new V(d[0] * 10, d[1] * 10, d[2] * 10).project(st.camera); return [(p.x + 1) / 2 * _ae.w, (1 - p.y) / 2 * _ae.h]; }"""
+          var p = new V(d[0] * 50000, d[1] * 50000, d[2] * 50000).project(st.camera); return [(p.x + 1) / 2 * _ae.w, (1 - p.y) / 2 * _ae.h]; }"""
     )
     assert page.evaluate("([x, y]) => _aeStandSkyTap(x, y)", spot) is True
     # (The tag of the tapped thing is the sky tag's own: the station's label, when it is up, is another element of the same class.)
@@ -534,20 +534,46 @@ def test_a_real_touch_on_the_sun_goes_in_on_it_at_any_pixel_ratio(page, dsf):
     pg.wait_for_function("() => _ae.stand.fr && _ae.stand.fr.sunAlt > 50", timeout=60_000, polling=250)
     xy = pg.evaluate(
         """() => { var st = _ae.stand; st.userYaw = st.fr.sunAz - st.yaw; st.userPitch = st.fr.sunAlt * Math.PI / 180 - AE_STAND_PITCH_DEG * Math.PI / 180; st.zoom = 1; st.zf = null; st.dirty = true; _ae.dirty = true; _aeKick();
-          return new Promise(function (r) { setTimeout(function () { var V = _ae.gl.THREE.Vector3, d = st.fr.sun, p = new V(d[0] * 10, d[1] * 10, d[2] * 10).project(st.camera);
+          return new Promise(function (r) { setTimeout(function () { var V = _ae.gl.THREE.Vector3, d = st.fr.sun, p = new V(d[0] * 50000, d[1] * 50000, d[2] * 50000).project(st.camera);
             var rect = document.getElementById('ae-canvas').getBoundingClientRect(); r([rect.left + (p.x + 1) / 2 * _ae.w, rect.top + (1 - p.y) / 2 * _ae.h]); }, 800); }); }"""
     )
     pg.touchscreen.tap(xy[0], xy[1])
     pg.wait_for_function("() => _ae.stand.zoom < 0.3", timeout=15_000, polling=200)
     pg.wait_for_timeout(1200)
     xy2 = pg.evaluate(
-        """() => { var st = _ae.stand, V = _ae.gl.THREE.Vector3, d = st.fr.sun, p = new V(d[0] * 10, d[1] * 10, d[2] * 10).project(st.camera), rect = document.getElementById('ae-canvas').getBoundingClientRect();
+        """() => { var st = _ae.stand, V = _ae.gl.THREE.Vector3, d = st.fr.sun, p = new V(d[0] * 50000, d[1] * 50000, d[2] * 50000).project(st.camera), rect = document.getElementById('ae-canvas').getBoundingClientRect();
           return [rect.left + (p.x + 1) / 2 * _ae.w, rect.top + (1 - p.y) / 2 * _ae.h]; }"""
     )
     pg.touchscreen.tap(xy2[0], xy2[1])
     pg.wait_for_function("() => _ae.stand.zoom > 0.9", timeout=15_000, polling=200)
     assert not pg.errors, pg.errors
     ctx.close()
+
+
+def test_a_sky_object_with_an_angular_size_is_a_billboard_in_twilight_and_a_point_without_one(page):
+    """{kind:'plume', sizeDeg, axisAz, axisEl, rgb, lum}: a soft billboard long along its track, only in twilight; with no sizeDeg the point sprite as before."""
+    _stand_anywhere(page, "earth", 34.05, -118.24)
+    twilight = page.evaluate(
+        """() => { var st = _ae.stand, t0 = Date.UTC(2026, 5, 21, 0, 0, 0);
+          for (var t = t0; t < t0 + 6 * 3600000; t += 120000) { var a = _aeStFrame(st, t).sunAlt; if (a < -5 && a > -8) return t; } return null; }"""
+    )
+    assert twilight
+    page.evaluate(
+        """(ms) => { window.__off = _aeStandSkySource(function () { return [
+            { kind: 'plume', az: 250, el: 14, sizeDeg: [25, 6], axisAz: 240, axisEl: 40, rgb: [1, 0.8, 0.6], lum: 1, name: 'plume' },
+            { kind: 'rocket', az: 200, el: 30, mag: 2, name: 'point' }]; });
+          _aeGoTo(ms); _ae.stand.fr = null; _ae.stand.skyDirty = true; _ae.stand.dirty = true; _ae.dirty = true; _aeKick(); }""",
+        twilight,
+    )
+    page.wait_for_function("() => _ae.stand.boards && _ae.stand.boards[0] && _ae.stand.boards[0].mesh.visible", timeout=60_000, polling=250)
+    got = page.evaluate(
+        "() => { var b = _ae.stand.boards[0].uni; return { size: b.uSize.value, lum: b.uLum.value, mag0: _ae.stand.skyPts.mesh.geometry.attributes.aMag.array[0], mag1: _ae.stand.skyPts.mesh.geometry.attributes.aMag.array[1] }; }"
+    )
+    assert abs(got["size"][0] - 12.5 * 3.14159265 / 180) < 1e-3 and abs(got["size"][1] - 3 * 3.14159265 / 180) < 1e-3, got
+    assert got["lum"] > 0.05 and got["mag0"] == 99 and got["mag1"] == 2, got  # the plume is no point; the rocket still is
+    page.evaluate("() => window.__off()")
+    _leave(page)
+    assert not page.errors, page.errors
 
 
 def test_the_live_sky_cards_handoff_opens_stand_facing_its_way_and_close_goes_back(
