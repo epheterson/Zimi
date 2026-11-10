@@ -27,6 +27,16 @@ function prefWrite(key, value) {
   try { if (window.parent !== window && typeof window.parent._prefWrite === 'function') { window.parent._prefWrite(key, value); return; } } catch (e) {}
   try { if (value == null) localStorage.removeItem(key); else localStorage.setItem(key, String(value)); } catch (e) {}
 }
+// A setting another window changed (the shell took the account's value, or another tab wrote it): ``handlers`` maps a
+// key to a function given the new raw value, null when it went back to its default. A storage event never reaches the
+// window that wrote, but it does reach this frame when the shell wrote, so a handler must treat the value it already
+// shows as no change.
+function prefWatch(handlers) {
+  window.addEventListener('storage', function(e) {
+    var fn = e.key && handlers[e.key];
+    if (fn) try { fn(e.newValue); } catch (x) {}
+  });
+}
 function esc(x) { return String(x == null ? '' : x).replace(/[&<>"']/g, function(c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]; }); }
 // A ZIM entry's address in Zimi.
 // Text with its tags taken out, again until none is left: one pass over "<scr<script>ipt>" leaves a tag behind.
