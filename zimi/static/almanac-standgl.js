@@ -50,6 +50,7 @@ var AE_ST_GLSL_ATMO = [
   'uniform vec3 uRay, uMieExt, uMieAlb, uMieG, uOzone, uSunDir, uSunE;',
   'uniform float uHR, uHM, uMs, uGainS;',
   'const float PI = ' + AE_ST_PI + ';',
+  'float gJit = 0.5;',   // where in each step a sample is taken (a different place for each pixel: stripes become fine grain)
   'float heightKm(vec3 p) { vec3 q = vec3(p.xy, p.z + uRc); return (dot(p, p) + 2.0 * p.z * uRc + uH0 * (uRc + uR)) / (length(q) + uR); }',
   'vec3 sigmaExt(float h) { h = max(h, 0.0); return uRay * exp(-h / uHR) + uMieExt * exp(-h / uHM) + uOzone * max(0.0, 1.0 - abs(h - 25.0) / 15.0); }',
   'float sphereFar(vec3 p, vec3 d, float Rs) { vec3 q = vec3(p.xy, p.z + uRc); float lq = length(q), c = (lq - Rs) * (lq + Rs), b = dot(q, d), D = b * b - c; return D < 0.0 ? -1.0 : -b + sqrt(D); }',
@@ -60,7 +61,7 @@ var AE_ST_GLSL_ATMO = [
   '  if (b < 0.0 && D > 0.0 && -b - sqrt(D) > 0.01) return vec3(0.0);',
   '  if (uAtmo < 0.5) return vec3(1.0);',
   '  float Lt = sphereFar(p, uSunDir, uR + uTop); vec3 od = vec3(0.0); float tp = 0.0;',
-  '  for (int i = 0; i < ' + AE_ST_STEPS_SUN + '; i++) { float f = float(i + 1) / ' + AE_ST_STEPS_SUN + '.0, t = Lt * f * f, dt = t - tp; od += sigmaExt(heightKm(p + uSunDir * (tp + 0.5 * dt))) * dt; tp = t; }',
+  '  for (int i = 0; i < ' + AE_ST_STEPS_SUN + '; i++) { float f = float(i + 1) / ' + AE_ST_STEPS_SUN + '.0, t = Lt * f * f, dt = t - tp; od += sigmaExt(heightKm(p + uSunDir * (tp + gJit * dt))) * dt; tp = t; }',
   '  return exp(-od);',
   '}',
   // Where the ray o + t d is inside the air (t0..t1), ending at the ground if it meets it; false if it never is.
@@ -83,7 +84,7 @@ function _aeStInscatterGlsl(name, steps) {
     '  float tp = 0.0;',
     '  for (int i = 0; i < ' + steps + '; i++) {',
     '    float f = float(i + 1) / ' + steps + '.0, t = tmax * f * f, dt = t - tp;',
-    '    vec3 p = o + d * (tp + 0.5 * dt); float h = max(heightKm(p), 0.0);',
+    '    vec3 p = o + d * (tp + gJit * dt); float h = max(heightKm(p), 0.0);',
     '    vec3 sR = uRay * exp(-h / uHR), sM = uMieExt * uMieAlb * exp(-h / uHM), ext = sigmaExt(h), stepT = exp(-ext * dt);',
     '    vec3 sun = sunTrans(p) * uSunE;',
     '    vec3 S = sun * (sR * phR + sM * phM) + sun * (sR + sM) * uMs * 0.0796;',
@@ -120,6 +121,7 @@ var AE_ST_SKY_FRAG = [
   'uniform sampler2D uMilky; uniform float uMw; uniform mat3 uToGal;',      // the Milky Way: its panorama, its strength, local -> galactic
   'varying vec2 vNdc;',
   'void main() {',
+  '  gJit = fract(52.9829189 * fract(dot(gl_FragCoord.xy, vec2(0.06711056, 0.00583715))));',
   '  vec3 d = normalize(uFwd + uRight * vNdc.x * uTan.x + uUp * vNdc.y * uTan.y), L = vec3(0.0), T;',
   '  if (uDiffuse > 0.5) { L = uDiffSky * (0.7 + 0.3 * smoothstep(-0.1, 0.5, d.z)); }',
   '  else if (uAtmo > 0.5) {',
@@ -316,6 +318,7 @@ var AE_ST_GROUND_FRAG = [
   '  return vec2(h, shade);',
   '}',
   'void main() {',
+  '  gJit = fract(52.9829189 * fract(dot(gl_FragCoord.xy, vec2(0.06711056, 0.00583715))));',
   '  float dist = length(vP - uCam); vec3 V = (uCam - vP) / dist;',
   '  vec3 N = normalize(vN), upF = normalize(vec3(vP.xy, vP.z + uRc * 1000.0));',
   '  float foot = dist * uPixAng;',
