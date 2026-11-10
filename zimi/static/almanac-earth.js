@@ -8375,17 +8375,16 @@ function _aeShow(fromHero) {
 // hero it lands in shows it.
 // Where the header's arrow goes back to: the Almanac's page (the hero, the sky) or its solar system (the orrery).
 // Where the arrow really goes: a lane that put the view here names it (`_ae.backLabel`: a mission, Look); on the ground, the card that handed the sky over (`handoff.backLabel`,
-// else the sky's) or the view of the body it stands on; otherwise where the view was opened from: the Solar System, the sky card, or the Almanac page.
+// else the page's) or the view of the body it stands on; otherwise where the view was opened from: the Solar System, the sky card, or the Almanac page.
 function _aeBackLabel() {
-  var cap = function (t) { return t ? t.charAt(0).toUpperCase() + t.slice(1) : t; };
   if (_ae && _ae.backLabel) return _ae.backLabel;
   var st = _ae && (_ae.stand || _ae.standPending);
   if (st) {
     var h = st.handoff || st.pend && st.pend.handoff || st.handoff;
-    if (h) return h.backLabel || cap(_aeT('alm_sky'));
+    if (h) return h.backLabel || _aeT('almanac');   // a card's hand-off goes back to the card, which is on the Almanac page
     return _aeInfoName(st.key || (st.pend && st.pend.key) || 'earth');
   }
-  return _aeFrom === 'orrery' ? _aeT('alm_solar_system') : _aeFrom === 'sky' ? cap(_aeT('alm_sky')) : _aeT('almanac');
+  return _aeFrom === 'orrery' ? _aeT('alm_solar_system') : _aeT('almanac');   // opened from the sky card or the hero: the arrow lands on the Almanac page
 }
 function _aeClose() {
   if (!_aeIsOpen || (_ae.hand && _ae.hand.dir < 0)) return;

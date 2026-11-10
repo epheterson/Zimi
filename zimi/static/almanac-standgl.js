@@ -317,9 +317,9 @@ var AE_ST_BOARD_FRAG = [
   'void main() {',
   '  vec2 q = vUv * uHalf, perp = vec2(-uAxis.y, uAxis.x);',
   '  float al = dot(q, uAxis) / uSize.x, ac = dot(q, perp) / uSize.y, r = sqrt(al * al + ac * ac);',
-  '  float a = pow(max(1.0 - r, 0.0), 1.7) * (0.55 + 0.45 * smoothstep(0.0, 0.5, 1.0 - r));',
+  '  float a = pow(max(1.0 - r, 0.0), 1.1) * (0.6 + 0.4 * smoothstep(0.0, 0.5, 1.0 - r));',
   '  if (a <= 0.002) discard;',
-  '  gl_FragColor = vec4(uCol * uLum * a * 0.8, a * uLum);',
+  '  gl_FragColor = vec4(uCol * 0.95, clamp(a * uLum, 0.0, 0.92));',   // additive blending multiplies the colour by the alpha itself: the colour is not premultiplied
   '}'
 ].join('\n');
 // The Moon's dark disc in a total eclipse: near black with a trace of earthshine, over the sky's glow.

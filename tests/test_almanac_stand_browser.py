@@ -580,14 +580,14 @@ def test_the_back_arrow_names_where_it_really_goes(page):
     """_aeBackLabel: on the ground the view of the body (or the card that handed the sky over); off it, where the view was opened from."""
     _stand_anywhere(page, "earth", 37.77, -122.42)
     assert page.evaluate("() => _aeBackLabel()") == "Earth"  # the arrow leaves the ground for the view of the body
-    assert page.evaluate("() => { _ae.stand.handoff = { back: function () {} }; return _aeBackLabel(); }") == "Sky"  # a card's hand-off: the card
+    assert page.evaluate("() => { _ae.stand.handoff = { back: function () {} }; return _aeBackLabel(); }") == "Almanac"  # a card's hand-off: back to the card, on the Almanac page
     assert page.evaluate("() => { _ae.stand.handoff.backLabel = 'Look'; return _aeBackLabel(); }") == "Look"  # a lane's own name for it
     assert page.evaluate("() => { _ae.stand.handoff = null; _ae.backLabel = 'Mission'; var l = _aeBackLabel(); _ae.backLabel = null; return l; }") == "Mission"
     _leave(page)
     got = page.evaluate(
         "() => ['orrery', 'sky', 'hero'].map(function (f) { _aeFrom = f; return _aeBackLabel(); })"
     )
-    assert got == ["Solar System", "Sky", "Almanac"], got
+    assert got == ["Solar System", "Almanac", "Almanac"], got
     page.evaluate("() => { _aeFrom = 'orrery'; }")
     assert not page.errors, page.errors
 
