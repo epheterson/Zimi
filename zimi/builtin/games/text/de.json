@@ -5896,6 +5896,7 @@
  "shutthebox.box": "Die neun Klappen",
  "shutthebox.chosen": "Gewählt",
  "shutthebox.left": "{n} bleibt offen.",
+ "shutthebox.need": "Noch {n} nötig",
  "shutthebox.open": "Offen",
  "shutthebox.pick": "Schließe Klappen, die {n} ergeben",
  "shutthebox.players": "Spieler",

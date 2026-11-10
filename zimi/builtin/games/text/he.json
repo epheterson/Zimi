@@ -6010,6 +6010,7 @@
  "shutthebox.box": "תשע הלוחיות",
  "shutthebox.chosen": "נבחר",
  "shutthebox.left": "נשארו פתוחות: {n}.",
+ "shutthebox.need": "חסרים {n}",
  "shutthebox.open": "פתוחות",
  "shutthebox.pick": "סגרו לוחיות שמסתכמות ב־{n}",
  "shutthebox.players": "שחקנים",

@@ -6007,6 +6007,7 @@
  "shutthebox.box": "As nove peças",
  "shutthebox.chosen": "Escolhido",
  "shutthebox.left": "Sobraram {n} abertas.",
+ "shutthebox.need": "Faltam {n}",
  "shutthebox.open": "Abertas",
  "shutthebox.pick": "Feche peças que somem {n}",
  "shutthebox.players": "Jogadores",

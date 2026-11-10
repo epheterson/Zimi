@@ -88,7 +88,7 @@
       els.side[i].setAttribute('aria-current', String(!g.over && g.turn === i));
       els.bank[i].style.width = pct(g.scores[i]);
       els.pend[i].style.width = g.turn === i && !g.over ? pct(Math.min(g.pot, g.goal - g.scores[i])) : '0%';
-      els.pend[i].style.left = pct(g.scores[i]);
+      els.pend[i].style.insetInlineStart = pct(g.scores[i]);
     }
     els.pot.textContent = Play.num(g.pot);
     Play.pips(els.die, g.die);

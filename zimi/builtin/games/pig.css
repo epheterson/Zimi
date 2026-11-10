@@ -6,7 +6,8 @@
 .pg-side small { font-size: var(--fs-small); color: var(--ink2); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .pg-side b { font: 650 var(--fs-display)/1.1 var(--font); font-variant-numeric: tabular-nums; }
 .pg-meter { position: relative; display: block; height: 10px; border-radius: 5px; background: var(--cell); border: 1px solid var(--line); overflow: hidden; }
-.pg-meter i, .pg-meter u { position: absolute; top: 0; bottom: 0; left: 0; text-decoration: none; transition: width 0.2s ease-out; }
+[dir="rtl"] .pg-meter { direction: rtl; }   /* the table is kept left-to-right (games.css), a bar fills from the reading side */
+.pg-meter i, .pg-meter u { position: absolute; top: 0; bottom: 0; inset-inline-start: 0; text-decoration: none; transition: width 0.2s ease-out; }
 .pg-meter i { background: var(--g-blue); }
 #pg-b .pg-meter i { background: var(--g-red); }
 .pg-meter u { background: repeating-linear-gradient(45deg, var(--accent) 0 4px, transparent 4px 8px); }

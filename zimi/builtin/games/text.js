@@ -5910,6 +5910,7 @@
  "shutthebox.box": "The nine tiles",
  "shutthebox.chosen": "Chosen",
  "shutthebox.left": "{n} left open.",
+ "shutthebox.need": "Need {n} more",
  "shutthebox.open": "Open",
  "shutthebox.pick": "Shut tiles that make {n}",
  "shutthebox.players": "Players",

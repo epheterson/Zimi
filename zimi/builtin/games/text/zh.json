@@ -5782,6 +5782,7 @@
  "shutthebox.box": "九个数字",
  "shutthebox.chosen": "已选",
  "shutthebox.left": "剩下 {n} 未盖。",
+ "shutthebox.need": "还差 {n}",
  "shutthebox.open": "未盖",
  "shutthebox.pick": "盖上加起来是 {n} 的数字",
  "shutthebox.players": "玩家",

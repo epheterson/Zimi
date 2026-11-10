@@ -130,7 +130,7 @@
   function base() {
     if (g.over) return '';
     if (cpuSeat(g.turn)) return T('shell.thinking');
-    if (g.rolled) return T('shutthebox.pick', { n: total(g) });
+    if (g.rolled) return picked.length ? T('shutthebox.need', { n: total(g) - pickedSum() }) : T('shutthebox.pick', { n: total(g) });
     return T('shutthebox.roll');
   }
   function say() { if (!g.over) line.say((note ? note + ' ' : '') + base()); }
@@ -223,10 +223,10 @@
     if (!g.rolled) { ZimiShell.shake(b); line.reason(T('shutthebox.rollFirst')); return; }
     if (!Z.set(g.open, n)) { ZimiShell.shake(b); line.reason(T('shutthebox.alreadyShut')); return; }
     var at = picked.indexOf(n);
-    if (at >= 0) { picked.splice(at, 1); paint(); return; }
+    if (at >= 0) { picked.splice(at, 1); paint(); say(); return; }
     if (pickedSum() + n > total(g)) { ZimiShell.shake(b); line.reason(T('shutthebox.tooMuch', { n: total(g) })); return; }
     picked.push(n);
-    if (pickedSum() === total(g)) { shut(g, picked.slice()); after(); } else paint();
+    if (pickedSum() === total(g)) { shut(g, picked.slice()); after(); } else { paint(); say(); }
   }
 
   els.roll.addEventListener('click', function () { if (mine() && !g.rolled) doRoll(); });

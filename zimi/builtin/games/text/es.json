@@ -6007,6 +6007,7 @@
  "shutthebox.box": "Las nueve fichas",
  "shutthebox.chosen": "Elegido",
  "shutthebox.left": "Quedan {n} abiertas.",
+ "shutthebox.need": "Faltan {n}",
  "shutthebox.open": "Abiertas",
  "shutthebox.pick": "Cierra fichas que sumen {n}",
  "shutthebox.players": "Jugadores",

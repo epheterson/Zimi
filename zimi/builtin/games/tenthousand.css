@@ -6,7 +6,8 @@
 .tt-side small { font-size: var(--fs-small); color: var(--ink2); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .tt-side b { font: 650 var(--fs-display)/1.1 var(--font); font-variant-numeric: tabular-nums; }
 .tt-meter { position: relative; display: block; height: 8px; border-radius: 4px; background: var(--cell); border: 1px solid var(--line); overflow: hidden; }
-.tt-meter i { position: absolute; top: 0; bottom: 0; left: 0; background: var(--g-blue); transition: width 0.2s ease-out; }
+[dir="rtl"] .tt-meter { direction: rtl; }
+.tt-meter i { position: absolute; top: 0; bottom: 0; inset-inline-start: 0; background: var(--g-blue); transition: width 0.2s ease-out; }
 #tt-b .tt-meter i { background: var(--g-red); }
 .tt-goal { margin: calc(var(--sp-2) * -1) 0 0; font-size: var(--fs-small); color: var(--ink2); text-align: center; }
 .tt-table { display: flex; flex-direction: column; align-items: center; gap: var(--sp-3); width: 100%; max-width: 420px; padding: var(--sp-4) var(--sp-3) var(--sp-3); background: #1f6f43; border: 1px solid var(--line); border-radius: var(--r-sheet); }

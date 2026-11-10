@@ -6007,6 +6007,7 @@
  "shutthebox.box": "Les neuf volets",
  "shutthebox.chosen": "Choisi",
  "shutthebox.left": "{n} restent ouverts.",
+ "shutthebox.need": "Il manque {n}",
  "shutthebox.open": "Ouverts",
  "shutthebox.pick": "Fermez des volets qui font {n}",
  "shutthebox.players": "Joueurs",

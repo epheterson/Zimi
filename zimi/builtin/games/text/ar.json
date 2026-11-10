@@ -6350,6 +6350,7 @@
  "shutthebox.box": "البلاطات التسع",
  "shutthebox.chosen": "المختار",
  "shutthebox.left": "بقي {n} مفتوحًا.",
+ "shutthebox.need": "تحتاج {n} أخرى",
  "shutthebox.open": "مفتوحة",
  "shutthebox.pick": "أغلق بلاطات مجموعها {n}",
  "shutthebox.players": "اللاعبون",

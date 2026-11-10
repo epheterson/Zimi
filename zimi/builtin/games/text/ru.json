@@ -6124,6 +6124,7 @@
  "shutthebox.box": "Девять створок",
  "shutthebox.chosen": "Выбрано",
  "shutthebox.left": "Осталось открыто: {n}.",
+ "shutthebox.need": "Нужно ещё {n}",
  "shutthebox.open": "Открыто",
  "shutthebox.pick": "Закройте створки на сумму {n}",
  "shutthebox.players": "Игроки",
