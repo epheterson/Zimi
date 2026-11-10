@@ -517,3 +517,21 @@ def test_a_part_copied_in_by_hand_is_listed_with_the_size_of_its_file(hd, monkey
     assert [u["part"] for u in almanachd.status()["ultra"]] == ["moon"]
     _set(monkeypatch, dict(REL), core=True)  # no pin, none installed: nothing
     assert almanachd.status()["ultra"] == []
+def test_almanac_hd_tiles_and_lists_are_never_rate_limited():
+    from zimi import http
+
+    for path in (
+        "/w/zimi_almanac_maxi/hd/earth/day/7/12/33.webp",
+        "/w/zimi_almanac_maxi/hd/hd.json",
+        "/w/zimi_almanac_hd_moon/moon/albedo/9/401/220.webp",
+        "/w/zimi_almanac_hd_moon/hd.json",
+        "/w/zimi_almanac_hd/planets/mars/5/3/4.webp",
+    ):
+        assert http._rate_class(path)[0] is False, path
+    # An ordinary page's sub-resources, even the Almanac's own, stay on the content budget.
+    for path in (
+        "/w/zimi_almanac/static/x.webp",
+        "/w/wikipedia/A/Moon",
+        "/w/zimi_games/thumbs/a.webp",
+    ):
+        assert http._rate_class(path)[0] is True, path

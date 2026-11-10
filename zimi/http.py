@@ -476,8 +476,20 @@ def _open_at_the_door(path, surface):
 _CONTENT_PATHS = frozenset(("/snippet", "/wiki/article"))
 
 
+_HD_TILE_PREFIX = "/w/zimi_almanac_"
+
+
+def _is_almanac_hd_file(path):
+    """An Almanac HD tile or list of layers (any ZIM of the set, the flavour's hd/ folder included): small static files
+    the 3D view asks for by the dozen a second when it flies (six at a time, each a few dozen KB). They are the picture,
+    not a lookup: no budget, or a fast fly-through answered 429 and the globe went blind."""
+    return path.startswith(_HD_TILE_PREFIX) and (path.endswith(".webp") or path.endswith("/hd.json")) and ("/hd/" in path or "_hd" in path)
+
+
 def _rate_class(path):
     """(is_rate_limited, uses_content_bucket) for a GET path."""
+    if _is_almanac_hd_file(path):
+        return False, True
     is_content = path.startswith("/w/") or path in _CONTENT_PATHS or path in _POLL_PATHS
     limited = (
         is_content
