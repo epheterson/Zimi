@@ -8,6 +8,9 @@
 // the bodies whose air is a thick haze (Venus, Titan) are lit as an overcast, the airless ones have no sky at all.
 
 var AE_ST_PI = '3.14159265';
+var AE_ST_SNOW_LINE_M = 5000, AE_ST_SNOW_LINE_POW = 2.2, AE_ST_TREE_BELOW_M = 600;   // the snow line over the equator and how it falls with latitude (about 2,250 m at 46 N), the trees stop this far below it
+var AE_ST_COVER_WOBBLE_M = 160, AE_ST_SLOPE_GAIN = 1.6;   // how far the lines wander, and the DEM's slopes made steeper (its cells smooth them)
+var AE_ST_GLARE = [0.3, 0.04];   // the glare round the Sun: its peak (a share of the Sun's light) and the angle (radians) where it has halved twice
 var AE_ST_SUN_DISC_GAIN = 6e4;     // the Sun's disc against the sky's glow: stays a distinct disc where thick dust dims and blues it (Mars at sunset)
 var AE_ST_FINE_SLOPE = 0.045;   // the ground's fine relief: its height over its own wavelength (about 3 degrees), at every scale
 var AE_ST_FILL = 0.12;   // a slope turned from the Sun keeps this share of the flat ground's light (backscatter off the regolith round it)
@@ -124,6 +127,8 @@ var AE_ST_SKY_FRAG = [
   '      float rr = uRc / (uRc + max(uCam.z, 0.0)), sz = -sqrt(max(0.0, 1.0 - rr * rr)); d = vec3(normalize(d.xy) * sqrt(1.0 - sz * sz), sz);',
   '    }',
   '    float t0, t1; if (airSpan(uCam, d, t0, t1)) L = inscatterSky(uCam + d * t0, d, t1 - t0, T);',
+  '    float ga = acos(clamp(dot(d, uSunDir), -1.0, 1.0));',
+  '    L += sunTrans(uCam) * uSunE * (' + AE_ST_GLARE[0].toFixed(3) + ' / (1.0 + (ga / ' + AE_ST_GLARE[1].toFixed(3) + ') * (ga / ' + AE_ST_GLARE[1].toFixed(3) + ')));',   // the Sun's own glare: the eye's and the air's veil, a core that blinds and a wide brightening of the sky toward it
   '  }',
   '  vec3 c = tone(L, uK);',
   '  if (uMw > 0.0) {',
@@ -279,7 +284,7 @@ var AE_ST_GROUND_FRAG = [
   'uniform vec3 uCam; uniform float uK, uPixAng, uTime;',
   'uniform sampler2D uMap; uniform float uMapped, uGrey; uniform vec3 uBase, uGain;',
   'uniform vec3 uAmbient, uSkyHor, uSkyZen, uE2, uDir2;',
-  'uniform float uLommel, uRough, uRock, uDetail, uDiffuse, uVis, uDirect; uniform vec3 uDiffSky;',
+  'uniform float uLommel, uRough, uRock, uDetail, uCover, uDiffuse, uVis, uDirect; uniform vec3 uDiffSky;',
   'varying vec3 vP, vN, vDir; varying float vH, vSea, vShade;',
   // Rock, fractal bumps and mottling at the scales a pixel can show, all fixed to the ground (the camera never moves on it).
   'float fine(vec3 p, float foot) {',
@@ -328,6 +333,17 @@ var AE_ST_GROUND_FRAG = [
   '    for (int i = 0; i < 3; i++) { float s = 0.2 * pow(5.0, float(i)), wg = 1.0 - smoothstep(0.3, 1.0, 2.5 * foot / s); if (wg > 0.0) gr += (vnoise(vP / s + 17.0 * float(i)) - 0.5) * wg * 0.5; }',
   '    alb *= clamp(1.0 + gr * 0.8, 0.6, 1.4);',
   '    alb.g *= 1.0 + 0.3 * gr * grass; alb.r *= 1.0 - 0.18 * gr * grass;',
+  '  }',
+  // Ground cover by height, slope and latitude (the Earth's): snow above the snow line, bare rock on steep ground and above the
+  // trees, the Blue Marble's own tint elsewhere; the lines wander with a slow noise so no height is a ruled edge.
+  '  if (uCover > 0.5 && vSea < 0.5) {',
+  '    float lat = asin(clamp(vDir.z, -1.0, 1.0)), sl = ' + AE_ST_SNOW_LINE_M.toFixed(1) + ' * pow(max(cos(lat), 0.0), ' + AE_ST_SNOW_LINE_POW.toFixed(2) + ');',
+  '    float wob = vnoise(vP * 0.0007 + 3.7) * ' + AE_ST_COVER_WOBBLE_M.toFixed(1) + ', hh = vH + wob;',
+  '    float slope = clamp(sqrt(max(0.0, 1.0 - pow(dot(normalize(vN), upF), 2.0))) * ' + AE_ST_SLOPE_GAIN.toFixed(2) + ', 0.0, 1.0);',
+  '    float snow = smoothstep(sl - 120.0, sl + 120.0, hh) * (1.0 - smoothstep(0.55, 0.9, slope));',
+  '    float rock = max(smoothstep(0.35, 0.65, slope), smoothstep(sl - ' + AE_ST_TREE_BELOW_M.toFixed(1) + ', sl, hh)) * (1.0 - snow);',
+  '    alb = mix(alb, vec3(0.17, 0.155, 0.14), rock * 0.85);',
+  '    alb = mix(alb, vec3(0.78, 0.8, 0.84), snow);',
   '  }',
   '  vec2 rk = (vSea > 0.5 || dist > ' + AE_ST_ROCK_FADE_M[1].toFixed(1) + ') ? vec2(0.0) : rocks(vP, foot) * (1.0 - smoothstep(' + AE_ST_ROCK_FADE_M[0].toFixed(1) + ', ' + AE_ST_ROCK_FADE_M[1].toFixed(1) + ', dist)); float hb = vSea > 0.5 ? 0.0 : fine(vP, foot) + rk.x; alb *= clamp(1.0 + 0.5 * rk.y, 0.5, 1.35);',
   '  vec3 dpx = dFdx(vP), dpy = dFdy(vP); float hx = dFdx(hb), hy = dFdy(hb);',

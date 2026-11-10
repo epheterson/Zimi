@@ -22,7 +22,7 @@ var AE_TERRAIN_OCTAVE = 2.1;                            // wavelengths of the ge
 // rough the real map is round the place; craters: the share of grid cells holding one, the biggest radius (km), and
 // depth over radius.
 var AE_STAND_BODIES = {
-  earth: { km: 6371.0, flat: 0.00335281, terrain: true, sea: true, relief: true, fbm: { amp: 160, lam: [24, 0.002], H: 0.85, ridge: 0.45 } },
+  earth: { km: 6371.0, flat: 0.00335281, terrain: true, sea: true, relief: true, fbm: { amp: 260, lam: [24, 0.002], H: 0.85, ridge: 0.65 } },
   moon: { km: 1737.4, terrain: true, fbm: { amp: 70, lam: [24, 0.002], H: 0.9, ridge: 0 }, craters: { density: 0.6, rMax: 14, depth: 0.17 } },
   mercury: { km: 2439.7, terrain: true, fbm: { amp: 110, lam: [24, 0.002], H: 0.9, ridge: 0 }, craters: { density: 0.6, rMax: 14, depth: 0.15 } },
   venus: { km: 6051.8, terrain: true, relief: true, fbm: { amp: 70, lam: [24, 0.002], H: 0.8, ridge: 0.6 } },
@@ -206,7 +206,7 @@ function _aeCraterHeight(u, km, c, lodKm) {
   return sum;
 }
 // How rough the real map is round a place: its distance from the mean of the four cells a step away (metres).
-var AE_TERRAIN_RELIEF_STEP_DEG = 1.4, AE_TERRAIN_RELIEF_SCALE = 500, AE_TERRAIN_RELIEF_MIN = 0.05, AE_TERRAIN_RELIEF_MAX = 3;
+var AE_TERRAIN_RELIEF_STEP_DEG = 0.7, AE_TERRAIN_RELIEF_SCALE = 400, AE_TERRAIN_RELIEF_MIN = 0.05, AE_TERRAIN_RELIEF_MAX = 3;
 function _aeTerrainRelief(t, lat, lon) {
   var s = AE_TERRAIN_RELIEF_STEP_DEG, c = _aeTerrainCoarse(t, lat, lon);
   var m = (_aeTerrainCoarse(t, lat + s, lon) + _aeTerrainCoarse(t, lat - s, lon) + _aeTerrainCoarse(t, lat, lon + s) + _aeTerrainCoarse(t, lat, lon - s)) / 4;
