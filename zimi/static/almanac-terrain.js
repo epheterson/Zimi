@@ -1,11 +1,12 @@
 // ── Almanac: terrain ──
 // The ground "Stand here" (almanac-stand.js) walks on. A body's large shape is real: a global height map shipped with
 // Zimi (scripts/build_terrain.py: LOLA for the Moon, MOLA for Mars, Magellan for Venus, MESSENGER for Mercury, ETOPO
-// 2022 for the Earth; 1024 x 512, metres above the body's mean radius), sharpened near the viewer by the Almanac HD
+// 2022 for the Earth, Dawn for Ceres and Vesta, New Horizons for Pluto and Charon, HRSC for Phobos, Cassini for
+// Enceladus; metres above the body's mean radius), sharpened near the viewer by the Almanac HD
 // release's terrain tiles when they are installed. Below what those hold, the height is generated: craters on the
 // bodies that have them, fractal hills everywhere, seeded by the place so the same spot is always the same ground.
-// The bodies with no usable height map in the public domain (Titan, Pluto, the big moons) stand on their sphere with
-// generated detail alone.
+// The bodies with no usable height map in the public domain (Titan, Io, Europa, Ganymede, Callisto) stand on their
+// sphere with generated detail alone.
 //
 // This file is pure maths and data (tests/test_almanac_terrain.cjs runs it on its own): no DOM, no WebGL.
 
@@ -32,7 +33,14 @@ var AE_STAND_BODIES = {
   ganymede: { km: 2634.1, fbm: { amp: 120, lam: [24, 0.002], H: 0.85, ridge: 0.5 }, craters: { density: 0.4, rMax: 12, depth: 0.1 } },
   callisto: { km: 2410.3, fbm: { amp: 90, lam: [24, 0.002], H: 0.85, ridge: 0 }, craters: { density: 0.7, rMax: 12, depth: 0.12 } },
   titan: { km: 2574.7, fbm: { amp: 35, lam: [24, 0.002], H: 0.8, ridge: 0.2 } },
-  pluto: { km: 1188.3, fbm: { amp: 170, lam: [24, 0.002], H: 0.85, ridge: 0.3 }, craters: { density: 0.25, rMax: 12, depth: 0.1 } }
+  pluto: { km: 1188.3, terrain: true, fbm: { amp: 170, lam: [24, 0.002], H: 0.85, ridge: 0.3 }, craters: { density: 0.25, rMax: 12, depth: 0.1 } },
+  // The small worlds with a public elevation model (scripts/build_terrain.py): Dawn's Ceres and Vesta, New Horizons'
+  // Charon, Mars Express's Phobos, Cassini's Enceladus.
+  ceres: { km: 469.7, terrain: true, fbm: { amp: 80, lam: [12, 0.002], H: 0.9, ridge: 0 }, craters: { density: 0.6, rMax: 5, depth: 0.12 } },
+  vesta: { km: 262.7, terrain: true, fbm: { amp: 90, lam: [12, 0.002], H: 0.9, ridge: 0.1 }, craters: { density: 0.6, rMax: 4, depth: 0.14 } },
+  charon: { km: 606, terrain: true, fbm: { amp: 90, lam: [12, 0.002], H: 0.85, ridge: 0.3 }, craters: { density: 0.35, rMax: 6, depth: 0.1 } },
+  phobos: { km: 11.1, terrain: true, fbm: { amp: 12, lam: [1.5, 0.002], H: 0.9, ridge: 0 }, craters: { density: 0.6, rMax: 0.4, depth: 0.15 } },
+  enceladus: { km: 252.1, terrain: true, fbm: { amp: 30, lam: [12, 0.002], H: 0.75, ridge: 0.8 }, craters: { density: 0.3, rMax: 3, depth: 0.1 } }
 };
 
 // ── The shipped map ──
@@ -119,7 +127,7 @@ function _aeTerrainCoarse(t, lat, lon) {
 function _aeTerrainHdCell(t, lat, lon) {
   var hd = t.hd;
   if (!hd || !hd.z && hd.z !== 0) return null;
-  var n = Math.pow(2, hd.z), px = AE_TERRAIN_HD_TILE;
+  var n = Math.pow(2, hd.z), px = hd.px || AE_TERRAIN_HD_TILE;
   var gx = (lon + 180) / 360 * 2 * n * px - 0.5, gy = (90 - lat) / 180 * n * px - 0.5;
   var x0 = Math.floor(gx), y0 = Math.floor(gy), fx = gx - x0, fy = gy - y0, cols = 2 * n * px, rows = n * px;
   function texel(ix, iy) {
@@ -131,16 +139,18 @@ function _aeTerrainHdCell(t, lat, lon) {
   if (a === null || b === null || c === null || d === null) return null;
   return (a * (1 - fx) + b * fx) * (1 - fy) + (c * (1 - fx) + d * fx) * fy;
 }
-function _aeTerrainHdTile(url) {
+// size: the tile's pixels a side (the deepest level may be stored at its source's own size, the manifest's ``px``).
+function _aeTerrainHdTile(url, size) {
   return fetch(url).then(function (r) { if (!r.ok) throw new Error('tile'); return r.blob(); })
     .then(function (blob) { return createImageBitmap(blob, { colorSpaceConversion: 'none', premultiplyAlpha: 'none' }); })
     .then(function (bmp) {
+      if (bmp.width !== size || bmp.height !== size) { if (bmp.close) bmp.close(); throw new Error('tile size'); }
       var cv = document.createElement('canvas');
-      cv.width = cv.height = AE_TERRAIN_HD_TILE;
+      cv.width = cv.height = size;
       var g = cv.getContext('2d', { willReadFrequently: true });
       g.drawImage(bmp, 0, 0);
       if (bmp.close) bmp.close();
-      var px = g.getImageData(0, 0, AE_TERRAIN_HD_TILE, AE_TERRAIN_HD_TILE).data, out = new Float32Array(AE_TERRAIN_HD_TILE * AE_TERRAIN_HD_TILE);
+      var px = g.getImageData(0, 0, size, size).data, out = new Float32Array(size * size);
       for (var i = 0; i < out.length; i++) out[i] = px[4 * i] * 256 + px[4 * i + 1] - AE_TERRAIN_HD_OFFSET;
       return out;
     });
@@ -152,11 +162,12 @@ function _aeTerrainHdLoad(key, lat, lon, m, z) {
   var t = _aeTerr[key];
   if (!t || t.state !== 'ready' || typeof createImageBitmap !== 'function') return Promise.resolve(false);
   var n = Math.pow(2, z), tx = Math.floor((lon + 180) / 360 * 2 * n), ty = Math.floor((90 - lat) / 180 * n), jobs = [];
-  var hd = t.hd = t.hd && t.hd.z === z ? t.hd : { z: z, tiles: {} };
+  var size = meta.px || AE_TERRAIN_HD_TILE;   // the deepest level's pixels a side (hd.json ``px``, else the usual 256)
+  var hd = t.hd = t.hd && t.hd.z === z && t.hd.px === size ? t.hd : { z: z, px: size, tiles: {} };
   for (var dy = -1; dy <= 1; dy++) for (var dx = -1; dx <= 1; dx++) {
     var x = ((tx + dx) % (2 * n) + 2 * n) % (2 * n), y = ty + dy, id = x + '/' + y;
     if (y < 0 || y >= n || hd.tiles[id]) continue;
-    jobs.push(_aeTerrainHdTile(typeof _aeHdTileUrl === 'function' ? _aeHdTileUrl(meta, { z: z, x: x, y: y }) : (meta.base || '') + meta.layer + '/' + z + '/' + x + '/' + y + '.webp').then(function (arr) { hd.tiles[this] = arr; }.bind(id)).catch(function () {}));
+    jobs.push(_aeTerrainHdTile(typeof _aeHdTileUrl === 'function' ? _aeHdTileUrl(meta, { z: z, x: x, y: y }) : (meta.base || '') + meta.layer + '/' + z + '/' + x + '/' + y + '.webp', size).then(function (arr) { hd.tiles[this] = arr; }.bind(id)).catch(function () {}));
   }
   return Promise.all(jobs).then(function () { return Object.keys(hd.tiles).length > 0; });
 }
