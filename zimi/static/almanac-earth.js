@@ -2075,7 +2075,7 @@ function _aeBuildGl(THREE, canvas) {
     new THREE.SphereGeometry(AE_ATMOSPHERE_SCALE, AE_ATMO_SEGMENTS[0], AE_ATMO_SEGMENTS[1]),
     _aeAddLight(new THREE.ShaderMaterial({
       uniforms: { sunPos: shared.sunPos }, vertexShader: AE_SPHERE_VERT, fragmentShader: AE_ATMO_FRAG,
-      transparent: true, depthWrite: false
+      side: AE_THREE_BACK_SIDE, transparent: true, depthWrite: false   // the shell is its far side: a glow at the limb, not a wash over the disc
     })));
   scene.add(atmo);
 
