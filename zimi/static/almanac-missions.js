@@ -598,7 +598,8 @@ var AM_CSS = [
   '.am-chip[data-near="1"]{color:var(--text);border-color:var(--amber-border)}',
   '.am-ctl{display:flex;align-items:center;gap:8px;margin-top:8px}',
   '.am-ctl .am-gap{flex:1}',
-  '.am-rate{font-size:12px;min-width:44px;font-variant-numeric:tabular-nums}'
+  '.am-rate{font-size:12px;min-width:44px;font-variant-numeric:tabular-nums}',
+  '@media (orientation:landscape) and (max-height:520px){.am-ev{display:none}.am-track{height:18px}.am-phase{margin:0 0 4px}.am-phase-t b{font-size:14px}.am-ctl{margin-top:4px}.am-dock{padding-top:4px}}'
 ].join('');
 function _amHud(on) {
   var el = _ae && _ae.el;
