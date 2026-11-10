@@ -4944,8 +4944,8 @@ function _aeStandAt(key, lat, lon) {
   return _aeStandReady().then(function () { return _aeStandStart(key, lat, lon); }, function () { return false; });
 }
 // The 2D sky's hand-off (almanac-stand.js has the real ones, which replace these once it is loaded): open Stand here from a card, and the way back.
-function _aeStandOpen(h) { return _aeStandReady().then(function () { return typeof _aeStandStart === 'function' ? _aeStandOpen(h) : false; }, function () { return false; }); }
-function _aeStandClose() { /* nothing of Stand is loaded, so nothing of it is open */ }
+function _aeStandOpen(h) { return _aeStandReady().then(function () { return _aeStandOpenNow(h); }, function () { return false; }); }
+function _aeStandClose() { if (typeof _aeStandCloseNow === 'function') _aeStandCloseNow(); }   // nothing of Stand loaded: nothing of it open
 function _aeGroundHeight(key, lat, lon) {
   if (typeof _aeStandHeight !== 'function') { _aeStandReady().catch(function () {}); return 0; }
   return _aeStandHeight(key, lat, lon);

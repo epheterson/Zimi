@@ -960,17 +960,17 @@ function _aeStandCraftMarks(st, fr, view) {
 // ── The live sky card's hand-off, and the way back ──
 //   window._osHandoff = { body?: 'earth', lat, lon, ms?, heading?, pitch?, back?() }   the card's place, instant, facing (degrees: heading
 //                                from north clockwise, pitch up) and a function that puts the card back
-//   _aeStandOpen(h?)    opens the 3D view if it is not up, goes to that place and instant, drops to the ground facing that way;
+//   _aeStandOpen(h?)    (almanac-earth.js loads Stand, then calls _aeStandOpenNow(h)) opens the 3D view if it is not up, goes to that place and instant, drops to the ground facing that way;
 //                       h defaults to window._osHandoff (which is then cleared); resolves true when it started
-//   _aeStandClose()     the one way back: climbs out of Stand here, closes the 3D view if _aeStandOpen opened it, then calls h.back()
-function _aeStandOpen(h) {
+//   _aeStandClose()     (almanac-earth.js; _aeStandCloseNow here) the one way back: climbs out of Stand here, closes the 3D view if _aeStandOpen opened it, then calls h.back()
+function _aeStandOpenNow(h) {
   h = h || (typeof window !== 'undefined' ? window._osHandoff : null);
   if (typeof window !== 'undefined' && h && h === window._osHandoff) window._osHandoff = null;
   if (!h || typeof h.lat !== 'number' || typeof h.lon !== 'number') return Promise.resolve(false);
   h.openedView = !(typeof _aeIsOpen !== 'undefined' && _aeIsOpen);
   return _aeStandStart(h.body || 'earth', h.lat, h.lon, h);
 }
-function _aeStandClose() {
+function _aeStandCloseNow() {
   var st = _ae && _ae.stand, h = (st && st.handoff) || (_ae && _ae.standPending && _ae.standPending.handoff) || null;
   if (!_ae) return;
   _ae.standBack = h;
