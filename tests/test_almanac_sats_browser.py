@@ -433,8 +433,7 @@ def test_the_layer_gives_the_ground_view_its_sky(browser, served):
             """async () => { var pl = _asPlace(); _asNeedPasses(pl); while (_as.passes === null) await new Promise(r => setTimeout(r, 200));
               var p = _as.passes.slice().sort((u, v) => u.mag - v.mag)[0], src = _aeStandSkySources[0], t = p.peak;
               var ans = await src.ask(pl.lat, pl.lon, t), list = src.at(ans, t);
-              return { n: list.length, kinds: Array.from(new Set(list.map(o => o.kind))), ok: list.every(o => o.el >= 0 && o.az >= 0 && o.az < 360 && typeof o.mag === 'number' && typeof o.name === 'string' && Array.isArray(o.trail)),
-                       has: list.some(o => o.name.indexOf(_as.data.name[p.i]) === 0) }; }"""
+              return { n: list.length, kinds: Array.from(new Set(list.map(o => o.kind))), ok: list.every(o => o.el >= 0 && o.az >= 0 && o.az < 360 && typeof o.mag === 'number' && (typeof o.name === 'string' || o.name === undefined) && Array.isArray(o.trail) && o.trail.length <= 6) }; }"""
         )
         assert got["n"] > 0 and got["ok"] and set(got["kinds"]) <= {"sat", "train"}, got
         # Turned off, the source is taken out again.

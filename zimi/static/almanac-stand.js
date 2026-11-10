@@ -756,7 +756,7 @@ function _aeStandCraftMarks(st, fr, view) {
 //       mag,                     apparent magnitude (smaller is brighter; a plume may be -6 or less)
 //       kind,                    'sat' | 'train' | 'rocket' | 'plume': points, a point with its trail, a large soft glow
 //       rgb,                     optional [r, g, b] 0..1 (white by default)
-//       trail,                   optional path behind it, [[az, el], ...] or [{az, el}, ...]
+//       trail,                   optional path behind it, [[az, el], ...] or [{az, el, mag?}, ...]; a point's own mag dims the tail there
 //       name }                   optional: what a tap on it says (while the sky is dark enough to see it)
 // They are drawn as stars are: dimmed by the air mass, gone once the sky is brighter than their magnitude (so by day they are
 // hidden), gone under the horizon, the same on a phone's small canvas. With no source nothing is drawn and nothing costs.
@@ -800,12 +800,12 @@ function _aeStandSkyUpdate(st, ms, now) {
     o.dir = d;
     pos.set(d, 3 * i); mag[i] = o.mag === undefined ? 3 : o.mag; scl[i] = AE_STAND_SKYOBJ_SIZE[o.kind] || 1; col.set(c, 3 * i);
     if (o.trail && o.trail.length) {
-      var prev = d;
-      o.trail.forEach(function (q) { var az = q.az !== undefined ? q.az : q[0], el = q.el !== undefined ? q.el : q[1], v = _aeStandSkyDir(az, el); tr.push([prev, v, c, mag[i]]); prev = v; });
+      var prev = d, pm = mag[i];
+      o.trail.forEach(function (q) { var az = q.az !== undefined ? q.az : q[0], el = q.el !== undefined ? q.el : q[1], v = _aeStandSkyDir(az, el), qm = q.mag !== undefined ? q.mag : mag[i]; tr.push([prev, v, c, pm, qm]); prev = v; pm = qm; });
     }
   });
   var m = tr.length, lp = new Float32Array(6 * m), lm = new Float32Array(2 * m), ls = new Float32Array(2 * m).fill(1), lc = new Float32Array(6 * m);
-  tr.forEach(function (t, i) { lp.set(t[0], 6 * i); lp.set(t[1], 6 * i + 3); lm[2 * i] = lm[2 * i + 1] = t[3]; lc.set(t[2], 6 * i); lc.set(t[2], 6 * i + 3); });
+  tr.forEach(function (t, i) { lp.set(t[0], 6 * i); lp.set(t[1], 6 * i + 3); lm[2 * i] = t[3]; lm[2 * i + 1] = t[4]; lc.set(t[2], 6 * i); lc.set(t[2], 6 * i + 3); });
   // The same count as the picture before: the buffers are filled in place; a different one makes new geometry.
   var put = function (key, make, arrays, count) {
     var cur = st[key];

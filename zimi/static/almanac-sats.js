@@ -53,6 +53,7 @@ var AS_PASS_MIN_RCS_M2 = AE_SATS_REF.minRcsM2;        // a satellite with a rada
 var AS_PASS_LEO_MM = 11;                              // revolutions a day: a pass needs an orbit this low
 var AS_TRAIN_GAP_S = AE_SATS_REF.trainGapS, AS_TRAIN_MIN = 3, AS_TRAIN_RAAN_DEG = AE_SATS_REF.trainRaanDeg;
 var AS_ISS_NORAD = 25544, AS_ISS_MODULE = /^ISS \(/;
+var AS_ISS_SAME_ORBIT = { inc: 0.05, mm: 0.05 };      // what is docked to the station (POISK, NAUKA, a Soyuz...) has its orbit: it is the same thing in the sky
 var AS_PASS_SKY_FRAME_MS = 500;
 var AS_TRAIL_STEPS = 8, AS_TRAIL_STEP_S = 4, AS_TRAIL_ALPHA = 0.7;   // the sky's trail behind a satellite: eight steps of four seconds, fading
 var AS_GPS_MIN_EL = AE_SATS_REF.gpsMinEl;
@@ -650,6 +651,7 @@ function _asUpdateCard(ms) {
 
 // ── The strip: filters, the count, the passes ──
 var AS_BAR_CSS = [
+  '.ae-standing .as-bar,.ae-standing .as-sheet{display:none}',   // standing, the ground view owns the screen
   '.as-bar{box-sizing:border-box;width:100%;display:flex;gap:6px;align-items:center;padding:0 16px;overflow-x:auto;scrollbar-width:none;pointer-events:auto;-webkit-mask-image:linear-gradient(90deg,transparent,#000 12px,#000 calc(100% - 12px),transparent);mask-image:linear-gradient(90deg,transparent,#000 12px,#000 calc(100% - 12px),transparent)}',
   '.as-bar::-webkit-scrollbar{display:none}',
   '.as-bar[hidden],.as-sheet[hidden]{display:none}',
@@ -724,7 +726,7 @@ function _asBuildBar() {
 // The strip is for the Earth: it goes while the view is elsewhere.
 function _asSyncBar() {
   if (!_as.bar) return;
-  var hide = !(_as.on && _as.state === 'ready' && _ae && _ae.target === 'earth');
+  var hide = !(_as.on && _as.state === 'ready' && _ae && _ae.target === 'earth') || !!(_ae.stand && _ae.stand.live);   // standing, the ground view owns the screen
   if (_as.bar.hidden !== hide) _as.bar.hidden = hide;
   if (hide && _as.sheet) _asCloseSheet();
 }
@@ -759,13 +761,18 @@ function _asNeedPasses(place) {
 }
 // The satellites that can be seen from the ground at all (a low orbit, with a size to light up), as the columns the worker
 // takes: index, assumed area, altitude and inclination. Built once for a catalogue.
+function _asDockedToStation(i) {
+  var d = _as.data, s = d._iss;
+  if (s === undefined) { s = d._iss = d.norad.indexOf(AS_ISS_NORAD); }
+  return s >= 0 && Math.abs(d.inc[i] - d.inc[s]) < AS_ISS_SAME_ORBIT.inc && Math.abs(d.mm[i] - d.mm[s]) < AS_ISS_SAME_ORBIT.mm;
+}
 function _asSeenFrom() {
   var d = _as.data;
   if (d._seen) return d._seen;
   var c = { cand: [], area: [], altKm: [], inc: [] };
   for (var i = 0; i < d.n; i++) {
     if (d.mm[i] < AS_PASS_LEO_MM || d.alt[i] > AS_LEO_MAX_KM) continue;
-    if (AS_ISS_MODULE.test(d.name[i]) && d.norad[i] !== AS_ISS_NORAD) continue;   // the station's other catalogue entries are the same pass
+    if (d.norad[i] !== AS_ISS_NORAD && (AS_ISS_MODULE.test(d.name[i]) || _asDockedToStation(i))) continue;   // the station's other catalogue entries are the same pass
     var a = _asAreaM2(i);
     if (!a) continue;
     c.cand.push(i); c.area.push(a); c.altKm.push(d.alt[i]); c.inc.push(d.inc[i]);
@@ -828,7 +835,9 @@ function _asSkyNow(lat, lon, tMs) { return _asSkyAsk(lat, lon, tMs).then(functio
 // While the layer is on, the satellites over the stand place are drawn in the ground view's sky (almanac-stand.js
 // _aeStandSkySource): the station and what a dark sky shows, with a short trail each, and Starlinks of one launch that are
 // over together as a train. A tap names them.
-var AS_TRAIN_SKY_MIN = 3, AS_TRAIN_SKY_DEG = 25, AS_SKY_TRAIL_STEPS = 6, AS_SKY_TRAIL_STEP_S = 5;
+var AS_TRAIN_SKY_MIN = 3, AS_TRAIN_SKY_DEG = 25;
+var AS_SKY_TAIL = { steps: 3, stepS: 1.5, fade: 1.6 };            // a satellite's tail: three steps of a second and a half (4.5 s), each dimmer by this many magnitudes
+var AS_SKY_TAIL_BRIGHT = { mag: 0, steps: 6, stepS: 3, fade: 0.8 };   // the brightest (the station's class, brighter than this) keep a longer, brighter one
 var AS_SKY_RGB = { iss: [1, 0.95, 0.85] };
 function _asStandSkyObjects(answer, tMs) {
   var d = _as.data, live = _asSkyAt(answer, tMs), launches = {};
@@ -842,17 +851,17 @@ function _asStandSkyObjects(answer, tMs) {
     if (g.length >= AS_TRAIN_SKY_MIN) g.forEach(function (e) { train[e.i] = g.length; });
   });
   var stationDrawn = !!(_ae && _ae.sats && _ae.sats.lib && _ae.sats.list.some(function (q) { return q.iss; }));   // the ground view draws the station itself when the Earth's own satellites are loaded
-  return live.filter(function (e) { return !(stationDrawn && d.norad[e.i] === AS_ISS_NORAD); }).map(function (e) {
-    var trail = [];
-    for (var k = 1; k <= AS_SKY_TRAIL_STEPS; k++) {
-      var back = -k * AS_SKY_TRAIL_STEP_S, el = e.el + e.elRate * back;
+  return live.map(function (e) {
+    var tail = e.mag < AS_SKY_TAIL_BRIGHT.mag ? AS_SKY_TAIL_BRIGHT : AS_SKY_TAIL, trail = [];
+    for (var k = 1; k <= tail.steps; k++) {
+      var back = -k * tail.stepS, el = e.el + e.elRate * back;
       if (el < 0) break;
-      trail.push({ az: (((e.az + e.azRate * back) % 360) + 360) % 360, el: el });
+      trail.push({ az: (((e.az + e.azRate * back) % 360) + 360) % 360, el: el, mag: e.mag + k * tail.fade });
     }
     var inTrain = train[e.i], iss = d.norad[e.i] === AS_ISS_NORAD;
     return {
       az: e.az, el: e.el, mag: e.mag, kind: inTrain ? 'train' : 'sat', trail: trail, rgb: iss ? AS_SKY_RGB.iss : undefined,
-      name: inTrain ? _aeT('alm_sats_train', { n: inTrain }) + ' · ' + e.name : e.name
+      name: iss && stationDrawn ? undefined : inTrain ? _aeT('alm_sats_train', { n: inTrain }) + ' · ' + e.name : e.name   // the station's name is the ground view's own
     };
   });
 }
