@@ -724,12 +724,21 @@ def test_in_totality_the_sky_is_deep_twilight_and_venus_and_jupiter_are_drawn(
         timeout=READY_MS,
         polling=250,
     )
-    pg.wait_for_function(
-        "(ms) => _ae.stand.photo && _ae.stand.photo.lim > 2.4",
-        arg=ms,
-        timeout=60_000,
-        polling=250,
-    )
+    pg.evaluate("(ms) => _aeGoTo(ms)", ms)
+    try:
+        pg.wait_for_function(
+            "(ms) => _ae.stand.photo && _ae.stand.photo.lim > 2.4",
+            arg=ms,
+            timeout=60_000,
+            polling=250,
+        )
+    except Exception:
+        raise AssertionError(
+            pg.evaluate(
+                "(ms) => ({ d: _aeDisplayMs() - ms, lim: _ae.stand.photo && _ae.stand.photo.lim, air: _ae.stand.airOn, w: Array.from(window.__w || []) })",
+                ms,
+            )
+        )
     lim = pg.evaluate("() => _ae.stand.photo.lim")
     assert 2.4 < lim < 3.4, lim
     for planet in ("venus", "jupiter"):
