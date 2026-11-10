@@ -679,8 +679,7 @@ function _initOrrery() {
   var w = wrap.clientWidth;
   canvas.width = w * dpr;
   canvas.height = w * dpr;
-  canvas.style.width = w + 'px';
-  canvas.style.height = w + 'px';
+  // Its CSS size is the box's (almanac.css): a width written here would outlive the layout it was measured in.
   canvas.style.borderRadius = '12px';
   // Cache DOM refs for RAF loop (avoids getElementById per frame)
   _orreryCanvas = canvas;

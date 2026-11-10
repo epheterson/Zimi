@@ -49,6 +49,8 @@ class _File(Item):
         return self._path.rsplit("/", 1)[-1]
 
     def get_mimetype(self) -> str:
+        if self._path.lower().endswith(".pdf"):
+            return "application/pdf"
         return "application/octet-stream"
 
     def get_contentprovider(self) -> ContentProvider:

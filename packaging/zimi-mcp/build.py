@@ -55,6 +55,7 @@ MODULES = (
     "tube",
     "nautilus",
     "details",
+    "docindex",
     "exchange",
     "reddot",
 )

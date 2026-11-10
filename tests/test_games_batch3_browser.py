@@ -27,6 +27,9 @@ from games_wait import (
 from playwright.sync_api import sync_playwright  # noqa: E402
 from test_games_persist_browser import GAMES as SHIPPED_GAMES, VIEW  # noqa: E402
 
+XDIST_SPLIT = 3   # independent cases, cheap module fixtures: dealt over workers (tests/conftest.py)
+XDIST_SPLIT_ALL = True
+
 GAMES = (
     os.environ.get("GAMES_ROOT") or SHIPPED_GAMES
 )  # GAMES_ROOT: the games folder of another commit, to see a test fail there

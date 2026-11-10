@@ -90,7 +90,7 @@ docker run --network host -v ./zims:/zims -v ./zimi-config:/config epheterson/zi
 
 ```bash
 pip install zimi
-ZIM_DIR=./zims zimi serve --port 8899
+zimi serve ./zims --port 8899        # or ZIM_DIR=./zims zimi serve, or --zim-dir ./zims
 ```
 
 **Run at boot on Linux (systemd):** `zimi service print` shows the unit and `sudo /var/lib/zimi/venv/bin/zimi service install` writes it to /etc/systemd/system (the unit runs the Python of the command that installs it); the steps for a `zimi` user and its venv are at the top of the unit. ZIM files go in /var/lib/zimi/zims.

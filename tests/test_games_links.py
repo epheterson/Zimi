@@ -117,6 +117,10 @@ class GamesLinksTests(_QidFixtureMixin, unittest.TestCase):
 
     def test_links_shape_and_visibility(self):
         gamelinks._refresh()  # the background's work, done here so the answer is there
+        # A pass another test started in the background (refresh_async) had the build: _refresh asked it to go
+        # round again and returned. Wait for that pass to end, so the answer read below is this library's.
+        with gamelinks._building:
+            pass
         with mock.patch.object(
             _srv, "zim_allowed", lambda name: name != "wikipedia_fr_test"
         ):
