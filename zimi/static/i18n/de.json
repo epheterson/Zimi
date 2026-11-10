@@ -4072,5 +4072,16 @@
   "cap_o_satellites": "Satellitenbahnen",
   "cap_o_almanac_hd": "HD-Kacheln",
   "cap_o_streetzim": "Karten",
-  "cap_static": "Die 3D-Ansicht ist auf diesem Gerät aus. Wähle im Zahnrad Voll, um sie zu versuchen."
+  "cap_static": "Die 3D-Ansicht ist auf diesem Gerät aus. Wähle im Zahnrad Voll, um sie zu versuchen.",
+  "tb_kn_cap_dpr": "Pixelverhältnis, 3D-Ansicht (leicht · Standard · voll)",
+  "tb_kn_cap_stand_dpr": "Pixelverhältnis, Hier stehen",
+  "tb_kn_cap_sats": "Höchstzahl gezeichneter Satelliten",
+  "tb_kn_cap_hd_mem": "HD-Kacheln, GPU-Speicher",
+  "tb_kn_cap_texture": "Größte angeforderte Karte",
+  "tb_kn_cap_gpu": "GPU-Speicherbudget",
+  "tb_kn_cap_fps": "Bilder pro Sekunde, höchstens",
+  "tb_kn_cap_slow": "So langsam zählt ein Bild für eine Absenkung",
+  "tb_kn_cap_steps": "Reglerstufen (Pixelfaktor, je drei langsame Bilder hintereinander)",
+  "tb_k_capability": "Leistungsstufen",
+  "tb_k_capability_sub": "Leicht, Standard, voll"
 }

@@ -4072,5 +4072,16 @@
   "cap_o_satellites": "Satellite orbits",
   "cap_o_almanac_hd": "HD tiles",
   "cap_o_streetzim": "Maps",
-  "cap_static": "The 3D view is off on this device. Choose Full in the gear to try it."
+  "cap_static": "The 3D view is off on this device. Choose Full in the gear to try it.",
+  "tb_kn_cap_dpr": "Pixel ratio, 3D view (low · standard · high)",
+  "tb_kn_cap_stand_dpr": "Pixel ratio, Stand here",
+  "tb_kn_cap_sats": "Satellites drawn at most",
+  "tb_kn_cap_hd_mem": "HD tiles, GPU memory",
+  "tb_kn_cap_texture": "Biggest map asked for",
+  "tb_kn_cap_gpu": "GPU memory budget",
+  "tb_kn_cap_fps": "Frames a second, at most",
+  "tb_kn_cap_slow": "A frame this slow counts toward a step down",
+  "tb_kn_cap_steps": "Governor steps (pixel ratio factor, three slow frames in a row each)",
+  "tb_k_capability": "Capability levels",
+  "tb_k_capability_sub": "Light, standard, full"
 }

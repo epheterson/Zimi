@@ -166,7 +166,7 @@ function _aeStandEnter(st) {
   _aeFullStepIn();
   S.renderer.setClearColor(0x000000, 1);
   st.prevRatio = S.renderer.getPixelRatio();
-  S.renderer.setPixelRatio(Math.min(S.dpr, _aeStandRatioCap()));
+  S.renderer.setPixelRatio(Math.min(S.dpr, _aeStandDprCap));
   _aeResize();
   var fr = _aeStFrame(st, _aeDisplayMs());
   st.yaw = st.key === 'earth' ? _aeRad(_aeStandDefaultHeading(st.lat)) : fr.sunAlt > AE_STAND_SUN_FACE_DEG ? fr.sunAz : 0;   // on Earth the card's own rule (toward the equator), elsewhere the Sun's side; a hand-off's heading, below, wins
@@ -336,9 +336,7 @@ var AE_STAND_TINT = { mars: [1.9, 0.85, 0.34], titan: [4.2, 3.0, 1.6], earth: [2
 var AE_STAND_SKY_SCALE = 0.5;              // the sky is drawn at this share of the screen's size and stretched (the ground is not)
 var AE_STAND_DPR_STEPS = [1.5, 1.25, 1, 0.75];   // the pixel ratios the ground view steps down through if frames run long
 var AE_STAND_SLOW_MS = [20, 250], AE_STAND_SLOW_RUN = 3;   // a frame this slow (not an idle gap) three times running drops a step
-var _aeStandDprCap = AE_STAND_DPR_MAX;     // for the rest of the session: it goes down, never back up (without capability.js)
-// The pixel ratio Stand here draws at: the capability level's, under the one governor (capability.js), else the steps below.
-function _aeStandRatioCap() { return typeof ZimiCap !== 'undefined' ? ZimiCap.dprCap('stand') : _aeStandDprCap; }
+var _aeStandDprCap = AE_STAND_DPR_MAX;     // for the rest of the session: it goes down, never back up
 var AE_STAND_STATION_MIN_LIM = 3;           // the station is marked once the sky is dark enough for stars of this magnitude
 var AE_STAND_PROBE_MARKS = false;          // deep-space probes are pinpoints nobody could see: not marked (the station's pass is, near Earth)
 var AE_STAND_SKY_MATCH_SHARE = 0.55;      // and how far (in log) toward it: a view with sunlit ground in it cannot be exposed for the sky alone
@@ -860,14 +858,6 @@ function _aeStandSkyPass(st) {
 }
 // Frames that run long step the pixel ratio down, for good: a phone that cannot keep up is not asked to try again.
 function _aeStandBudget(st, now) {
-  if (typeof ZimiCap !== 'undefined') {   // the governor is shared with every 3D scene; Stand only applies what it decides
-    if (!ZimiCap.frame('stand', now)) return;
-    var S0 = _ae.gl;
-    S0.renderer.setPixelRatio(Math.min(S0.dpr, ZimiCap.dprCap('stand')));
-    st.starUni.uDpr.value = S0.renderer.getPixelRatio();
-    _aeResize();
-    return;
-  }
   var dt = now - (st.paintAt || now);
   st.paintAt = now;
   if (dt > AE_STAND_SLOW_MS[0] && dt < AE_STAND_SLOW_MS[1]) st.slow = (st.slow || 0) + 1; else st.slow = 0;
