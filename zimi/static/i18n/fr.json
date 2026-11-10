@@ -4115,5 +4115,12 @@
   "pdf_failed_file": "Le fichier demandé",
   "pdf_failed_back": "Retour à la collection",
   "alm_craft_loading": "Chargement de la sonde",
-  "alm_craft_failed": "Pas de modèle ici : un point"
+  "alm_craft_failed": "Pas de modèle ici : un point",
+  "alm_pad_at": "Se tenir près du pas de tir",
+  "alm_pad_back": "Retour à {where}",
+  "alm_pad_restart": "Revenir à T−30",
+  "alm_pad_closer": "Se rapprocher",
+  "alm_pad_follow": "Suivre le vol",
+  "alm_pad_ignition": "Allumage",
+  "alm_pad_cleared": "Tour dégagée"
 }

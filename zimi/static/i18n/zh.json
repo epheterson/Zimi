@@ -4115,5 +4115,12 @@
   "pdf_failed_file": "你请求的文件",
   "pdf_failed_back": "返回合集",
   "alm_craft_loading": "正在加载航天器",
-  "alm_craft_failed": "这里没有它的模型，以一个点显示"
+  "alm_craft_failed": "这里没有它的模型，以一个点显示",
+  "alm_pad_at": "站在发射台旁",
+  "alm_pad_back": "返回{where}",
+  "alm_pad_restart": "回到 T−30",
+  "alm_pad_closer": "走近些",
+  "alm_pad_follow": "跟随飞行",
+  "alm_pad_ignition": "点火",
+  "alm_pad_cleared": "越过塔架"
 }

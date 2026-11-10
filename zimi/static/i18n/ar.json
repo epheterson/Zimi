@@ -4115,5 +4115,12 @@
   "pdf_failed_file": "الملف الذي طلبته",
   "pdf_failed_back": "العودة إلى المجموعة",
   "alm_craft_loading": "جارٍ تحميل المركبة",
-  "alm_craft_failed": "لا نموذج لها هنا: تظهر نقطة"
+  "alm_craft_failed": "لا نموذج لها هنا: تظهر نقطة",
+  "alm_pad_at": "قف عند منصة الإطلاق",
+  "alm_pad_back": "العودة إلى {where}",
+  "alm_pad_restart": "العودة إلى T−30",
+  "alm_pad_closer": "اقترب",
+  "alm_pad_follow": "تابع الرحلة",
+  "alm_pad_ignition": "الإشعال",
+  "alm_pad_cleared": "تجاوز البرج"
 }

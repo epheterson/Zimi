@@ -4115,5 +4115,12 @@
   "pdf_failed_file": "The file you asked for",
   "pdf_failed_back": "Back to the collection",
   "alm_craft_loading": "Loading the spacecraft",
-  "alm_craft_failed": "No model of it here: shown as a dot"
+  "alm_craft_failed": "No model of it here: shown as a dot",
+  "alm_pad_at": "Stand at the pad",
+  "alm_pad_back": "Back to {where}",
+  "alm_pad_restart": "Back to T−30",
+  "alm_pad_closer": "Walk closer",
+  "alm_pad_follow": "Follow the flight",
+  "alm_pad_ignition": "Ignition",
+  "alm_pad_cleared": "Tower cleared"
 }

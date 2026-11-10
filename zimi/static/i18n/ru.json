@@ -4115,5 +4115,12 @@
   "pdf_failed_file": "Запрошенный файл",
   "pdf_failed_back": "Назад к коллекции",
   "alm_craft_loading": "Загрузка аппарата",
-  "alm_craft_failed": "Модели нет: показана точка"
+  "alm_craft_failed": "Модели нет: показана точка",
+  "alm_pad_at": "Встать у стартовой площадки",
+  "alm_pad_back": "Назад: {where}",
+  "alm_pad_restart": "Вернуться к T−30",
+  "alm_pad_closer": "Подойти ближе",
+  "alm_pad_follow": "Следить за полётом",
+  "alm_pad_ignition": "Зажигание",
+  "alm_pad_cleared": "Башня пройдена"
 }

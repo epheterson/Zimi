@@ -4115,5 +4115,12 @@
   "pdf_failed_file": "Die angeforderte Datei",
   "pdf_failed_back": "Zurück zur Sammlung",
   "alm_craft_loading": "Raumsonde wird geladen",
-  "alm_craft_failed": "Kein Modell hier: als Punkt gezeigt"
+  "alm_craft_failed": "Kein Modell hier: als Punkt gezeigt",
+  "alm_pad_at": "Am Startplatz stehen",
+  "alm_pad_back": "Zurück zu {where}",
+  "alm_pad_restart": "Zurück zu T−30",
+  "alm_pad_closer": "Näher herangehen",
+  "alm_pad_follow": "Dem Flug folgen",
+  "alm_pad_ignition": "Zündung",
+  "alm_pad_cleared": "Turm überwunden"
 }

@@ -4115,5 +4115,12 @@
   "pdf_failed_file": "הקובץ שביקשת",
   "pdf_failed_back": "חזרה לאוסף",
   "alm_craft_loading": "טוען את החללית",
-  "alm_craft_failed": "אין כאן דגם: מוצגת נקודה"
+  "alm_craft_failed": "אין כאן דגם: מוצגת נקודה",
+  "alm_pad_at": "לעמוד ליד משטח השיגור",
+  "alm_pad_back": "חזרה אל {where}",
+  "alm_pad_restart": "חזרה ל-T−30",
+  "alm_pad_closer": "התקרבות",
+  "alm_pad_follow": "מעקב אחר הטיסה",
+  "alm_pad_ignition": "הצתה",
+  "alm_pad_cleared": "המגדל נעבר"
 }

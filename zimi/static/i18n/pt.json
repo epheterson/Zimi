@@ -4115,5 +4115,12 @@
   "pdf_failed_file": "O arquivo que você pediu",
   "pdf_failed_back": "Voltar à coleção",
   "alm_craft_loading": "A carregar a sonda",
-  "alm_craft_failed": "Sem modelo aqui: mostrada como um ponto"
+  "alm_craft_failed": "Sem modelo aqui: mostrada como um ponto",
+  "alm_pad_at": "Ficar na plataforma",
+  "alm_pad_back": "Voltar a {where}",
+  "alm_pad_restart": "Voltar a T−30",
+  "alm_pad_closer": "Chegar mais perto",
+  "alm_pad_follow": "Seguir o voo",
+  "alm_pad_ignition": "Ignição",
+  "alm_pad_cleared": "Torre livre"
 }

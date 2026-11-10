@@ -4115,5 +4115,12 @@
   "pdf_failed_file": "आपने जो फ़ाइल माँगी",
   "pdf_failed_back": "संग्रह पर वापस जाएँ",
   "alm_craft_loading": "यान लोड हो रहा है",
-  "alm_craft_failed": "इसका मॉडल यहाँ नहीं है: बिंदु दिखाया गया"
+  "alm_craft_failed": "इसका मॉडल यहाँ नहीं है: बिंदु दिखाया गया",
+  "alm_pad_at": "लॉन्च पैड के पास खड़े हों",
+  "alm_pad_back": "{where} पर लौटें",
+  "alm_pad_restart": "T−30 पर लौटें",
+  "alm_pad_closer": "और पास जाएँ",
+  "alm_pad_follow": "उड़ान का पीछा करें",
+  "alm_pad_ignition": "इग्निशन",
+  "alm_pad_cleared": "टावर पार"
 }
