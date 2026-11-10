@@ -495,10 +495,20 @@
 .gr-gallery-title { font-size: 13px; font-weight: 600; color: var(--text); text-align: center; margin-bottom: 4px; }
 .gr-gallery-sub { font-size: 12px; color: var(--text3); text-align: center; line-height: 1.4; margin-bottom: 14px; max-width: 480px; margin-left: auto; margin-right: auto; }
 .gr-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(120px, 1fr)); gap: 6px; }
-.gr-thumb { aspect-ratio: 4/3; overflow: hidden; border-radius: 6px; cursor: pointer; position: relative; border: 1px solid var(--border); transition: border-color 0.2s, transform 0.15s; -webkit-touch-callout: none; }
-.gr-thumb:hover { border-color: var(--amber-border); transform: scale(1.03); }
-.gr-thumb:active { transform: scale(0.97); }
+.gr-item { margin: 0; min-width: 0; cursor: pointer; -webkit-touch-callout: none; }
+.gr-thumb { aspect-ratio: 4/3; overflow: hidden; border-radius: 6px; position: relative; border: 1px solid var(--border); transition: border-color 0.2s, transform 0.15s; }
+.gr-item:hover .gr-thumb { border-color: var(--amber-border); transform: scale(1.03); }
+.gr-item:active .gr-thumb { transform: scale(0.97); }
 .gr-thumb img { width: 100%; height: 100%; object-fit: cover; display: block; pointer-events: none; }
+.gr-item figcaption { display: flex; flex-direction: column; padding: 4px 2px 2px; line-height: 1.3; }
+.gr-cap { font-size: 11px; color: var(--text2); overflow: hidden; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; }
+.gr-by { font-size: 10px; color: var(--text3); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+/* A picture this edition leaves out (the Kiwix Almanac): its caption and credit on a drawn card */
+.gr-ph { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 3px; padding: 6px; text-align: center; background: var(--surface2); border-style: dashed; }
+.gr-ph-t { font-size: 11px; font-weight: 600; color: var(--text2); line-height: 1.25; }
+.gr-ph-by, .gr-ph-note { font-size: 9px; color: var(--text3); line-height: 1.25; }
+.gr-item .gr-ph-t, .gr-item .gr-ph-by { display: none; }
+.gr-note { font-size: 11px; color: var(--text3); line-height: 1.5; margin: 14px auto 0; max-width: 560px; text-align: center; }
 /* Golden Record lightbox */
 .gr-lightbox { position: fixed; inset: 0; z-index: 10000; display: flex; align-items: center; justify-content: center; direction: ltr; }
 .gr-lb-bg { position: absolute; inset: 0; background: rgba(0,0,0,0.92); }
@@ -511,6 +521,10 @@
 .gr-lb-main { position: relative; z-index: 1; max-width: 90vw; max-height: 85vh; display: flex; flex-direction: column; align-items: center; }
 .gr-lb-main img { max-width: 100%; max-height: 75vh; object-fit: contain; border-radius: 4px; }
 .gr-lb-cap { color: #fff; font-size: 14px; font-weight: 500; margin-top: 12px; text-align: center; }
+.gr-lb-by { color: rgba(255,255,255,0.6); font-size: 12px; margin-top: 2px; text-align: center; }
+.gr-lb-ph { width: min(80vw, 560px); aspect-ratio: 4/3; border: 1px dashed rgba(255,255,255,0.3); border-radius: 4px; background: #15151a; gap: 8px; padding: 24px; }
+.gr-lb-ph .gr-ph-t { color: #fff; font-size: 18px; }
+.gr-lb-ph .gr-ph-by, .gr-lb-ph .gr-ph-note { color: rgba(255,255,255,0.6); font-size: 13px; }
 .gr-lb-num { color: rgba(255,255,255,0.45); font-size: 12px; margin-top: 4px; font-variant-numeric: tabular-nums; }
 /* Voyager "View Golden Record" button */
 .voyager-record-btn { display: block; width: 100%; margin-top: 10px; padding: 8px 0; background: rgba(255,255,255,0.04); border: 1px solid var(--border); border-radius: 6px; color: var(--amber); font-size: 12px; font-weight: 600; cursor: pointer; letter-spacing: 0.03em; transition: background 0.2s, border-color 0.2s; }
