@@ -7386,18 +7386,38 @@ function _aeNameSlots(m, w, sides, wideNamed) {
   });
   return slots;
 }
-// Whether the leader from a dot to its name passes clear of every other body (a line through Venus read as Venus's).
-var AE_LEADER_CLEAR_PX = 10;
-function _aeLeaderClear(m, box, rings) {
-  var e = _aeLeaderEnd(m, box), dx = e[0] - m.x, dy = e[1] - m.y, len2 = dx * dx + dy * dy || 1;
-  return rings.every(function (rb) {
-    if (rb.x === m.x && rb.y === m.y) return true;
-    var t = Math.min(1, Math.max(0, ((rb.x - m.x) * dx + (rb.y - m.y) * dy) / len2));
-    return Math.hypot(m.x + t * dx - rb.x, m.y + t * dy - rb.y) > AE_LEADER_CLEAR_PX;
+// How near the leader from a dot to its name comes to any other body's centre (px): a line through Venus read as
+// Venus's. The line is the one drawn, from the dot's edge, so a probe beside the dot does not bar every way out of it.
+var AE_LEADER_CLEAR_PX = 6;   // px between a leader and the edge of any other body's disc
+function _aeLeaderClearance(m, box, rings) {
+  var seg = _aeLeaderSeg(m, box), dx = seg[2] - seg[0], dy = seg[3] - seg[1], len2 = dx * dx + dy * dy || 1, near = Infinity;
+  rings.forEach(function (rb) {
+    if (rb.x === m.x && rb.y === m.y) return;
+    var t = Math.min(1, Math.max(0, ((rb.x - seg[0]) * dx + (rb.y - seg[1]) * dy) / len2));
+    near = Math.min(near, Math.hypot(seg[0] + t * dx - rb.x, seg[1] + t * dy - rb.y) - (rb.r || 0));
   });
+  return near;
 }
+function _aeLeaderClear(m, box, rings) { return _aeLeaderClearance(m, box, rings) > AE_LEADER_CLEAR_PX; }
 // The point of a name's box nearest the dot: where its leader ends.
 function _aeLeaderEnd(m, box) { return [Math.min(Math.max(m.x, box[0]), box[2]), Math.min(Math.max(m.y, box[1]), box[3])]; }
+// The leader as drawn: from the dot's edge to its name, [x0, y0, x1, y1].
+function _aeLeaderSeg(m, box) {
+  var end = _aeLeaderEnd(m, box), lx = end[0] - m.x, ly = end[1] - m.y, ll = Math.hypot(lx, ly) || 1, r = m.r - AE_MARK_NAME_PAD;
+  return [m.x + lx / ll * r, m.y + ly / ll * r, end[0], end[1]];
+}
+// Whether a line [x0, y0, x1, y1] passes through a box (Liang-Barsky): a leader through another body's name.
+function _aeSegMeetsBox(seg, box) {
+  var t0 = 0, t1 = 1, dx = seg[2] - seg[0], dy = seg[3] - seg[1];
+  var p = [-dx, dx, -dy, dy], q = [seg[0] - box[0], box[2] - seg[0], seg[1] - box[1], box[3] - seg[1]];
+  for (var i = 0; i < 4; i++) {
+    if (p[i] === 0) { if (q[i] <= 0) return false; continue; }
+    var r = q[i] / p[i];
+    if (p[i] < 0) t0 = Math.max(t0, r); else t1 = Math.min(t1, r);
+    if (t0 >= t1) return false;
+  }
+  return true;
+}
 // The order names are placed in: the body in view or in flight first, then the bigger discs (Venus before Mercury), so
 // the crowded inner planets lose the smaller name, not the brighter.
 function _aeNameOrder(shown) {
@@ -7410,13 +7430,13 @@ function _aePlaceMarkNames(shown) {
   shown.forEach(function (m, i) {
     (m.pts || [m]).forEach(function (q) {
       var r = q === m ? m.r : _aeMarkDiscR(q.body) + AE_MARK_NAME_PAD;
-      rings.push({ i: i, own: q === m, box: [q.x - r, q.y - r, q.x + r, q.y + r], x: q.x, y: q.y });
+      rings.push({ i: i, own: q === m, box: [q.x - r, q.y - r, q.x + r, q.y + r], x: q.x, y: q.y, r: q === m ? m.r : _aeMarkDiscR(q.body) });
     });
   });
   // In the Planets view the Sun's disc is drawn on the planets' scale: no name on it either.
   var sunAt = _aeSunAsMark() && _ae.scene ? _aeProject(_aeSunShown(_ae.scene)) : null;
-  if (sunAt) { var sr = _aeMarkDiscR('sun') + AE_MARK_NAME_PAD; rings.push({ i: -1, own: false, box: [sunAt.x - sr, sunAt.y - sr, sunAt.x + sr, sunAt.y + sr], x: sunAt.x, y: sunAt.y }); }
-  var names = [];
+  if (sunAt) { var sr = _aeMarkDiscR('sun') + AE_MARK_NAME_PAD; rings.push({ i: -1, own: false, box: [sunAt.x - sr, sunAt.y - sr, sunAt.x + sr, sunAt.y + sr], x: sunAt.x, y: sunAt.y, r: _aeMarkDiscR('sun') }); }
+  var names = [], leaders = [];   // the names placed so far, and the leader lines drawn to them
   _aeNameOrder(shown).forEach(function (i) {
     var m = shown[i];
     var el = m.el, label = el.querySelector ? el.querySelector('b') : null;
@@ -7432,27 +7452,41 @@ function _aePlaceMarkNames(shown) {
     var wideNamed = !m.ringed && _aeWideView() && _aeNamedPlanet(m.body), chosen = null;
     var slots = _aeNameSlots(m, w, sides, wideNamed);
     var onScreen = function (box) { return box[0] >= AE_NAME_EDGE && box[2] <= _ae.w - AE_NAME_EDGE && box[1] >= 0 && box[3] <= _ae.h; };
-    var onName = function (box) { return names.some(function (n) { return _aeBoxesMeet(n, box); }); };
+    // A name meets no name and no leader already placed; a leader of its own crosses no name.
+    var onName = function (box) {
+      return names.some(function (n) { return _aeBoxesMeet(n, box); }) || leaders.some(function (l) { return _aeSegMeetsBox(l, box); });
+    };
+    var leaderFree = function (t) { var sg = _aeLeaderSeg(m, t.box); return !names.some(function (n) { return _aeSegMeetsBox(sg, n); }); };
     var onDisc = function (box) { return rings.some(function (rb) { return !(rb.i === i && rb.own) && _aeBoxesMeet(rb.box, box); }); };
     var tie = wideNamed ? AE_NAME_TIE_WIDE_PX : AE_NAME_TIE_PX;
     // Never across the screen's edge: a name that would be is tried on the inward side, then above and below.
     var passes = m.ringed ? [function () { return true; }] : [
       function (t) { return !t.leader && onScreen(t.box) && !onName(t.box) && !onDisc(t.box) && _aeNameIsItsOwn(t.box, m, rings, tie, wideNamed ? AE_NAME_TIE_WIDE_RATIO : 1); },
-      function (t) { return wideNamed && t.leader && onScreen(t.box) && !onName(t.box) && !onDisc(t.box) && _aeLeaderClear(m, t.box, rings); },
+      function (t) { return wideNamed && t.leader && onScreen(t.box) && !onName(t.box) && !onDisc(t.box) && leaderFree(t) && _aeLeaderClear(m, t.box, rings); },
       // Two dots close together (Venus beside the Earth near conjunction): a leader that grazes the other is still drawn
-      // from its own dot, where a name merely beside it would read as the nearer one's.
-      function (t) { return wideNamed && t.leader && onScreen(t.box) && !onName(t.box) && !onDisc(t.box); },
+      // from its own dot, where a name merely beside it would read as the nearer one's; of those, the one that keeps
+      // farthest from every other dot (never the first that came, which ran through Venus).
+      'widest',
       function (t) { return wideNamed && !t.leader && onScreen(t.box) && !onName(t.box); },
       function (t) { return wideNamed && onScreen(t.box) && !onName(t.box); },
       function () { return wideNamed; }
     ];
-    for (var pi = 0; pi < passes.length && !chosen; pi++) chosen = slots.filter(passes[pi])[0] || null;
+    for (var pi = 0; pi < passes.length && !chosen; pi++) {
+      if (passes[pi] === 'widest') {
+        var best = -Infinity;
+        slots.forEach(function (t) {
+          if (!(wideNamed && t.leader && onScreen(t.box) && !onName(t.box) && !onDisc(t.box) && leaderFree(t))) return;
+          var c = _aeLeaderClearance(m, t.box, rings);
+          if (c > best + 0.5) { best = c; chosen = t; }
+        });
+      } else chosen = slots.filter(passes[pi])[0] || null;
+    }
     if (m.ringed && !chosen) chosen = slots[0];
     if (chosen) names.push(chosen.box);
     var far = !!chosen && chosen.leader;
     if (far) {
-      var end = _aeLeaderEnd(m, chosen.box), lx = end[0] - m.x, ly = end[1] - m.y, ll = Math.hypot(lx, ly) || 1;
-      m.leader = [m.x + lx / ll * (m.r - AE_MARK_NAME_PAD), m.y + ly / ll * (m.r - AE_MARK_NAME_PAD), end[0], end[1]];
+      m.leader = _aeLeaderSeg(m, chosen.box);
+      leaders.push(m.leader);
       el.style.setProperty('--ae-bx', (chosen.box[0] - m.x).toFixed(1) + 'px');
       el.style.setProperty('--ae-by', ((chosen.box[1] + chosen.box[3]) / 2 - m.y).toFixed(1) + 'px');
     }

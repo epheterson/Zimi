@@ -198,3 +198,97 @@ def test_go_to_finds_a_big_city_with_no_map_and_says_when_nothing_is_found(
         assert not errors, errors
     finally:
         ctx.close()
+
+
+# Today, and two dates when the inner planets line up with the Earth: Venus at inferior conjunction (2026-10-24), and
+# Venus and Mercury both near it (2025-03-22).
+LINEUPS = [None, 1792843200000, 1742644800000]
+MARKS = """() => { const v = _ae.el.getBoundingClientRect();
+  return _ae.marksDrawn.map(d => { const e = d.el && document.getElementById(d.el), b = e && e.querySelector('b');
+    const named = b && getComputedStyle(b).display !== 'none' && getComputedStyle(e).display !== 'none' && d.body === d.lead, nb = named ? b.getBoundingClientRect() : null;
+    return { body: d.body, x: d.x, y: d.y, r: d.r, far: !!(e && e.classList.contains('ae-bm-pos')),
+             name: nb ? [nb.left - v.left, nb.top - v.top, nb.right - v.left, nb.bottom - v.top] : null }; }); }"""
+
+
+def _seg_dist(px, py, ax, ay, bx, by):
+    dx, dy = bx - ax, by - ay
+    t = max(
+        0.0, min(1.0, ((px - ax) * dx + (py - ay) * dy) / ((dx * dx + dy * dy) or 1))
+    )
+    return ((ax + t * dx - px) ** 2 + (ay + t * dy - py) ** 2) ** 0.5
+
+
+def _label_faults(marks):
+    meet = (
+        lambda a, b: a[0] < b[2] - 0.5
+        and b[0] < a[2] - 0.5
+        and a[1] < b[3] - 0.5
+        and b[1] < a[3] - 0.5
+    )  # noqa: E731
+    faults = []
+    for m in marks:
+        if not m["name"]:
+            continue
+        n = m["name"]
+        # The leader runs from the dot's edge to the nearest point of its name.
+        ex, ey = min(max(m["x"], n[0]), n[2]), min(max(m["y"], n[1]), n[3])
+        ll = ((ex - m["x"]) ** 2 + (ey - m["y"]) ** 2) ** 0.5 or 1
+        sx, sy = (
+            m["x"] + (ex - m["x"]) / ll * m["r"],
+            m["y"] + (ey - m["y"]) / ll * m["r"],
+        )
+        for o in marks:
+            if o is m:
+                continue
+            if o["name"] and meet(n, o["name"]):
+                faults.append(("names meet", m["body"], o["body"]))
+            if meet(
+                n, [o["x"] - o["r"], o["y"] - o["r"], o["x"] + o["r"], o["y"] + o["r"]]
+            ):
+                faults.append(("name on a dot", m["body"], o["body"]))
+            if (
+                m["far"]
+                and _seg_dist(o["x"], o["y"], sx, sy, ex, ey) <= o["r"] + 1
+            ):
+                faults.append(("leader through a dot", m["body"], o["body"]))
+            if m["far"] and o["name"]:
+                on = o["name"]
+                pts = [
+                    (sx + (ex - sx) * k / 64, sy + (ey - sy) * k / 64)
+                    for k in range(65)
+                ]
+                if any(
+                    on[0] + 0.5 < x < on[2] - 0.5 and on[1] + 0.5 < y < on[3] - 0.5
+                    for x, y in pts
+                ):
+                    faults.append(("leader through a name", m["body"], o["body"]))
+    return faults
+
+
+def test_planets_view_names_and_leaders_keep_clear_on_lineup_dates(browser, served):
+    ctx, pg, errors = _page(browser, served)
+    try:
+        _open_3d(pg)
+        report = {}
+        for ms in LINEUPS:
+            if ms:
+                pg.evaluate("(ms) => { _aeGoTo(ms); _almClockSetRate(0); }", ms)
+            pg.click("[data-ae-view='planets']")
+            pg.wait_for_function(
+                "() => { _ae.dirty = true; _aeKick(); return !_ae.fly && _ae.preset === 'planets'; }",
+                timeout=60_000,
+                polling=200,
+            )
+            pg.wait_for_timeout(800)
+            marks = pg.evaluate(MARKS)
+            named = {m["body"] for m in marks if m["name"]}
+            assert {"mercury", "venus", "earth", "mars"} <= named, (ms, named)
+            report[ms] = _label_faults(marks)
+            pg.click("[data-ae-view='earth']")
+            pg.wait_for_function(
+                "() => !_ae.fly && _ae.target === 'earth'", timeout=60_000, polling=200
+            )
+        assert not any(report.values()), report
+        assert not errors, errors
+    finally:
+        ctx.close()
