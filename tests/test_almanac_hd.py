@@ -26,6 +26,8 @@ REL = {
 def hd(tmp_path, monkeypatch):
     monkeypatch.setattr(almanachd, "release", lambda read=False: REL)
     monkeypatch.setattr(almanachd, "installed", lambda: False)
+    monkeypatch.setattr(almanachd, "present", lambda: None)  # not what an earlier test left in the library
+    monkeypatch.setattr(almanachd, "parts_present", lambda: {})
     monkeypatch.setattr(almanachd.POLICY, "_offline", lambda: False)
     monkeypatch.delenv(almanachd.ENV, raising=False)
     saved = {}
