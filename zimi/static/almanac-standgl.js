@@ -121,7 +121,7 @@ var AE_ST_SKY_FRAG = [
   'uniform sampler2D uMilky; uniform float uMw; uniform mat3 uToGal;',      // the Milky Way: its panorama, its strength, local -> galactic
   'varying vec2 vNdc;',
   'void main() {',
-  '  gJit = fract(52.9829189 * fract(dot(gl_FragCoord.xy, vec2(0.06711056, 0.00583715))));',
+  '  gJit = fract(sin(dot(gl_FragCoord.xy, vec2(12.9898, 78.233))) * 43758.5453);',   // white noise: no pattern to see, and the stretch blurs it
   '  vec3 d = normalize(uFwd + uRight * vNdc.x * uTan.x + uUp * vNdc.y * uTan.y), L = vec3(0.0), T;',
   '  if (uDiffuse > 0.5) { L = uDiffSky * (0.7 + 0.3 * smoothstep(-0.1, 0.5, d.z)); }',
   '  else if (uAtmo > 0.5) {',
@@ -196,8 +196,8 @@ function _aeStSkyAirFrag(chunk) {
 }
 // Trees (the Earth's, almanac-stand.js _aeStandTrees): dark cones lit and hazed as the ground is, so they read as trees at dusk.
 var AE_ST_TREE_VERT = [
-  'attribute vec3 aNrm; attribute vec2 aTree;',
-  'varying vec3 vP, vN; varying vec2 vTree;',
+  'attribute vec3 aNrm, aTree;',
+  'varying vec3 vP, vN, vTree;',
   'void main() { vP = position; vN = aNrm; vTree = aTree; gl_Position = projectionMatrix * viewMatrix * vec4(position, 1.0); }'
 ].join('\n');
 var AE_ST_TREE_FRAG = [
@@ -205,11 +205,12 @@ var AE_ST_TREE_FRAG = [
   AE_ST_GLSL_ATMO, AE_ST_GLSL_TONE,
   _aeStInscatterGlsl('inscatterGround', AE_ST_STEPS_GROUND),
   'uniform vec3 uCam, uAmbient; uniform float uK;',
-  'varying vec3 vP, vN; varying vec2 vTree;',
+  'varying vec3 vP, vN, vTree;',
   'void main() {',
   '  gJit = fract(52.9829189 * fract(dot(gl_FragCoord.xy, vec2(0.06711056, 0.00583715))));',
   '  float dist = length(vP - uCam); vec3 V = (uCam - vP) / dist, N = normalize(vN);',
-  '  vec3 alb = vec3(0.028, 0.055, 0.03) * (0.8 + 0.4 * vTree.y) * (0.55 + 0.45 * vTree.x);',   // darker below, paler at the tips, each tree its own shade
+  '  vec3 alb = vTree.z < 0.5 ? vec3(0.026, 0.05, 0.03) : vTree.z < 1.5 ? vec3(0.06, 0.09, 0.03) : vTree.z < 2.5 ? vec3(0.05, 0.09, 0.035) : vec3(0.04, 0.028, 0.02);',
+  '  alb *= (0.8 + 0.4 * vTree.y) * (0.6 + 0.4 * min(vTree.x, 1.0));',   // each tree its own shade, darker below, paler at the tips
   '  vec3 sT = sunTrans(vP * 0.001) * uSunE;',
   '  vec3 L = alb * (sT * max(dot(N, uSunDir), 0.0) / PI + uAmbient * (0.55 + 0.45 * N.z));',
   '  if (uAtmo > 0.5) {',
@@ -313,8 +314,13 @@ var AE_ST_BODY_FRAG = [
 // The small sky stretched over the screen: device pixels over the screen's size.
 var AE_ST_BLIT_FRAG = [
   'precision highp float;',
-  'uniform sampler2D tSky; uniform vec2 uRes;',
-  'void main() { gl_FragColor = vec4(texture2D(tSky, gl_FragCoord.xy / uRes).rgb, 1.0); }'
+  'uniform sampler2D tSky; uniform vec2 uRes, uTexel;',
+  // The small sky stretched, with a blur of its own size (four taps half a texel off): the march's jitter averages out to a smooth sky.
+  'void main() {',
+  '  vec2 uv = gl_FragCoord.xy / uRes, o = uTexel * 0.5;',
+  '  vec3 c = texture2D(tSky, uv + vec2(o.x, o.y)).rgb + texture2D(tSky, uv + vec2(-o.x, o.y)).rgb + texture2D(tSky, uv + vec2(o.x, -o.y)).rgb + texture2D(tSky, uv + vec2(-o.x, -o.y)).rgb;',
+  '  gl_FragColor = vec4(c * 0.25, 1.0);',
+  '}'
 ].join('\n');
 var AE_ST_GROUND_VERT = [
   'attribute vec3 aDir; attribute vec3 aNrm; attribute float aH; attribute float aSea; attribute float aShade;',
@@ -385,9 +391,9 @@ var AE_ST_GROUND_FRAG = [
   // Underfoot: blades and tussocks as fine noise stretched along the line of sight (as grass is seen across a field), sharp at the
   // feet and gone where a pixel would hold several of them, so it softens with distance as the Moon's stones do.
   '    float across = dot(vP.xy, tt), along = dot(vP.xy, rr), bl = 0.0;',
-  '    for (int i = 0; i < 2; i++) { float s = 0.007 * pow(2.9, float(i)), wb = 1.0 - smoothstep(0.1, 0.4, 2.5 * foot / s); if (wb > 0.0) bl += (vnoise(vec3(across / s, along / (s * 2.4), 41.0 + float(i) * 5.0)) - 0.5) * wb * (i == 0 ? 0.7 : 0.5); }',
-  '    float tuft = smoothstep(0.52, 0.72, vnoise(vP / 0.42 + 9.0)) * (1.0 - smoothstep(0.1, 0.5, 2.5 * foot / 0.42));',
-  '    alb *= clamp(1.0 + bl * 1.0 - tuft * 0.12 * grass, 0.5, 1.5);',
+  '    for (int i = 0; i < 4; i++) { float s = 0.03 * pow(3.0, float(i)), wb = 1.0 - smoothstep(0.5, 2.0, 2.5 * foot / s); if (wb > 0.0) bl += (vnoise(vec3(across / s, along / (s * (i < 2 ? 2.4 : 1.3)), 41.0 + float(i) * 5.0)) - 0.5) * wb * (0.9 - 0.15 * float(i)); }',
+  '    float tuft = smoothstep(0.52, 0.72, vnoise(vP / 0.42 + 9.0)) * (1.0 - smoothstep(0.5, 2.0, 2.5 * foot / 0.42));',
+  '    alb *= clamp(1.0 + bl * 1.5 - tuft * 0.18 * grass, 0.35, 1.8);',
   '  }',
   // Ground cover by height, slope and latitude (the Earth's): snow above the snow line, bare rock on steep ground and above the
   // trees, the Blue Marble's own tint elsewhere; the lines wander with a slow noise so no height is a ruled edge.

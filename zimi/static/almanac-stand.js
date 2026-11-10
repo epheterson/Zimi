@@ -280,7 +280,7 @@ function _aeStandSkyMesh(st, U, mat) {
   low.frustumCulled = false;
   st.skyLowMesh = low; st.skyMatOwn = sky.material;
   st.skyScene = new THREE.Scene(); st.skyScene.add(low);
-  var blit = st.skyBlit = new THREE.Mesh(tri, new THREE.ShaderMaterial({ uniforms: { tSky: { value: null }, uRes: { value: [1, 1] } }, vertexShader: AE_ST_SKY_VERT, fragmentShader: AE_ST_BLIT_FRAG, depthTest: false, depthWrite: false }));
+  var blit = st.skyBlit = new THREE.Mesh(tri, new THREE.ShaderMaterial({ uniforms: { tSky: { value: null }, uRes: { value: [1, 1] }, uTexel: { value: [1, 1] } }, vertexShader: AE_ST_SKY_VERT, fragmentShader: AE_ST_BLIT_FRAG, depthTest: false, depthWrite: false }));
   blit.frustumCulled = false; blit.renderOrder = -3; blit.visible = false;
   st.mats.push(blit.material);
   _aeLoadTexture(THREE, SG_MILKYWAY_URL).then(function (t) { uni.uMilky.value = t; st.dirty = true; if (_ae) { _ae.dirty = true; _aeKick(); } }, function () {});
@@ -386,8 +386,9 @@ function _aeStandDispose(st) {
 // ── Trees ──
 // Where the Blue Marble says forest (a dark green), below the trees' line, not in the sea: dark cones scattered in rings out to a few
 // kilometres, a tree to a few metres at the feet and a wood at the horizon. The same trees every visit to a place (seeded by it).
-var AE_STAND_TREES_DELAY_MS = 40, AE_STAND_TREES_MAX = 3000, AE_STAND_TREES_TRIES = 16000;
-var AE_STAND_TREES_RANGE_M = [55, 4000], AE_STAND_TREES_H_M = [7, 24], AE_STAND_TREES_CONE = 0.2, AE_STAND_TREES_SIDES = 6;
+var AE_STAND_TREES_DELAY_MS = 40, AE_STAND_TREES_MAX = 3200, AE_STAND_TREES_TRIES = 18000;
+var AE_STAND_TREES_RANGE_M = [60, 4500], AE_STAND_TREES_THIN_M = [60, 380];   // out to here; thinner near the viewer (nothing at all inside the first number's reach)
+var AE_STAND_TREE_KINDS = { conifer: 0, broadleaf: 1, palm: 2, trunk: 3 };   // what the shader colours by
 function _aeStCoverPixels(tex) {   // the colour map's pixels, once
   if (!tex || !tex.image) return null;
   var im = tex.image, w = im.width || im.naturalWidth, h = im.height || im.naturalHeight;
@@ -679,7 +680,7 @@ function _aeStandSkyPass(st) {
     st.skyRT = new THREE.WebGLRenderTarget(w, h, { minFilter: THREE.LinearFilter, magFilter: THREE.LinearFilter, depthBuffer: false, stencilBuffer: false });
   }
   var u = st.skyBlit.material.uniforms;
-  u.tSky.value = st.skyRT.texture; u.uRes.value = [W, H];
+  u.tSky.value = st.skyRT.texture; u.uRes.value = [W, H]; u.uTexel.value = [1 / w, 1 / h];
   r.setRenderTarget(st.skyRT); r.render(st.skyScene, st.camera); r.setRenderTarget(null);
 }
 // Frames that run long step the pixel ratio down, for good: a phone that cannot keep up is not asked to try again.
