@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Fixed
+
+- Almanac: back to 1x by touch is easier: the speed slider's thumb is grabbed in a fingertip-tall band, and let go within a fingertip of the middle it lands on real time.
+
 ## [1.15.4]
 
 ### Highlights
