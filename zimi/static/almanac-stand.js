@@ -376,6 +376,7 @@ function _aeStandDispose(st) {
   if (st.stars) st.stars.geometry.dispose();
   if (st.skyRT) st.skyRT.dispose();
   if (st.skyMatAir) st.skyMatAir.dispose();
+  if (st.cloudMesh) st.cloudMesh.material.dispose();
   if (st.skyPts) st.skyPts.mesh.geometry.dispose();
   if (st.skyLines) st.skyLines.mesh.geometry.dispose();
   if (st.skyTag && st.skyTag.parentNode) st.skyTag.parentNode.removeChild(st.skyTag);
@@ -707,6 +708,7 @@ function _aeStandPaint(st, now, moving, place) {
 // The sky into its small target (or, with no way to make one, straight to the screen as before).
 function _aeStandSkyPass(st) {
   _aeStandAirSelect(st);
+  _aeStandCloudSelect(st);
   var S = _ae.gl, r = S.renderer, THREE = S.THREE, use = AE_STAND_SKY_SCALE < 1 && !!st.skyBlit && typeof THREE.WebGLRenderTarget === 'function';
   st.skyMesh.visible = !use; st.skyBlit.visible = use;
   if (!use) return;
@@ -916,6 +918,7 @@ function _aeStandAfterClose() {
 //     uniforms                 { name: initial value } for the chunk's own uniforms (numbers, arrays of 2-4 or 9 numbers, textures)
 //     update(st, fr, ph, u)    optional, at every picture: set u[name].value from the frame (fr: sun and body positions, ph: its photometry)
 //     exposureK(st, fr, ph)    the one uK (a positive number), or null for this view's own
+//     clouds                   optional { glsl, uniforms, update(st, fr, ph, u) }: the cloud deck's own chunk (see Clouds below)
 // The chunk is compiled on first use; a provider whose glsl changes is rebuilt.
 var _aeStandAir = (typeof _aeStandAir !== 'undefined') ? _aeStandAir : null;
 function _aeStandAirOn(st) {
@@ -935,6 +938,44 @@ function _aeStandAirSelect(st) {
   if (st.skyMesh.material !== m) { st.skyMesh.material = m; if (st.skyLowMesh) st.skyLowMesh.material = m; }
   if (on && P.update) { try { P.update(st, st.fr, st.photo, st.skyMatAir.uniforms); } catch (e) {} }
   st.airOn = on;
+}
+
+// ── Clouds ──
+// One deck over the Earth, from a field of (place, day). onesky owns the definition: `_osCloudField(def)` with def = { lat, lon, ms } returns
+// { coverage 0..1, wind: [vx, vy] m/s, base (m over the ground), thickness, seed: [a, b] }; without it, this formula (a hash of the day and the
+// place's half-degree cell). A provider (_aeStandAir) may bring `clouds: { glsl, uniforms, update(st, fr, ph, u) }` whose chunk defines
+//     vec4 osClouds(vec3 d, vec3 o)   d: unit view direction (local frame), o: the camera in metres; premultiplied radiance + alpha,
+//                                     in the units of oaSky, so tone(rgb, uK) is its colour
+// and the stand draws it over the sky, the stars and the sprites, under the ground. Earth only; nothing is drawn at coverage under 2 percent.
+var AE_STAND_CLOUD_BASE_M = [1800, 3000], AE_STAND_CLOUD_THICK_M = 700;
+function _aeStHash(a, b, c) { var h = Math.sin(a * 127.1 + b * 311.7 + c * 74.7) * 43758.5453; return h - Math.floor(h); }
+function _aeStandCloudField(st, ms) {
+  if (typeof _osCloudField === 'function') { try { var f = _osCloudField({ lat: st.lat, lon: st.lon, ms: ms }); if (f) return f; } catch (e) {} }
+  var day = Math.floor(ms / 86400000), la = Math.round(st.lat * 2) / 2, lo = Math.round(st.lon * 2) / 2;
+  var r = function (k) { return _aeStHash(day + k * 13.7, la + k * 3.1, lo - k * 5.3); };
+  var ang = r(2) * 2 * Math.PI, sp = 3 + 11 * r(3);
+  return { coverage: Math.pow(r(1), 1.3) * 0.85, wind: [Math.cos(ang) * sp, Math.sin(ang) * sp], base: AE_STAND_CLOUD_BASE_M[0] + (AE_STAND_CLOUD_BASE_M[1] - AE_STAND_CLOUD_BASE_M[0]) * r(4), thickness: AE_STAND_CLOUD_THICK_M, seed: [r(5) * 90, r(6) * 90] };
+}
+function _aeStandCloudSelect(st) {
+  var THREE = _ae.gl.THREE;
+  if (st.key !== 'earth' || !st.sky) return;
+  var P = _aeStandAir, prov = _aeStandAirOn(st) && P.clouds && P.clouds.glsl ? P.clouds : null, chunk = prov ? prov.glsl : AE_ST_CLOUDS_GLSL;
+  if (!st.cloudMesh || st.cloudSrc !== chunk) {
+    if (st.cloudMesh) { st.scene.remove(st.cloudMesh); st.cloudMesh.material.dispose(); }
+    var own = {};
+    if (prov) Object.keys(prov.uniforms || {}).forEach(function (k) { own[k] = { value: prov.uniforms[k] }; });
+    else own = { uCloudA: { value: [0, 2000, 700, 0] }, uCloudB: { value: [0, 0, 0, 0] } };
+    var m = new THREE.ShaderMaterial({ uniforms: Object.assign({}, st.sky, own), vertexShader: AE_ST_SKY_VERT, fragmentShader: _aeStCloudFrag(chunk), transparent: true, depthTest: false, depthWrite: false });
+    st.cloudMesh = new THREE.Mesh(st.skyMesh.geometry, m);
+    st.cloudMesh.frustumCulled = false; st.cloudMesh.renderOrder = -0.5;
+    st.scene.add(st.cloudMesh); st.cloudSrc = chunk; st.cloudProv = !!prov;
+  }
+  var u = st.cloudMesh.material.uniforms;
+  if (prov) { st.cloudMesh.visible = true; if (prov.update) { try { prov.update(st, st.fr, st.photo, u); } catch (e) {} } return; }
+  var ms = _aeDisplayMs(), f = st.cloudField && Math.abs(ms - st.cloudField.at) < 600000 ? st.cloudField : (st.cloudField = Object.assign(_aeStandCloudField(st, ms), { at: ms }));
+  st.cloudMesh.visible = f.coverage >= 0.02;
+  u.uCloudA.value = [f.coverage, f.base, f.thickness, (ms % 86400000) / 1000];
+  u.uCloudB.value = [f.wind[0], f.wind[1], f.seed[0], f.seed[1]];
 }
 
 // ── Objects in the sky from other lanes ──
