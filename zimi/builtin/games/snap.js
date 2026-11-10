@@ -94,7 +94,7 @@
   root.ZimiSnap = api;
 
   // ── The page ────────────────────────────────────────────────────────────
-  var BUTTON_GAP = 22, BUTTON_MAX = 76, BUTTON_MIN = 52, SIDE_GAP = 24, NOTE_MS = 1200, OVER_MS = 900, RESUME_MS = 2200;
+  var BUTTON_GAP = 22, BUTTON_MAX = 76, BUTTON_MIN = 52, SIDE_GAP = 24, SIDE_BUTTON_FROM = 1.4, NOTE_MS = 1200, OVER_MS = 900, RESUME_MS = 2200;
   function boot() {
     var d = root.document, t, board, session, view = { flash: '' }, level = DEFAULT_LEVEL, timer = 0, held = false, resumed = false;
     var button = Z.h('button', { class: 'sn-snap', type: 'button', text: TX('snap.button') });
@@ -108,8 +108,14 @@
       var m = board.metrics();
       if (!m) return;
       var g = geo(m), p = spots(g), y = g.cy + g.ch / 2 + BUTTON_GAP, room = g.statusY - y - 12;
-      button.style.left = SIDE_GAP + 'px'; button.style.right = SIDE_GAP + 'px'; button.style.top = Math.round(y) + 'px';
-      button.style.height = Math.round(Math.max(BUTTON_MIN, Math.min(BUTTON_MAX, room))) + 'px';
+      if (room < BUTTON_MIN) {
+        // A short table (a phone on its side): no room under the piles, so the button stands to the right of them, as tall as a card.
+        button.style.left = Math.round(g.cx + g.cw * SIDE_BUTTON_FROM) + 'px'; button.style.right = SIDE_GAP + 'px'; button.style.top = Math.round(g.cy - g.ch / 2) + 'px';
+        button.style.height = Math.round(g.ch) + 'px';
+      } else {
+        button.style.left = SIDE_GAP + 'px'; button.style.right = SIDE_GAP + 'px'; button.style.top = Math.round(y) + 'px';
+        button.style.height = Math.round(Math.min(BUTTON_MAX, room)) + 'px';
+      }
       button.disabled = st.phase !== 'play';
       button.classList.toggle('sn-hot', isMatch(st));
       [0, 1].forEach(function (seat) {
