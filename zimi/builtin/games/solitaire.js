@@ -198,11 +198,11 @@
     var y1 = rows.top, y2 = wide ? m.pad : rows.cols, room = wide ? m.H - 2 * m.pad : rows.room, tx = function (n) { return x(n + (wide ? WIDE_TABLEAU_COL : 0)); };
     var down = ch * DOWN_SHARE;
     // The longest column decides the face-up step: as open as UP_STEP_SHARE, closing up when the columns grow.
-    var step = Math.max(ch * MIN_STEP_SHARE, Math.min(ch * UP_STEP_SHARE, Math.min.apply(null, TABLEAU.map(function (t) {
+    var step = Z.cleanStep(Math.max(ch * MIN_STEP_SHARE, Math.min(ch * UP_STEP_SHARE, Math.min.apply(null, TABLEAU.map(function (t) {
       var p = P[t], ups = 0, downs = 0;
       p.forEach(function (c, i) { if (i < p.length - 1) { if (c.up) ups++; else downs++; } });
       return ups ? (room - ch - downs * down) / ups : Infinity;
-    }))));
+    })))), ch);
     var bottom = y2 + ch;
     var ids = function (pile) { return pile.map(function (c) { return c.id; }); };
     var fan = (wide ? ch : cw) * WASTE_FAN_SHARE;

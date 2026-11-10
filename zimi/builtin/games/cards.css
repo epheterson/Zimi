@@ -104,6 +104,9 @@ body.zc-game { display: flex; flex-direction: column; height: 100%; overflow: hi
 .zc-ix-col { display: none; }
 .zc-cols .zc-ix-row { display: none; }
 .zc-cols .zc-ix-col { display: inline; }
+.zc-ct-col { display: none; }
+.zc-cols .zc-ct-row { display: none; }
+.zc-cols .zc-ct-col { display: inline; }
 /* In a hand a strip shows only a card's left third: the body's suit stands to the lower right, clear of the strip, so a strip is
    the index and paper (FACE.body's left edge at 0.44 of the width, past the widest strip). */
 .zc-cols .zc-body { transform: translate(62px, 96px) scale(0.86) translate(-50px, -90px); }   /* about the suit's own centre (50, FACE.bodyY), in face units */

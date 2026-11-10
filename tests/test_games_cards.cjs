@@ -274,7 +274,12 @@ check(Z.shuffled(() => 0.5).length === 52 && new Set(Z.shuffled(Math.random)).si
   // palette is checked on the standalone drawings, where the colours are.
   const faces = courtIds.map(c => Z.faceMarkup(c, true));
   check(courtIds.every(c => /<use href="#zc-ct-[JQK][CDHS]"/.test(Z.faceMarkup(c, false))), 'all twelve French courts draw their courts.js figure from the sprite');
-  check(faces.every(f => f.includes('viewBox="100 0 1100 1000"')), 'and carry it inline as a standalone image, the figure\'s upper half in its frame');
+  check(faces.every(f => /<svg x="8" y="40" width="84" height="92" viewBox="[\d.]+ 0 [\d.]+ 1000">/.test(f)), 'and carry it inline as a standalone image: the figure crown to waist in a tall frame under the index, 8 units from the sides and bottom');
+  check(courtIds.every(c => (Z.faceMarkup(c, false).match(/class="zc-ct /g) || []).length === 2), 'a court on the page has a frame for each index arrangement');
+  // A fanned strip shows a court's frame (top at 40 of 140) not at all or as a picture's top (16 units or more), never a sliver.
+  const ch = 70, units = st => st / ch * 140;
+  const bad = []; for (let u = 10; u <= 62; u += 0.5) { const got = units(Z.cleanStep(u / 140 * ch, ch)); if (got > 39.01 && got < 56) bad.push(u); }
+  check(bad.length === 0 && Math.abs(units(Z.cleanStep(45 / 140 * ch, ch)) - 39) < 1e-9 && Z.cleanStep(30, ch) === 30, 'fan steps never show a sliver of a court\'s frame (' + bad.join(' ') + ')');
   check(new Set(faces).size === 12, 'the twelve French courts are twelve different drawings');
   const colours = new Set();
   faces.forEach(f => (f.match(/(?:fill|stroke)="(#[0-9a-fA-F]{3,6}|none)"/g) || []).forEach(m => colours.add(m.split('"')[1].toLowerCase())));

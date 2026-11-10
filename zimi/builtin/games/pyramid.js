@@ -116,7 +116,7 @@
     // Stock, waste and the taken pile are one row right under the bar; the pyramid under it, its rows stepping down to fill
     // the height: the more of a covered card shows, the easier the pyramid reads.
     var rows = Z.solitaireRows(m), y2 = rows.top, y1 = rows.cols, slots = [], cards = [];
-    var rowStep = Math.max(ch * ROW_STEP_SHARE, Math.min(ch * ROW_STEP_MAX, (rows.room - ch) / (ROWS - 1)));
+    var rowStep = Z.cleanStep(Math.max(ch * ROW_STEP_SHARE, Math.min(ch * ROW_STEP_MAX, (rows.room - ch) / (ROWS - 1))), ch);
     var height = Math.max(m.H, y1 + rowStep * (ROWS - 1) + ch + m.pad);
     var at = function (p) { return { x: x(COLS / 2 - 0.5 - rowOf(p) / 2 + colOf(p)), y: y1 + rowOf(p) * rowStep }; };
 

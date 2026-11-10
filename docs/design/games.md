@@ -128,7 +128,8 @@ Solitaire, Spider, Pyramid and TriPeaks scale their columns to the width and let
 
 The French card face is made for a card about 50px wide:
 - One index: the rank at 0.26 of the card's width (Barlow outlines, optical sizes per glyph), its suit beside it in the top right for piles that fan down, under it for hands that fan sideways (the table games). No second corner.
-- One suit in the body, low on the card, and no pip grid. Courts are the Goodall figure framed in the same place.
+- One suit in the body, low on the card, and no pip grid. Courts are the Goodall figure, crown to waist, in a tall frame from just under the index to the bottom margin, the same 8 units in from the sides and bottom.
+- A fanned strip shows a court's frame not at all or as a picture's top (16 units or more): fan steps that would show a sliver of it close to just above the frame.
 - A fanned face-up card shows its index and clean paper, at most 0.44 of its height; a face-down card shows 0.12, whatever the room.
 - Columns stand apart by 0.08 of a card's width.
 - A pressed card lifts at once (scale 1.06, a deeper shadow); a flight takes 120ms plus 0.35ms a pixel, at most 300ms; a refused drop goes home with a small overshoot and no words (a second refusal running rings where it could go); a card turned over waits for the card that uncovered it to land. Card sounds and the buzz only with Sound on.

@@ -327,23 +327,35 @@
       gold('M43 32 41.4 24.4 46 27.6 50 22.4 54 27.6 58.6 24.4 57 32z') + '<path d="M43 30.2H57" stroke="currentColor" stroke-width="1" fill="none"/>' + heldItalian(s, 67, 65.6, standalone, compact, set);
   }
 
-  // A French court: the figure in a frame where a number card has its suit, below the line a fanned strip shows (FAN_UP_SHARE of
-  // the height), so a court in a fan reads like any card: index and clean paper. The frame keeps the art's own aspect and is
-  // centred across the card, FACE.side from the bottom. Without courts.js the drawn bust stands in.
-  function courtFrame() {
-    var y = FACE_H * FAN_UP_SHARE + COURT_CLEAR, h = FACE_H - FACE.side - y, w = h * 1100 / 1000;
-    return { x: (FACE_W - w) / 2, y: y, w: w, h: h };
+  // A French court: the figure in a tall frame filling the paper under the index, FACE.side from the left, right and bottom edges, so
+  // its margins are the index's. Under the row index it starts COURT_TOP down (clear of the Q's tail); under the column index (hands)
+  // it starts COURT_GAP under the column's suit. Both frames are in every face and cards.css shows the one that goes with the
+  // index (the standalone image has the row's). Without courts.js the drawn bust stands in.
+  // A fanned strip shows a court's frame either not at all or as a picture's top: fan steps between COURT_TOP and COURT_TOP +
+  // COURT_MIN_SHOWN of the height are moved up to just above the frame (cleanStep).
+  function courtFrames() {
+    var w = FACE_W - 2 * FACE.side, bottom = FACE_H - FACE.side, colTop = FACE.top + FACE.colCap + FACE.colGap + FACE.colSuit + COURT_GAP;
+    return { row: { x: FACE.side, y: COURT_TOP, w: w, h: bottom - COURT_TOP }, col: { x: FACE.side, y: colTop, w: w, h: bottom - colTop } };
+  }
+  function courtFrame(kind, s, f, cls, standalone) {
+    var art = root.ZimiCourts && root.ZimiCourts.panel ? root.ZimiCourts.panel(kind, s, f.x, f.y, f.w, f.h, standalone) : '';
+    if (!art) art = '<svg x="' + f.x + '" y="' + f.y + '" width="' + f.w + '" height="' + f.h + '" viewBox="24 14 52 52">' + bust(kind, s, true) + '</svg>';
+    var r = 'x="' + f.x + '" y="' + f.y + '" width="' + f.w + '" height="' + f.h + '" rx="' + COURT_RX + '"';
+    return '<g class="' + cls + '"><rect ' + r + ' fill="currentColor" fill-opacity="0.06"/>' + art +
+      '<rect class="zc-rule" ' + r + ' fill="none" stroke="currentColor" stroke-width="0.8" stroke-opacity="0.8"/></g>';
   }
   function courtMarkup(kind, s, standalone) {
-    var f = courtFrame(), art = root.ZimiCourts && root.ZimiCourts.panel ? root.ZimiCourts.panel(kind, s, f.x, f.y, f.w, f.h, standalone) : '';
-    if (!art) art = '<g transform="translate(' + f.x + ' ' + f.y + ') scale(' + (f.w / 100) + ') translate(0 -12)">' + bust(kind, s, true) + '</g>';
-    var r = 'x="' + f.x + '" y="' + f.y + '" width="' + f.w + '" height="' + f.h + '" rx="' + COURT_RX + '"';
-    return '<g class="zc-ct"><rect ' + r + ' fill="currentColor" fill-opacity="0.06"/>' + art +
-      '<rect class="zc-rule" ' + r + ' fill="none" stroke="currentColor" stroke-width="0.8" stroke-opacity="0.8"/></g>';
+    var f = courtFrames();
+    return courtFrame(kind, s, f.row, 'zc-ct zc-ct-row', standalone) + (standalone ? '' : courtFrame(kind, s, f.col, 'zc-ct zc-ct-col', false));
+  }
+  // A fan step (px, for a card ch px tall) that would show a sliver of a court's frame becomes the step just above the frame.
+  function cleanStep(step, ch) {
+    var u = step / ch * FACE_H;
+    return u > COURT_TOP - 1 && u < COURT_TOP + COURT_MIN_SHOWN ? (COURT_TOP - 1) / FACE_H * ch : step;
   }
 
   // The same pip for the small card's simplified body.
-  var SMALL_SUIT_Y = 92, SMALL_SUIT_SCALE = 3.1, SUIT_BOX = 20, COURT_RX = 2.5, COURT_CLEAR = 2;   // SUIT_BOX: a suit shape's size in its own units
+  var SMALL_SUIT_Y = 92, SMALL_SUIT_SCALE = 3.1, SUIT_BOX = 20, COURT_RX = 2.5, COURT_TOP = 40, COURT_GAP = 4, COURT_MIN_SHOWN = 16;   // SUIT_BOX: a suit shape's size in its own units
   function smallSuit(s, standalone, shapes, prefix, extra) {
     return standalone ? '' : '<g class="zc-small" display="none">' + placed(s, 50, SMALL_SUIT_Y, SMALL_SUIT_SCALE, false, false, shapes, prefix) + (extra || '') + '</g>';
   }
@@ -910,8 +922,9 @@
   var WIDE_RATIO = 1.25, PLACE_BUZZ_MS = 8, MAX_CARD_W = 120, CARD_ASPECT = 1.4, CARD_H_SHARE = 0.14, DRAG_SLOP = 6, SETTLE_MS = 300, Z_HOT = 500, Z_DRAG = 1000;
   var DEAL_STAGGER_MS = 30, DEAL_SPAN_MS = 900, MIN_CARD_W = 24, TIGHT_PAD = 2, TIGHT_GAP = 2, GAP_SHARE = 0.08;
   // A flight takes FLY_BASE_MS and FLY_PER_PX_MS for each pixel it travels, at most FLY_MAX_MS: a card sent across the table is seen
-  // to travel, one settling a few pixels does not dawdle. A turned card waits TURN_WAIT_MS after the last landing, then turns in TURN_MS.
-  var FLY_BASE_MS = 120, FLY_PER_PX_MS = 0.35, FLY_MAX_MS = 300, TURN_WAIT_MS = 40, TURN_MS = 200, REFUSED_MS = 260, RING_MS = 1000, REPEAT_MS = 4000;
+  // to travel, one settling a few pixels does not dawdle. A turned card starts to turn as the card that uncovered it lands: the
+  // flight's ease-out has it all but there at TURN_AT_LANDING of its time (a wait of the whole flight read as a pause on video).
+  var FLY_BASE_MS = 120, FLY_PER_PX_MS = 0.35, FLY_MAX_MS = 300, TURN_AT_LANDING = 0.7, TURN_MS = 200, REFUSED_MS = 260, RING_MS = 1000, REPEAT_MS = 4000;
   // More o: heightShare (how much of the table's height a card may take, for
   // layouts shorter than Klondike's columns), face(id, standalone) (a deck of
   // its own: Scopa's), enterTaps (Enter on a pile taps
@@ -1085,7 +1098,7 @@
         }
       });
       // A card turned over by this move waits for the card that uncovered it to land.
-      stage.style.setProperty('--zc-turn-wait', (mode === 'instant' ? 0 : longest + TURN_WAIT_MS) + 'ms');
+      stage.style.setProperty('--zc-turn-wait', (mode === 'instant' ? 0 : Math.round(longest * TURN_AT_LANDING)) + 'ms');
       if (dealing) {
         void table.offsetWidth;
         // Only the cards that can be seen wait their turn, so a stock's hidden rest does not hold the first card back.
@@ -1595,7 +1608,7 @@
   // it and use the screen; long ones close up towards the game's own floor.
   var FAN_UP_SHARE = 0.44;
   function fanStep(weight, room, ch, maxStep, minStep) {
-    return Math.max(minStep, Math.min(maxStep, weight > 0 ? (room - ch) / weight : maxStep));
+    return cleanStep(Math.max(minStep, Math.min(maxStep, weight > 0 ? (room - ch) / weight : maxStep)), ch);
   }
 
   // ── The solitaire page ───────────────────────────────────────────────────
@@ -1705,7 +1718,7 @@
     FACT_H: FACT_H, factLine: factLine, moonPhase: moonPhase, moonLitPath: moonLitPath, faceMarkup: faceMarkup, backMarkup: backMarkup,
     italianFaceMarkup: italianFaceMarkup, italianName: italianName,
     spanishFaceMarkup: spanishFaceMarkup, spanishName: spanishName, hanafudaFaceMarkup: hanafudaFaceMarkup, hanafudaCard: hanafudaCard, hanafudaName: hanafudaName, HANA_MONTHS: HANA_MONTHS, jokerMarkup: jokerMarkup, markSvg: markSvg,
-    fmtTime: fmtTime, plural: plural, winTime: winTime, solitairePage: solitairePage, stuckWhen: stuckWhen, describePile: describePile, fanStep: fanStep, FAN_UP_SHARE: FAN_UP_SHARE, openDown: openDown, solitaireRows: solitaireRows, statusTop: statusTop, pageEls: pageEls, idsOf: idsOf, restShare: restShare,
+    fmtTime: fmtTime, plural: plural, winTime: winTime, solitairePage: solitairePage, stuckWhen: stuckWhen, describePile: describePile, fanStep: fanStep, cleanStep: cleanStep, FAN_UP_SHARE: FAN_UP_SHARE, openDown: openDown, solitaireRows: solitaireRows, statusTop: statusTop, pageEls: pageEls, idsOf: idsOf, restShare: restShare,
     toast: toast, store: store, createStats: createStats, h: h, sheet: sheet, segmented: segmented, backsSheet: backsSheet, backsRow: backsRow,
     T: T, createBoard: createBoard, createSession: createSession, ensureSprite: ensureSprite,
     currentBack: function () { return currentBack; }
