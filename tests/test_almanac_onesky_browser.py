@@ -695,3 +695,64 @@ def test_without_webgl2_the_there_and_then_list_stands_and_the_ground_buttons_do
     )
     assert not errors, errors
     ctx.close()
+
+
+def test_in_totality_the_sky_is_deep_twilight_and_venus_and_jupiter_are_drawn(
+    browser, served
+):
+    """Kerrville, 8 April 2024, mid-totality: the faintest star shown is about +3, and Venus (west of the Sun) and Jupiter (east) are
+    each a visible point in the ground view against the sky round them."""
+    import numpy as np
+    from PIL import Image
+
+    ctx = _context(browser)
+    pg = ctx.new_page()
+    errors = []
+    pg.on("pageerror", lambda e: errors.append(str(e)))
+    pg.goto(served + "/#almanac", wait_until="load")
+    pg.wait_for_function(
+        "() => typeof _aeStandOpen === 'function' && typeof _osEclipse === 'function' && typeof _jdToJulianCentury === 'function'",
+        timeout=120_000,
+    )
+    ms = _ms("2024-04-08T18:34:50")
+    pg.evaluate(
+        "(ms) => _aeStandOpen({ body: 'earth', lat: 30.0474, lon: -99.1403, ms: ms, heading: 180, pitch: 20, clouds: 'clear', direct: true })",
+        ms,
+    )
+    pg.wait_for_function(
+        "() => _ae && _ae.stand && _ae.stand.live && _ae.stand.mode === 'ground' && _ae.stand.fr && _ae.stand.photo",
+        timeout=READY_MS,
+        polling=250,
+    )
+    lim = pg.evaluate("() => _ae.stand.photo.lim")
+    assert 2.4 < lim < 3.4, lim
+    for planet in ("venus", "jupiter"):
+        found = pg.evaluate(
+            """(name) => { const st = _ae.stand, o = st.fr.objs.find(x => x.key === name);
+              if (!o) return null;
+              const az = Math.atan2(o.dir[0], o.dir[1]) * 180 / Math.PI, alt = Math.asin(o.dir[2]) * 180 / Math.PI;
+              st.userYaw = az * Math.PI / 180 - st.yaw; st.userPitch = alt * Math.PI / 180 - _aeRad(AE_STAND_PITCH_DEG);
+              st.dirty = true; st.fr = null; _ae.dirty = true; _aeKick();
+              return { mag: o.mag, az: az, alt: alt }; }""",
+            planet,
+        )
+        assert found and found["mag"] < lim and found["alt"] > 5, (planet, found)
+        pg.wait_for_function(
+            "() => _ae.stand.fr && _ae.stand.photo", timeout=60_000, polling=250
+        )
+        pg.wait_for_timeout(1500)
+        xy = pg.evaluate(
+            """(name) => { const V = _ae.gl.THREE.Vector3, st = _ae.stand, o = st.fr.objs.find(x => x.key === name), p = new V(o.dir[0] * 10, o.dir[1] * 10, o.dir[2] * 10).project(st.camera);
+              const r = _ae.gl.renderer.domElement.getBoundingClientRect();
+              return [r.left + (p.x + 1) / 2 * r.width, r.top + (1 - p.y) / 2 * r.height]; }""",
+            planet,
+        )
+        img = np.asarray(
+            Image.open(io.BytesIO(pg.screenshot())).convert("L")
+        ).astype(float)
+        x, y = int(round(xy[0])), int(round(xy[1]))
+        core = img[max(0, y - 4) : y + 5, max(0, x - 4) : x + 5].max()
+        ring = np.median(img[max(0, y - 30) : y + 31, max(0, x - 30) : x + 31])
+        assert core > ring + 8, (planet, xy, core, ring)
+    assert not errors, errors
+    ctx.close()

@@ -30,6 +30,15 @@ check(Math.abs(tot.sunSemiDeg - 0.2666) < 0.01 && tot.moonSemiDeg > 0.24 && tot.
 const sep = Math.hypot((tot.sunAz - tot.moonAz) * Math.cos(tot.sunAlt * Math.PI / 180), tot.sunAlt - tot.moonAlt);
 check(sep < 0.15, 'and the Moon is on the Sun (' + sep.toFixed(3) + ' deg)');
 
+// The sky darkens steeply over the last seconds, not as a flat cut: a few stops in 30 s on the way in, and the deep twilight of totality.
+const lmAt = (hms) => run('_osSkyState(_osDef({ lat: 30.0474, lon: -99.1403, tMs: Date.parse("2024-04-08T' + hms + 'Z") })).lm');
+const lm0 = lmAt('18:31:00'), lm1 = lmAt('18:31:45'), lm2 = lmAt('18:32:15'), lmT = lmAt('18:34:50'), lmOut = lmAt('18:37:30');
+check(lm0 < lm1 && lm1 < lm2 && lm2 - lm0 > 1.5, 'over the last minute the faintest star shown climbs steadily (' + [lm0, lm1, lm2].map((x) => x.toFixed(2)).join(', ') + ')');
+check(lmT > 2.4 && lmT < 3.2, 'at totality the faintest star is about +2.6 to +3, so Venus and Jupiter show (' + lmT.toFixed(2) + ')');
+check(lmOut < lm2 - 0.5, 'and the sky brightens again as the shadow leaves (' + lmOut.toFixed(2) + ')');
+const zen = run('_sgSkyLum(68, -90, 0, 0, _sgSkyShare(1, 68), 1)');
+check(zen > 0.1 && zen < 0.35, 'the zenith at totality is deep twilight (' + zen.toFixed(2) + ' cd/m2)');
+
 // ── Where a view faces, and the clouds a visit asks for ──
 check(run('_osDefaultHeading(40)') === 180 && run('_osDefaultHeading(-33)') === 0 && run('_osDefaultHeading(0)') === 180, 'a view faces south in the north and north in the south, from one function');
 check(run('_osHandoffFrom(_osDef({}), null).clouds') === 'auto' && run('_osHandoffFrom(_osDef({}), null, { clouds: "clear" }).clouds') === 'clear', 'a hand-off asks for the day\'s clouds unless it asks for a clear sky');

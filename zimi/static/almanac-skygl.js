@@ -151,6 +151,15 @@ var SG_LM_DARK = 7.6, SG_LM_PER_DECADE = 1.5, SG_LM_MAX = 7.9, SG_LM_MIN = -4.5;
 // sunShare is the part of the Sun's light that reaches the place (1, less in an eclipse).
 var SG_SUN_SHARE_MIN = 0.003;      // the sky in totality: light scattered in from beyond the Moon's shadow
 function _sgSunShare(obscuration) { return Math.max(SG_SUN_SHARE_MIN, 1 - Math.min(1, obscuration || 0)); }
+// The sky's own share of the Sun's light is that share to the last few per cent of the Moon's cover, and then falls steeply (a log curve, the
+// Moon's shadow arriving) to a deep twilight at totality: the zenith near 0.2 cd/m2, the faintest star about +3, so Venus and Jupiter show.
+var SG_SKY_STEEP_FROM = 0.97, SG_TOTALITY_SKY_LUM = 0.2;
+function _sgSkyShare(obscuration, sunAlt) {
+  var o = Math.min(1, obscuration || 0), s = _sgSunShare(o);
+  if (o <= SG_SKY_STEEP_FROM) return s;
+  var from = 1 - SG_SKY_STEEP_FROM, to = Math.min(from, SG_TOTALITY_SKY_LUM / Math.max(_sgZenithLum(sunAlt), 1e-6)), t = Math.min(1, (o - SG_SKY_STEEP_FROM) / (1 - SG_SKY_STEEP_FROM));
+  return from * Math.pow(to / from, t);
+}
 function _sgSkyLum(sunAlt, moonAlt, moonIllum, dial, sunShare, moonShare) {
   return Math.max(_sgZenithLum(sunAlt) * (sunShare == null ? 1 : sunShare), SG_DARK_SKY_LUM) + _sgMoonSkyLum(moonAlt, moonIllum, moonShare) + _sgSkyglow(dial);
 }
@@ -963,12 +972,12 @@ function _sgBakeLight(sg, which, altDeg) {
 // A bearing and height (degrees) as a unit vector in (east, north, up).
 function _sgEnu(azDeg, altDeg) { var a = azDeg * DEG_TO_RAD, e = altDeg * DEG_TO_RAD, c = Math.cos(e); return [Math.sin(a) * c, Math.cos(a) * c, Math.sin(e)]; }
 function _sgLightValues(p) {
-  var moonShare = p.moonShare == null ? 1 : p.moonShare, glow = _sgSkyglow(p.dial);
+  var moonShare = p.moonShare == null ? 1 : p.moonShare, glow = _sgSkyglow(p.dial), sky = p.skyShare == null ? (p.sunShare == null ? 1 : p.sunShare) : p.skyShare;
   return {
-    sunLux: p.sunAltGeo > -26 ? SG_SUN_LUX * (p.sunShare == null ? 1 : p.sunShare) : 0,
+    sunLux: p.sunAltGeo > -26 ? SG_SUN_LUX * sky : 0,
     moonLux: p.moonAlt > -12 && p.moonIllum > 0.5 ? _sgMoonLux(p.moonIllum, p.moonDist) * SG_MOON_GAIN * moonShare : 0,
     // The eye has not time to adapt to an eclipse's dimming: it keeps most of the daylight's exposure (the square root of the share).
-    exposure: _sgExposure(p.sunAltGeo, p.moonAlt, p.moonIllum, p.dial, p.sunShare == null ? 1 : Math.sqrt(p.sunShare), Math.sqrt(moonShare)),
+    exposure: _sgExposure(p.sunAltGeo, p.moonAlt, p.moonIllum, p.dial, Math.sqrt(sky), Math.sqrt(moonShare)),
     glow: [glow * 1.0, glow * 0.82, glow * 0.6],
     moonVec: _sgEnu(p.moonAz, p.moonAlt),
     eclGlow: SG_ECL_GLOW_MAX * Math.max(0, Math.min(1, ((p.obsc || 0) - SG_ECL_GLOW_FROM) / (1 - SG_ECL_GLOW_FROM)))
@@ -980,7 +989,7 @@ function _sgZodiTable() {
   for (var i = SG_ZODI_S10.length - 1; i >= 0; i--) zt.push(SG_ZODI_S10[i][0] * DEG_TO_RAD, SG_ZODI_S10[i][1]);
   return zt;
 }
-var SG_ECL_GLOW_MAX = 0.06, SG_ECL_GLOW_FROM = 0.97;   // the sunset-coloured ring's share of a sunset sky's light at totality, and the cover from which it comes up
+var SG_ECL_GLOW_MAX = 0.003, SG_ECL_GLOW_FROM = 0.97;   // the sunset-coloured ring's share of a sunset sky's light at totality, and the cover from which it comes up
 var SG_NO_CLOUDS = { cloud: [0, 2500, 700, 0], wind: [0, 0, 0], sunE: 0 };   // a sky with no cloud field to ask (the clouds' own values: almanac-onesky.js _osCloudValues)
 // One frame. p: { W, H, dpr, view, sunAltGeo, sunAz, moonAlt, moonAz, moonIllum,
 // moonDist, horizon (the 9 numbers of _sgHorizonMatrix), eclPole, sunVec,
