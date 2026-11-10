@@ -3823,5 +3823,7 @@
   "alm_ms_plan": "Planificar un vuelo",
   "alm_ms_plan_plot": "Fechas de lanzamiento y llegada",
   "alm_ms_plan_axes": "Lanzamiento → · Llegada ↑",
-  "alm_ms_plan_fly": "Volarlo"
+  "alm_ms_plan_fly": "Volarlo",
+  "tb_kn_ms_entry": "Apolo 11: trayectoria de reentrada",
+  "tb_kn_ms_entry_v": "Sigue los eventos de entrada del informe de misión; no es una ley de guiado simulada"
 }

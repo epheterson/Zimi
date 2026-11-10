@@ -3823,5 +3823,7 @@
   "alm_ms_plan": "Planejar um voo",
   "alm_ms_plan_plot": "Datas de lançamento e chegada",
   "alm_ms_plan_axes": "Lançamento → · Chegada ↑",
-  "alm_ms_plan_fly": "Voar"
+  "alm_ms_plan_fly": "Voar",
+  "tb_kn_ms_entry": "Apollo 11: trajetória de reentrada",
+  "tb_kn_ms_entry_v": "Segue os eventos de entrada do relatório da missão; não é uma lei de guiagem simulada"
 }

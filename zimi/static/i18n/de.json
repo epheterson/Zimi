@@ -3823,5 +3823,7 @@
   "alm_ms_plan": "Flug planen",
   "alm_ms_plan_plot": "Start- und Ankunftsdaten",
   "alm_ms_plan_axes": "Start → · Ankunft ↑",
-  "alm_ms_plan_fly": "Fliegen"
+  "alm_ms_plan_fly": "Fliegen",
+  "tb_kn_ms_entry": "Apollo 11: Wiedereintrittspfad",
+  "tb_kn_ms_entry_v": "Folgt den Eintrittsereignissen des Missionsberichts; kein simuliertes Lenkgesetz"
 }

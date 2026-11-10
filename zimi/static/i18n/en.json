@@ -3823,5 +3823,7 @@
   "alm_ms_plan": "Plan a flight",
   "alm_ms_plan_plot": "Launch and arrival dates",
   "alm_ms_plan_axes": "Launch → · Arrival ↑",
-  "alm_ms_plan_fly": "Fly it"
+  "alm_ms_plan_fly": "Fly it",
+  "tb_kn_ms_entry": "Apollo 11 entry path",
+  "tb_kn_ms_entry_v": "Follows the mission report's entry events; not a simulated guidance law"
 }

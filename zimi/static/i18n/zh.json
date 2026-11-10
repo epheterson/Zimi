@@ -3823,5 +3823,7 @@
   "alm_ms_plan": "规划飞行",
   "alm_ms_plan_plot": "发射与到达日期",
   "alm_ms_plan_axes": "发射 → · 到达 ↑",
-  "alm_ms_plan_fly": "飞一次"
+  "alm_ms_plan_fly": "飞一次",
+  "tb_kn_ms_entry": "阿波罗11号再入路径",
+  "tb_kn_ms_entry_v": "依据任务报告的再入事件，并非模拟的制导律"
 }
