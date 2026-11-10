@@ -151,7 +151,10 @@
       var tok = (PROJECTS.exec(name) || [])[1] || '', lang = xmlText(e, 'language').split(',')[0].trim();
       var code = (/^[a-z]+_([a-z]{2,3})(?:_|$)/.exec(name) || [])[1];
       var wiki = tok && tok !== 'gutenberg';
-      out.push({ name: name, title: xmlText(e, 'title') || name, language: ISO3[lang] || (lang.length === 2 ? lang : code) || lang,
+      // A book's address in kiwix-serve is its file's name (wikipedia_en_all_maxi_2026-01), not its Name (wikipedia_en_all):
+      // the entry's text/html link says which. <name> still tells the project and the language.
+      var link = /<link[^>]*\btype="text\/html"[^>]*\bhref="[^"]*\/content\/([^"\/]+)"/.exec(e);
+      out.push({ name: link ? decodeURIComponent(link[1]) : name, title: xmlText(e, 'title') || name, language: ISO3[lang] || (lang.length === 2 ? lang : code) || lang,
         kind: wiki ? 'wiki' : 'zim', project: tok, article_count: +xmlText(e, 'articleCount') || 0, main_path: '' });
     }
     return out;

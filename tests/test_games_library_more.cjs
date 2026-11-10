@@ -35,6 +35,10 @@ const rng = seed => load(['librarykit.js']).GamesLib.rng(seed);
     check(cat[1].project === 'gutenberg' && cat[1].kind === 'zim' && Lib.pickByName(cat, 'gutenberg', 'en').name === 'gutenberg_en_all_2026-02', 'kit: Gutenberg is found by name, not as a wiki');
     check(Lib.pickZim(cat, 'wikipedia', 'fr').zim.name === 'wikipedia_fr_all_maxi_2026-01', 'kit: the catalog works with pickZim');
     check(Lib.pickByName(cat, 'wikivoyage', 'en') === null, 'kit: no such book gives null');
+    // The real kiwix-serve (3.8.2): <name> is the ZIM's Name, the book's address is its file's name, in the text/html link.
+    const real = Lib.parseCatalog('<feed><entry><title>Wikipedia</title><language>eng</language><name>wikipedia_en_all</name><articleCount>9</articleCount>' +
+      '<link type="text/html" href="/kiwix/content/wikipedia_en_all_nopic_2026-01" /><author><name></name></author></entry></feed>');
+    check(real.length === 1 && real[0].name === 'wikipedia_en_all_nopic_2026-01' && real[0].project === 'wikipedia' && real[0].language === 'en', 'kit: a book is addressed by its kiwix-serve link, not its Name');
     check(Lib.number('1,404,890,000') === 1404890000 && Lib.number('8,848.86 m (29,031.7 ft)') === 8848.86 && Lib.number('9.6 million') === 9600000 && Lib.number('17,098,246 (6,601,667)') === 17098246 && isNaN(Lib.number('n/a')), 'kit: a number as a table writes it');
     check(Lib.number('−5') === -5 && Lib.number('1.4 billion') === 1.4e9 && Lib.number('6,650(7,088)') === 6650, 'kit: a minus sign, billions, a figure with another in brackets');
 
