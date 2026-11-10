@@ -1320,6 +1320,20 @@ var AE_SPHERE_VERT = [
 var AE_ECL_LINES = 4;        // lines at every quarter of the Sun covered
 var AE_ECL_EDGE = 0.004;     // covered share from which the shadow's edge is drawn
 var AE_ECL_LINE_W = 0.08;    // a line's half-width, in quarters
+// The Earth's mesh is the flattened sphere; its picture's rows are geodetic latitude, so each vertex looks the row up by
+// the geodetic latitude of its point (atan2 of the pole's height over the flattened ring, no pole singularity).
+var AE_EARTH_VERT = [
+  'varying vec2 vUv; varying vec3 vWorld; varying vec3 vNormal;',
+  'void main() {',
+  '  float lat = atan(position.z, ' + _aeGlslNum(1 - AE_EARTH_FLATTENING) + ' * length(position.xy));',
+  '  vUv = vec2(uv.x, 0.5 + lat / 3.14159265);',
+  '  vec4 w = modelMatrix * vec4(position, 1.0);',
+  '  vWorld = w.xyz;',
+  '  vNormal = normalize(mat3(modelMatrix) * normal);',
+  '  gl_Position = projectionMatrix * viewMatrix * w;',
+  '}'
+].join('\n');
+
 var AE_EARTH_FRAG = [
   'precision highp float;',
   'uniform sampler2D dayMap; uniform sampler2D nightMap;',
@@ -1930,7 +1944,7 @@ function _aeBuildGl(THREE, canvas) {
     dim: { value: 1 }
   };
   var earth = new THREE.Mesh(earthGeo, new THREE.ShaderMaterial({
-    uniforms: earthUni, vertexShader: AE_SPHERE_VERT, fragmentShader: AE_EARTH_FRAG
+    uniforms: earthUni, vertexShader: AE_EARTH_VERT, fragmentShader: AE_EARTH_FRAG
   }));
   earth.scale.set(1, 1, 1 - AE_EARTH_FLATTENING);
   scene.add(earth);
@@ -2103,7 +2117,19 @@ var AE_HD_TILE_REACH = 0.75;     // a tile's angular radius, as a share of its s
 // (_aeHdTexelMin), so the Moon's 166 m texels let the camera come four times nearer than its map alone did.
 var AE_HD_MIN_ALT_KM = 400;
 // A place on a body (latitude, longitude in degrees) as a unit vector in the body's own frame.
-function _aeLatLonVec(lat, lon) { return _aeEqVec(_aeRad(lon), _aeRad(lat), 1); }
+// The point of a body's drawn sphere (squashed along its pole by `flat`) at a latitude and longitude. A map's rows follow
+// the geodetic latitude, so with a flattening the sphere's own (reduced) latitude is the one whose tan is (1 - f) tan(lat):
+// then a texture, tile, pin or road at (lat, lon) lands on the true ellipsoid point. Pass AE_EARTH_FLATTENING for Earth
+// surface points, and never read a latitude off the Earth mesh's uv (its picture row is looked up in AE_EARTH_VERT).
+function _aeLatLonVec(lat, lon, flat) {
+  var la = _aeRad(lat), k = flat ? 1 - flat : 1;
+  return _aeEqVec(_aeRad(lon), Math.atan2(k * Math.sin(la), Math.cos(la)), 1);
+}
+// The inverse, for a point of the drawn sphere (unit, local): its geodetic latitude and longitude in degrees.
+function _aeSphereLatLon(x, y, z, flat) {
+  var k = flat ? 1 - flat : 1;
+  return { lat: _aeDeg(Math.atan2(z, k * Math.hypot(x, y))), lon: _aeDeg(Math.atan2(y, x)) };
+}
 
 // Each body's tiled layers: the sampler each fills in the body's own shader, and the layer's folder in the ZIM.
 function _aeHdBodies(S) {
@@ -2196,12 +2222,12 @@ function _aeHdBox(z, x, y) {
   return [x * w, 1 - (y + 1) * h, w, h];
 }
 // One tile's patch of sphere, with the whole map's uv (the shader picks the tile's part), and a skirt round its edges.
-function _aeHdGeometry(THREE, z, x, y, radius) {
+function _aeHdGeometry(THREE, z, x, y, radius, flat) {
   var span = _aeHdSpan(z), n = Math.max(AE_HD_MIN_SEG, Math.ceil(span / AE_HD_SEG_DEG));
   var lon0 = -180 + x * span, lat0 = 90 - y * span;
   var pos = [], nor = [], uv = [], idx = [];
   var vert = function (lat, lon, r) {
-    var p = _aeLatLonVec(lat, lon);
+    var p = _aeLatLonVec(lat, lon, flat);
     pos.push(p[0] * r, p[1] * r, p[2] * r);
     nor.push(p[0], p[1], p[2]);
     uv.push((lon + 180) / 360, (lat + 90) / 180);
@@ -2335,7 +2361,7 @@ function _aeHdMesh(S, b, n) {
     uniforms[m.uni] = { value: ln.tex[m.layer] };
     uniforms['uBox_' + m.uni] = { value: _aeHdBox(ln.z, ln.x, ln.y) };
   });
-  n.mesh = new S.THREE.Mesh(_aeHdGeometry(S.THREE, n.z, n.x, n.y, b.radius),
+  n.mesh = new S.THREE.Mesh(_aeHdGeometry(S.THREE, n.z, n.x, n.y, b.radius, b.key === 'earth' ? AE_EARTH_FLATTENING : 0),
     new S.THREE.ShaderMaterial({ uniforms: uniforms, vertexShader: AE_SPHERE_VERT, fragmentShader: b.frag }));
   n.mesh.visible = false;
   b.parent.add(n.mesh);
@@ -2673,7 +2699,15 @@ function _aeHostOf(k) { var b = _aePlanetBody(k); return b ? b.parent || b.key :
 // How much of an orbit line shows now, 0..1, for every line the scene draws: `key` a planet (its path round the Sun),
 // a moon (round its planet), a probe (its path and ellipse), or 'moon' for the Earth's own (the Moon's path, the GPS
 // and station rings). Off is off everywhere, the Planets view too (the minimap keeps its own little rings).
-function _aeOrbitShow(key) {
+function _aeOrbitShow(key) { return _aeOrbitShowRaw(key) * _aeSunLineFade(); }
+// Close to the Sun its disc fills the view and the orbit lines (and the trails) cross it edge-on as thin white strokes:
+// they are a far-view aid, out before the Sun fills the screen, never drawn over its disc.
+var AE_SUN_LINES_GONE = 2.6, AE_SUN_LINES_FULL = 6;   // the Sun's radii from it
+function _aeSunLineFade() {
+  if (_ae.target !== 'sun') return 1;
+  return _aeClamp((_ae.dist / AE_SUN_SHOW_R - AE_SUN_LINES_GONE) / (AE_SUN_LINES_FULL - AE_SUN_LINES_GONE), 0, 1);
+}
+function _aeOrbitShowRaw(key) {
   var b = _aePlanetBody(key);
   // The Planets view is a map of the orbits: the planets' always show there, whatever the setting (Eric: Off hiding them
   // there "is dumb"); the moons' never (they are drawn on their planets). The setting governs the scene near a body.
@@ -4432,7 +4466,7 @@ function _aeLmBodies() {
   return out;
 }
 function _aeLmDir(b, lat, lon) {
-  var v = _aeLatLonVec(lat, lon), e = b.m;
+  var v = _aeLatLonVec(lat, lon, b.key === 'earth' ? AE_EARTH_FLATTENING : 0), e = b.m;
   return [e[0] * v[0] + e[4] * v[1] + e[8] * v[2], e[1] * v[0] + e[5] * v[1] + e[9] * v[2], e[2] * v[0] + e[6] * v[1] + e[10] * v[2]];
 }
 // With Landmarks off only the place chosen is named. Landmarks on names everything, landing sites first.

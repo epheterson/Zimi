@@ -176,25 +176,25 @@ LAYERS = {
                 "io",
                 "Io_GalileoSSI-Voyager_Global_Mosaic_ClrMerge_1km.tif",
                 "RGB",
-                {"max": 4},
+                {"fill": True, "max": 4},
             ),
             (
                 "europa",
                 "Europa_Voyager_GalileoSSI_global_mosaic_500m.tif",
                 "L",
-                {"max": 4, "roll": True},
+                {"fill": True, "max": 4, "roll": True},
             ),
             (
                 "ganymede",
                 "Ganymede_Voyager_GalileoSSI_global_mosaic_1km.tif",
                 "L",
-                {"max": 4, "roll": True, "tint": "ganymede-v1.webp"},
+                {"fill": True, "max": 4, "roll": True, "tint": "ganymede-v1.webp"},
             ),
             (
                 "callisto",
                 "Callisto_Voyager_GalileoSSI_global_mosaic_1km.tif",
                 "L",
-                {"max": 4, "roll": True},
+                {"fill": True, "max": 4, "roll": True},
             ),
             (
                 "titan",
@@ -206,13 +206,13 @@ LAYERS = {
                 "pluto",
                 "Pluto_NewHorizons_Global_Mosaic_300m_Jul2017_8bit.tif",
                 "L",
-                {"max": 5, "roll": True, "tint": "pluto-v1.webp"},
+                {"fill": True, "max": 5, "roll": True, "tint": "pluto-v1.webp"},
             ),
             (
                 "charon",
                 "Charon_NewHorizons_Global_Mosaic_300m_Jul2017_8bit.tif",
                 "L",
-                {"max": 4},
+                {"fill": True, "max": 4},
             ),
             (
                 "triton",
@@ -454,6 +454,49 @@ FILL_DIM = 0.9  # the invented fill sits a little under the colour it grows from
 EARTH_DIR = os.path.join(ROOT, "zimi", "static", "earth")
 
 
+def _box_blur(a, r):
+    """``a`` (rows x columns x channels) averaged over a (2r+1) square: wrapped round the globe, held at the poles."""
+    import numpy as np
+
+    out = a
+    for axis, mode in ((1, "wrap"), (0, "edge")):
+        pad = [(0, 0)] * a.ndim
+        pad[axis] = (r + 1, r)
+        c = np.cumsum(np.pad(out, pad, mode=mode), axis=axis, dtype=np.float64)
+        n = out.shape[axis]
+        hi = np.take(c, range(2 * r + 1, 2 * r + 1 + n), axis=axis)
+        lo = np.take(c, range(0, n), axis=axis)
+        out = (hi - lo) / (2 * r + 1)
+    return out
+
+
+FILL_RIM = 5  # pixels at a hole's edge, counted as the hole: an edge is antialiased towards black
+FILL_SCALES = (6, 24, 80, 240, 720)  # pixels of a 1024-wide globe: a hole is filled from what is near, then from what is farther
+
+
+def fill_unmapped(im, black=FILL_BLACK):
+    """A globe picture (RGB) with its unmapped black filled: each hole takes the average of the mapped pixels round
+    it, at the nearest scale that reaches any (so a gap is a smooth continuation of its edge, never a guess at
+    detail). The mapped pixels are untouched."""
+    import numpy as np
+    from PIL import Image
+
+    a = np.asarray(im.convert("RGB"), dtype=np.float32)
+    valid = a.max(axis=2) > black
+    valid = valid & (_box_blur(valid.astype(np.float32)[..., None], FILL_RIM)[..., 0] > 0.99)  # the dark rim of an edge is not data
+    out, left = a.copy(), ~valid
+    for r in FILL_SCALES:
+        w = _box_blur(valid.astype(np.float32)[..., None], r)[..., 0]
+        c = _box_blur(a * valid[..., None], r) / np.maximum(w, 1e-6)[..., None]
+        take = left & (w > 0.02)
+        out[take] = c[take]
+        left &= ~take
+    if left.any() and valid.any():  # nothing mapped within reach: the mapped picture's own average
+        out[left] = a[valid].mean(axis=0)
+    hole = Image.fromarray(((~valid).astype(np.uint8)) * 255)
+    return Image.fromarray(np.clip(out, 0, 255).astype(np.uint8)), hole
+
+
 class FileMosaic:
     """A whole-globe picture in plate carree (the Moon's map), windows cut from it. ``roll``: the picture runs 0-360
     degrees east, rolled here to -180..180. ``tint``: a small colour map (-180..180) whose colours, not brightness,
@@ -472,8 +515,8 @@ class FileMosaic:
             self.mode = mode
             self.im = None
             self.res = 360.0 / self.arr.shape[1]
-            self.tint = Image.open(tint).convert("RGB") if tint else None
             self.finish = finish or {}
+            self.tint = self._tint_map(tint)
             self._aux_maps = None
             return
         self.arr = None
@@ -486,8 +529,8 @@ class FileMosaic:
             im = rolled
         self.im = im
         self.res = 360.0 / self.im.width
-        self.tint = Image.open(tint).convert("RGB") if tint else None
         self.finish = finish or {}
+        self.tint = self._tint_map(tint)
         self._aux_maps = None
 
     def _chroma(self, lon0, lat_top, span):
@@ -504,6 +547,15 @@ class FileMosaic:
         lum = (rgb @ np.array(LUMA, dtype=np.float32))[..., None]
         ratio = np.where(lum > CHROMA_FLOOR, rgb / np.maximum(lum, 1.0), 1.0)
         return np.clip(ratio, 0.0, CHROMA_MAX)
+
+    def _tint_map(self, path):
+        """The colour map laid on a greyscale mosaic, its own gaps filled where the layer fills."""
+        from PIL import Image
+
+        if not path:
+            return None
+        im = Image.open(path).convert("RGB")
+        return fill_unmapped(im, CHROMA_FLOOR)[0] if self.finish.get("fill") else im
 
     def _crop(self, x0, y0, px):
         """A square of the memory-mapped picture, ``px`` source pixels a side from (x0, y0), as a tile: the window
@@ -532,8 +584,8 @@ class FileMosaic:
 
     def _aux(self):
         """The two helper maps a finished layer reads, both a globe 1024 wide: ``lp`` (the picture's large-scale
-        brightness, for "tone") and ``fill`` (the picture's unmapped black replaced by its nearest mapped colour,
-        smoothed, for "fill"). None for a layer that asks for neither."""
+        brightness, for "tone") and ``fill`` (the picture with its unmapped black grown over from the mapped colour
+        round it, for "fill"). None for a layer that asks for neither."""
         import numpy as np
         from PIL import Image, ImageFilter
 
@@ -543,63 +595,43 @@ class FileMosaic:
                 if self.arr is not None
                 else self.im.resize((FINISH_MAP_W, FINISH_MAP_W // 2), Image.BOX)
             )
-            lp = fill = None
-            if "tone" in self.finish:
-                lp = small.convert("L").filter(
-                    ImageFilter.GaussianBlur(FINISH_LP_SIGMA_PX)
-                )
+            lp = fill = hole = None
             if self.finish.get("fill"):
-                a = np.asarray(small.convert("RGB"), dtype=np.float32)
-                valid = a.max(axis=2) > FILL_BLACK
-                filled = a.copy()
-                for x in range(
-                    a.shape[1]
-                ):  # each column upward from its first mapped pixel
-                    ys = np.nonzero(valid[:, x])[0]
-                    if len(ys):
-                        y0 = ys[0]
-                        filled[:y0, x] = a[y0 : y0 + 12, x][
-                            valid[y0 : y0 + 12, x]
-                        ].mean(axis=0)
-                fill = Image.fromarray(filled.astype(np.uint8)).filter(
-                    ImageFilter.GaussianBlur(FILL_BLUR_PX)
-                )
-            self._aux_maps = (lp, fill)
+                fill, hole = fill_unmapped(small.convert("RGB"), FILL_BLACK)
+                small = fill  # the large-scale tone is read over the filled picture, not the hole
+            if "tone" in self.finish:
+                lp = small.convert("L").filter(ImageFilter.GaussianBlur(FINISH_LP_SIGMA_PX))
+            self._aux_maps = (lp, fill, hole)
         return self._aux_maps
 
-    def _finish_px(self, arr, lp, fill):
-        """A picture's pixels (float, rows x columns x channels) with the layer's finish: the large-scale tone put
-        back (the Cassini mosaics are high-pass filtered: a flat grey with every crater but no albedo), the unmapped
-        black filled. ``lp`` and ``fill`` are the helper maps over the same ground."""
+    def _finish_px(self, arr, lp, fill, hole=None):
+        """A picture's pixels (float, rows x columns x channels) with the layer's finish: the unmapped black filled
+        (the nearby tone, a little darker, feathered), then the large-scale tone put back (the Cassini mosaics are
+        high-pass filtered: a flat grey with every crater but no albedo). ``lp`` and ``fill`` are the helper maps over
+        the same ground."""
         import numpy as np
         from PIL import Image, ImageFilter
 
+        if fill is not None:
+            black = (arr.max(axis=2) <= FILL_BLACK).astype(np.uint8) * 255
+            mask = Image.fromarray(black).filter(ImageFilter.MaxFilter(7)).filter(ImageFilter.GaussianBlur(2))
+            alpha = np.asarray(mask, dtype=np.float32) / 255.0
+            if hole is not None:  # the hole as the picture's small map saw it, its dark rim too
+                alpha = np.maximum(alpha, np.asarray(hole, dtype=np.float32) / 255.0)
+            alpha = alpha[..., None]
+            grow = np.asarray(fill, dtype=np.float32)
+            if arr.shape[2] == 1:
+                grow = grow.mean(axis=2, keepdims=True)
+            arr = arr * (1 - alpha) + grow * FILL_DIM * alpha
         tone = self.finish.get("tone")
         if tone:
             lum = arr[..., :1]
             low = np.asarray(lp, dtype=np.float32)[..., None]
             detail = lum / np.maximum(low, 8.0)
-            lo, hi, c0, c1 = (
-                tone["lo"],
-                tone["hi"],
-                np.array(tone["dark"], np.float32),
-                np.array(tone["light"], np.float32),
-            )
+            lo, hi, c0, c1 = tone["lo"], tone["hi"], np.array(tone["dark"], np.float32), np.array(tone["light"], np.float32)
             s = np.clip((low - lo) / max(hi - lo, 1e-6), 0.0, 1.0)
             s = s * s * (3 - 2 * s)
             arr = (c0 + (c1 - c0) * s) * detail
-        if fill is not None:
-            black = (arr.max(axis=2) <= FILL_BLACK).astype(np.uint8) * 255
-            mask = (
-                Image.fromarray(black)
-                .filter(ImageFilter.MaxFilter(7))
-                .filter(ImageFilter.GaussianBlur(2))
-            )
-            alpha = (np.asarray(mask, dtype=np.float32) / 255.0)[..., None]
-            arr = (
-                arr * (1 - alpha)
-                + np.asarray(fill, dtype=np.float32) * FILL_DIM * alpha
-            )
         return np.clip(arr, 0, 255)
 
     def _finished(self, im, lp_box, size):
@@ -607,14 +639,14 @@ class FileMosaic:
         import numpy as np
         from PIL import Image
 
-        lp, fill = self._aux()
+        lp, fill, hole = self._aux()
         grab = lambda m: (
             m.resize(size, Image.BICUBIC, box=lp_box) if m is not None else None
         )  # noqa: E731
         arr = np.asarray(im, dtype=np.float32)
         if arr.ndim == 2:
             arr = arr[..., None]
-        arr = self._finish_px(arr, grab(lp), grab(fill))
+        arr = self._finish_px(arr, grab(lp), grab(fill), grab(hole))
         return Image.fromarray(
             arr.astype(np.uint8)[..., 0] if arr.shape[2] == 1 else arr.astype(np.uint8)
         )
@@ -1290,6 +1322,7 @@ def main(argv=None):
         help="the Apollo sites' NAC inserts (on unless --no-inserts)",
     )
     ap.add_argument("--no-inserts", dest="inserts", action="store_false")
+    ap.add_argument("--procs", type=int, help="worker processes for tile cutting (default: every core)")
     ap.add_argument(
         "--split",
         action="store_true",
@@ -1322,7 +1355,7 @@ def main(argv=None):
     for layer in [x for x in a.layers.split(",") if x]:
         cap = a.max_earth if layer.startswith("earth/") else None
         manifest["layers"][layer] = {
-            "max": build_layer(layer, a.cache, stage, a.update_pins, cap)
+            "max": build_layer(layer, a.cache, stage, a.update_pins, cap, a.procs)
         }
     albedo = manifest["layers"].get("moon/albedo")
     if (
