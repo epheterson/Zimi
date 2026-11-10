@@ -63,8 +63,8 @@ def build_perseverance():
     """Perseverance's last day at Mars: Horizons' approach, then the entry, descent and landing as a profile (scripts/mission_perseverance.py)."""
     import mission_perseverance as mp
 
-    t_ei, trk, fx, vehicles, terminal = mp.build()
-    phases, events = mp.phases_and_events(t_ei, vehicles[0]["on"])
+    t_ei, trk, fx, vehicles, terminal, extra = mp.build()
+    phases, events = mp.phases_and_events(t_ei, extra["approach_start"], extra)
     t_touch = t_ei + mp.T_TOUCH
     t0 = vehicles[0]["on"]
     return {
@@ -74,7 +74,8 @@ def build_perseverance():
         "start": float(t0),
         "end": t_touch + 30.0,
         "follow": "m20",
-        "ref": {"moon": [[t0, 0, 0, 0, 0, 0, 0], [t_touch + 60.0, 0, 0, 0, 0, 0, 0]]},
+        "ref": {"moon": pack(extra["moon"], 3, 8)},
+        "arc": "helio",
         "source": "NASA/JPL Mars 2020 press kit (events), JPL Horizons -168 (the approach, Mars-centred, UT, ecliptic J2000); the entry and descent follow the published events "
                   "between them (scripts/mission_perseverance.py), flown over the view's own Mars-fixed frame to the Perseverance pin in landmarks-v1.json",
         "vehicles": vehicles,
