@@ -766,7 +766,7 @@ function _sgDispose(sg) {
   if (!sg) return;
   clearTimeout(sg.pollTimer);
   try {
-    var gl = sg.gl, t = [sg.trans, sg.multi, sg.viewS, sg.viewM], i;
+    var gl = sg.gl, t = [sg.trans, sg.multi, sg.viewS, sg.viewM, sg.viewE], i;
     for (i = 0; i < t.length; i++) if (t[i]) { gl.deleteTexture(t[i].tex); gl.deleteFramebuffer(t[i].fb); }
     if (sg.mwTex) gl.deleteTexture(sg.mwTex);
     [sg.readMid, sg.readGrid].forEach(function (t) { if (t) { gl.deleteRenderbuffer(t.rb); gl.deleteFramebuffer(t.fb); } });
