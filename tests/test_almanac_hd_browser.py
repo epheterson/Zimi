@@ -327,7 +327,7 @@ def test_a_flavour_opened_alone_is_the_almanac_and_the_hd_one_draws_its_own_tile
         ownzims.write_zim(next(o for o in ownzims.OWN if o.name == "zimi_almanac"), str(tmp_path / "zims" / "zimi_almanac_2026-11.zim"))
         httpd = _serve(tmp_path, "without", fresh=False)
         page = "/w/zimi_almanac/index.html?raw=1"
-    ctx = browser.new_context(viewport=VIEW, device_scale_factor=2, has_touch=True, is_mobile=True, service_workers="block")
+    ctx = browser.new_context(viewport=VIEW, device_scale_factor=2, has_touch=True, is_mobile=True, service_workers="block", reduced_motion="reduce")
     ctx.add_init_script("try { localStorage.setItem('zimi_almanac_place', %r); } catch (e) {}" % PLACE)
     pg = ctx.new_page()
     reqs, errors = [], []
