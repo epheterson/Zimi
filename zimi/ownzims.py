@@ -219,6 +219,58 @@ def name_of_file(filename):
     return name if any(o.name == name for o in OWN) else None
 
 
+_ident_cache = {}  # path -> ((size, mtime), (Name, Date))
+_ident_lock = threading.Lock()
+#: A copy is looked at only when its file name starts like Zimi's own ("zimi_..."): the decision is by the Name metadata,
+#: this only keeps a scan from opening every file of a large library.
+IDENT_PREFIX = "zimi"
+
+
+def identity(path):
+    """``(Name, Date)`` metadata of a ZIM file, "" for what it lacks, None when it cannot be read. Read once per file
+    version."""
+    try:
+        st = os.stat(path)
+    except OSError:
+        return None
+    key = (st.st_size, st.st_mtime_ns)
+    with _ident_lock:
+        hit = _ident_cache.get(path)
+        if hit and hit[0] == key:
+            return hit[1]
+    from libzim.reader import Archive
+
+    try:
+        a = Archive(path)
+        vals = tuple(bytes(a.get_metadata(k)).decode("utf-8", "replace").strip() if k in a.metadata_keys else "" for k in ("Name", "Date"))
+    except Exception:
+        return None
+    with _ident_lock:
+        _ident_cache[path] = (key, vals)
+    return vals
+
+
+def _date_key(date):
+    """A ZIM's Date metadata (2026-11 or 2026-11-08) as a sortable string, a missing day or month counting as 0."""
+    parts = (date or "").split("-")[:3]
+    return "-".join((parts + ["00", "00"])[i].zfill(4 if i == 0 else 2) for i in range(3))
+
+
+def family_of(path):
+    """The own ZIM's served name (``zimi_almanac``) whose Name metadata this file carries, and whether the file is
+    strictly newer than the package's, or None. A different ZIM, whatever its file name, is None."""
+    if is_own_path(path) or not os.path.basename(path).lower().startswith(IDENT_PREFIX):
+        return None
+    mine = identity(path)
+    if not mine or not mine[0]:
+        return None
+    for o in OWN:
+        theirs = identity(zim_path(o)) if zim_path(o) else None
+        if theirs and theirs[0] == mine[0]:
+            return o.name, _date_key(mine[1]) > _date_key(theirs[1])
+    return None
+
+
 def zim_paths():
     """The committed ZIMs, for the library scan (empty while off), less the
     ones an admin removed."""

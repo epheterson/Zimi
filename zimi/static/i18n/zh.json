@@ -4115,5 +4115,9 @@
   "pdf_failed_file": "你请求的文件",
   "pdf_failed_back": "返回合集",
   "alm_craft_loading": "正在加载航天器",
-  "alm_craft_failed": "这里没有它的模型，以一个点显示"
+  "alm_craft_failed": "这里没有它的模型，以一个点显示",
+  "lib_hd_where": "在年鉴的设置中选择",
+  "lib_hd_meta": "{n} 个文件 · {size}",
+  "older_copies_title": "保留的旧副本",
+  "older_copies_row": "已由 {file} 取代"
 }

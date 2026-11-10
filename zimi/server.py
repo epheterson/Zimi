@@ -3196,7 +3196,9 @@ def _scan_zim_files():
     for name, cands in groups.items():
         if len(cands) > 1:
             _split_languages(name, cands, zims, groups)
+    own_wins = _fold_own_copies(zims)
     served = set(zims.values())
+    _set_older_copies(groups, served, own_wins)
     libfolders.set_shadowed(
         {
             path: zims[name]
@@ -3206,6 +3208,66 @@ def _scan_zim_files():
         }
     )
     return zims
+
+
+def _fold_own_copies(zims):
+    """One Almanac, one Games: a ZIM whose Name metadata is an own ZIM's (a copy of it under another file name, such as
+    zimi_eng_zimi_almanac_2026-11.zim beside the package's zimi_almanac) is that ZIM, not another one. The package's
+    file is served under the name unless the copy is strictly newer by its Date metadata, in which case the copy is
+    (and the package's file stands down, like a same-name copy in _own_copy_first). Edits ``zims`` in place; returns
+    ``{loser path: winner path}``. A ZIM that only looks alike (another Name) is left alone."""
+    from zimi import ownzims
+
+    lost = {}
+    for name in sorted(zims):
+        path = zims.get(name)
+        fam = ownzims.family_of(path) if path else None
+        if not fam:
+            continue
+        own_name, newer = fam
+        own_path = zims.get(own_name)
+        if name == own_name or not own_path or not ownzims.is_own_path(own_path):
+            continue
+        if newer:
+            lost[own_path] = path
+            zims[own_name] = path
+        else:
+            lost[path] = own_path
+        del zims[name]
+    return lost
+
+
+#: Files in the library that no name serves because a newer build of the same thing does (a superseded edition, or a
+#: copy of an own ZIM): {path: path of what serves instead}. Only the root and one folder down: another program's
+#: folder is not Zimi's to tidy, and the package's own file is never listed.
+_older_copies = {}
+
+
+def _set_older_copies(groups, served, own_wins):
+    global _older_copies
+    found = {}
+    for cands in groups.values():
+        for tier, path in cands:
+            if tier in (0, 1, -1) and path not in served and not _is_own_zim_path(path):
+                winner = next((p for _t, p in cands if p in served), None)
+                if winner:
+                    found[path] = winner
+    for loser, winner in own_wins.items():
+        if not _is_own_zim_path(loser):
+            found[loser] = winner
+    _older_copies = found
+
+
+def older_copies():
+    """The superseded files, for Manage > Storage: ``[{file, size_bytes, replaced_by}]``, biggest first."""
+    out = []
+    for path, winner in _older_copies.items():
+        try:
+            size = os.path.getsize(path)
+        except OSError:
+            continue
+        out.append({"file": os.path.basename(path), "size_bytes": size, "replaced_by": os.path.basename(winner)})
+    return sorted(out, key=lambda r: (-r["size_bytes"], r["file"]))
 
 
 def _rel_or_abs(path, start):
@@ -3276,6 +3338,14 @@ DATA_PACKS = frozenset(("zimi_almanac_maxi", "zimi_almanac_hd", "zimi_almanac_hd
 def content_zims():
     """get_zim_files() less the data packs: what search and the indexes walk."""
     return {k: v for k, v in get_zim_files().items() if k not in DATA_PACKS}
+
+
+def server_zim_files():
+    """The library's name -> path map as the SERVER has it, ignoring who is asking (see server_zim_count)."""
+    global _zim_files_cache
+    if _zim_files_cache is None:
+        _zim_files_cache = _scan_zim_files()
+    return dict(_zim_files_cache)
 
 
 def server_zim_count():

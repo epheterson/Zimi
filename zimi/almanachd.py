@@ -264,6 +264,28 @@ def _downloading():
     return next(iter(_downloading_all()), None)
 
 
+def library_row():
+    """The one Manage > Library row for the Almanac's data: every pack and part the server has, with sizes, or None. The
+    packs are not library rows of their own (server.DATA_PACKS); the Almanac's gear chooses which of them to have."""
+    from zimi import server as _srv
+
+    have = _srv.server_zim_files()
+    packs = []
+    for name in (NAME, LEGACY_NAME) + tuple(part_name(p) for p in PARTS):
+        path = have.get(name)
+        if not path:
+            continue
+        try:
+            size = os.path.getsize(path)
+        except OSError:
+            continue
+        packs.append({"name": name, "file": os.path.basename(path), "size_bytes": size,
+                      "part": name[len(PART_PREFIX):] if name.startswith(PART_PREFIX) else ""})
+    if not packs:
+        return None
+    return {"size_bytes": sum(p["size_bytes"] for p in packs), "packs": packs}
+
+
 def status():
     """What the Almanac shows: ``installed`` and ``base`` (where its tiles are read from); ``offer`` while it is not
     (``size``; ``approx`` when it is the offline estimate, before the release's own figure is known); the setting; the

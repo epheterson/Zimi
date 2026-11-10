@@ -1985,6 +1985,11 @@
   .create-status .spinner-inline { display: inline-block; width: 14px; height: 14px; vertical-align: middle; margin-right: 8px; }
   .content-search-indicator { text-align: center; padding: 12px; color: var(--text2); font-size: 12px; animation: fadeIn 0.3s ease; }
   .content-search-indicator .spinner-inline { display: inline-block; width: 12px; height: 12px; vertical-align: middle; margin-right: 6px; }
+  /* Manage > Library: the Almanac's data as one row, its parts and their sizes under it. */
+  .ci-hd-parts { margin: -4px 12px 8px; padding: 6px 12px; border: 1px solid var(--border); border-top: 0; border-radius: 0 0 10px 10px; font-size: 12px; color: var(--text2); }
+  .ci-hd-part { display: flex; justify-content: space-between; gap: 12px; padding: 2px 0; }
+  #ms-older .ci-title, #ms-older .ci-meta { overflow-wrap: anywhere; }
+  .ci-hd-part > span:first-child { min-width: 0; overflow-wrap: anywhere; }
   .empty { text-align: center; padding: 48px 20px; color: var(--text2); }
   .empty p { font-size: 14px; margin-bottom: 8px; }
   .empty .hint { font-size: 12px; color: var(--text2); }
