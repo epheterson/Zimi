@@ -31,7 +31,8 @@
  },
  "1.15.5": {
   "zimi_almanac": [
-   "On a phone the solar system no longer makes the tables page scroll sideways."
+   "On a phone the solar system no longer makes the tables page scroll sideways.",
+   "Getting back to 1x by touch is easier."
   ]
  }
 }

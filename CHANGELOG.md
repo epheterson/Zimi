@@ -13,14 +13,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 **Zimi**
 
-- Search finds documents in PDF collections, by their listed title and by the text inside them (#142).
-- Voices work on the portable Linux build (#151).
-- `zimi check` checks a ZIM the way openZIM's zimcheck does.
+- Search finds documents in PDF collections, by title and by the text inside them (#142).
+- Voices work on the portable Linux build, and Settings says why when one can't be installed (#151).
+- Settings pages stay inside their cards, so Capture's switches are no longer cut off (#150).
 - `zimi serve /path/to/zims` works, the same as `--zim-dir` (#152).
+- `zimi check` checks a ZIM the way openZIM's zimcheck does.
+- Manage can clear cached catalog copies.
 
 **Almanac**
 
 - On a phone the solar system no longer makes the tables page scroll sideways.
+- Getting back to 1x by touch is easier.
 
 ### Added
 
@@ -34,7 +37,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 - Voices on the portable Linux build: the helper it was missing is included, a first voice download sets up its engine with the machine's Python or uv, and a disk mounted noexec is named instead of failing (#151).
 - Settings > Language says why a voice can't be installed instead of doing nothing (#151).
-- Settings panes no longer grow wider than their card, so Capture's switches are no longer cut off, and they match the switches everywhere else; Create's setup commands wrap inside their card too (#150).
+- Settings panes no longer grow wider than their card, so Capture's switches are no longer cut off, and they match the switches everywhere else (#150).
+- Create's setup commands wrap inside their card (#150).
 - Reddot, Zimipedia, ZimiTube, the PDF reader and Manage's Maps pane follow a setting changed in another window.
 - A second `zimi serve -d` started while the first is still starting no longer removes its pid file.
 - The portable build includes Pillow.
