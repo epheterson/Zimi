@@ -336,8 +336,18 @@ function _aeMissionOpen(id, atT, back) {
     _aeShowGo(false);
     _amHud(true);
     _amJump(m, atT == null ? m.start : atT);
+    if (m.arc) _amArc(m);
     _aeKick();
   });
+}
+
+// A mission whose cruise is a Sun-centred table (m.arc: the vehicle whose helio leg it is) draws that arc and fits its overview shots to it.
+function _amArc(m) {
+  var leg = null;
+  m.vehicles.forEach(function (v) { v.legs.forEach(function (l) { if (!leg && l.frame === 'helio') leg = l; }); });
+  if (!leg) return;
+  m.fitD = _amOverviewDist(leg.s);
+  _amPlanLoad(function () { if (_ae.mission && _amMission() === m && typeof _apArcLine === 'function') _apArcLine(_ae.mission, leg.s); });
 }
 function _amStop(quiet) {
   var s = _ae && _ae.mission;
@@ -529,12 +539,21 @@ function _amPhaseChanged(m, pi) {
   if (there && s && !s.noHandoff) _amHandoff(m, pi);
 }
 
+var AM_OVERVIEW_MARGIN = 1.35;               // the overview holds the whole arc (as the view draws it) with this much room round it
+var AM_OVERVIEW_FAR_RE = 36000;              // the camera's far plane stands at about 40000 Earth radii
+// How far above the Sun the overview stands to hold the whole arc, on the view's squeezed scale, in this window's narrower side.
+function _amOverviewDist(rows) {
+  var far = 0;
+  rows.forEach(function (r) { far = Math.max(far, _aeShownDist(Math.hypot(r[1], r[2], r[3]))); });
+  var side = Math.tan(_aeRad(AM_FOV_DEG) / 2) * Math.min(1, (_ae.w || 1) / (_ae.h || 1));
+  return Math.min(AM_OVERVIEW_FAR_RE, far * AM_OVERVIEW_MARGIN / side);
+}
 // ── The camera ──
 // A phase's shot is relative to the vehicle it follows: a distance (metres), an azimuth about its axis (degrees: 0 from its up
 // side, 90 from its right) and how far toward its tail the camera leans (degrees). A hand on the picture takes the camera until a phase is jumped to.
 function _amCamera(m, s, st, ph, dt, sc) {
   var shot = ph.cam || { d: 200, az: 150, el: 15 };
-  var want = { az: _aeRad(shot.az), el: _aeRad(shot.el), dist: shot.d };
+  var want = { az: _aeRad(shot.az), el: _aeRad(shot.el), dist: shot.fit ? (m.fitD || AM_OVERVIEW_FAR_RE / 4) : shot.d };
   if (!s.camSet) {
     // A shot begins where the camera is, in this vehicle's frame, so it eases there rather than cutting.
     s.camSet = true;
