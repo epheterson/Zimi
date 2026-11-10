@@ -4013,5 +4013,14 @@
   "alm_ms_ev_skycrane": "Sky crane",
   "alm_ms_ev_m20_touchdown": "Touchdown",
   "tb_kn_ms_m20": "Perseverance entry and landing",
-  "tb_kn_ms_m20_v": "Follows the landing's published events and ends at the Perseverance pin; the entry heading and the altitude and speed between events are assumed, not simulated"
+  "tb_kn_ms_m20_v": "Follows the landing's published events and ends at the Perseverance pin; the entry heading and the altitude and speed between events are assumed, not simulated",
+  "alm_ms_ph_tmi": "Mars injection",
+  "alm_ms_ev_srb_sep": "Booster separation",
+  "alm_ms_ev_fairing_sep": "Fairing jettison",
+  "alm_ms_ev_meco": "Main engine cutoff",
+  "alm_ms_ev_centaur_burn": "Centaur burn",
+  "alm_ms_ev_tmi_burn": "Mars injection burn",
+  "alm_ms_ev_sc_sep": "Spacecraft separation",
+  "tb_kn_ms_m20_launch": "Perseverance launch and cruise",
+  "tb_kn_ms_m20_launch_v": "The Atlas V 541's ascent follows the launch's published events; its altitude and speed between them, the launch azimuth, the parking orbit and the shape of the injection burn are assumed. From 12:52 UT the spacecraft is JPL Horizons' own (-168), Earth-centred, then Sun-centred for the 203 days to Mars"
 }
