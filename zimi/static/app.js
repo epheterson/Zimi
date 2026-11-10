@@ -7531,8 +7531,8 @@ var _MOON_DISPLAY_GAMMA = 2.2;
 // (a Lambert sphere's phase function), as a camera sees it: a faint dark
 // side beside a crescent, gone at full Moon, where only a trace of the dark
 // limb shows against the sky.
-var _MOON_EARTHSHINE_MAX = 0.01;     // linear, against the full Moon's 1
-var _MOON_EARTHSHINE_FLOOR = 0.0015; // linear; the dark limb's outline
+var _MOON_EARTHSHINE_MAX = 0.04;     // linear, against the full Moon's 1 (more than a camera's: the eye sees the dark side plainly; 0.01 left a black disc with unreadable labels)
+var _MOON_EARTHSHINE_FLOOR = 0.004;  // linear; the dark limb's outline
 
 function _moonLunarL(cosAlpha) {
   var a = Math.acos(Math.max(-1, Math.min(1, cosAlpha))) * 180 / Math.PI;

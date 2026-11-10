@@ -2284,7 +2284,7 @@
   "alm_earth_sat_ask_hint": "No se descarga nada hasta que se pida",
   "alm_earth_sat_auto": "Automáticamente",
   "alm_earth_sat_auto_hint": "Datos precisos de {src}",
-  "alm_earth_sat_never": "Aproximar con datos sin conexión",
+  "alm_earth_sat_never": "Nunca",
   "alm_earth_sat_never_hint": "Posiciones a partir de los datos que este Zimi ya tiene, menos exactas con el tiempo",
   "alm_earth_sat_admin_only": "Solo un administrador puede cambiar esto",
   "alm_earth_sat_offline": "Zimi está sin conexión (ZIMI_OFFLINE), así que nunca descarga nada",
@@ -3881,5 +3881,7 @@
   "alm_ms_ev_tmi_burn": "Encendido de inyección a Marte",
   "alm_ms_ev_sc_sep": "Separación de la nave",
   "tb_kn_ms_m20_launch": "Perseverance: lanzamiento y crucero",
-  "tb_kn_ms_m20_launch_v": "El ascenso del Atlas V 541 sigue los eventos publicados del lanzamiento; su altitud y velocidad entre ellos, el acimut, la órbita de aparcamiento y la forma de la inyección son supuestos. Desde las 12:52 UT la nave es la de JPL Horizons (-168), geocéntrica y luego heliocéntrica durante los 203 días hasta Marte"
+  "tb_kn_ms_m20_launch_v": "El ascenso del Atlas V 541 sigue los eventos publicados del lanzamiento; su altitud y velocidad entre ellos, el acimut, la órbita de aparcamiento y la forma de la inyección son supuestos. Desde las 12:52 UT la nave es la de JPL Horizons (-168), geocéntrica y luego heliocéntrica durante los 203 días hasta Marte",
+  "alm_craft_loading": "Cargando la sonda",
+  "alm_craft_failed": "Sin modelo aquí: se muestra un punto"
 }

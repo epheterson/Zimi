@@ -583,6 +583,9 @@ var AE_CSS = [
   '.ae-chips .ae-btn{flex:none}',
   '@media (max-width:400px){#ae-views,.ae-chips{gap:4px}#ae-views .ae-btn:not(.ae-round){padding-inline:10px}}',
   '@media (max-width:370px){#ae-views,.ae-chips{gap:3px}#ae-views .ae-btn{font-size:12px}#ae-views .ae-btn:not(.ae-round){padding-inline:5px}#ae-views .ae-round{width:30px;height:30px}}',
+  // Short landscape (a phone on its side, 390 high): the sheet takes the height, short of the control column, so a list of places shows
+  // six rows, not one and a half.
+  '@media (orientation:landscape) and (max-height:460px){.ae-go{inset-inline:12px 68px;top:8px;max-height:none}}',
   '.ae-go-find{position:sticky;bottom:-8px;z-index:1;display:flex;align-items:center;gap:8px;margin:4px -6px -8px;padding:8px 14px;background:' + AE_PANEL_BG + ';border-top:1px solid var(--border);color:var(--text3)}',
   '.ae-go-find input{flex:1;min-width:0;height:32px;border:0;background:none;color:var(--text);font:inherit;font-size:16px;outline:none;-webkit-user-select:text;user-select:text;-webkit-appearance:none;appearance:none}',
   '.ae-go-find input::-webkit-search-cancel-button{-webkit-appearance:none}',
@@ -604,7 +607,7 @@ var AE_CSS = [
   // Where you are among the planets, in a corner while near one: tap for the whole system.
   // On a phone the sheet lifts the picture into the minimap's corner: the minimap steps aside while it is up.
   '@media (max-width:759px){.ae-info-up .ae-mini{opacity:0;pointer-events:none}}',
-  '.ae-mini{position:absolute;left:12px;top:calc(env(safe-area-inset-top) + 12px);width:' + AE_MINI_PX + 'px;height:' + AE_MINI_PX + 'px;padding:0;border:1px solid var(--border);border-radius:50%;background:rgba(0,0,0,.55);overflow:hidden;cursor:pointer}',
+  '.ae-mini{position:absolute;inset-inline-start:12px;top:calc(env(safe-area-inset-top) + 12px);width:' + AE_MINI_PX + 'px;height:' + AE_MINI_PX + 'px;padding:0;border:1px solid var(--border);border-radius:50%;background:rgba(0,0,0,.55);overflow:hidden;cursor:pointer}',
   '.ae-mini[hidden]{display:none}',
   '.ae-mini canvas{width:100%;height:100%;display:block}',
   '.ae-mini:focus-visible{outline:2px solid var(--amber);outline-offset:2px}',
@@ -648,7 +651,7 @@ var AE_CSS = [
   '.ae-bm-quiet b{display:none}',
   // Landmarks: a dot and a name each, tappable (the dot sits on the place, AE_LM_DOT_X from the button's edge).
   '.ae-lms{position:absolute;inset:0;pointer-events:none;overflow:hidden}',
-  '.ae-lm{position:absolute;left:0;top:0;margin:0;padding:6px 8px 6px 18px;border:0;background:none;font:inherit;font-size:11px;color:#dfe6f0;white-space:nowrap;text-shadow:0 1px 2px #000,0 0 4px #000;pointer-events:auto;cursor:pointer}',
+  '.ae-lm{position:absolute;left:0;top:0;box-sizing:border-box;overflow:hidden;text-overflow:ellipsis;margin:0;padding:6px 8px 6px 18px;border:0;background:none;font:inherit;font-size:11px;color:#dfe6f0;white-space:nowrap;text-shadow:0 1px 2px #000,0 0 4px #000;pointer-events:auto;cursor:pointer}',
   '.ae-lm::before{content:"";position:absolute;left:6px;top:50%;width:6px;height:6px;border-radius:50%;background:currentColor;transform:translateY(-50%);box-shadow:0 0 3px #000}',
   '.ae-lm.ae-lm-left{padding:6px 18px 6px 8px}.ae-lm.ae-lm-left::before{left:auto;right:6px}',
   '.ae-lm:focus-visible{outline:2px solid var(--amber);outline-offset:-2px;border-radius:6px}',
@@ -2336,7 +2339,9 @@ function _aeHdCanSplit(b, z, x, y) {
 function _aeHdKeepAbove(S, b) {
   var inv = new S.THREE.Matrix4().copy(b.parent.matrixWorld).invert();
   var c = S.camera.position.clone().applyMatrix4(inv), r = Math.hypot(c.x, c.y, c.z);
-  var min = _aeHdMinOver(b, _aeDeg(Math.asin(c.z / r)), _aeDeg(Math.atan2(c.y, c.x)));
+  if (!(r > 0)) return;   // the camera has no place yet (the first frames): there is no point below it
+  var min = _aeHdMinOver(b, _aeDeg(Math.asin(_aeClamp(c.z / r, -1, 1))), _aeDeg(Math.atan2(c.y, c.x)));
+  if (!isFinite(min)) return;
   if (b.key === 'earth') min = Math.min(min, _aeMapsMin());
   AE_TARGETS[b.key].min = min;
   if (_ae.dist < min) { _ae.dist = min; _ae.dirty = true; }
@@ -2776,6 +2781,22 @@ function _aeOrbitShow(key) { return _aeOrbitShowRaw(key) * _aeSunLineFade(); }
 // Close to the Sun its disc fills the view and the orbit lines (and the trails) cross it edge-on as thin white strokes:
 // they are a far-view aid, out before the Sun fills the screen, never drawn over its disc.
 var AE_SUN_LINES_GONE = 24, AE_SUN_LINES_FULL = 60;   // the Sun's radii from it: the Sun's own view (about 17) has none, the Planets view (hundreds) all
+// The Moon seen from a few kilometres up: the base sphere's facets (5.6 degrees, 170 km chords) lie up to 2 km inside the true
+// surface, so a camera 1.3 km up is below the plane of the facet under it and sees a flat slab with a hard edge. Near the
+// surface the Moon is drawn from a finer sphere (0.7 degree facets, 130 m inside), built when first needed and put back
+// when the camera goes away; the HD tiles' own meshes are finer still and take over where they are.
+var AE_MOON_FINE_SEGMENTS = [512, 256], AE_MOON_FINE_ALT_KM = 300, AE_MOON_COARSE_ALT_KM = 600;
+function _aeMoonMesh(S, sc) {
+  var e = S.moon.matrixWorld.elements, cam = S.camera.position;
+  var altKm = (Math.hypot(cam.x - e[12], cam.y - e[13], cam.z - e[14]) - AE_MOON_RADIUS_RE) * AE_EARTH_RADIUS_KM;
+  if (!S.moonCoarse) S.moonCoarse = S.moon.geometry;
+  if (altKm < AE_MOON_FINE_ALT_KM && S.moon.geometry === S.moonCoarse) {
+    if (!S.moonFine) S.moonFine = new S.THREE.SphereGeometry(AE_MOON_RADIUS_RE, AE_MOON_FINE_SEGMENTS[0], AE_MOON_FINE_SEGMENTS[1]);
+    S.moon.geometry = S.moonFine;
+  } else if (altKm > AE_MOON_COARSE_ALT_KM && S.moon.geometry !== S.moonCoarse) {
+    S.moon.geometry = S.moonCoarse;
+  }
+}
 function _aeSunLineFade() {
   if (_ae.target !== 'sun') return 1;
   return _aeClamp((_ae.dist / AE_SUN_SHOW_R - AE_SUN_LINES_GONE) / (AE_SUN_LINES_FULL - AE_SUN_LINES_GONE), 0, 1);
@@ -4481,6 +4502,7 @@ var AE_LM_LANDING_MIN_R_PX = 80;
 var AE_LM_BOX_H = 26;                        // a label's box is this tall (its padding and line), centred on its dot
 var AE_LM_PAD_X = 26, AE_LM_FONT_PX = 11;   // its padding either side of the name (.ae-lm), and the name's size
 var AE_LM_DOT_X = 9;                         // the dot's centre, from the label's left edge (.ae-lm::before)
+var AE_LM_MIN_W_PX = 48;
 var AE_LM_EDGE_PX = 8;                       // a name keeps this clear of the screen's right edge
 var AE_LM_FACING = 0.05;                     // how far round the limb a place still faces the camera (cosine)
 // A row's kind as its card names it (alm_lm_kind_<name>): the Moon's own kinds fold into the few every body shares.
@@ -4652,6 +4674,8 @@ function _aeUpdateLandmarks() {
     // A name that would run off the right edge reads to the left of its dot.
     var left = c2.box.left;
     el.classList.toggle('ae-lm-left', left);
+    // A name longer than the room it has (a long landing's, any language) is cut with an ellipsis inside the screen, never off it.
+    el.style.maxWidth = Math.max(AE_LM_MIN_W_PX, Math.floor(left ? c2.s.x + AE_LM_DOT_X - AE_LM_EDGE_PX : _ae.w - (c2.s.x - AE_LM_DOT_X) - AE_LM_EDGE_PX)) + 'px';
     el.style.transform = left ? 'translate(' + Math.round(c2.s.x + AE_LM_DOT_X) + 'px,' + Math.round(c2.s.y) + 'px) translate(-100%,-50%)' :
       'translate(' + Math.round(c2.s.x - AE_LM_DOT_X) + 'px,' + Math.round(c2.s.y) + 'px) translateY(-50%)';
   }
@@ -4794,12 +4818,13 @@ function _aeUltraHtml() {
   var rows = list.map(function (u) {
     var busy = !!u.downloading, tail = busy ? Math.floor(100 * u.downloading.done / Math.max(1, u.downloading.size)) + '%' : _aeHdOfferSize({ size: u.size });
     return '<label class="ae-set-choice' + (st.can_change && !busy ? '' : ' ae-off') + '"><input type="checkbox" class="ae-ultra-sw" data-part="' + _almEsc(u.part) + '" data-file="' + _almEsc(u.file) + '"' +
-      (u.installed || busy ? ' checked' : '') + (st.can_change && !busy ? '' : ' disabled') + '><span><b>' + _almEsc(_aeUltraName(u.part)) + '</b><small>' + _almEsc(tail) + '</small></span></label>';
+      (u.installed && !busy ? ' checked' : '') + (st.can_change && !busy ? '' : ' data-locked="1"') + '><span><b>' + _almEsc(_aeUltraName(u.part)) + '</b><small>' + _almEsc(tail) + '</small></span></label>';
   }).join('');
   return '<div class="ae-set-data ae-set-ultra" role="group" aria-label="' + _almEsc(_aeT('alm_hd_ultra')) + '"><b>' + _almEsc(_aeT('alm_hd_ultra')) + '</b>' + rows + '</div>';
 }
 function _aeUltraToggle(box) {
   var part = box.getAttribute('data-part'), file = box.getAttribute('data-file');
+  if (box.getAttribute('data-locked')) { box.checked = !box.checked; return; }   // not yours to change, or on its way: it looks as it is and stays
   box.disabled = true;
   var done = function () { _aeHdPollNow(); };
   (box.checked ? _aePost(AE_HD_SET_URL, { start: true, part: part }) : _aePost(AE_HD_DELETE_URL, { filename: file })).then(done, done);
@@ -4919,7 +4944,7 @@ var AE_TARGETS = {
   moon: { min: AE_MIN_DIST_MOON, max: AE_MAX_DIST, surface: AE_MOON_RADIUS_RE },
   sun: { min: AE_MIN_DIST_SUN, max: AE_MAX_DIST_SUN, surface: AE_SUN_SHOW_R }
 };
-function _aeClampDist(d) { var t = AE_TARGETS[_ae.target]; return _aeClamp(d, t.min, t.max); }
+function _aeClampDist(d) { var t = AE_TARGETS[_ae.target]; return _aeClamp(d, isFinite(t.min) ? t.min : 0, t.max); }
 function _aeTargetPos() { return _aeBodyPos(_ae.target) || [0, 0, 0]; }
 // Whose sky the Moon is shown in: the device's place once asked for (the
 // crosshair), else the place chosen for the Almanac; null for neither, and
@@ -6370,17 +6395,29 @@ function _aeCraftParse(buf) {
   return d;
 }
 // then: a flight waiting on the model (Go to a probe before its model is here), flown when it comes or fails.
+// A model that is slow to come says so (the hint line), and one that does not come says it will be a dot: never a blank view.
+var AE_CRAFT_SLOW_MS = 400;
 function _aeCraftLoad(model, then) {
   var c = _aeCraft[model] = _aeCraft[model] || {};
   if (then) c.then = then;
   if (c.data || c.loading || typeof fetch !== 'function') return;
   c.loading = true;
-  var done = function () { var t = c.then; c.then = null; if (t && _ae) t(); };
+  c.slow = setTimeout(function () { if (c.loading && _ae && typeof _aeShowHint === 'function') { c.said = true; _aeShowHint(_aeT('alm_craft_loading')); } }, AE_CRAFT_SLOW_MS);
+  var done = function () {
+    clearTimeout(c.slow);
+    if (c.said && c.data && _ae && typeof _aeHideHint === 'function') _aeHideHint();
+    c.said = false;
+    var t = c.then; c.then = null; if (t && _ae) t();
+  };
   fetch(_aeCraftUrl(model)).then(function (r) { if (!r.ok) throw new Error(model); return r.arrayBuffer(); }).then(function (buf) {
     c.data = _aeCraftParse(buf);
     if (_ae) { _ae.dirty = true; _aeKick(); }
     done();
-  }).catch(function () { c.loading = false; c.failed = true; done(); });
+  }).catch(function () {
+    c.loading = false; c.failed = true;
+    if (_ae && typeof _aeShowHint === 'function') _aeShowHint(_aeT('alm_craft_failed'));
+    done();
+  });
 }
 function _aeCraftData(model) { return (_aeCraft[model] && _aeCraft[model].data) || null; }
 // Its span in Earth radii, once loaded (0 before).
@@ -6791,6 +6828,7 @@ function _aeUpdate(ms) {
   // The Moon's phase angle, Sun-Moon-Earth, sets the earthshine.
   S.moonUni.earthshine.value = _moonEarthshine(_aeDot(_aeNorm(_aeSub(sc.sun, sc.moon)), _aeNorm(_aeScale(sc.moon, -1))));
   _aeOrientMoon(sc);
+  _aeMoonMesh(S, sc);
   var sd = _aeSunShown(sc);
   S.sun.position.set(sd[0], sd[1], sd[2]);
   S.sunGlowUni.center.value.set(sd[0], sd[1], sd[2]);
@@ -7257,7 +7295,10 @@ function _aeSatShortName(s) {
 
 // ── Taps ──
 function _aeTap(x, y) {
-  if (_ae.stand && _ae.stand.live && typeof _aeStandSkyTap === 'function' && (_aeStandSkyTap(x, y) || _aeStandBodyTap(x, y))) return;   // an object other lanes put in the sky
+  if (_ae.stand) {   // on the ground a tap is for what hangs in the sky (other lanes' objects, the Sun and the Moon), and for nothing of the orbit view
+    if (_ae.stand.live && typeof _aeStandSkyTap === 'function') (_aeStandSkyTap(x, y) || _aeStandBodyTap(x, y));
+    return;
+  }   // an object other lanes put in the sky
   if (_aeRecordTap(x, y)) return;
   var best = null, bestD = AE_TAP_RADIUS_PX;
   // Satellites are picked at the Earth; from the Moon or the Sun they are a
@@ -7795,7 +7836,7 @@ function _aeBindCanvas(canvas) {
     if (!_ae.pointers[e.pointerId]) return;
     delete _ae.pointers[e.pointerId];
     var left = Object.keys(_ae.pointers).length;
-    if (_ae.drag && !_ae.drag.moved && left === 0 && e.type === 'pointerup' && !_ae.stand) {
+    if (_ae.drag && !_ae.drag.moved && left === 0 && e.type === 'pointerup') {
       var r = canvas.getBoundingClientRect();
       _aeTap(e.clientX - r.left, e.clientY - r.top);
     }
@@ -8386,7 +8427,19 @@ function _aeShow(fromHero) {
 // go back to, else at once. The page has the view's moment first, so the
 // hero it lands in shows it.
 // Where the header's arrow goes back to: the Almanac's page (the hero, the sky) or its solar system (the orrery).
-function _aeBackLabel() { return _aeT(_aeFrom === 'orrery' ? 'alm_solar_system' : 'almanac'); }
+// Where the arrow really goes: a lane that put the view here names it (`_ae.backLabel`: a mission, Look); on the ground, the card that handed the sky over (`handoff.backLabel`,
+// else the sky's) or the view of the body it stands on; otherwise where the view was opened from: the Solar System, the sky card, or the Almanac page.
+function _aeBackLabel() {
+  var cap = function (t) { return t ? t.charAt(0).toUpperCase() + t.slice(1) : t; };
+  if (_ae && _ae.backLabel) return _ae.backLabel;
+  var st = _ae && (_ae.stand || _ae.standPending);
+  if (st) {
+    var h = st.handoff || st.pend && st.pend.handoff || st.handoff;
+    if (h) return h.backLabel || cap(_aeT('alm_sky'));
+    return _aeInfoName(st.key || (st.pend && st.pend.key) || 'earth');
+  }
+  return _aeFrom === 'orrery' ? _aeT('alm_solar_system') : _aeFrom === 'sky' ? cap(_aeT('alm_sky')) : _aeT('almanac');
+}
 function _aeClose() {
   if (!_aeIsOpen || (_ae.hand && _ae.hand.dir < 0)) return;
   if (_ae.site) _aeSiteLeave(true);   // the ground's camera gives way before the view is handed back to the page
