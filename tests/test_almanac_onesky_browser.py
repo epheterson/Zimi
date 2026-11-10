@@ -259,3 +259,56 @@ def test_at_night_the_two_skies_are_as_dark_as_each_other(card, stand, sun):
             c[k],
             s[k],
         )
+
+
+def test_one_tap_from_the_card_stands_at_its_place_instant_and_facing_and_back_returns(
+    browser, served, times
+):
+    """The card's Stand here button opens the ground view at the Almanac's place, at the instant the card shows, facing the way its
+    panorama faces; the view's own way back closes it and the card is where it was."""
+    ctx = _context(browser)
+    pg = ctx.new_page()
+    errors = []
+    pg.on("pageerror", lambda e: errors.append(str(e)))
+    pg.goto(served + "/#almanac", wait_until="load")
+    pg.wait_for_function(
+        "() => typeof _skyState !== 'undefined' && _skyState && _skyState.eph && typeof _osStandHere === 'function' && typeof _jdToJulianCentury === 'function'",
+        timeout=120_000,
+    )
+    ms = times[3]
+    pg.evaluate(
+        "(ms) => { _almClockSetRate(0); _almScrubSettle(new Date(ms)); document.querySelector('.almanac-sky-wrap').scrollIntoView({ behavior: 'instant', block: 'center' }); }",
+        ms,
+    )
+    pg.wait_for_function(
+        "(t) => _skyState && _skyState.nowTime === t && !_skyState.moonAnim",
+        arg=ms,
+        timeout=60_000,
+        polling=200,
+    )
+    center = pg.evaluate("() => _skyState.center")
+    y = pg.evaluate("() => Math.round(window.pageYOffset)")
+    assert pg.query_selector(".alm-sky-bar .alm-sky-stand"), "the button is on the card"
+    pg.click(".alm-sky-bar .alm-sky-stand")
+    pg.wait_for_function(
+        "() => typeof _ae !== 'undefined' && _ae && _ae.stand && _ae.stand.live && _ae.stand.mode === 'ground'",
+        timeout=READY_MS,
+        polling=250,
+    )
+    got = pg.evaluate(
+        """() => { const st = _ae.stand, head = (((st.yaw + st.userYaw) * 180 / Math.PI) % 360 + 360) % 360; return { lat: st.lat, lon: st.lon, ms: _aeDisplayMs(), head: head, key: st.key }; }"""
+    )
+    assert got["key"] == "earth"
+    assert abs(got["lat"] - LAT) < 1e-3 and abs(got["lon"] - LON) < 1e-3, got
+    assert abs(got["ms"] - ms) < 120_000, (got["ms"] - ms)
+    diff = abs(((got["head"] - center) + 540) % 360 - 180)
+    assert diff < 2, (got["head"], center)
+    pg.evaluate("() => _aeStandClose()")
+    pg.wait_for_function(
+        "() => !_ae.stand && !_ae.standPending && !_aeIsOpen",
+        timeout=60_000,
+        polling=250,
+    )
+    assert abs(pg.evaluate("() => Math.round(window.pageYOffset)") - y) <= 2
+    assert not errors, errors
+    ctx.close()
