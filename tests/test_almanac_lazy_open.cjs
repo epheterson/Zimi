@@ -35,7 +35,7 @@ const S0 = {
   _aeSub: (a, b) => [a[0] - b[0], a[1] - b[1], a[2] - b[2]],
   _aeLen: (a) => Math.hypot(a[0], a[1], a[2]),
   document: { head: { appendChild: (el) => scripts.push(el.src) }, createElement: () => ({ remove() {} }) },
-  _ae: { target: 'earth', h: 844, w: 390, dirty: false, gl: null },
+  _ae: { target: 'earth', h: 844, w: 390, dirty: false, gl: null, ready: true }, _aeIsOpen: true,
 };
 vm.createContext(S0);
 vm.runInContext([
@@ -78,6 +78,28 @@ const call = (name, S, ...a) => { loads.length = 0; scripts.length = 0; S0._ae.t
   const mid = scene([0, -6, 0], [0, 1, 0], [20, 0, 0], [3000, 0, 0], PORTRAIT_FOV);
   call('_aeMoonHiWanted', mid);
   check(loads.length === 0, 'the Moon at 20 radii is still a few dozen pixels: the small map');
+}
+
+// ── While the scene is being built, and once open on the Earth ──
+{
+  // Before the view is ready or open its camera sits at the default distance: the Moon's disc is wide and the Sun is in the frame.
+  const build = (ready, open) => { S0._ae.ready = ready; S0._aeIsOpen = open; };
+  const nearMoon = () => scene([59.5, 0, 0], [1, 0, 0], [60, 0, 0], [3000, 0, 0], PORTRAIT_FOV);
+  const towardSun = () => scene([0, -6, 0], [1, 0, 0], [60, 0, 0], [3000, 0, 0], PORTRAIT_FOV);
+  [[false, false], [false, true], [true, false]].forEach(([r, o]) => {
+    build(r, o);
+    const m = nearMoon(), u = towardSun();
+    call('_aeMoonHiWanted', m); const moonLoads = loads.length;
+    call('_aeSunFxWanted', u, 0);
+    check(moonLoads === 0 && !m.moonHiAsked && scripts.length === 0 && !u.sunFxAsked, 'scene ' + (r ? 'ready' : 'not ready') + ', view ' + (o ? 'open' : 'not open') + ': neither the Moon map nor the Sun script, even with the Moon near and the Sun in frame');
+  });
+  build(true, true);
+  const m = nearMoon(); call('_aeMoonHiWanted', m);
+  const u = towardSun(); call('_aeSunFxWanted', u, 0);
+  check(m.moonHiAsked && u.sunFxAsked && scripts.length === 1, 'ready and open, the triggers still work');
+  const e = scene([0, -6, 0], [0, 1, 0], [60, 0, 0], [3000, 0, 0], PORTRAIT_FOV);
+  call('_aeMoonHiWanted', e); const l1 = loads.length; call('_aeSunFxWanted', e, 0);
+  check(l1 === 0 && scripts.length === 0, 'ready and open on the Earth: neither is requested');
 }
 
 // ── The Sun ──
