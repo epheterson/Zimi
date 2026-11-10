@@ -10,7 +10,7 @@ import sys
 import pytest
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-from test_games_final_fixes import _open, browser, zimi  # noqa: E402,F401
+from test_games_final_fixes import _open, browser, playwright_driver, zimi  # noqa: E402,F401
 
 FITS = """() => { const e = document.getElementById('game-title');
   return [e.textContent, e.scrollWidth <= e.clientWidth + 1 && e.scrollHeight <= e.clientHeight + 1]; }"""

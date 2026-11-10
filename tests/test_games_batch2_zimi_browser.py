@@ -12,7 +12,7 @@ import urllib.parse
 import pytest
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-from test_games_final_fixes import PHONE, browser, zimi  # noqa: E402,F401
+from test_games_final_fixes import PHONE, browser, playwright_driver, zimi  # noqa: E402,F401
 
 LOCALES = [
     "en-US",
