@@ -188,3 +188,25 @@ def test_in_short_landscape_the_go_to_list_shows_at_least_six_rows(library):
             ctx.close()
         finally:
             br.close()
+
+
+def test_in_a_right_to_left_language_the_controls_do_not_sit_on_the_minimap(library):
+    """Hebrew: the control column is on the left, where the minimap used to be (it was placed by `left`, not by the side)."""
+    from playwright.sync_api import sync_playwright
+
+    with sync_playwright() as pw:
+        br = pw.chromium.launch(args=GL_ARGS)
+        try:
+            ctx, pg, errors = _open(br, library, PORTRAIT)
+            pg.evaluate("document.documentElement.dir = 'rtl'; _ae.dirty = true; _aeKick();")
+            pg.wait_for_timeout(800)
+            hit = pg.evaluate("""() => {
+                var m = document.querySelector('.ae-mini'), t = document.querySelector('.ae-tools');
+                if (!m || !t) return null;
+                var a = m.getBoundingClientRect(), b = t.getBoundingClientRect();
+                return a.left < b.right && b.left < a.right && a.top < b.bottom && b.top < a.bottom;
+            }""")
+            assert hit is False, hit
+            ctx.close()
+        finally:
+            br.close()

@@ -604,7 +604,7 @@ var AE_CSS = [
   // Where you are among the planets, in a corner while near one: tap for the whole system.
   // On a phone the sheet lifts the picture into the minimap's corner: the minimap steps aside while it is up.
   '@media (max-width:759px){.ae-info-up .ae-mini{opacity:0;pointer-events:none}}',
-  '.ae-mini{position:absolute;left:12px;top:calc(env(safe-area-inset-top) + 12px);width:' + AE_MINI_PX + 'px;height:' + AE_MINI_PX + 'px;padding:0;border:1px solid var(--border);border-radius:50%;background:rgba(0,0,0,.55);overflow:hidden;cursor:pointer}',
+  '.ae-mini{position:absolute;inset-inline-start:12px;top:calc(env(safe-area-inset-top) + 12px);width:' + AE_MINI_PX + 'px;height:' + AE_MINI_PX + 'px;padding:0;border:1px solid var(--border);border-radius:50%;background:rgba(0,0,0,.55);overflow:hidden;cursor:pointer}',
   '.ae-mini[hidden]{display:none}',
   '.ae-mini canvas{width:100%;height:100%;display:block}',
   '.ae-mini:focus-visible{outline:2px solid var(--amber);outline-offset:2px}',
@@ -648,7 +648,7 @@ var AE_CSS = [
   '.ae-bm-quiet b{display:none}',
   // Landmarks: a dot and a name each, tappable (the dot sits on the place, AE_LM_DOT_X from the button's edge).
   '.ae-lms{position:absolute;inset:0;pointer-events:none;overflow:hidden}',
-  '.ae-lm{position:absolute;left:0;top:0;margin:0;padding:6px 8px 6px 18px;border:0;background:none;font:inherit;font-size:11px;color:#dfe6f0;white-space:nowrap;text-shadow:0 1px 2px #000,0 0 4px #000;pointer-events:auto;cursor:pointer}',
+  '.ae-lm{position:absolute;left:0;top:0;box-sizing:border-box;overflow:hidden;text-overflow:ellipsis;margin:0;padding:6px 8px 6px 18px;border:0;background:none;font:inherit;font-size:11px;color:#dfe6f0;white-space:nowrap;text-shadow:0 1px 2px #000,0 0 4px #000;pointer-events:auto;cursor:pointer}',
   '.ae-lm::before{content:"";position:absolute;left:6px;top:50%;width:6px;height:6px;border-radius:50%;background:currentColor;transform:translateY(-50%);box-shadow:0 0 3px #000}',
   '.ae-lm.ae-lm-left{padding:6px 18px 6px 8px}.ae-lm.ae-lm-left::before{left:auto;right:6px}',
   '.ae-lm:focus-visible{outline:2px solid var(--amber);outline-offset:-2px;border-radius:6px}',
@@ -4340,6 +4340,7 @@ var AE_LM_LANDING_MIN_R_PX = 80;
 var AE_LM_BOX_H = 26;                        // a label's box is this tall (its padding and line), centred on its dot
 var AE_LM_PAD_X = 26, AE_LM_FONT_PX = 11;   // its padding either side of the name (.ae-lm), and the name's size
 var AE_LM_DOT_X = 9;                         // the dot's centre, from the label's left edge (.ae-lm::before)
+var AE_LM_MIN_W_PX = 48;
 var AE_LM_EDGE_PX = 8;                       // a name keeps this clear of the screen's right edge
 var AE_LM_FACING = 0.05;                     // how far round the limb a place still faces the camera (cosine)
 // A row's kind as its card names it (alm_lm_kind_<name>): the Moon's own kinds fold into the few every body shares.
@@ -4476,6 +4477,8 @@ function _aeUpdateLandmarks() {
     // A name that would run off the right edge reads to the left of its dot.
     var left = c2.box.left;
     el.classList.toggle('ae-lm-left', left);
+    // A name longer than the room it has (a long landing's, any language) is cut with an ellipsis inside the screen, never off it.
+    el.style.maxWidth = Math.max(AE_LM_MIN_W_PX, Math.floor(left ? c2.s.x + AE_LM_DOT_X - AE_LM_EDGE_PX : _ae.w - (c2.s.x - AE_LM_DOT_X) - AE_LM_EDGE_PX)) + 'px';
     el.style.transform = left ? 'translate(' + Math.round(c2.s.x + AE_LM_DOT_X) + 'px,' + Math.round(c2.s.y) + 'px) translate(-100%,-50%)' :
       'translate(' + Math.round(c2.s.x - AE_LM_DOT_X) + 'px,' + Math.round(c2.s.y) + 'px) translateY(-50%)';
   }
