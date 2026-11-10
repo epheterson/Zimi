@@ -85,7 +85,7 @@ def test_go_to_lists_missions_and_apollo_11_starts_the_player(served):
             keys = pg.evaluate(
                 "Array.from(document.querySelectorAll('#ae-go [data-ae-go^=\"ms:\"]')).map(b => b.getAttribute('data-ae-go'))"
             )
-            assert keys[0] == "ms:apollo11" and "ms:plan" in keys, keys
+            assert keys[:2] == ["ms:apollo11", "ms:perseverance"] and "ms:plan" in keys, keys
             # Missions are not flight targets: nothing in the sweep of bodies starts a mission.
             assert pg.evaluate("() => !('ms:apollo11' in AE_TARGETS)")
             pg.click("#ae-go [data-ae-go='ms:apollo11']")
