@@ -797,7 +797,7 @@ var AE_CSS = [
   '[dir="rtl"] .ae-card-x{right:auto;left:4px}',
   '.ae-msg{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;text-align:center;padding:24px;color:var(--text2);font-size:14px;pointer-events:none}',
   '.ae-msg[hidden]{display:none}',
-  '.ae-static .ae-top,.ae-static .ae-bottom,.ae-static .ae-labels,.ae-static .ae-fullbar{display:none}',
+  '.ae-static .ae-tools .ae-btn:not(.ae-gear),.ae-static .ae-bottom,.ae-static .ae-labels,.ae-static .ae-fullbar{display:none}',
   '.ae-static .ae-msg{justify-content:flex-end;padding-bottom:16vh}',
   '.ae-static-globe{position:absolute;left:50%;top:36%;transform:translate(-50%,-50%);width:min(66vw,46vh,440px);height:auto;aspect-ratio:1;pointer-events:none}',
   '.ae-msg{flex-direction:column;gap:14px}',

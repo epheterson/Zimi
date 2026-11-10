@@ -84,8 +84,8 @@ def test_software_gl_is_the_low_level_and_the_view_is_a_plain_line(page):
 
 
 def test_Try_it_anyway_is_Full_and_the_gear_then_offers_the_three_choices(page):
-    # Set aside, the view shows its line, one button and the way back: not the gear.
-    assert not page.is_visible("#ae-gear")
+    # Set aside, the view shows its line, its button, the gear (Performance) and the way back: not the round tools.
+    assert page.is_visible("#ae-gear") and not page.is_visible("#ae-locate")
     page.click(".ae-msg-try")
     page.wait_for_function("() => !_ae.capStatic && !_ae.failed", timeout=10_000)
     assert page.evaluate("() => localStorage.getItem('zimi_cap')") == "full"
@@ -162,6 +162,6 @@ def test_the_plain_line_stands_over_the_earth_drawn_once_and_the_tools_are_gone(
     assert page.evaluate("() => _asg.ms") == ms0
     # Only the line, its button and the way back: the round tools, labels and the bottom row are not shown.
     assert page.evaluate(
-        "() => ['.ae-top', '.ae-bottom', '.ae-labels'].every(s => getComputedStyle(document.querySelector(s)).display === 'none')"
+        "() => ['#ae-locate', '#ae-sats-btn', '.ae-bottom', '.ae-labels'].every(s => getComputedStyle(document.querySelector(s)).display === 'none') && getComputedStyle(document.querySelector('#ae-gear')).display !== 'none'"
     )
     assert page.evaluate("() => !!document.querySelector('.ae-msg-try')")
