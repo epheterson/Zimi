@@ -25,8 +25,8 @@ const field = (lat, lon, t) => run('_osCloudField(_osDef({ lat: ' + lat + ', lon
 const a = field(40.71, -74, Date.parse('2026-09-11T14:00:00Z')), b = field(40.71, -74, Date.parse('2026-09-11T20:00:00Z'));
 check(JSON.stringify(a) === JSON.stringify(b), 'the same place on the same (solar) day has the same clouds all day');
 const next = field(40.71, -74, Date.parse('2026-09-12T14:00:00Z'));
-check(next.seed !== a.seed, 'the next day has new ones');
-check(field(51.5, -0.1, Date.parse('2026-09-11T14:00:00Z')).seed !== a.seed, 'and another place has its own');
+check(next.seed[0] !== a.seed[0], 'the next day has new ones');
+check(field(51.5, -0.1, Date.parse('2026-09-11T14:00:00Z')).seed[0] !== a.seed[0], 'and another place has its own');
 let n = 0, thin = 0, heavy = 0, sum = 0, fast = 0;
 for (let d = 0; d < 2000; d++) {
   const f = field(40.71, -74, Date.parse('2026-01-01T12:00:00Z') + d * 86400000);

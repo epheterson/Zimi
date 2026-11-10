@@ -17,7 +17,7 @@ var OS_STATE_CACHE_MS = 1000;   // the photometry is worked out again when the i
 function _osDef(o) {
   o = o || {};
   var n = function (v, d) { return isFinite(v) && v !== null ? Number(v) : d; };
-  return { body: o.body || OS_BODY_EARTH, lat: n(o.lat, 0), lon: n(o.lon, 0), heightM: n(o.heightM, 0), tMs: n(o.tMs, Date.now()),
+  return { body: o.body || OS_BODY_EARTH, lat: n(o.lat, 0), lon: n(o.lon, 0), heightM: n(o.heightM, 0), tMs: n(o.tMs != null ? o.tMs : o.ms, Date.now()),
     heading: ((n(o.heading, 0) % 360) + 360) % 360, pitch: Math.max(-90, Math.min(90, n(o.pitch, 0))), fov: n(o.fov, OS_DEFAULT_FOV_DEG) };
 }
 
@@ -61,14 +61,15 @@ function _osCloudSeed(tMs, lat, lon) {
   return (Math.imul(Math.floor(_osSolarDay(tMs, lon)), OS_SEED_MULT[0]) ^ Math.imul(Math.round(lat * OS_CLOUD_SEED_PLACE), OS_SEED_MULT[1]) ^ Math.imul(Math.round(lon * OS_CLOUD_SEED_PLACE), OS_SEED_MULT[2])) >>> 0;
 }
 function _osCloudField(def) {
+  def = _osDef(def);
   var seed = _osCloudSeed(def.tMs, def.lat, def.lon), r = _osMulberry(seed);
   var coverage = r(), dir = r() * 2 * Math.PI, speed = OS_CLOUD_WIND_MS[0] + (OS_CLOUD_WIND_MS[1] - OS_CLOUD_WIND_MS[0]) * r();
-  return { coverage: coverage, wind: [Math.sin(dir) * speed, Math.cos(dir) * speed], base: OS_CLOUD_BASE_M, thickness: OS_CLOUD_THICK_M, seed: seed % OS_CLOUD_NOISE_SPAN };
+  return { coverage: coverage, wind: [Math.sin(dir) * speed, Math.cos(dir) * speed], base: OS_CLOUD_BASE_M, thickness: OS_CLOUD_THICK_M, seed: [seed % OS_CLOUD_NOISE_SPAN, (seed >>> 10) % OS_CLOUD_NOISE_SPAN] };
 }
 // The field as the shaders take it (almanac-skygl.js SG_GLSL_CLOUDS' uniforms); sunShare is the Sun's light that reaches the place (an eclipse).
 function _osCloudValues(def, sunShare) {
   var f = _osCloudField(def), day = _osSolarDay(def.tMs, def.lon);
-  return { cloud: [f.coverage, f.base, f.thickness, f.seed], wind: [f.wind[0], f.wind[1], (day - Math.floor(day)) * OS_DAY_S], sunE: SG_SUN_LUX * (sunShare == null ? 1 : sunShare) };
+  return { cloud: [f.coverage, f.base, f.thickness, f.seed[0]], wind: [f.wind[0], f.wind[1], (day - Math.floor(day)) * OS_DAY_S], sunE: SG_SUN_LUX * (sunShare == null ? 1 : sunShare) };
 }
 
 // ── The sky's objects ──

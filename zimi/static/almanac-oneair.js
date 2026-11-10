@@ -85,6 +85,7 @@ var _oaAir = {
     }
     if (_oa.failed) return false;
     this.uniforms = _oa.uniforms;
+    if (this.clouds && this.clouds.uniforms === OA_CLOUD_UNIFORMS) this.clouds.uniforms = Object.assign({}, _oa.uniforms, OA_CLOUD_UNIFORMS);
     return true;
   },
   // The Sun's and the Moon's tables for the instant, and the numbers the radiance function reads.
@@ -103,21 +104,24 @@ var _oaAir = {
   }
 };
 // The day's clouds (almanac-skygl.js SG_GLSL_CLOUDS: the card's own): osClouds(d, o) is the deck seen along d from o (metres, the local
-// frame), premultiplied, in the same units as oaSky; the ground view lays it over the sky.
+// frame), premultiplied, in the same units as oaSky; the ground view lays it over the sky. Its own pass, so the chunk carries the
+// radiance functions the cloud's light reads (the sky's tables, the Sun) and its uniforms are the air's as well as its own.
 var OA_CLOUD_GLSL = [
+  'precision highp sampler2D;',
+  SG_GLSL_LUT_UTIL,
+  SG_GLSL_RADIANCE,
   SG_GLSL_CLOUD_FIELD,
   SG_GLSL_CLOUDS,
   'vec4 osClouds(vec3 d, vec3 o) { vec4 c = cloudDeck(d, o); return vec4(c.rgb / ' + AE_ST_LUX_PER_UNIT.toExponential(3) + ', c.a); }'
 ].join('\n');
+var OA_CLOUD_UNIFORMS = { uCloud: [0, OS_CLOUD_BASE_M, OS_CLOUD_THICK_M, 0], uCloudWind: [0, 0, 0], uCloudSunE: 0, uSunAltDeg: 0 };
 _oaAir.clouds = {
   glsl: OA_CLOUD_GLSL,
-  uniforms: { uCloud: [0, OS_CLOUD_BASE_M, OS_CLOUD_THICK_M, 0], uCloudWind: [0, 0, 0], uCloudSunE: 0, uSunAltDeg: 0 },
+  uniforms: OA_CLOUD_UNIFORMS,   // joined by the air's own once the tables exist (wants)
   update: function (st, fr, ph, u) {
-    var def = _oaDef(st, fr), cv = _osCloudValues(def, _osSkyState(def).p.sunShare);
-    if (u.uCloud) u.uCloud.value = cv.cloud;
-    if (u.uCloudWind) u.uCloudWind.value = cv.wind;
-    if (u.uCloudSunE) u.uCloudSunE.value = cv.sunE;
-    if (u.uSunAltDeg) u.uSunAltDeg.value = _osSkyState(def).p.sunAltGeo;
+    _oaAir.update(st, fr, ph, u);
+    var def = _oaDef(st, fr), S = _osSkyState(def), cv = _osCloudValues(def, S.p.sunShare);
+    u.uCloud.value = cv.cloud; u.uCloudWind.value = cv.wind; u.uCloudSunE.value = cv.sunE; u.uSunAltDeg.value = S.p.sunAltGeo;
   }
 };
 _aeStandAir = _oaAir;
