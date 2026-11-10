@@ -6,16 +6,16 @@
     <description>Offline knowledge server for ZIM files</description>
     <language>en</language>
     <item>
-      <title>Version 1.15.4</title>
-      <sparkle:version>1.15.4</sparkle:version>
-      <sparkle:shortVersionString>1.15.4</sparkle:shortVersionString>
+      <title>Version 1.15.5</title>
+      <sparkle:version>1.15.5</sparkle:version>
+      <sparkle:shortVersionString>1.15.5</sparkle:shortVersionString>
   <sparkle:minimumSystemVersion>12.0</sparkle:minimumSystemVersion>
-      <pubDate>Mon, 09 Nov 2026 06:55:56 +0000</pubDate>
+      <pubDate>Tue, 10 Nov 2026 16:16:54 +0000</pubDate>
       <enclosure
-        url="https://github.com/epheterson/Zimi/releases/download/v1.15.4/Zimi-1.15.4-mac-arm64.dmg"
-        length="191206577"
+        url="https://github.com/epheterson/Zimi/releases/download/v1.15.5/Zimi-1.15.5-mac-arm64.dmg"
+        length="191210917"
         type="application/octet-stream"
-        sparkle:edSignature="/4fFmRd3wLp6/vBQbUWmDMSQbw7S40L2np/qCuxhpI0/TI0ukSLhRaJF35fUq784EnI/yPTWXnRRe+KMO/6bDA=="
+        sparkle:edSignature="n3XqdKihMo6hEhDsL+DkidhAEEz8CXi+EKVqxfoUIFYhzY5KT7mxX1Md/0zpBG7J/Pc8JgAyTR4PF+TTpn3MCg=="
       />
     </item>
   </channel>
