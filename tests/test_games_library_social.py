@@ -349,6 +349,16 @@ def begin(page):
     page.wait_for_function("() => !document.querySelector('.rc-card .gm-play')")
 
 
+def follow_a_link(page, end):
+    """Follow the page's first link that is not the end, and wait for it to land. The end is a random walk away, so the
+    start can link straight to it (about one race in eight on the fixture), and a race already won has nothing to give up.
+    A link is inline and often wraps, so the middle of its box can be the gap between its lines: Playwright's click aims
+    at a point of the link itself (and checks nothing covers it), where tap() at the box's middle can miss."""
+    steps = page.evaluate("__race.race.steps.length")
+    page.locator(".rc-link:not([data-path=%s])" % json.dumps(end)).first.click()
+    page.wait_for_function(truthy("__race.race.steps.length === %d" % (steps + 1)))
+
+
 def give_up(page, then):
     """Give up from the Menu; `then` is the page's own sign that it was taken (the next card, or the end sheet)."""
     page.get_by_role("button", name="Menu").click()
@@ -365,7 +375,7 @@ def test_wiki_race_for_two(browser, world, mode, gone):
     assert "Player 1" in page.locator(".rc-card h2").inner_text()
     first = page.evaluate("[__race.race.pair.start.path, __race.race.pair.end.path]")
     begin(page)
-    tap(page, page.locator(".rc-link").first)
+    follow_a_link(page, first[1])
     give_up(page, "__race.race.hot.res.length === 1 && document.querySelector('.rc-card h2')")
     assert "Pass the phone to Player 2" in page.locator(".rc-card h2").inner_text()
     # between the two races: leaving and coming back keeps player 1's result and the hand-over
@@ -386,7 +396,7 @@ def test_wiki_race_for_two(browser, world, mode, gone):
     ), "the same race for both"
     begin(page)
     if page.locator(".rc-link").count():  # (with the library gone there is no article to follow)
-        tap(page, page.locator(".rc-link").first)
+        follow_a_link(page, first[1])
     give_up(page, "document.querySelector('.ar-sheet:not([hidden])')")
     assert (
         "Draw" in page.locator(".ar-sheet:not([hidden])").inner_text()

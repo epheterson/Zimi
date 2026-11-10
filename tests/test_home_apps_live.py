@@ -385,7 +385,15 @@ def test_the_dot_says_what_lit_it(served, touch):
             if touch:
                 pg.locator(dot).tap()
             else:
-                pg.locator(dot).hover()
+                # The pointer goes to the dot as a mouse does, with no scroll. Home redraws once more when its late data
+                # lands (_renderHomeSoon); a locator.hover() that meets the redraw retries by scrolling the page, and a
+                # scroll closes the popover, under a pointer that never moves again. The dot's middle is read in the page,
+                # in one go, so a redraw between finding it and measuring it cannot leave nothing to measure.
+                x, y = pg.wait_for_function(
+                    "(s) => { const d = document.querySelector(s), b = d && d.getBoundingClientRect(); return b && b.width ? [b.x + b.width / 2, b.y + b.height / 2] : null; }",
+                    arg=dot,
+                ).json_value()
+                pg.mouse.move(x, y)
             pg.wait_for_function("() => { const p = document.getElementById('dot-why'); return p && p.querySelector('.upd'); }", timeout=10000)
             text = pg.inner_text("#dot-why")
             assert "CrashCourse" in text and pg.evaluate("t('upd_updated')") in text, text
