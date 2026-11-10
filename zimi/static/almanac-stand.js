@@ -1275,12 +1275,12 @@ var AE_STAND_SKY_EVERY_MS = 1000, AE_STAND_SKY_TAP_PX = 30, AE_STAND_SKY_TAG_MS 
 // A soft additive billboard in angular units; whether it is lit (sunlit thing, observer in twilight) is the lane's `lum`.
 var AE_STAND_BOARD_MAX = 6;   // the most boards
 function _aeStandSkyBoards(st, boards) {
-  var THREE = _ae.gl.THREE, tw = 1;   // (the lane's `lum` already says whether the thing is sunlit and the observer in twilight: not gated twice)
+  var THREE = _ae.gl.THREE, fr = st.fr, tw = 1;   // (the lane's `lum` already says whether the thing is sunlit and the observer in twilight: not gated twice)
   if (!st.boards) st.boards = [];
   boards.slice(0, AE_STAND_BOARD_MAX).forEach(function (o, i) {
     var b = st.boards[i];
     if (!b) {
-      var uni = { uDir: { value: [0, 1, 0] }, uRight: { value: [1, 0, 0] }, uUp: { value: [0, 0, 1] }, uHalf: { value: 0.1 }, uAxis: { value: [1, 0] }, uSize: { value: [0.1, 0.05] }, uCol: { value: [1, 1, 1] }, uLum: { value: 0 } };
+      var uni = { uDir: { value: [0, 1, 0] }, uRight: { value: [1, 0, 0] }, uUp: { value: [0, 0, 1] }, uHalf: { value: 0.1 }, uAxis: { value: [1, 0] }, uSize: { value: [0.1, 0.05] }, uSunTan: { value: [0, -1] }, uCol: { value: [1, 1, 1] }, uColBase: { value: [1, 0.82, 0.62] }, uLum: { value: 0 }, uSeed: { value: 0 } };
       var m = new THREE.ShaderMaterial({ uniforms: uni, vertexShader: AE_ST_BODY_VERT, fragmentShader: AE_ST_BOARD_FRAG, transparent: true, depthTest: false, depthWrite: false, blending: AE_THREE_ADDITIVE_BLENDING });
       var mesh = new THREE.Mesh(st.sprites[0].mesh.geometry, m);
       mesh.frustumCulled = false; mesh.renderOrder = -1;
@@ -1295,7 +1295,10 @@ function _aeStandSkyBoards(st, boards) {
     }
     var u = b.uni;
     u.uDir.value = d; u.uRight.value = right; u.uUp.value = up; u.uHalf.value = Math.max(A, B) * 1.05; u.uAxis.value = ax; u.uSize.value = [A, B];
-    u.uCol.value = o.rgb || [1, 0.85, 0.7]; u.uLum.value = (o.lum === undefined ? 1 : o.lum) * tw;
+    u.uCol.value = o.rgb || [0.82, 0.9, 1]; u.uColBase.value = o.rgbBase || [1, 0.82, 0.62]; u.uSeed.value = ((o.az * 7.3 + o.el * 3.1) % 1 + 1) % 1;
+    var sv = fr ? [fr.sun[0] - d[0] * _aeDot(fr.sun, d), fr.sun[1] - d[1] * _aeDot(fr.sun, d), fr.sun[2] - d[2] * _aeDot(fr.sun, d)] : [0, 0, -1], sl = Math.hypot(sv[0], sv[1], sv[2]) || 1;
+    u.uSunTan.value = [_aeDot(sv, right) / sl, _aeDot(sv, up) / sl];   // which way the Sun lies across the plume
+    u.uLum.value = (o.lum === undefined ? 1 : o.lum) * tw;
     b.mesh.visible = u.uLum.value > 0.002 && o.el > -3;
   });
   for (var j = boards.length; j < st.boards.length; j++) st.boards[j].mesh.visible = false;
