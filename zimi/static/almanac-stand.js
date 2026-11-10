@@ -386,8 +386,8 @@ function _aeStandDispose(st) {
 // ── Trees ──
 // Where the Blue Marble says forest (a dark green), below the trees' line, not in the sea: dark cones scattered in rings out to a few
 // kilometres, a tree to a few metres at the feet and a wood at the horizon. The same trees every visit to a place (seeded by it).
-var AE_STAND_TREES_DELAY_MS = 40, AE_STAND_TREES_MAX = 1800, AE_STAND_TREES_TRIES = 9000;
-var AE_STAND_TREES_RANGE_M = [9, 3500], AE_STAND_TREES_H_M = [7, 24], AE_STAND_TREES_CONE = 0.2, AE_STAND_TREES_SIDES = 6;
+var AE_STAND_TREES_DELAY_MS = 40, AE_STAND_TREES_MAX = 3000, AE_STAND_TREES_TRIES = 16000;
+var AE_STAND_TREES_RANGE_M = [55, 4000], AE_STAND_TREES_H_M = [7, 24], AE_STAND_TREES_CONE = 0.2, AE_STAND_TREES_SIDES = 6;
 function _aeStCoverPixels(tex) {   // the colour map's pixels, once
   if (!tex || !tex.image) return null;
   var im = tex.image, w = im.width || im.naturalWidth, h = im.height || im.naturalHeight;
