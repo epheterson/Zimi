@@ -596,7 +596,7 @@ def test_stand_does_not_wait_for_hd_terrain_tiles_that_never_arrive(page):
     """A part whose tile server hangs must not hold the first frame: the ground is built on the core's heights after a moment."""
     page.route("**/hdhang/**", lambda route: None)  # never answered
     page.evaluate(
-        "() => { window.__hd = _ae.gl.hd; _ae.gl.hd = { man: { layers: { 'terrain/earth': { max: 6, from: 4, base: '/hdhang/' } } } }; }"
+        "() => { window.__hd = _ae.gl.hd; _ae.gl.hd = { man: { layers: { 'terrain/earth': { max: 6, from: 4, base: '/hdhang/' } } }, bodies: [], queue: [], loading: 0, gpu: 0, frame: 0, fresh: [], budget: _aeHdBudget() }; }"
     )
     try:
         _stand_anywhere(page, "earth", 40.0, -105.0)  # waits up to GROUND_MS for the ground to be live
