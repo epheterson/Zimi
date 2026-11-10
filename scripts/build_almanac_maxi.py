@@ -152,6 +152,12 @@ def write_manifest(path, tag, out_dir=None):
         "sha256": sha256_file(path),
         "tag": tag,
     }
+    try:  # a split set: the other ZIMs, attached to the release as they are (scripts/build_almanac_hd.py --split)
+        parts = read_pin().get("parts")
+    except (OSError, ValueError, SystemExit):
+        parts = None
+    if parts:
+        manifest["parts"] = parts
     target = os.path.join(out_dir or os.path.dirname(path), MANIFEST)
     with open(target, "w", encoding="utf-8") as f:
         json.dump(manifest, f, indent=2)

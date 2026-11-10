@@ -1,7 +1,7 @@
 // ── Almanac: terrain ──
 // The ground "Stand here" (almanac-stand.js) walks on. A body's large shape is real: a global height map shipped with
 // Zimi (scripts/build_terrain.py: LOLA for the Moon, MOLA for Mars, Magellan for Venus, MESSENGER for Mercury, ETOPO
-// 2022 for the Earth; 256 x 128, metres above the body's mean radius), sharpened near the viewer by the Almanac HD
+// 2022 for the Earth; 1024 x 512, metres above the body's mean radius), sharpened near the viewer by the Almanac HD
 // release's terrain tiles when they are installed. Below what those hold, the height is generated: craters on the
 // bodies that have them, fractal hills everywhere, seeded by the place so the same spot is always the same ground.
 // The bodies with no usable height map in the public domain (Titan, Pluto, the big moons) stand on their sphere with

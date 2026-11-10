@@ -195,7 +195,7 @@ def test_the_catalogue_draws_filters_and_answers_a_tap(browser, served):
         # The live sky: at the middle of the first pass, the sky's painter draws that satellite and keeps itself awake.
         painted = pg.evaluate(
             """() => { var p = _as.passes[0]; if (!p) return null; var pl = _asPlace(), cv = document.createElement('canvas'); cv.width = 780; cv.height = 600;
-              var s = { W: 780, H: 600, center: 180, span: 360, dpr: 2, lat: pl.lat, lon: pl.lon, nowTime: p.peak, eph: { sunGeoAlt: -12 } };
+              var s = { W: 780, H: 600, bodies: [], center: 180, span: 360, dpr: 2, lat: pl.lat, lon: pl.lon, nowTime: p.peak, eph: { sunGeoAlt: -12 } };
               var live = window._almFocus; window._almFocus = new Date(p.peak);
               var ctx = cv.getContext('2d'), pix = () => ctx.getImageData(0, 0, 780, 600).data.reduce((n, v, i) => n + (i % 4 === 3 && v ? 1 : 0), 0);
               var before = pix(); _asSkyPaint(ctx, s); window._almFocus = live;
@@ -385,6 +385,61 @@ def test_the_shipped_snapshot_draws_at_the_present_offline_however_old_it_is(
             "() => { _as.alphaAt = -Infinity; _asAlphas(Date.now() + 90 * 864e5); }"
         )
         assert pg.evaluate(DRAWN_SHARE) < 0.05
+        assert not errors, errors
+    finally:
+        ctx.close()
+def test_the_layer_gives_the_ground_view_its_sky(browser, served):
+    """Stand here draws what a source gives it (almanac-stand.js _aeStandSkySource): while the layer is on, the satellites over
+    the place are such a source, and its objects are what the ground view reads (az, el, mag, kind, a trail, a name).
+    """
+    ctx = browser.new_context(
+        viewport=VIEW,
+        device_scale_factor=2,
+        has_touch=True,
+        is_mobile=True,
+        service_workers="block",
+    )
+    ctx.add_init_script(
+        "try { localStorage.setItem('zimi_almanac_place', %r); localStorage.setItem('zimi_ae_sats_all', '1'); } catch (e) {}"
+        % PLACE
+    )
+    pg = ctx.new_page()
+    errors = []
+    pg.on("pageerror", lambda e: errors.append(str(e)))
+    try:
+        pg.goto(served + "/#almanac", wait_until="load")
+        pg.wait_for_function(
+            "() => typeof openAlmanacEarth === 'function'", timeout=READY_MS
+        )
+        pg.evaluate("openAlmanacEarth({ target: 'earth' })")
+        pg.wait_for_function(
+            "() => typeof _aeReady === 'function' && _aeReady() && _aeIsOpen",
+            timeout=READY_MS,
+            polling=250,
+        )
+        pg.wait_for_function(
+            "() => typeof _as !== 'undefined' && _as.state === 'ready' && _as.sampleMs > 0",
+            timeout=READY_MS,
+            polling=250,
+        )
+        pg.evaluate("() => _aeStandReady()")
+        pg.wait_for_function(
+            "() => typeof _aeStandSkySources !== 'undefined' && _aeStandSkySources.length === 1",
+            timeout=READY_MS,
+            polling=250,
+        )
+        # Asked as the ground view asks (place, instant), at the instant of a bright pass; its objects read as the hook says.
+        got = pg.evaluate(
+            """async () => { var pl = _asPlace(); _asNeedPasses(pl); while (_as.passes === null) await new Promise(r => setTimeout(r, 200));
+              var p = _as.passes.slice().sort((u, v) => u.mag - v.mag)[0], src = _aeStandSkySources[0], t = p.peak;
+              var ans = await src.ask(pl.lat, pl.lon, t), list = src.at(ans, t);
+              return { n: list.length, kinds: Array.from(new Set(list.map(o => o.kind))), ok: list.every(o => o.el >= 0 && o.az >= 0 && o.az < 360 && typeof o.mag === 'number' && typeof o.name === 'string' && Array.isArray(o.trail)),
+                       has: list.some(o => o.name.indexOf(_as.data.name[p.i]) === 0) }; }"""
+        )
+        assert got["n"] > 0 and got["ok"] and set(got["kinds"]) <= {"sat", "train"}, got
+        # Turned off, the source is taken out again.
+        pg.evaluate("() => _asSet(false)")
+        assert pg.evaluate("_aeStandSkySources.length") == 0
         assert not errors, errors
     finally:
         ctx.close()

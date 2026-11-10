@@ -46,6 +46,7 @@ function _aeHostRender() {
   site.ground.visible = false;   // the ground's own mesh replaces the site's flat patch
   if (site.eye && site.eye.on && !site.launch && !site.camOverride) site.camOverride = _aeHostEyeCam;   // a launch's camera gave way
   _aeStandPaint(hst, performance.now(), true, _aeHostPlaceCamera);
+  _aeHostEarthHint(site, hst);
   return true;
 }
 // To the ground's scene, through a short dark (the orbit view is what the flight showed): the scene is made, the site's group moved in.
@@ -61,7 +62,7 @@ function _aeHostSwap(site, h) {
     site.shared.metre.value = 1;   // the site's shaders measure distance in metres here
     S.renderer.setClearColor(0x000000, 1);
     st.prevRatio = S.renderer.getPixelRatio();
-    S.renderer.setPixelRatio(Math.min(S.dpr, AE_STAND_DPR_MAX));
+    S.renderer.setPixelRatio(Math.min(S.dpr, _aeStandDprCap));
     _aeResize();
     h.live = true;
     _ae.dirty = true; _aeKick();
@@ -137,6 +138,37 @@ function _aeHostEyeLook(st, dx, dy) {
   var k = _aeRad(fov) / _ae.h;
   e.yaw -= dx * k;
   e.pitch = _aeClamp(e.pitch + dy * k, -_aeRad(AE_MOTION_ALT_MAX), _aeRad(AE_MOTION_ALT_MAX));
+}
+// The Earth from another body's ground is the picture people want and it is small and high: when it is up but out of the field, a
+// round chip at the edge points to it, and a tap turns the head to it.
+var AE_HOST_HINT_EDGE_PX = [112, 132, 34];   // from the top bar, from the bottom card, from the sides
+var AE_HOST_HINT_MARGIN = 0.85;              // a share of the half field inside which it counts as in view
+function _aeHostEarthHint(site, hst) {
+  var el = _aeById('as-earthhint'), eye = site.eye, fr = hst.fr, o = fr && site.body !== 'earth' && eye && eye.on ? fr.objs.filter(function (x) { return x.key === 'earth'; })[0] : null;
+  if (!el) {
+    var hud = _aeById('as-hud');
+    if (!hud) return;
+    el = document.createElement('button'); el.type = 'button'; el.id = 'as-earthhint'; el.className = 'ae-btn ae-round as-earthhint'; el.hidden = true;
+    el.innerHTML = '<i class="as-earthhint-arrow"></i><b></b>';
+    el.onpointerdown = function (e) {
+      e.stopPropagation();
+      var st = _ae.site, t = st && st.eye && st.host && st.host.st.fr && st.host.st.fr.objs.filter(function (x) { return x.key === 'earth'; })[0];
+      if (t) { st.eye.yaw = Math.atan2(t.dir[0], t.dir[1]); st.eye.pitch = _aeClamp(Math.asin(_aeClamp(t.dir[2], -1, 1)), -_aeRad(AE_MOTION_ALT_MAX), _aeRad(AE_MOTION_ALT_MAX)); _aeKick(); }
+    };
+    hud.appendChild(el);
+  }
+  if (!o || o.dir[2] < 0) { if (!el.hidden) el.hidden = true; return; }
+  var vf = _aeRad(_ae.gl.camera.fov), hf = 2 * Math.atan(Math.tan(vf / 2) * _ae.w / _ae.h);
+  var dy = _aeAngleDeltaRad(eye.yaw, Math.atan2(o.dir[0], o.dir[1])), dp = Math.asin(_aeClamp(o.dir[2], -1, 1)) - eye.pitch;
+  var nx = dy / (hf / 2), ny = dp / (vf / 2);
+  if (Math.abs(nx) < AE_HOST_HINT_MARGIN && Math.abs(ny) < AE_HOST_HINT_MARGIN) { if (!el.hidden) el.hidden = true; return; }
+  el.hidden = false;
+  var cx = _aeClamp(nx, -1, 1), cy = _aeClamp(ny, -1, 1), W = _ae.w, H = _ae.h;
+  var x = W / 2 + cx * (W / 2 - AE_HOST_HINT_EDGE_PX[2]), y = H / 2 - cy * ((H - AE_HOST_HINT_EDGE_PX[0] - AE_HOST_HINT_EDGE_PX[1]) / 2) + (AE_HOST_HINT_EDGE_PX[0] - AE_HOST_HINT_EDGE_PX[1]) / 2;
+  el.style.transform = 'translate(' + (x - 19).toFixed(0) + 'px,' + (y - 19).toFixed(0) + 'px)';
+  el.firstChild.style.transform = 'rotate(' + (Math.atan2(nx, ny) * 180 / Math.PI).toFixed(0) + 'deg)';
+  var label = _aeInfoName('earth');
+  if (el.title !== label) { el.title = label; el.setAttribute('aria-label', label); }
 }
 function _aeHostEyeOn(st) { return !!(st && st.eye && st.eye.on); }
 // The phone as the way to look at eye level.

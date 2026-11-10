@@ -128,12 +128,15 @@ function _asWorkerMain() {
   var D2R = Math.PI / 180, MS_DAY = 86400000;
   var A_WGS = 6378.137, F_WGS = 1 / 298.257223563, E2 = F_WGS * (2 - F_WGS);
   var SUN_MAG = 0, ALBEDO = 0;
+  var SKY_SKIP_DEG = 10, SKY_MAX_RATE = 2;   // a satellite this far below the horizon cannot be up for this many degrees over the fastest a satellite moves (degrees a second)
+  var skipFrom = null, skipUntil = null;
+  var skipLat = NaN, skipLon = NaN;
 
   function init(m) {
     importScripts(m.sgpUrl);
     lib = self.SatelliteJS;
     N = m.n; radius = m.radius; EPOCH0 = m.epoch0; SUN_MAG = m.sunMag; ALBEDO = m.albedo; epochMs = new Float64Array(N);
-    recs = new Array(N);
+    recs = new Array(N); skipFrom = new Float64Array(N); skipUntil = new Float64Array(N);
     var bad = 0;
     for (var i = 0; i < N; i++) {
       epochMs[i] = EPOCH0 + m.epoch[i] * MS_DAY;
@@ -201,12 +204,13 @@ function _asWorkerMain() {
     return Math.sqrt(px * px + py * py + pz * pz) > A_WGS;
   }
   // One satellite seen from the place at ms: {el, az, mag} when it is up and lit, else null.
-  function look(i, ms, lat, lon, area, minEl) {
+  function look(i, ms, lat, lon, area, minEl, info) {
     var pv = lib.sgp4(recs[i], (ms - epochMs[i]) / 60000);
     if (!pv || !pv.position || typeof pv.position.x !== 'number' || isNaN(pv.position.x)) return null;
     var sat = [pv.position.x, pv.position.y, pv.position.z], th = gmst(ms) + lon, f = frame(lat, lon, th);
     var rho = [sat[0] - f.pos[0], sat[1] - f.pos[1], sat[2] - f.pos[2]], range = Math.sqrt(dot(rho, rho));
     var el = Math.asin(dot(rho, f.up) / range) / D2R;
+    if (info) info.el = el;
     if (el < minEl) return null;
     var sun = sunUnit(ms);
     if (!sunlit(sat, sun)) return null;
@@ -252,12 +256,37 @@ function _asWorkerMain() {
     return { i: i, start: a.t, peak: best.t, end: z.t, el: best.el, azS: a.az, azP: best.az, azE: z.az, mag: mag };
   }
 
+  // Every satellite up and lit over the place at t, as the sky would show it: where (degrees), how bright, and how fast it
+  // moves (degrees a second, from a second look dt later), brightest first. Nothing while the Sun is above m.sunAlt.
+  function skyNow(m) {
+    var lat = m.lat * D2R, lon = m.lon * D2R, f = frame(lat, lon, gmst(m.t) + lon), sun = sunUnit(m.t);
+    var sunAlt = Math.asin(dot(sun, f.up)) / D2R, out = [];
+    if (sunAlt > m.sunAlt) return { sunAlt: sunAlt, list: out };
+    if (m.lat !== skipLat || m.lon !== skipLon) { skipFrom.fill(0); skipUntil.fill(0); skipLat = m.lat; skipLon = m.lon; }   // what was skipped was for another place
+    for (var c = 0; c < m.cand.length; c++) {
+      var i = m.cand[c], dip = Math.acos(radius / (radius + m.altKm[c])) / D2R + 3, reach = m.inc[c] > 90 ? 180 - m.inc[c] : m.inc[c];
+      if (Math.abs(m.lat) > reach + dip + 20 || sunAlt < -dip - 8) continue;
+      if (m.t >= skipFrom[i] && m.t < skipUntil[i]) continue;   // far below the horizon at an earlier look, and not yet near it
+      var info = {}, lk = look(i, m.t, lat, lon, m.area[c], m.minEl, info);
+      if (!lk) {
+        if (info.el < -SKY_SKIP_DEG) { skipFrom[i] = m.t; skipUntil[i] = m.t + (-info.el - SKY_SKIP_DEG) / SKY_MAX_RATE * 1000; }
+        continue;
+      }
+      if (lk.mag > m.magLimit) continue;
+      var next = look(i, m.t + m.dt, lat, lon, m.area[c], -90), s = m.dt / 1000;
+      out.push({ i: i, az: lk.az, el: lk.el, mag: lk.mag, azRate: next ? (((next.az - lk.az + 540) % 360) - 180) / s : 0, elRate: next ? (next.el - lk.el) / s : 0 });
+    }
+    out.sort(function (u, v) { return u.mag - v.mag; });
+    return { sunAlt: sunAlt, list: out.slice(0, m.max) };
+  }
+
   self.onmessage = function (e) {
     var m = e.data, out = { id: m.id, cmd: m.cmd };
     try {
       if (m.cmd === 'init') out.bad = init(m);
       else if (m.cmd === 'tick') { var r = tick(m.ms); out.ms = m.ms; out.pos = r.pos; out.vel = r.vel; out.ok = r.ok; }
       else if (m.cmd === 'passes') out.list = passes(m);
+      else if (m.cmd === 'sky') { var sk = skyNow(m); out.list = sk.list; out.sunAlt = sk.sunAlt; }
     } catch (err) { out.error = String(err && err.message || err); }
     var tr = [];
     if (out.pos) tr = [out.pos.buffer, out.vel.buffer, out.ok.buffer];
@@ -340,9 +369,11 @@ function _asSync() {
   }
   _asSyncBar();
   if (_as.cloud) _as.cloud.visible = _as.on && _as.state === 'ready';
+  _asStandSkySync();
 }
 // Leaving the Almanac: the worker and the catalogue go; what is kept is the choice.
 function _asRelease() {
+  _asStandSkyOff();
   if (_as.worker) { _as.worker.terminate(); _as.worker = null; }
   _asCalls = {};
   _as.state = 'idle'; _as.data = null; _as.cloud = null; _as.scene = null; _as.selLine = null; _as.geoRing = null; _as.sel = -1;
@@ -448,6 +479,7 @@ function _asCount() {
 // Called by almanac-earth.js after its own satellites.
 function _asSatFrame(ms, sc) {
   if (!_as.on || _as.state !== 'ready') return;
+  if (_asStandSkyOff.registered !== _as.data) _asStandSkySync();   // the ground view's file loads on its first use: joined when it is there
   if (!_as.cloud || _as.scene !== _ae.gl.scene) _asMakeCloud();
   var cloud = _as.cloud, fast = typeof _almRate !== 'undefined' && Math.abs(_almRate) > AS_FAST_RATE;
   cloud.visible = _ae.target === 'earth' && !fast;
@@ -709,20 +741,13 @@ function _asNeedPasses(place) {
   if (!place || _as.state !== 'ready' || _as.passBusy) return;
   var t = _as.passPlace;
   if (t && Math.abs(t.lat - place.lat) < 0.05 && Math.abs(t.lon - place.lon) < 0.05 && Date.now() - t.at < AS_PASS_HOURS * 1800 * 1000) return;
-  var d = _as.data, cand = [], area = [], altKm = [], inc = [];
-  for (var i = 0; i < d.n; i++) {
-    if (d.mm[i] < AS_PASS_LEO_MM || d.alt[i] > AS_LEO_MAX_KM) continue;
-    if (AS_ISS_MODULE.test(d.name[i]) && d.norad[i] !== AS_ISS_NORAD) continue;   // the station's other catalogue entries are the same pass
-    var a = _asAreaM2(i);
-    if (!a) continue;
-    cand.push(i); area.push(a); altKm.push(d.alt[i]); inc.push(d.inc[i]);
-  }
+  var c = _asSeenFrom();
   _as.passBusy = true;
   var t0 = Date.now();
   _asAsk({
     cmd: 'passes', lat: place.lat, lon: place.lon, t0: t0, hours: AS_PASS_HOURS, step: AS_PASS_STEP_S, refine: AS_PASS_REFINE_S,
     minEl: AS_PASS_MIN_EL, sunAlt: AS_PASS_SUN_ALT, magLimit: AS_PASS_MAG_LIMIT,
-    cand: cand, area: area, altKm: altKm, inc: inc
+    cand: c.cand, area: c.area, altKm: c.altKm, inc: c.inc
   }).then(function (r) {
     _as.passes = _asTrim(_asGroupTrains(r.list.sort(function (u, v) { return u.start - v.start; })));
     _as.passPlace = { lat: place.lat, lon: place.lon, at: t0 };
@@ -732,6 +757,21 @@ function _asNeedPasses(place) {
     _as.passes = [];
     _as.passPlace = { lat: place.lat, lon: place.lon, at: t0 };   // not asked again at every paint
   }).then(function () { _as.passBusy = false; });
+}
+// The satellites that can be seen from the ground at all (a low orbit, with a size to light up), as the columns the worker
+// takes: index, assumed area, altitude and inclination. Built once for a catalogue.
+function _asSeenFrom() {
+  var d = _as.data;
+  if (d._seen) return d._seen;
+  var c = { cand: [], area: [], altKm: [], inc: [] };
+  for (var i = 0; i < d.n; i++) {
+    if (d.mm[i] < AS_PASS_LEO_MM || d.alt[i] > AS_LEO_MAX_KM) continue;
+    if (AS_ISS_MODULE.test(d.name[i]) && d.norad[i] !== AS_ISS_NORAD) continue;   // the station's other catalogue entries are the same pass
+    var a = _asAreaM2(i);
+    if (!a) continue;
+    c.cand.push(i); c.area.push(a); c.altKm.push(d.alt[i]); c.inc.push(d.inc[i]);
+  }
+  return (d._seen = c);
 }
 // A satellite's size for the brightness estimate: its radar cross-section, or a stated size for the big constellations.
 function _asAreaM2(i) {
@@ -766,6 +806,76 @@ function _asTrim(list) {
   var worth = function (p) { return p.mag - p.el / AS_PASS_EL_WEIGHT_DEG; };
   var keep = kept.slice().sort(function (u, v) { return worth(u) - worth(v); }).slice(0, AS_PASS_MAX);
   return kept.filter(function (p) { return keep.indexOf(p) >= 0; });
+}
+// ── The sky seen from a place, for any scene that draws one ──
+// _asSkyAsk is asked at the worker's pace (about once a second, off the main thread); _asSkyAt is called every frame on
+// what it answered and costs a multiply per satellite. Each entry: {i, norad, name, az, el, mag, azRate, elRate} with
+// az and el in degrees at tMs; every one is above the horizon and sunlit, the ISS included.
+var AS_SKY_MAG = AE_SATS_REF.skyMag, AS_SKY_MAX = 60, AS_SKY_LOOK_AHEAD_MS = 2000;
+function _asSkyAsk(lat, lon, tMs) {
+  if (_as.state !== 'ready') return Promise.resolve({ t: tMs, list: [] });
+  var c = _asSeenFrom();
+  return _asAsk({
+    cmd: 'sky', lat: lat, lon: lon, t: tMs, dt: AS_SKY_LOOK_AHEAD_MS, minEl: 0, sunAlt: AS_PASS_SUN_ALT, magLimit: AS_SKY_MAG, max: AS_SKY_MAX,
+    cand: c.cand, area: c.area, altKm: c.altKm, inc: c.inc
+  }).then(function (r) {
+    var d = _as.data;
+    return { t: tMs, sunAlt: r.sunAlt, list: r.list.map(function (e) { return Object.assign({ norad: d.norad[e.i], name: d.name[e.i] }, e); }) };
+  });
+}
+// The array for the instant, in one call, when a scene does not keep the answer between frames.
+function _asSkyNow(lat, lon, tMs) { return _asSkyAsk(lat, lon, tMs).then(function (a) { return _asSkyAt(a, tMs); }); }
+// ── The same sky in Stand here ──
+// While the layer is on, the satellites over the stand place are drawn in the ground view's sky (almanac-stand.js
+// _aeStandSkySource): the station and what a dark sky shows, with a short trail each, and Starlinks of one launch that are
+// over together as a train. A tap names them.
+var AS_TRAIN_SKY_MIN = 3, AS_TRAIN_SKY_DEG = 25, AS_SKY_TRAIL_STEPS = 6, AS_SKY_TRAIL_STEP_S = 5;
+var AS_SKY_RGB = { iss: [1, 0.95, 0.85] };
+function _asStandSkyObjects(answer, tMs) {
+  var d = _as.data, live = _asSkyAt(answer, tMs), launches = {};
+  live.forEach(function (e) {
+    if (AS_GROUPS[d.group[e.i]] === 'starlink' && d.launch[e.i] >= 0) (launches[d.launch[e.i]] = launches[d.launch[e.i]] || []).push(e);
+  });
+  var train = {};
+  Object.keys(launches).forEach(function (k) {
+    var g = launches[k];   // together: every member within a few tens of degrees of the first
+    g = g.filter(function (e) { return Math.abs(e.az - g[0].az) % 360 < AS_TRAIN_SKY_DEG || Math.abs(e.az - g[0].az) % 360 > 360 - AS_TRAIN_SKY_DEG; });
+    if (g.length >= AS_TRAIN_SKY_MIN) g.forEach(function (e) { train[e.i] = g.length; });
+  });
+  var stationDrawn = !!(_ae && _ae.sats && _ae.sats.lib && _ae.sats.list.some(function (q) { return q.iss; }));   // the ground view draws the station itself when the Earth's own satellites are loaded
+  return live.filter(function (e) { return !(stationDrawn && d.norad[e.i] === AS_ISS_NORAD); }).map(function (e) {
+    var trail = [];
+    for (var k = 1; k <= AS_SKY_TRAIL_STEPS; k++) {
+      var back = -k * AS_SKY_TRAIL_STEP_S, el = e.el + e.elRate * back;
+      if (el < 0) break;
+      trail.push({ az: (((e.az + e.azRate * back) % 360) + 360) % 360, el: el });
+    }
+    var inTrain = train[e.i], iss = d.norad[e.i] === AS_ISS_NORAD;
+    return {
+      az: e.az, el: e.el, mag: e.mag, kind: inTrain ? 'train' : 'sat', trail: trail, rgb: iss ? AS_SKY_RGB.iss : undefined,
+      name: inTrain ? _aeT('alm_sats_train', { n: inTrain }) + ' · ' + e.name : e.name
+    };
+  });
+}
+var _asStandSkyOff = function () {};
+function _asStandSkySync() {
+  var want = _as.on && _as.state === 'ready' && typeof _aeStandSkySource === 'function';
+  if (want && _asStandSkyOff.registered !== _as.data) {
+    _asStandSkyOff();
+    var off = _aeStandSkySource({ ask: _asSkyAsk, at: _asStandSkyObjects });
+    _asStandSkyOff = function () { off(); _asStandSkyOff = function () {}; };
+    _asStandSkyOff.registered = _as.data;
+  } else if (!want) _asStandSkyOff();
+}
+// An answer of _asSkyAsk carried to tMs: positions moved by their rates, those that have set dropped.
+function _asSkyAt(answer, tMs) {
+  var dt = (tMs - answer.t) / 1000, out = [];
+  answer.list.forEach(function (e) {
+    var el = e.el + e.elRate * dt;
+    if (el < 0) return;
+    out.push(Object.assign({}, e, { az: (((e.az + e.azRate * dt) % 360) + 360) % 360, el: el }));
+  });
+  return out;
 }
 var AS_ARROWS = ['↑', '↗', '→', '↘', '↓', '↙', '←', '↖'];
 function _asArrow(az) { return AS_ARROWS[Math.round(az / 45) % 8]; }
@@ -912,7 +1022,7 @@ function _asSkyPaint(ctx, s) {
         var y = _skyY(s, lk.el), near = _aeClamp(1 - (p.mag - 0) / 6, 0.25, 1);
         _asSkyTrail(ctx, s, i, ms, place, x, y, near);
         _skyLight(ctx, x, y, (1.4 + 2 * near) * dpr, [255, 250, 235], 0.6 + 0.4 * near);
-        if (_as.data.norad[i] !== AS_ISS_NORAD) s.bodies.push({ type: 'sat', name: _as.data.name[i], x: x / dpr, y: y / dpr, r: 4, alt: lk.el, az: lk.az, km: _asAltKm(i, ms) });
+        if (s.bodies && _as.data.norad[i] !== AS_ISS_NORAD) s.bodies.push({ type: 'sat', name: _as.data.name[i], x: x / dpr, y: y / dpr, r: 4, alt: lk.el, az: lk.az, km: _asAltKm(i, ms) });
         if (p.members.length < AS_TRAIN_MIN || k === 0) {
           ctx.fillStyle = 'rgba(255,250,235,.8)';
           ctx.font = (11 * dpr) + 'px sans-serif';

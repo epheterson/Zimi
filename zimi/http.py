@@ -1258,6 +1258,7 @@ if os.path.isdir(_STATIC_DIR):
             + _static_hash("mapflow.js")
             + _static_hash("almanac-maps.js")
             + _static_hash("almanac-look.js")
+            + _static_hash("almanac-sun.js")
             + _static_hash("almanac-skyfind.js")
             + _static_hash("almanac-terrain.js")
             + _static_hash("almanac-terrainshade.js")

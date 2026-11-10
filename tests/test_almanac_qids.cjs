@@ -131,6 +131,7 @@ const PLAIN_ROWS = {
   sat_gps_el: 'a limit this layer chose, not a named thing',
   sat_pass_max: 'a limit this layer chose, not a named thing',
   sat_lone_starlinks: 'a limit this layer chose, not a named thing',
+<<<<<<< HEAD
   launch_min_el: 'a figure the launch pages chose or took from a flight, not a named thing',
   launch_dark_sun: 'a figure the launch pages chose or took from a flight, not a named thing',
   launch_plume_km: 'a figure the launch pages chose or took from a flight, not a named thing',
@@ -158,6 +159,14 @@ const PLAIN_ROWS = {
   launch_spread: 'a figure the launch pages chose or took from a flight, not a named thing',
   launch_release: 'a figure the launch pages chose or took from a flight, not a named thing',
   launch_shells: 'a figure the launch pages chose or took from a flight, not a named thing'
+=======
+  sat_sky_mag: 'a limit this layer chose, not a named thing',
+  sun_rotation: 'the rate of one reference frame, not an article of its own',
+  sun_diff_rot: 'three coefficients of one fit',
+  sun_granules: 'how many cells this view draws, not a named thing',
+  sun_prom_height: 'the height this view draws prominences at',
+  sun_flare: 'the rise and fade this view draws a flare with'
+>>>>>>> origin/topic/sats
 };
 const rowsSrc = grab(tbSrc, /var TB_CONST_ROWS = \{[\s\S]*?\n\};/, 'TB_CONST_ROWS');
 const rowKeys = [...rowsSrc.matchAll(/^\s+\['([a-z0-9_]+)', /gm)].map((m) => m[1]);

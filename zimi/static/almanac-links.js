@@ -63,7 +63,17 @@
     'planet:europa':   { q: 'Q3143', en: 'Europa (moon)' },
     'planet:ganymede': { q: 'Q3169', en: 'Ganymede (moon)' },
     'planet:callisto': { q: 'Q3134', en: 'Callisto (moon)' },
-    'planet:titan':    { q: 'Q2565', en: 'Titan (moon)' }
+    'planet:titan':    { q: 'Q2565', en: 'Titan (moon)' },
+    'planet:vesta':    { q: 'Q3030', en: '4 Vesta' },
+    'planet:mimas':    { q: 'Q15034', en: 'Mimas' },
+    'planet:enceladus': { q: 'Q3303', en: 'Enceladus' },
+    'planet:tethys':   { q: 'Q15047', en: 'Tethys (moon)' },
+    'planet:dione':    { q: 'Q15040', en: 'Dione (moon)' },
+    'planet:rhea':     { q: 'Q15050', en: 'Rhea (moon)' },
+    'planet:iapetus':  { q: 'Q17958', en: 'Iapetus (moon)' },
+    'planet:triton':   { q: 'Q3359', en: 'Triton (moon)' },
+    'planet:charon':   { q: 'Q6604', en: 'Charon (moon)' },
+    'planet:phobos':   { q: 'Q7547', en: 'Phobos (moon)' }
   };
 
   var PROBES = {
