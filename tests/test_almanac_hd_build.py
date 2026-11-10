@@ -170,13 +170,34 @@ def test_every_world_has_a_pinned_public_domain_source():
         k for k, v in hd.LAYERS.items() if "solarsystemscope" in v.get("file", "")
     }
     assert elsewhere == {"planets/jupiter", "planets/saturn"}
-def test_every_layer_belongs_to_the_core_or_to_one_part():
-    for layer in hd.LAYERS:
-        assert hd.part_of(layer + "/") in ("", *hd.PARTS), layer
-    assert hd.part_of("moon/albedo/3/1/2.webp") == "moon"
-    assert hd.part_of("planets/mars/5/0/0.webp") == "mars"
-    assert hd.part_of("planets/marsX/0/0/0.webp") == ""
-    assert hd.part_of("earth/day/0/0/0.webp") == ""
+def test_a_layers_deep_levels_are_a_part_and_the_rest_the_core():
+    assert hd.part_of("moon/albedo/5/1/2.webp") == ""
+    assert hd.part_of("moon/albedo/6/1/2.webp") == "moon"
+    assert hd.part_of("moon/albedo/14/1/2.webp") == "moon"  # the Apollo inserts, past the global map
+    assert hd.part_of("moon/relief/4/0/0.webp") == "" and hd.part_of("moon/relief/5/0/0.webp") == "moon"
+    assert hd.part_of("planets/mars/4/1/1.webp") == "" and hd.part_of("planets/mars/5/1/1.webp") == "mars"
+    assert hd.part_of("planets/marsX/9/0/0.webp") == ""
+    assert hd.part_of("earth/day/7/0/0.webp") == ""
+    assert hd.part_of("terrain/moon/0/0/0.webp") == "moon"  # a layer whose first level is 0 is wholly the part's
+
+
+def test_each_zims_list_of_layers_is_its_own_and_a_split_layer_is_in_both():
+    layers = {
+        "earth/day": {"max": 7},
+        "moon/albedo": {"max": 7, "inserts": [{"site": "apollo11"}]},
+        "moon/relief": {"max": 5},
+        "planets/mars": {"max": 4},  # not deep enough for its part
+        "terrain/moon": {"max": 3},
+    }
+    core = hd.part_manifest(layers, "")
+    assert core == {"earth/day": {"max": 7}, "moon/albedo": {"max": 5}, "moon/relief": {"max": 4}, "planets/mars": {"max": 4}}
+    moon = hd.part_manifest(layers, "moon")
+    assert moon == {
+        "moon/albedo": {"max": 7, "inserts": [{"site": "apollo11"}], "from": 6},
+        "moon/relief": {"max": 5, "from": 5},
+        "terrain/moon": {"max": 3},
+    }
+    assert hd.part_manifest(layers, "mars") == {}
 
 
 def test_a_native_map_is_cut_from_windows_of_the_memory_map(tmp_path):
@@ -231,5 +252,4 @@ def test_the_builders_parts_and_the_apps_are_the_same_set():
     from zimi import almanachd
 
     assert set(hd.PARTS) == set(almanachd.PARTS)
-    assert hd.part_of("terrain/moon/3/1/1.webp") == "moon"
     assert hd.part_of("terrain/earth/3/1/1.webp") == ""
