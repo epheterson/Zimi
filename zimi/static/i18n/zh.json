@@ -3667,6 +3667,7 @@
   "alm_spin_retro": "逆向自转",
   "alm_row_landings": "着陆点",
   "alm_lm_night_until": "那里是夜晚，直到 {date} · 日出时抵达",
+  "alm_hd_ultra": "超清",
   "alm_hd_installed": "已安装",
   "alm_hd_ask_admin": "此 Zimi 的管理者可以添加",
   "alm_blurb_sun": "这颗恒星大到几乎集中了太阳系全部的质量。",
