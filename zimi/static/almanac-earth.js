@@ -301,8 +301,8 @@ function _aeEclipseNow(scene) {
 // the old one.
 var AE_THREE_URL = '/static/earth/three-r186.min.js';
 var AE_SGP4_URL = '/static/earth/satellite-7.1.0.min.js';
-var AE_TEX_DAY = '/static/earth/earth-day-v1.webp';
-var AE_TEX_NIGHT = '/static/earth/earth-night-v1.webp';
+var AE_TEX_DAY = _almAsset('/static/earth/earth-day-v1.webp');
+var AE_TEX_NIGHT = _almAsset('/static/earth/earth-night-v1.webp');
 var AE_TEX_MOON = _MOON_MAP_URL;        // app.js: the 2D Moons' maps, the 1024 one first
 var AE_TEX_MOON_HI = _MOON_MAP_HI_URL;
 // The 4096 map goes to the GPU as one channel (8 MB, not 32): three's
@@ -1683,7 +1683,7 @@ function _aeUpdateSpots(S, ms) {
 // ── The Sun close up: prominences, flares and a finer surface (almanac-sun.js) ──
 // Loaded the first time the Sun is wide on screen (never with the view's first frame: from the Earth it is a small
 // disc the plain shaders draw); it swaps the Sun's two shaders for fuller ones and feeds them each frame.
-var AE_SUNFX_JS = '/static/almanac-sun.js?v=45';
+var AE_SUNFX_JS = _almAsset('/static/almanac-sun.js');
 var AE_SUNFX_MIN_PX = 28;            // the Sun's disc, radius in CSS px, past which its close-up is asked for
 function _aeSunFxWanted(S, ms) {
   if (typeof _aeSunFxTick === 'function') { _aeSunFxTick(S, ms); return; }
@@ -2627,7 +2627,7 @@ var AE_RING_FRAG = [
 ].join('\n');
 function _aePlanetBody(key) { for (var i = 0; i < AE_PLANETS.length; i++) if (AE_PLANETS[i].key === key) return AE_PLANETS[i]; return null; }
 function _aeIsPlanet(key) { return !!_aePlanetBody(key); }
-function _aePlanetMapUrl(b) { return '/static/earth/' + b.map + '-v1.webp'; }
+function _aePlanetMapUrl(b) { return _almAsset('/static/earth/' + b.map + '-v1.webp'); }
 // Each planet and moon becomes a place the view knows: a target to circle, a mark with its name. Once, before the
 // view's markup is built (the marks are made from AE_MARKED).
 var _aePlanetsKnown = false;
@@ -3549,7 +3549,7 @@ function _aeDrawAxes(S, sc) {
 // asteroids-v1.bin (scripts/build_asteroids.py, JPL's Small-Body Database): the ~18,000 main-belt asteroids brighter
 // than H 14, as orbital elements, each moved along its ellipse to the shown date and placed as the planets are. Fetched the first time the view stands out among the planets
 // or wide enough to hold the belt; placed again when the shown date has moved a day.
-var AE_AST_URL = '/static/earth/asteroids-v1.bin';
+var AE_AST_URL = _almAsset('/static/earth/asteroids-v1.bin');
 var AE_AST_AU_SPAN = 6, AE_AST_Q = 65535, AE_AST_HEADER = 12;
 var AE_AST_GAUSS_K = 0.01720209895;             // radians a day at 1 AU (Kepler's third law)
 var AE_AST_REPLACE_DAYS = 1;
@@ -3620,7 +3620,7 @@ function _aeUpdateAsteroids(jde, around, sunAt) {
 // beside them. Fetched when first out among the planets. Each probe flying on the shown date is a dot with its name
 // and the path it has flown, placed as the planets are; a tap flies there and its card says where it is and what it
 // last did.
-var AE_TRACKS_URL = '/static/earth/space-tracks-v1.json';
+var AE_TRACKS_URL = _almAsset('/static/earth/space-tracks-v1.json');
 // How far round a planet (AU) a probe is placed in that planet's own frame rather than by the drawn scale.
 var AE_PROBE_REACH_AU = { earth: 0.05, mercury: 0.01, venus: 0.02, mars: 0.02, jupiter: 0.5, saturn: 0.4, uranus: 0.2, neptune: 0.3, pluto: 0.05 };
 var AE_PROBE_COLOR = [0.43, 0.9, 0.85] /* AE_PROBE_HEX */, AE_PROBE_PX = 5, AE_PROBE_CAPACITY = 16;
@@ -4417,7 +4417,7 @@ function _aeDrawMini() {
 // once the body is AE_LM_LANDING_MIN_R_PX in radius, the biggest first and none on top of another. A tap opens its card:
 // what it is, its article when the library has it, and Fly there, down to the surface over it. A body is a key, so Mars
 // and the rest slot in beside the Moon (with a placement in _aeLmBodies).
-var AE_LM_URL = '/static/earth/landmarks-v1.json';
+var AE_LM_URL = _almAsset('/static/earth/landmarks-v1.json');
 var AE_LM_MAX = 18;
 var AE_LM_MIN_PX = 28;
 var AE_LM_LANDING_MIN_R_PX = 80;
@@ -4470,7 +4470,7 @@ function _aeLmLoad() {
 var AE_SITE_FACTS = { solSeconds: 88775.244, marsSolDays: 1.0274912517, msdEpochJd: 2451549.5, msdOffset: 44796.0 - 0.0009626, ttMinusUtcS: 69.184,
   driveLmstH: { msl: 13, m20: 14 }, lrvSpeedMs: 3.61, marsDriveSpeedMs: 3.4, saturnMassKg: 2.97e6, saturnThrustN: 34.5e6, saturnBurnKgS: 13300, saturnCutoffS: 161, launchAzimuthDeg: 72, launchTowerM: 122,
   saturnThrustVacN: 39.0e6, saturnDragCd: 0.5, saturnAreaM2: 80, saturnTilt: { startS: 12, perS: 1.2, pow: 0.78, maxDeg: 62 }, jumpMs: { moon: 3.0, mars: 4.4 } };
-var AE_SITES_JS = ['/static/almanac-sites.js', '/static/almanac-sites-ground.js'];
+var AE_SITES_JS = [_almAsset('/static/almanac-sites.js'), _almAsset('/static/almanac-sites-ground.js')];
 var _aeSitesLoading = false;
 function _aeSitesLoad() {
   if (_aeSitesLoading) return;
@@ -5871,7 +5871,7 @@ function _aeOrientMoon(sc) {
 // station flies (LVLH: the truss across the direction of travel, the Russian segment behind, the truss on the zenith
 // side), its main solar arrays turned about the truss toward the Sun. Lit by the Sun (the arrays glint), by the Earth
 // below in daylight, and dark in the Earth's shadow. Under AE_CRAFT_MODEL_PX across it is not drawn: the dot is.
-var AE_ISS_URL = '/static/earth/iss-v1.bin';
+var AE_ISS_URL = _almAsset('/static/earth/iss-v1.bin');
 var AE_ISS_SPAN_RE = 109 / 1000 / AE_EARTH_RADIUS_KM;     // the station's 109 m along its truss, in Earth radii
 var AE_ISS_VIEW_DIR = [-0.42, -0.55, 0.72];                 // from it, in its own axes (nadir, forward, starboard): above, behind, to starboard; the Earth below to the horizon
 var AE_ISS_EARTHSHINE = 0.3;                                // the day side below, as a light from the nadir
@@ -5942,7 +5942,7 @@ var AE_CRAFT_FRAG = [
   '  gl_FragColor = vec4(sqrt(min(lin, vec3(1.0))), fade);',
   '}'
 ].join('\n');
-function _aeCraftUrl(model) { return model === 'iss' ? AE_ISS_URL : '/static/earth/craft-' + model + '-v1.bin'; }
+function _aeCraftUrl(model) { return model === 'iss' ? AE_ISS_URL : _almAsset('/static/earth/craft-' + model + '-v1.bin'); }
 // Either format into one shape: positions centred on the box, a class (shading entry) per vertex, the look per class,
 // metres per unit and the widest extent in units; the ISS's turning axis, or a probe's pointing and across axes.
 function _aeCraftParse(buf) {
@@ -6038,7 +6038,7 @@ function _aeCraftBuild(S, model) {
 // (+x in NASA's model; the plate is the white panel there, the record the gilded disc on it). Its face is the
 // Almanac's own picture of the record's cover (static/golden-record/cover.jpg); a tap on it opens that section.
 var AE_CRAFT_RECORD = { voyager: { at: [1.257, -1.95, -2.33], r: 0.155 } };   // metres in the model's frame
-var AE_RECORD_IMG = '/static/golden-record/cover.jpg', AE_RECORD_IMG_R = 0.47;   // the disc's radius in the picture (of its width)
+var AE_RECORD_IMG = _almAsset('/static/golden-record/cover.jpg'), AE_RECORD_IMG_R = 0.47;   // the disc's radius in the picture (of its width)
 var AE_RECORD_VERT = [
   'varying vec2 vUv;',
   'void main() { vUv = uv; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }'
