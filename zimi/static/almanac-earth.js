@@ -441,7 +441,7 @@ var AE_PIN_SVG = '<svg viewBox="0 0 24 24" width="17" height="17" fill="none" st
 var AE_ORBIT_SVG = '<svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" aria-hidden="true"><circle cx="12" cy="12" r="6"/><ellipse cx="12" cy="12" rx="10" ry="3.2"/><path d="M12 1.5v21"/></svg>';
 // Every active satellite (almanac-sats.js, loaded on the button's first press): a ring with dots on it.
 var AE_SATS_SVG = '<svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" aria-hidden="true"><circle cx="12" cy="12" r="9" opacity=".55"/><circle cx="6.5" cy="7" r="1.5" fill="currentColor" stroke="none"/><circle cx="16" cy="5.8" r="1.5" fill="currentColor" stroke="none"/><circle cx="18.2" cy="14.5" r="1.5" fill="currentColor" stroke="none"/><circle cx="9.5" cy="17.5" r="1.5" fill="currentColor" stroke="none"/><circle cx="11.8" cy="11.2" r="1.5" fill="currentColor" stroke="none"/></svg>';
-var AE_SATS_JS = '/static/almanac-sats.js?v=1';
+var AE_SATS_JS = _almAsset('/static/almanac-sats.js');
 // What the all-satellites layer decides by (almanac-sats.js), kept here so the Almanac's constants pages can show it.
 var AE_SATS_REF = {
   ageFreshDays: 3, ageGoneDays: 45,     // elements this young are drawn in full; past the second the satellite is not drawn
