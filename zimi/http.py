@@ -5346,6 +5346,9 @@ class ZimHandler(BaseHTTPRequestHandler):
             payload["can_change"] = bool(
                 _srv.ZIMI_MANAGE and _users._request_is_admin(self)
             )
+            if not payload["can_change"] and isinstance(payload.get("downloading"), dict):
+                # Why a set-up failed can quote pip or a path: the admin's to read, not every reader's.
+                payload["downloading"] = {k: v for k, v in payload["downloading"].items() if k != "reason"}
             return self._uncached(lambda: self._json(200, payload))
         text, lang, accent, engine = (
             param("text") or "",

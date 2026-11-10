@@ -46,7 +46,8 @@ class DetailsBuilder:
     index in the file, for a kind that is asked by key rather than read whole;
     ``load`` None keeps no rows in memory (the file is asked instead), only
     that it is there. ``isolate_min`` is where a build moves to a child
-    process (ISOLATE_MIN_ENTRIES; 0 for a build that is heavy per entry)."""
+    process (None: ISOLATE_MIN_ENTRIES, read when the build starts; 0 for a build
+    that is heavy per entry)."""
 
     def __init__(
         self,
@@ -64,7 +65,7 @@ class DetailsBuilder:
         on_keep,
         gone=None,
         indexes=(),
-        isolate_min=ISOLATE_MIN_ENTRIES,
+        isolate_min=None,
     ):
         self.kind = kind
         self.zims = zims
@@ -207,7 +208,7 @@ class DetailsBuilder:
                             path,
                             self.build,
                             lambda _name: None,
-                            min_entries=self.isolate_min,
+                            min_entries=ISOLATE_MIN_ENTRIES if self.isolate_min is None else self.isolate_min,
                         )
                     finally:
                         _background_end(self.kind)

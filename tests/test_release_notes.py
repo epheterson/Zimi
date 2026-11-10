@@ -64,9 +64,14 @@ def test_highlights_become_the_body_with_a_link_to_the_full_entry():
 
 
 def test_lines_citing_an_issue_are_listed_as_fixed_from_any_subsection():
-    text = CHANGELOG.replace("- Saved pages.", "- Saved pages (#12).").replace("- Speed.", "- Speed, as #7 asked.\n- No issue here.")
+    text = CHANGELOG.replace("- Saved pages.", "- Saved pages (#12).").replace(
+        "- Speed.", "- Speed, as #7 asked.\n- No issue here."
+    )
     out = release_notes.release_body(text, "1.2.0", REPO)
-    assert "**Fixed**\n\n- Saved pages (#12).\n- Speed, as #7 asked.\n\n[Full changelog" in out
+    assert (
+        "**Fixed**\n\n- Saved pages (#12).\n- Speed, as #7 asked.\n\n[Full changelog"
+        in out
+    )
     assert "No issue here" not in out
     assert "**Fixed**" not in body("1.2.0")
 
@@ -94,7 +99,10 @@ def test_a_prefix_of_another_version_is_not_matched():
 
 def test_an_empty_highlights_block_falls_back_to_the_section():
     text = "## [2.0.0] - 2026-03-01\n\n### Highlights\n\n### Added\n\n- X.\n"
-    assert release_notes.release_body(text, "2.0.0", REPO) == "### Highlights\n\n### Added\n\n- X."
+    assert (
+        release_notes.release_body(text, "2.0.0", REPO)
+        == "### Highlights\n\n### Added\n\n- X."
+    )
 
 
 def test_highlights_not_at_the_top_do_not_count():
@@ -118,9 +126,23 @@ def test_the_command_line_prints_the_body(tmp_path):
     path = tmp_path / "CHANGELOG.md"
     path.write_text(CHANGELOG, encoding="utf-8")
     done = subprocess.run(
-        [sys.executable, str(SCRIPT), "1.1.0", str(path)], capture_output=True, text=True, check=True
+        [sys.executable, str(SCRIPT), "1.1.0", str(path)],
+        capture_output=True,
+        text=True,
+        check=True,
     )
     assert done.stdout.strip() == body("1.1.0")
+
+
+def test_check_refuses_a_version_the_changelog_has_no_section_for():
+    done = subprocess.run(
+        [sys.executable, str(SCRIPT), "--check", "0.0.1"],
+        capture_output=True,
+        text=True,
+        cwd=ROOT,
+        check=False,
+    )
+    assert done.returncode == 1 and "no such section" in done.stderr
 
 
 HIGHLIGHT_BULLETS_MAX = 8
@@ -136,13 +158,25 @@ def test_every_highlights_block_in_the_real_changelog_is_short():
             continue
         bullets = [l for l in highlights.splitlines() if l.startswith("- ")]
         if bullets:
-            assert len(bullets) <= HIGHLIGHT_BULLETS_MAX, "%s: %d highlight bullets" % (version, len(bullets))
+            assert len(bullets) <= HIGHLIGHT_BULLETS_MAX, "%s: %d highlight bullets" % (
+                version,
+                len(bullets),
+            )
             for b in bullets:
                 sentences = re.findall(r"[^.!?]+[.!?](?=\s|$)", b[2:])
-                assert len(sentences) == 1, "%s: a highlight bullet is %d sentences: %s" % (version, len(sentences), b)
+                assert (
+                    len(sentences) == 1
+                ), "%s: a highlight bullet is %d sentences: %s" % (
+                    version,
+                    len(sentences),
+                    b,
+                )
         else:
             sentences = re.findall(r"[^.!?]+[.!?]", highlights)
-            assert 1 <= len(sentences) <= 3, "%s: Highlights is %d sentences" % (version, len(sentences))
+            assert 1 <= len(sentences) <= 3, "%s: Highlights is %d sentences" % (
+                version,
+                len(sentences),
+            )
 
 
 def test_an_issue_the_highlights_name_is_not_listed_again_under_fixed():
@@ -165,8 +199,14 @@ GROUPED = "## [2.0.0]\n\n### Highlights\n\n%s\n\n### Fixed\n\n- A thing.\n"
     "block, problem",
     [
         ("**Almanac**\n\n- One.\n\n**Zimi**\n\n- Two.", "Zimi comes first"),
-        ("**Zimi**\n\n- One.\n\n**Almanac**\n\n- Two.\n\n**Games**\n\n- Three.", "Almanac comes last"),
-        ("**Zimi**\n\n- One.\n\n**Games**\n\n**Almanac**\n\n- Two.", "Games has no bullets"),
+        (
+            "**Zimi**\n\n- One.\n\n**Almanac**\n\n- Two.\n\n**Games**\n\n- Three.",
+            "Almanac comes last",
+        ),
+        (
+            "**Zimi**\n\n- One.\n\n**Games**\n\n**Almanac**\n\n- Two.",
+            "Games has no bullets",
+        ),
         ("- One.\n\n**Zimi**\n\n- Two.", "a bullet comes before any area"),
         ("**Zimi**\n\n- One.\n\n**Zimi**\n\n- Two.", "Zimi is listed twice"),
     ],
@@ -176,13 +216,21 @@ def test_a_grouped_highlights_block_that_breaks_the_voice_is_named(block, proble
 
 
 def test_plain_bullets_and_sentences_are_not_judged():
-    assert release_notes.voice_problems(GROUPED % "- **Linux:** a unit at boot.", "2.0.0") == []
+    assert (
+        release_notes.voice_problems(GROUPED % "- **Linux:** a unit at boot.", "2.0.0")
+        == []
+    )
     assert release_notes.voice_problems(GROUPED % "One sentence.", "2.0.0") == []
 
 
 def test_the_real_changelog_is_in_the_voice_from_1_15_4_on():
     text = (ROOT / "CHANGELOG.md").read_text(encoding="utf-8")
-    for version in ("Unreleased", "1.15.4"):
+    released = re.findall(r"^## \[(\d+\.\d+\.\d+)\]", text, flags=re.M)
+    versions = released[: released.index("1.15.4") + 1]
+    _, unreleased = release_notes._section(text, "Unreleased")
+    if any(line.strip() for line in unreleased):  # empty right after a release
+        versions.insert(0, "Unreleased")
+    for version in versions:
         assert release_notes.voice_problems(text, version) == [], version
         _, section = release_notes._section(text, version)
         assert "**Zimi**" in release_notes._highlights(section), version
