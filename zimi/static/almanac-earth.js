@@ -4610,12 +4610,13 @@ function _aeUltraHtml() {
   var rows = list.map(function (u) {
     var busy = !!u.downloading, tail = busy ? Math.floor(100 * u.downloading.done / Math.max(1, u.downloading.size)) + '%' : _aeHdOfferSize({ size: u.size });
     return '<label class="ae-set-choice' + (st.can_change && !busy ? '' : ' ae-off') + '"><input type="checkbox" class="ae-ultra-sw" data-part="' + _almEsc(u.part) + '" data-file="' + _almEsc(u.file) + '"' +
-      (u.installed || busy ? ' checked' : '') + (st.can_change && !busy ? '' : ' disabled') + '><span><b>' + _almEsc(_aeUltraName(u.part)) + '</b><small>' + _almEsc(tail) + '</small></span></label>';
+      (u.installed && !busy ? ' checked' : '') + (st.can_change && !busy ? '' : ' data-locked="1"') + '><span><b>' + _almEsc(_aeUltraName(u.part)) + '</b><small>' + _almEsc(tail) + '</small></span></label>';
   }).join('');
   return '<div class="ae-set-data ae-set-ultra" role="group" aria-label="' + _almEsc(_aeT('alm_hd_ultra')) + '"><b>' + _almEsc(_aeT('alm_hd_ultra')) + '</b>' + rows + '</div>';
 }
 function _aeUltraToggle(box) {
   var part = box.getAttribute('data-part'), file = box.getAttribute('data-file');
+  if (box.getAttribute('data-locked')) { box.checked = !box.checked; return; }   // not yours to change, or on its way: it looks as it is and stays
   box.disabled = true;
   var done = function () { _aeHdPollNow(); };
   (box.checked ? _aePost(AE_HD_SET_URL, { start: true, part: part }) : _aePost(AE_HD_DELETE_URL, { filename: file })).then(done, done);
