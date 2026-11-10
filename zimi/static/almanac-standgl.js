@@ -487,7 +487,7 @@ var AE_ST_GROUND_FRAG = [
   '  }',
   // Grass cells (the land-cover grid's): a dry season's Blue Marble is tan, but the ground is still grass: its brightness kept, its hue pulled green where the map is not.
   '  if (uDetail > 0.5 && vSea < 0.5 && uGrass > 0.0) {',
-  '    float lg = dot(alb, vec3(0.3, 0.59, 0.11)), dull = 1.0 - smoothstep(0.0, 0.06, alb.g - max(alb.r, alb.b));',
+  '    float lg = min(dot(alb, vec3(0.3, 0.59, 0.11)), 0.2), dull = 1.0 - smoothstep(0.0, 0.06, alb.g - max(alb.r, alb.b));',
   '    alb = mix(alb, vec3(0.72, 1.0, 0.42) * lg * 0.7, uGrass * (0.3 + 0.5 * dull));',
   '  }',
   // Ground cover by height, slope and latitude (the Earth's): snow above the snow line, bare rock on steep ground and above the
