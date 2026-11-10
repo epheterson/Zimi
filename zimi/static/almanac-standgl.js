@@ -294,7 +294,7 @@ var AE_ST_BODY_VERT = [
 var AE_ST_BODY_FRAG = [
   'precision highp float;', AE_ST_GLSL_TONE,
   'uniform vec3 uDir, uRight, uUp, uSunFrom, uTint, uTrans; uniform float uHalf, uRho, uPix, uE, uK, uEmit, uVis, uGlow, uSkyLit;',
-  'uniform sampler2D uMap; uniform float uMapped, uGrey, uMapGain; uniform mat3 uBody;',                    // the body's own map, and local -> body-fixed
+  'uniform sampler2D uMap; uniform float uMapped, uGrey, uMapGain, uCorona; uniform vec3 uOcc; uniform mat3 uBody;',                    // the body's own map, and local -> body-fixed
   'uniform sampler2D uRingMap; uniform float uRings, uRp; uniform vec3 uRingN, uCen; uniform vec2 uRing;',    // Saturn's rings: plane, centre and size (km)
   'varying vec2 vUv;',
   'const float PI = ' + AE_ST_PI + ';',
@@ -321,6 +321,7 @@ var AE_ST_BODY_FRAG = [
   '      if (uEmit > 0.5) {',
   '        float limb = 1.0 - 0.45 * (1.0 - sqrt(1.0 - r2)), kept = (uRho * uRho) / (R * R);',
   '        col = tone(uTrans * (' + AE_ST_SUN_DISC_GAIN.toExponential(2) + ' * uE * limb * kept), uK);',
+  '        if (uOcc.z > 0.0) col *= smoothstep(uOcc.z - edge, uOcc.z + edge, length(o - uOcc.xy));',   // the Moon in front: its disc takes the Sun's, a crescent is what is left
   '      } else {',
   '        float lam = smoothstep(-0.02, 0.1, dot(n, uSunFrom)) * max(dot(n, uSunFrom), 0.0);',
   '        col = tone(discAlbedo(n) * uE * lam / PI * uTrans, uK);',
@@ -352,6 +353,15 @@ var AE_ST_BODY_FRAG = [
   '          }',
   '        }',
   '      }',
+  '    }',
+  '  }',
+  // The corona: a ring round the Moon's black disc, pearly white at the edge, thinning to nothing at 3.4 radii (almanac-sky.js _skyPaintCorona).
+  '  if (uCorona > 0.0 && uRho > 0.0) {',
+  '    float t = (a / uRho - 0.98) / (3.4 - 0.98);',
+  '    if (t > 0.0 && t < 1.0) {',
+  '      float w = t < 0.25 ? mix(0.85, 0.3, t / 0.25) : mix(0.3, 0.0, (t - 0.25) / 0.75);',
+  '      vec3 cc = mix(vec3(250.0, 246.0, 236.0), vec3(235.0, 236.0, 244.0), clamp(t / 0.25, 0.0, 1.0)) / 255.0;',
+  '      col += cc * w * uCorona; alpha = max(alpha, w * uCorona);',
   '    }',
   '  }',
   '  if (uGlow > 0.0) {',

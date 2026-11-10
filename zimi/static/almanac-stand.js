@@ -296,7 +296,7 @@ function _aeStandSpriteMeshes(st, mat) {
     var uni = { uDir: { value: [0, 1, 0] }, uRight: { value: [1, 0, 0] }, uUp: { value: [0, 0, 1] }, uSunFrom: { value: [0, 0, 1] }, uTint: { value: [1, 1, 1] }, uTrans: { value: [1, 1, 1] },
       uHalf: { value: 0.01 }, uRho: { value: 0.001 }, uPix: { value: 0.001 }, uE: { value: 1 }, uK: { value: 1 }, uEmit: { value: 0 }, uVis: { value: 0 }, uGlow: { value: 0 }, uSkyLit: { value: 1 },
       uMap: { value: null }, uMapped: { value: 0 }, uGrey: { value: 0 }, uMapGain: { value: 1 }, uBody: { value: [1, 0, 0, 0, 1, 0, 0, 0, 1] },
-      uRingMap: { value: null }, uRings: { value: 0 }, uRp: { value: 1 }, uRingN: { value: [0, 0, 1] }, uCen: { value: [0, 1, 0] }, uRing: { value: [0, 1] } };
+      uOcc: { value: [0, 0, 0] }, uCorona: { value: 0 }, uRingMap: { value: null }, uRings: { value: 0 }, uRp: { value: 1 }, uRingN: { value: [0, 0, 1] }, uCen: { value: [0, 1, 0] }, uRing: { value: [0, 1] } };
     var mesh = new THREE.Mesh(quad, mat(AE_ST_BODY_VERT, AE_ST_BODY_FRAG, uni, { depthTest: false, depthWrite: false, blending: THREE.AdditiveBlending }));
     mesh.frustumCulled = false; mesh.renderOrder = -1; mesh.visible = false;
     st.sprites.push({ mesh: mesh, uni: uni });
@@ -671,9 +671,20 @@ function _aeStPhoto(st, fr) {
     try { kp = _aeStandAir.exposureK(st, fr, p); } catch (e) {}
     if (kp > 0) p.k = kp;
   }
+  // The provider's eclipse: the share of the Sun's light that reaches the place (the ground, its shadows and the Sun's sprite), the faintest star the dimmed sky shows, and the disc geometry.
+  if (_aeStandAirOn(st)) {
+    var P = _aeStandAir, share = _aeStAirCall(P.sunShare, st, fr), lm = _aeStAirCall(P.limitMag, st, fr), ecl = _aeStAirCall(P.eclipse, st, fr);
+    if (share >= 0 && share < 1) { p.sunE = p.sunE.map(function (x) { return x * share; }); p.sunShare = share; }
+    if (typeof lm === 'number' && isFinite(lm)) p.lim = lm;
+    if (ecl && typeof ecl === 'object') p.ecl = ecl;
+  }
   p.e2 = e2;
   p.mwStrength = _aeClamp((p.lim - 5.2) / 2.5, 0, 1) * p.mw;
   return p;
+}
+function _aeStAirCall(fn, st, fr) {   // an optional provider method: its answer, or undefined when it is absent or throws
+  if (typeof fn !== 'function') return undefined;
+  try { return fn.call(_aeStandAir, st, fr); } catch (e) { return undefined; }
 }
 function _aeStStarVis(mag, lim) {   // almanac-skygl.js _sgStarVisibility
   var dm = lim - mag;
@@ -828,7 +839,12 @@ function _aeStandApplyGround(st, fr, ph, view, now) {
 function _aeStandSprites(st, fr, ph, pixAng, alt) {
   var a = st.atmo, d = a && a.diffuse, air = a && !d ? a : null, hG = st.h0 / 1000, R = st.b.km;
   var list = [{ sun: true, dir: fr.sun, rho: fr.sunRho, E: fr.S, sunFrom: fr.sun, tint: [1, 1, 1], mag: AE_STAND_MAG_SUN }].concat(fr.objs);
-  var Z = [0, 0, 1], Y = [0, 1, 0];
+  var Z = [0, 0, 1], Y = [0, 1, 0], ecl = ph.ecl, moonO = null;
+  if (ecl) {   // the true discs: the Sun's and the Moon's own semi-diameters, the Sun's light as much of it as the place gets
+    if (ecl.sunSemiDeg > 0) list[0].rho = _aeRad(ecl.sunSemiDeg);
+    list.forEach(function (o) { if (!o.sun && o.key === AE_STAND_MOON_NAME) { moonO = o; if (ecl.moonSemiDeg > 0) o.rho = _aeRad(ecl.moonSemiDeg); } });
+  }
+  if (ph.sunShare !== undefined) list[0].E *= ph.sunShare;
   list.forEach(function (o, i) {
     var sp = st.sprites[i];
     if (!sp) return;
@@ -843,7 +859,8 @@ function _aeStandSprites(st, fr, ph, pixAng, alt) {
     var right = _aeNorm(_aeCross(o.dir, Math.abs(o.dir[2]) > 0.999 ? Y : Z)), up = _aeCross(right, o.dir);
     var lim = ph.lim, vis = o.sun ? 1 : _aeStStarVis(o.mag + (air ? 0.2 * 1 / (Math.max(mu, 0) + 0.025 * Math.exp(-11 * Math.max(mu, 0))) : 0), lim);
     var ringed = !o.sun && o.key === 'saturn' && st.ringTex, ringRho = ringed ? Math.asin(Math.min(1, AE_STAND_SATURN_RINGS[1] / o.dist)) : 0;
-    if (!o.sun && o.rho <= pixAng * 1.2 && vis <= 0.004 && ringRho < pixAng * AE_STAND_RING_PX) { m.visible = false; return; }
+    var coronal = ecl && o === moonO && ecl.corona > 0;
+    if (!o.sun && !coronal && o.rho <= pixAng * 1.2 && vis <= 0.004 && ringRho < pixAng * AE_STAND_RING_PX) { m.visible = false; return; }
     m.visible = true;
     uni.uDir.value = o.dir; uni.uRight.value = right; uni.uUp.value = up; uni.uSunFrom.value = o.sunFrom;
     uni.uTint.value = o.tint; uni.uTrans.value = trans;
@@ -851,6 +868,10 @@ function _aeStandSprites(st, fr, ph, pixAng, alt) {
     uni.uRho.value = o.rho; uni.uPix.value = pixAng; uni.uE.value = o.E; uni.uK.value = ph.k;
     uni.uEmit.value = o.sun ? 1 : 0; uni.uVis.value = vis;
     uni.uGlow.value = o.sun ? (air || d ? 0 : 0.18) : 0;
+    uni.uOcc.value = [0, 0, 0];   // the Moon's disc over the Sun's: its centre in the Sun's frame (radians) and its radius
+    uni.uCorona.value = 0;
+    if (ecl && o.sun && moonO) uni.uOcc.value = [_aeDot(moonO.dir, right) , _aeDot(moonO.dir, up), moonO.rho];
+    if (ecl && o === moonO && ecl.corona > 0) { uni.uCorona.value = ecl.corona; uni.uHalf.value = Math.max(uni.uHalf.value, o.rho * AE_STAND_CORONA_RADII * 1.05); }
     uni.uSkyLit.value = 1;
     // The body's own map, once it has been looked at long enough to ask for it (a disc of a few pixels is its tint).
     var tex = !o.sun && o.rho > pixAng * AE_STAND_MAP_PX ? _aeStandDiscMap(st, o.key) : null;
@@ -865,6 +886,7 @@ function _aeStandSprites(st, fr, ph, pixAng, alt) {
   });
   for (var j = list.length; j < st.sprites.length; j++) st.sprites[j].mesh.visible = false;
 }
+var AE_STAND_CORONA_RADII = 3.4;   // the corona's reach in Moon radii (almanac-sky.js SKY_CORONA_RADII)
 var AE_STAND_MAP_PX = 3;                       // a disc this many pixels across (radius) or more is drawn from its map
 var AE_STAND_SATURN_RINGS = [74500, 140220];   // km, the C ring's inside to the A ring's outside (as almanac-earth.js AE_PLANETS)
 // The map of a body seen as a disc: the orbit view's own once it has it, else fetched (once; the disc shows it when it is in).
