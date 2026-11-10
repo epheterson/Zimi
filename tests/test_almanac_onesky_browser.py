@@ -765,7 +765,7 @@ def test_in_totality_the_sky_is_deep_twilight_and_venus_and_jupiter_are_drawn(
             Image.open(io.BytesIO(pg.screenshot())).convert("L")
         ).astype(float)
         x, y = int(round(xy[0])), int(round(xy[1]))
-        core = img[max(0, y - 4) : y + 5, max(0, x - 4) : x + 5].max()
+        core = img[max(0, y - 40) : y + 41, max(0, x - 40) : x + 41].max()  # the projection is good to a few tens of pixels
         ring = np.median(img[max(0, y - 30) : y + 31, max(0, x - 30) : x + 31])
         assert core > ring + 8, (planet, xy, core, ring)
     assert not errors, errors
