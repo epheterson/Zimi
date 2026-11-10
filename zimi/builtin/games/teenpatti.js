@@ -276,12 +276,14 @@
       pile.textContent = '';
       if (st.pot > 0) { pile.appendChild(T.chipStack(st.pot)); pile.appendChild(Z.h('span', { class: 'ct-caption', text: TX('tp.potLine', { pot: st.pot, stake: st.stake }) })); }
       pile.style.top = Math.round(g.cy - 20) + 'px';
+      // A short table keeps the middle for the tray of choices: the chips stand to the right of it.
+      pile.style.left = g.short ? Math.round(Math.min(g.midX, g.W - g.pad - 70) - 70) + 'px' : ''; pile.style.right = g.short ? 'auto' : ''; pile.style.width = g.short ? '140px' : '';
       var sideH = g.ch + (HAND - 1) * T.sideStep(g, HAND);
       [1, 2, 3].forEach(function (pos) {
         var seat = (seats.view() + pos) % SEATS, p = T.posOf(pos, SEATS), el = tags[pos];
         el.textContent = who(seat) + '\n' + TX(st.out[seat] ? 'holdem.out' : st.folded[seat] && !over ? 'tp.tag.packed' : st.seen[seat] ? 'tp.tag.seen' : 'tp.tag.blind');
-        el.style.left = Math.round(p === 2 ? g.cx : (p === 1 ? g.westX : g.eastX) + g.cw / 2) + 'px';
-        el.style.top = Math.round(p === 2 ? g.northY + g.ch + 4 : g.yTop + sideH + 4) + 'px';
+        el.style.left = Math.round(p === 2 ? (g.short ? g.cx + g.cw * 1.6 : g.cx) : (p === 1 ? g.westX : g.eastX) + g.cw / 2) + 'px';   // short: the north tag stands beside the hand, not under it
+        el.style.top = Math.round(p === 2 ? (g.short ? g.northY + g.ch / 2 - 10 : g.northY + g.ch + 4) : g.yTop + sideH + 4) + 'px';
       });
     }
     var labelOf = function (type) { return TX('tp.label.' + type); };

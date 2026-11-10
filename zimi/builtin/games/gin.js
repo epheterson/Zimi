@@ -233,7 +233,7 @@
   function place(st, m, view) {
     var V = (view && view.viewer) || 0, O = 1 - V, faceUp = !(view && view.hideHand);
     var g = geo(m, st), slots = [], cards = [], show = st.phase === 'show', sel = view && st.hands[V].indexOf(view.sel) >= 0 ? view.sel : null;
-    var sx = Math.round(g.cx - g.cw - 8), dx = Math.round(g.cx + 8), y = Math.round(g.cy - g.ch / 2), turnMine = st.turn === V && !show && faceUp;
+    var px = g.short ? Math.min(g.midX, g.W - g.pad - g.cw - 8) : g.cx, sx = Math.round(px - g.cw - 8), dx = Math.round(px + 8), y = Math.round(g.cy - g.ch / 2), turnMine = st.turn === V && !show && faceUp;
     slots.push({ id: 'stock', x: sx, y: y, w: g.cw, h: g.ch, label: TX('gin.stock', { cards: Z.plural(st.stock.length, 'card') }) });
     slots.push({ id: 'discard', x: dx, y: y, w: g.cw, h: g.ch, label: st.discard.length ? TX('gin.discardTop', { card: Z.cardName(st.discard[st.discard.length - 1]) }) : TX('gin.discardEmpty') });
     var canStock = turnMine && canDraw(st, false), canUp = turnMine && ((st.phase === 'draw' && canDraw(st, true)) || st.phase === 'offer');

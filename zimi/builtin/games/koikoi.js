@@ -186,12 +186,15 @@
   }
 
   // ── Layout ──────────────────────────────────────────────────────────────
-  var ROW_GAP = 8, TABLE_GAP_SHARE = 0.1, STRIP_H = 28, REST_ROWS = 3;
+  var ROW_GAP = 8, TABLE_GAP_SHARE = 0.1, STRIP_H = 28, REST_ROWS = 3, SHORT_GAP = 6;
   function geo(m) {
     var g = T.geometry(m, 1);
     g.showY = g.yTop;
     g.tableTop = g.yTop + g.ch + 14;
     g.tableBottom = g.statusY - STRIP_H;
+    // A short table (a phone on its side) has no height for the table, the captured strip and the status line in a column: the strip goes up
+    // beside the opponent's hand and the table takes the room it leaves.
+    if (g.short) { g.tableTop = g.northY + g.ch + SHORT_GAP; g.tableBottom = g.statusY - SHORT_GAP; }
     g.gap = Math.round(g.cw * TABLE_GAP_SHARE);
     g.perRow = Math.max(1, Math.floor((g.W - 2 * g.pad + g.gap) / (g.cw + g.gap)));
     return g;
@@ -304,7 +307,8 @@
         KINDS.forEach(function (k) { aria.push(count(cap, k) + ' ' + KIND_WORD(k)); });
         p.setAttribute('aria-label', TX(seats.isYou(seat) ? 'koikoi.pill.you' : 'koikoi.pill', { name: who(seat), list: aria.join(', ') }));
       });
-      strip.style.top = Math.round(g.statusY - STRIP_H + 2) + 'px';
+      strip.style.top = Math.round(g.short ? g.northY + 2 : g.statusY - STRIP_H + 2) + 'px';
+      strip.style.justifyContent = g.short ? 'flex-start' : '';
       strip.hidden = st.phase === 'koi' && seats.person(st.turn); // the choices sit where it does
     }
     function showCaptured(seat) {
