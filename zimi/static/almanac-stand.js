@@ -331,6 +331,7 @@ var AE_STAND_STATION_MIN_LIM = 3;           // the station is marked once the sk
 var AE_STAND_PROBE_MARKS = false;          // deep-space probes are pinpoints nobody could see: not marked (the station's pass is, near Earth)
 var AE_STAND_SKY_MATCH_SHARE = 0.55;      // and how far (in log) toward it: a view with sunlit ground in it cannot be exposed for the sky alone
 var AE_STAND_SKY_MATCH_DEG = [-6, 6];     // the Sun's height over which the Earth's exposure goes from this view's own to the 2D sky's
+var AE_STAND_NIGHT_GLOW = 3.5e-6;         // the least light the Earth's ground has (starlight and airglow, in this view's units: the Sun at the Earth is 1): a dark-adapted eye makes out the ground and its horizon
 var AE_STAND_SLICE_MS = 8;                 // a slice of building between breaths of the page
 var AE_STAND_SHADE_LOD = 1.5;              // the shadow grids hold wavelengths down to this many cells
 var AE_STAND_SHADE_MOVE = 0.0044, AE_STAND_SHADE_EVERY_MS = 300, AE_STAND_SHADE_SLICE_MS = 5;   // the Sun has moved a quarter degree; not again sooner than this; the work a frame
@@ -448,6 +449,12 @@ function _aeStFrame(st, ms) {
   fr.crafts = _aeStCrafts(sc, all, O, local, ms);
   return fr;
 }
+// A craft in the Earth's shadow (its cylinder, away from the Sun) is dark: nothing to mark. earthPos: the Earth's heliocentric place (km); rel: the craft from the Earth's centre in Earth radii.
+function _aeStationSunlit(earthPos, rel) {
+  var sun = _aeNorm(_aeScale(earthPos, -1)), along = _aeDot(rel, sun);
+  if (along >= 0) return true;
+  return _aeLen(_aeSub(rel, _aeScale(sun, along))) > 1;
+}
 // Spacecraft where they are: the probes from the Horizons tables, the station from its orbit, each as a direction and a name.
 function _aeStCrafts(sc, all, O, local, ms) {
   var out = [], toScene = function (v) { return _ephEclJ2000ToEqOfDate(v, sc.jde); };
@@ -461,7 +468,7 @@ function _aeStCrafts(sc, all, O, local, ms) {
   }
   var iss = _ae.sats && _ae.sats.lib && _ae.sats.list.filter(function (s) { return s.iss; })[0];
   var r = iss ? _aeSatAt(iss, ms, _aeEqEq(sc)) : null;
-  if (r && _aeLen(_aeSub(_aeAdd(all.earth.pos, _aeScale(r.pos, AE_EARTH_RADIUS_KM)), O)) < AE_STAND_STATION_REACH_KM) {
+  if (r && _aeLen(_aeSub(_aeAdd(all.earth.pos, _aeScale(r.pos, AE_EARTH_RADIUS_KM)), O)) < AE_STAND_STATION_REACH_KM && _aeStationSunlit(all.earth.pos, r.pos)) {
     var di = _aeSub(_aeAdd(all.earth.pos, _aeScale(r.pos, AE_EARTH_RADIUS_KM)), O);
     out.push({ key: 'iss', name: _aeT('alm_earth_iss_short'), dir: _aeNorm(local(di)), dist: _aeLen(di) });
   }
@@ -658,7 +665,7 @@ function _aeStandShadeTick(st, fr, now) {
 function _aeStandApplyGround(st, fr, ph, view, now) {
   var g = st.ground;
   g.uCam.value = view.pos; g.uPixAng.value = view.pixAng; g.uTime.value = now / 1000;
-  g.uAmbient.value = ph.amb; g.uSkyHor.value = ph.hor; g.uSkyZen.value = ph.zen; g.uDiffSky.value = ph.diffSky;
+  g.uAmbient.value = st.key === 'earth' ? ph.amb.map(function (x) { return Math.max(x, AE_STAND_NIGHT_GLOW); }) : ph.amb; g.uSkyHor.value = ph.hor; g.uSkyZen.value = ph.zen; g.uDiffSky.value = ph.diffSky;
   if (fr.light2) { g.uDir2.value = fr.light2.dir; g.uE2.value = fr.light2.rgb; }
   else g.uE2.value = [0, 0, 0];
 }
@@ -764,7 +771,7 @@ function _aeStandCraftMarks(st, fr, view) {
 //       mag,                     apparent magnitude (smaller is brighter; a plume may be -6 or less)
 //       kind,                    'sat' | 'train' | 'rocket' | 'plume': points, a point with its trail, a large soft glow
 //       rgb,                     optional [r, g, b] 0..1 (white by default)
-//       trail,                   optional path behind it, [[az, el], ...] or [{az, el}, ...]
+//       trail,                   optional path behind it, [[az, el], ...] or [{az, el, mag?}, ...]; a point's own mag dims the tail there
 //       name }                   optional: what a tap on it says (while the sky is dark enough to see it)
 // They are drawn as stars are: dimmed by the air mass, gone once the sky is brighter than their magnitude (so by day they are
 // hidden), gone under the horizon, the same on a phone's small canvas. With no source nothing is drawn and nothing costs.
@@ -808,12 +815,12 @@ function _aeStandSkyUpdate(st, ms, now) {
     o.dir = d;
     pos.set(d, 3 * i); mag[i] = o.mag === undefined ? 3 : o.mag; scl[i] = AE_STAND_SKYOBJ_SIZE[o.kind] || 1; col.set(c, 3 * i);
     if (o.trail && o.trail.length) {
-      var prev = d;
-      o.trail.forEach(function (q) { var az = q.az !== undefined ? q.az : q[0], el = q.el !== undefined ? q.el : q[1], v = _aeStandSkyDir(az, el); tr.push([prev, v, c, mag[i]]); prev = v; });
+      var prev = d, pm = mag[i];
+      o.trail.forEach(function (q) { var az = q.az !== undefined ? q.az : q[0], el = q.el !== undefined ? q.el : q[1], v = _aeStandSkyDir(az, el), qm = q.mag !== undefined ? q.mag : mag[i]; tr.push([prev, v, c, pm, qm]); prev = v; pm = qm; });
     }
   });
   var m = tr.length, lp = new Float32Array(6 * m), lm = new Float32Array(2 * m), ls = new Float32Array(2 * m).fill(1), lc = new Float32Array(6 * m);
-  tr.forEach(function (t, i) { lp.set(t[0], 6 * i); lp.set(t[1], 6 * i + 3); lm[2 * i] = lm[2 * i + 1] = t[3]; lc.set(t[2], 6 * i); lc.set(t[2], 6 * i + 3); });
+  tr.forEach(function (t, i) { lp.set(t[0], 6 * i); lp.set(t[1], 6 * i + 3); lm[2 * i] = t[3]; lm[2 * i + 1] = t[4]; lc.set(t[2], 6 * i); lc.set(t[2], 6 * i + 3); });
   // The same count as the picture before: the buffers are filled in place; a different one makes new geometry.
   var put = function (key, make, arrays, count) {
     var cur = st[key];
