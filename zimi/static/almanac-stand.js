@@ -407,7 +407,7 @@ function _aeStandDispose(st) {
 // kilometres, a tree to a few metres at the feet and a wood at the horizon. The same trees every visit to a place (seeded by it).
 var AE_STAND_TREES_DELAY_MS = 40, AE_STAND_TREES_MAX = 3200, AE_STAND_TREES_TRIES = 18000;
 var AE_STAND_TREES_RANGE_M = [60, 4500], AE_STAND_TREES_THIN_M = [60, 380];   // out to here; thinner near the viewer (nothing at all inside the first number's reach)
-var AE_STAND_TREE_KINDS = { conifer: 0, broadleaf: 1, palm: 2, trunk: 3 };   // what the shader colours by
+var AE_STAND_TREE_KINDS = { conifer: 0, broadleaf: 1, palm: 2, trunk: 3, shrub: 4 };   // what the shader colours by
 function _aeStCoverPixels(tex) {   // the colour map's pixels, once
   if (!tex || !tex.image) return null;
   var im = tex.image, w = im.width || im.naturalWidth, h = im.height || im.naturalHeight;
@@ -563,8 +563,8 @@ function _aeStandTrees(st) {
     var kind = _aeStTreeKind(d.lat, ht.h, rnd, land && land.cls);
     if (!kind) continue;
     var x = r * Math.sin(th), y = r * Math.cos(th), z = _aeTerrainLocal('earth', lat0, lon0, h0, x, y, r * 0.0005, st.pend && st.pend.flat);
-    if (land && land.cls === 'desert') kind = 'broadleaf';   // the dry country's few woody plants: low round shrubs
-    var sz = land && land.cls === 'desert' ? [1.2, 2.8] : kind === 'conifer' ? [20, 40] : kind === 'broadleaf' ? (land && land.cls === 'grass' ? [6, 13] : [10, 25]) : [8, 18], u = Math.pow(rnd(), 1.3);
+    if (land && land.cls === 'desert') kind = 'shrub';   // the dry country's few woody plants: low, wide, sage-coloured, half sunk in the ground
+    var sz = land && land.cls === 'desert' ? [0.7, 1.7] : kind === 'conifer' ? [20, 40] : kind === 'broadleaf' ? (land && land.cls === 'grass' ? [6, 13] : [10, 25]) : [8, 18], u = Math.pow(rnd(), 1.3);
     list.push({ kind: kind, x: x, y: y, z: z, h: sz[0] + (sz[1] - sz[0]) * u, seed: rnd(), lean: (rnd() - 0.5) * 0.12, w: 0.8 + rnd() * 0.5 });
   }
   // Open country always has some near: a few oaks within 300 m, wherever the clumps happen to fall.
@@ -597,7 +597,9 @@ function _aeStandTrees(st) {
     for (var f = 0; f < sides; f++) tri(ring[f], ring[(f + 1) % sides], tip, ax, kind, seedv, f0, f0, f1);
   };
   list.forEach(function (t) {
-    var K = AE_STAND_TREE_KINDS, c0 = [t.x, t.y, t.z], lean = t.lean, cx = function (f) { return t.x + lean * t.h * f; }, sd = t.seed;
+    var K = AE_STAND_TREE_KINDS;
+    if (t.kind === 'shrub') { _aeStCrown(tri, { x: t.x, y: t.y, z: t.z - 0.4 * t.h, h: t.h * 1.15, w: t.w * 2.3, lean: 0 }, t.seed, K.shrub); return; }   // no trunk: a squat ball with its lower half in the ground
+    var c0 = [t.x, t.y, t.z], lean = t.lean, cx = function (f) { return t.x + lean * t.h * f; }, sd = t.seed;
     // the trunk: a dark sliver
     var tr = Math.max(0.18, t.h * 0.012), tz = t.z + t.h * (t.kind === 'palm' ? 0.85 : t.kind === 'broadleaf' ? 0.55 : 0.22);
     var tk = [[cx(0) - tr, t.y - tr], [cx(0) + tr, t.y - tr], [cx(0) + tr, t.y + tr], [cx(0) - tr, t.y + tr]];

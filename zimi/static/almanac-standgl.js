@@ -228,7 +228,7 @@ function _aeStTreeFrag(albLines, uniforms) {
   ].join('\n');
 }
 var AE_ST_TREE_FRAG = _aeStTreeFrag([
-  '  vec3 alb = vTree.z < 0.5 ? vec3(0.026, 0.05, 0.03) : vTree.z < 1.5 ? vec3(0.03, 0.05, 0.026) : vTree.z < 2.5 ? vec3(0.05, 0.09, 0.035) : vec3(0.04, 0.028, 0.02);',
+  '  vec3 alb = vTree.z > 3.5 ? vec3(0.07, 0.075, 0.035) : vTree.z < 0.5 ? vec3(0.026, 0.05, 0.03) : vTree.z < 1.5 ? vec3(0.03, 0.05, 0.026) : vTree.z < 2.5 ? vec3(0.05, 0.09, 0.035) : vec3(0.04, 0.028, 0.02);',
   '  alb *= (0.8 + 0.4 * vTree.y) * (0.6 + 0.4 * min(vTree.x, 1.0));'   // each tree its own shade, darker below, paler at the tips
 ].join('\n'), '');
 // Grass: blades in tufts, the ground's own colour (uGrassAlb) darker at the root and paler dry at the tip, swaying a little (uSway: 0 under reduced motion).
