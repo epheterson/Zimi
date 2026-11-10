@@ -147,7 +147,7 @@ The rendered and alive engines take them on the page they already have open. The
 
 - **`--engine rendered` fails to start / no Chromium** — install the browser extra: `pip install 'zimi[browser]'` then `playwright install chromium`.
 - **`--engine alive` errors on conversion** — it needs both the browser extra and the warc2zim sidecar. Run `zimi import --setup` once (network), then `zimi import --status` to confirm.
-- **`--engine singlefile` says the CLI is missing** — install Node, then `npm install -g single-file-cli`. It also needs a Chromium; `playwright install chromium` provides one.
+- **`--engine singlefile` says the CLI is missing** — install Node, then `npm install -g single-file-cli`. It also needs a Chromium; `playwright install chromium` provides one. In Docker, Settings > Server > Add-ons (or the first-run list) adds the Browser and SingleFile in one press each.
 - **`--engine zimit` can't run** — it shells out to Docker; ensure Docker is installed and the daemon is running.
 - **`--engine-arg` reads as a missing value** — argparse treats a bare flag-shaped token as missing. Write it attached: `--engine-arg=--workers=2`.
 - **Crawl stops early / ZIM smaller than expected** — you hit `--max-bytes`, `--max-pages`, or `--max-depth`, or robots.txt disallowed pages. Raise the caps or add `--ignore-robots` (site only) where appropriate.
@@ -157,6 +157,12 @@ The rendered and alive engines take them on the page they already have open. The
 - **The video plays on a laptop but not on an iPhone**: `.mkv` and `.ogv` do not play in Safari, and a `.mov` only does with H.264 inside. Zimi does not transcode; convert to MP4 (H.264) and package again.
 - **A subreddit build says the sidecar is missing** — run `zimi create --setup-reddit` once with network access; an air-gapped machine can be seeded the same way before it goes offline.
 - **Where is the subreddit option on the Create page?** — there is no tile. Paste the subreddit's address (`https://www.reddit.com/r/<name>`) under Web page; the preview turns into a subreddit's.
+
+---
+
+## Checking a ZIM
+
+`zimi check FILE...` asks what openZIM's `zimcheck` asks of a ZIM: the file's own checksum, a main page that exists, every mandatory metadata key in its format and length (Name, Title up to 30 characters, Language as ISO 639-3, Creator, Publisher, Date as YYYY-MM-DD, Description up to 80), a 48x48 PNG illustration, redirects that point at nothing, and internal links in pages that resolve to no entry (links inside scripts are not links). It prints errors and warnings per file and exits 1 if any file has an error. `--quick` skips the checksum and the link scan, which read the whole file. It never changes the file.
 
 ---
 

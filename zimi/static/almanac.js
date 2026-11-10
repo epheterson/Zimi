@@ -20,6 +20,9 @@ function _jdToJulianCentury(JD) { return (JD - JD_J2000) / JULIAN_CENTURY; }
 // The sky's way in to pointing the phone at it (almanac-look.js, loaded on its first tap).
 var ALM_GEAR_SVG = '<svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z"/></svg>';
 // A phone tilted up, with a star over it: hold your phone up to the sky. The gear's weight and size.
+// There and then (almanac-thens.js): a star over a clock's hand, opening the list of moments to stand in.
+var ALM_THEN_SVG = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3.6 12a8.4 8.4 0 1 0 2.5-6M3.6 4.2v4.4h4.4M12 7.6V12l3 1.9"/></svg>';   // There and then: a clock with its arrow running backward, not the bookmark star
+var ALM_STAND_SVG = '<svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="5.5" r="2.3"/><path d="M12 8.5v6M8.5 11.5l3.5-1 3.5 1M12 14.5l-2.5 5.5M12 14.5l2.5 5.5"/></svg>';   // Stand here (almanac-onesky.js _osStandHere)
 var ALM_LOOK_SVG = '<svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><g transform="rotate(-20 11.5 15)"><rect x="7" y="8.5" width="9" height="13" rx="2"/><path d="M10.5 18.5h2"/></g><path d="M18.5 2.5l.9 2.1 2.1.9-2.1.9-.9 2.1-.9-2.1-2.1-.9 2.1-.9z" fill="currentColor" stroke-width="1.2"/></svg>';
 var _ALM_PLACE_KEY = SK.ALMANAC_PLACE;
 var _ALM_LOC_KEY = SK.ALMANAC_LOC;
@@ -304,7 +307,17 @@ function _almLoadEarth() {
   _almEarthLoading.catch(function () {});
   return _almEarthLoading;
 }
+// A device that asks to save data, or has little memory or few cores, does not fetch the 3D view's files ahead of the
+// tap: they come at the first thing that needs them.
+var ALM_LOW_MEMORY_GB = 2;
+var ALM_LOW_CORES = 2;
+function _almLowPower() {
+  if (typeof ZimiCap !== 'undefined') return ZimiCap.lowPower();   // the one decision (capability.js); the test below is for its absence
+  var n = navigator, c = n.connection;
+  return !!((c && c.saveData) || (n.deviceMemory && n.deviceMemory <= ALM_LOW_MEMORY_GB) || (n.hardwareConcurrency && n.hardwareConcurrency <= ALM_LOW_CORES));
+}
 function _almEarthLater() {
+  if (_almLowPower()) return;
   _almWhenShown(function () {
     setTimeout(function () {
       if (_almanacOpen) whenQuiet(function () { if (_almanacOpen) _almLoadEarth(); }, { key: 'alm-earth', priority: QUIET_PRI_PREPARE, maxWaitMs: ALM_PANELS_SETTLE_MS * 4 });
@@ -786,7 +799,8 @@ function _almClockParts(focus) {
   var deviceTz = _almDeviceTz();
   // A chosen place whose zone is not the device's: its time, and its name.
   var placeTz = loc.stored && locTz && locTz !== deviceTz ? locTz : null;
-  var displayTz = placeTz || deviceTz || locTz;
+  var over = typeof _almClockZone === 'function' ? _almClockZone() : null;   // the 3D view's Stand here: the time where one stands
+  var displayTz = (over && over.tz) || placeTz || deviceTz || locTz;
   var lang = (typeof _currentLang !== 'undefined') ? _currentLang : 'en';
   // Cached formatters (_tzFmt), not toLocale*String: this runs on every travel
   // frame, and each toLocale* call builds a fresh Intl.DateTimeFormat.
@@ -795,7 +809,7 @@ function _almClockParts(focus) {
     date: _tzFmt(displayTz, _almEraOpts(focus, { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric' })).format(focus),
     time: _tzFmt(displayTz, { hour: 'numeric', minute: '2-digit' }).format(focus),
     tz: _formatTimezone(lang, displayTz, focus),
-    place: placeTz ? (loc.name || '').split(',')[0].trim() : ''
+    place: over && over.tz ? '' : placeTz ? (loc.name || '').split(',')[0].trim() : ''
   };
 }
 
@@ -1236,7 +1250,9 @@ function _almClockPaint(focus) {
       set('.alm-ck-t', _almClockSegs(cp.tzId, focus, ALM_CK_TIME), 't');
     }
     // The zone, and for the header the place whose clock this is, with the crosshair that chooses it.
-    set('.alm-ck-z', (cp.tz ? (root.getAttribute('data-v') === 'foot' ? ' ' : ' &middot; ') + _almEsc(cp.tz) : '') + (cp.place ? ' &middot; ' + (head ? '<span id="almanac-head-place">' + _almEsc(cp.place) + '</span> ' + _almHereBtnHtml('alm-here-icon') : _almEsc(cp.place)) : ''), 'z');
+    // The zone keeps its room; the place is the part that gives way (ellipsis) in a strip too narrow for both.
+    set('.alm-ck-z', (cp.tz ? '<span class="alm-ck-zn">' + (root.getAttribute('data-v') === 'foot' ? ' ' : ' &middot; ') + _almEsc(cp.tz) + '</span>' : '') +
+      (cp.place ? '<span class="alm-ck-pl"> &middot; ' + (head ? '<span id="almanac-head-place">' + _almEsc(cp.place) + '</span> ' + _almHereBtnHtml('alm-here-icon') + _almMapBtnHtml(cp.loc) : _almEsc(cp.place)) + '</span>' : ''), 'z');
     var r = root.querySelector('.alm-ck-r');
     if (r) {
       var rh = _almEsc(text);   // the rate, away from real time; paused says so in the button (play, to resume)
@@ -2214,7 +2230,7 @@ var ALM_TB_TABLES = ['sunmoon', 'tides', 'twilight', 'phases', 'seasons', 'calen
 var ALM_TB_CALCS = ['distance', 'sundial', 'sunmoonday', 'units', 'sight', 'days', 'convert', 'zones'];
 // The numbers everything above is worked from ("constants rows", Eric): the
 // Earth, the Sun and Moon, the bodies' facts and axes, time, the navigator's, physics, the units.
-var ALM_TB_CONSTS = ['k_earth', 'k_sunmoon', 'k_bodies', 'k_poles', 'k_time', 'k_nav', 'k_physics', 'k_units'];
+var ALM_TB_CONSTS = ['k_earth', 'k_sunmoon', 'k_bodies', 'k_poles', 'k_time', 'k_nav', 'k_physics', 'k_scene', 'k_capability', 'k_units'];
 // One line drawing each, on a 24 grid, in the stroke of the Almanac's other icons.
 var ALM_TB_ICONS = {
   sunmoon: '<path d="M3 18h18M7 18a5 5 0 0 1 10 0M12 6v3M5.6 9.6l2 2M18.4 9.6l-2 2"/>',
@@ -2238,10 +2254,12 @@ var ALM_TB_ICONS = {
   k_earth: '<circle cx="12" cy="12" r="8.5"/><path d="M3.5 12h17M12 3.5v17"/><ellipse cx="12" cy="12" rx="4" ry="8.5"/>',
   k_sunmoon: '<circle cx="9" cy="12" r="5"/><circle cx="18.5" cy="8" r="2.5"/><path d="M9 4V3M9 21v-1M1.5 12h1M3.7 6.7l.8.8M3.7 17.3l.8-.8"/>',
   k_bodies: '<circle cx="8" cy="14" r="5"/><circle cx="17.5" cy="8" r="2.5"/><circle cx="18" cy="17.5" r="1.5"/>',
+  k_capability: '<rect x="3" y="13" width="4" height="8"/><rect x="10" y="8" width="4" height="13"/><rect x="17" y="3" width="4" height="18"/>',
   k_poles: '<circle cx="12" cy="12" r="6"/><path d="M12 2v20M9.5 4.5L12 2l2.5 2.5"/>',
   k_time: '<path d="M7 3h10M7 21h10M8 3c0 5 8 5 8 9s-8 4-8 9M16 3c0 5-8 5-8 9s8 4 8 9"/>',
   k_nav: '<path d="M12 3v18M3 12h18"/><circle cx="12" cy="12" r="5"/>',
   k_physics: '<circle cx="12" cy="12" r="1.8" fill="currentColor" stroke="none"/><ellipse cx="12" cy="12" rx="9" ry="3.5"/><ellipse cx="12" cy="12" rx="9" ry="3.5" transform="rotate(60 12 12)"/><ellipse cx="12" cy="12" rx="9" ry="3.5" transform="rotate(-60 12 12)"/>',
+  k_scene: '<path d="M7 18a4 4 0 0 1-.5-7.96A5.5 5.5 0 0 1 17 8.5 4.5 4.5 0 0 1 17.5 18z"/>',
   k_units: '<path d="M4 20L20 4M7 17l2 2M10 14l1.5 1.5M13 11l2 2M16 8l1.5 1.5"/>'
 };
 var ALM_PRINT_SVG = '<svg aria-hidden="true" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"><path d="M7 9V3h10v6"/><rect x="3" y="9" width="18" height="8" rx="2"/><path d="M7 14h10v7H7z"/></svg>';
@@ -2623,7 +2641,11 @@ function _renderAlmanacContent() {
     '</div>';
   html += '<div class="almanac-sky-wrap">' +
     '<canvas id="almanac-sky-canvas" data-red aria-describedby="almanac-sky-desc" role="img" tabindex="0"' + _almSkyPreStyle(_getLocation()) + '></canvas>' +
+    '<div class="alm-sky-bar">' +
+    '<button type="button" class="alm-sky-then" onclick="openAlmanacThens()" aria-label="' + escAttr(t('then_title')) + '" title="' + escAttr(t('then_title')) + '">' + ALM_THEN_SVG + '</button>' +
+    '<button type="button" class="alm-sky-stand" onclick="_osStandHere()" aria-label="' + escAttr(t('alm_launch_on_ground')) + '" title="' + escAttr(t('alm_launch_on_ground')) + '">' + ALM_STAND_SVG + '</button>' +
     '<button type="button" class="alm-sky-look" onclick="openAlmanacLook()" aria-label="' + escAttr(t('look_title')) + '" title="' + escAttr(t('look_title')) + '">' + ALM_LOOK_SVG + '</button>' +
+    '</div>' +
     '<button type="button" class="alm-sky-gear" id="almanac-sky-gear" onclick="_skyToggleSettings()" aria-expanded="false" aria-controls="almanac-sky-set" aria-label="' + escAttr(t('alm_sky_set')) + '" title="' + escAttr(t('alm_sky_set')) + '">' + ALM_GEAR_SVG + '</button>' +
     '<div id="almanac-sky-set" class="alm-sky-set" role="group" aria-label="' + escAttr(t('alm_sky_set')) + '" hidden></div>' +
     '<div id="almanac-sky-tip" class="alm-sky-tip" hidden></div>' +
@@ -2734,7 +2756,7 @@ function _renderAlmanacContent() {
       // The orrery opens spinning as scenery so planets visibly orbit on load (still, where motion is reduced)
       _orreryLastFrame = performance.now();
       _orreryAnimate();
-      _almLoadEarth();   // the orrery's way into the 3D view (its glow, the Earth's tap) needs the view's file: drawn now, wanted soon
+      if (!_almLowPower()) _almLoadEarth();   // the orrery's way into the 3D view (its glow, the Earth's tap) needs the view's file: drawn now, wanted soon
     },
     function () { _startTzClock(); _cacheAlmanacHighlights(now, m); },
     function () { _almPlaceWatch(); _almSecBarInit(); _almRedrawRestore(anchor); _almPanelsReady = true; }
@@ -3271,79 +3293,15 @@ function _solveKepler(M, e) {
 
 
 
-// Orbit radii as fraction of canvas half-width (max ~0.46 to fit within square)
-var _ORBIT_VIS = {
-  Mercury: 0.06, Venus: 0.10, Earth: 0.14, Mars: 0.19,
-  Jupiter: 0.27, Saturn: 0.34, Uranus: 0.41, Neptune: 0.47
-};
-
-
 // ── Orrery time controls & rocket easter egg ──
 
 
 
-// AU → visual radius mapping: monotone cubic Hermite (Fritsch-Carlson) through
-// planet data points. Smooth C1 curve with no kinks at planet boundaries, while
-// preserving exact planet positions and guaranteeing monotonicity (no overshoot).
-var _AU_VIS_X = [0, 0.387, 0.723, 1.000, 1.524, 5.203, 9.555, 19.19, 30.07];
-var _AU_VIS_Y = [0, 0.06,  0.10,  0.14,  0.19,  0.27,  0.34,  0.41,  0.47 ];
-
-// Precompute Fritsch-Carlson monotone tangents + cubic coefficients
-var _AU_VIS_C = (function() {
-  var n = _AU_VIS_X.length;
-  var dx = [], dy = [], m = [], t = [];
-  for (var i = 0; i < n - 1; i++) {
-    dx[i] = _AU_VIS_X[i + 1] - _AU_VIS_X[i];
-    dy[i] = (_AU_VIS_Y[i + 1] - _AU_VIS_Y[i]) / dx[i];
-  }
-  // Tangents at each point
-  t[0] = dy[0];
-  for (var i = 1; i < n - 1; i++) {
-    if (dy[i - 1] * dy[i] <= 0) { t[i] = 0; }
-    else { t[i] = (dy[i - 1] + dy[i]) / 2; }
-  }
-  t[n - 1] = dy[n - 2];
-  // Fritsch-Carlson: clamp tangents for monotonicity
-  for (var i = 0; i < n - 1; i++) {
-    if (Math.abs(dy[i]) < 1e-12) { t[i] = t[i + 1] = 0; continue; }
-    var a = t[i] / dy[i], b = t[i + 1] / dy[i];
-    var s = a * a + b * b;
-    if (s > 9) { var tau = 3 / Math.sqrt(s); t[i] = tau * a * dy[i]; t[i + 1] = tau * b * dy[i]; }
-  }
-  // Cubic Hermite coefficients per segment: c0 + c1*u + c2*u^2 + c3*u^3
-  var segs = [];
-  for (var i = 0; i < n - 1; i++) {
-    var h = dx[i];
-    segs.push({
-      x0: _AU_VIS_X[i], h: h,
-      c0: _AU_VIS_Y[i],
-      c1: t[i] * h,
-      c2: 3 * (_AU_VIS_Y[i + 1] - _AU_VIS_Y[i]) - 2 * t[i] * h - t[i + 1] * h,
-      c3: 2 * (_AU_VIS_Y[i] - _AU_VIS_Y[i + 1]) + t[i] * h + t[i + 1] * h
-    });
-  }
-  return segs;
-})();
-
-// The solar system's one squeeze: the orrery's radii (above), and past Neptune a gentle continuation, so the 3D
-// view's planets, belt and probes and the orrery stand at the same shares of the way out (almanac-earth.js scales it
-// so the Earth is where it is).
-var _SQUEEZE_TAIL_POW = 0.2;
-function _solarSqueeze(au) {
-  var last = _AU_VIS_X.length - 1;
-  return au <= _AU_VIS_X[last] ? _auToVis(au) : _AU_VIS_Y[last] * Math.pow(au / _AU_VIS_X[last], _SQUEEZE_TAIL_POW);
-}
-function _auToVis(au) {
-  if (au <= 0) return 0;
-  var segs = _AU_VIS_C;
-  if (au >= _AU_VIS_X[_AU_VIS_X.length - 1]) return _AU_VIS_Y[_AU_VIS_Y.length - 1];
-  // Binary search for segment
-  var lo = 0, hi = segs.length - 1;
-  while (lo < hi) { var mid = (lo + hi + 1) >> 1; if (segs[mid].x0 <= au) lo = mid; else hi = mid - 1; }
-  var s = segs[lo];
-  var u = (au - s.x0) / s.h;
-  return s.c0 + u * (s.c1 + u * (s.c2 + u * s.c3));
-}
+// The solar system's one squeeze: the orrery's radii (_orrDeepRadius, a log map that leaves room for the probes), the
+// share of the drawing's half-width a distance from the Sun is drawn at. The 3D view's planets, belt, probes and minimap
+// stand at the same shares of the way out (almanac-earth.js scales it so the Earth is where it is), so a body is in the
+// same place in the orrery and in the Planets view.
+function _solarSqueeze(au) { return _orrDeepRadius(au); }
 
 // ── Transit speed profile ──
 // Rockets use an adaptive 3-phase speed profile:
@@ -4217,7 +4175,7 @@ function _renderSunMap(now, clockLater) {
   } else {
     html += '<span id="almanac-loc-name" style="font-size:12px;color:var(--text3);cursor:pointer" onclick="_almShowCitySearch()" title="' + t('alm_set_location') + '">' + t('alm_set_location') + '</span>';
   }
-  html += _almHereBtnHtml('alm-here-icon');   // the crosshair alone beside the city, as in the header
+  html += _almHereBtnHtml('alm-here-icon') + _almMapBtnHtml(smLoc);   // the crosshair and the map alone beside the city, as in the header
   // Hidden city search — revealed on click
   html += '<div id="almanac-city-search-wrap" style="display:none;position:absolute;top:-2px;left:50%;transform:translateX(-50%);z-index:10">';
   html += '<input id="almanac-city-search" type="text" placeholder="' + t('alm_search_city') + '" ' +
@@ -5371,6 +5329,7 @@ function _almShowCitySearch() {
 
 // Show where I am: a crosshair, the mark every map uses for "locate me"
 // (the 3D view's button too).
+var ALM_MAP_SVG = '<svg aria-hidden="true" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 4L3 6v14l6-2 6 2 6-2V4l-6 2-6-2z"/><path d="M9 4v14M15 6v14"/></svg>';
 var ALM_LOCATE_SVG = '<svg aria-hidden="true" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="7"/><circle cx="12" cy="12" r="2" fill="currentColor"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3"/></svg>';
 
 // "Where I am": the button back to the device's own place (geolocation, else
@@ -5378,6 +5337,17 @@ var ALM_LOCATE_SVG = '<svg aria-hidden="true" width="16" height="16" viewBox="0 
 function _almHereBtnHtml(cls) {
   return '<button type="button" class="alm-invite-btn ' + cls + '" onclick="_shareAlmanacLocation()" title="' + _almEsc(t('alm_use_location')) + '" aria-label="' + _almEsc(t('alm_place_here')) + '">' +
     ALM_LOCATE_SVG + '<span>' + _almEsc(t('alm_place_here')) + '</span></button>';
+}
+
+// The map of the Almanac's place (the shared flow: its installed map, or the one worth downloading), an icon beside
+// the crosshair; absent without a place, and where the app shell is not (the Almanac ZIM on its own).
+function _almMapBtnHtml(loc) {
+  if (typeof _mapHere !== 'function' || !loc || !loc.stored) return '';
+  return '<button type="button" class="alm-invite-btn alm-here-icon" onclick="_almMapHere()" title="' + _almEsc(t('map_here')) + '" aria-label="' + _almEsc(t('map_here')) + '">' + ALM_MAP_SVG + '</button>';
+}
+function _almMapHere() {
+  var loc = _getLocation();
+  if (loc.stored) _mapHere().then(function(m) { if (m) m.go(loc.lat, loc.lon, loc.name ? loc.name.split(',')[0].trim() : ''); });
 }
 
 // No place chosen yet: one line asking for it, with the two ways to give it
@@ -7508,6 +7478,10 @@ function _almDayMonthYear(day, monthName, yearStr) {
     return fill[p.type] != null ? fill[p.type] : p.value;
   }).join('');
 }
+// In a right-to-left line a calendar's Latin month name ("Aban") is its own left-to-right run, or it takes the words around it with it.
+function _almLtrRuns(text) {
+  return text.replace(/[A-Za-z\u00c0-\u024f][A-Za-z\u00c0-\u024f' .-]*[A-Za-z\u00c0-\u024f]/g, '<bdi dir="ltr">$&</bdi>');
+}
 function _almRenderCrossRef(jdn) {
   var greg = _jdnToGregorian(jdn);
   var html = '<div class="alm-crossref">';
@@ -7524,6 +7498,7 @@ function _almRenderCrossRef(jdn) {
       var monthName = _calMonthName(sys, cal.year, cal.month);
       var yearStr = cal.year + _calYearSuffix(sys);
       dateStr = _almDayMonthYear(cal.day, monthName, yearStr);
+      if (document.documentElement.dir === 'rtl') dateStr = _almLtrRuns(dateStr);
       if (sys === 'chinese') {
         // Key the animal to the CHINESE year being displayed (era 2697), which is
         // the Gregorian year of that year's New Year \u2014 so the animal doesn't flip

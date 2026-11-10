@@ -71,3 +71,31 @@ def test_missing_dirs_yield_zeroes(tmp_path, monkeypatch):
     p = manage._cache_info_payload()
     assert p["data_dir_total_bytes"] == 0
     assert p["top_zims"] == []
+
+
+def _catalog_files(data_dir, tmp_path, monkeypatch):
+    zims = tmp_path / "zims"
+    zims.mkdir()
+    (zims / "installed.zim").write_bytes(b"z")
+    monkeypatch.setattr(server, "ZIM_DIR", str(zims))
+    (data_dir / "catalog_cache.json").write_bytes(b"c" * 300)
+    tdir = data_dir / "bt" / "torrents"
+    tdir.mkdir(parents=True)
+    (tdir / "installed.zim.torrent").write_bytes(b"t" * 1000)
+    (tdir / "elsewhere.zim.torrent").write_bytes(b"t" * 5000)
+    return tdir
+
+
+def test_catalog_copies_are_the_catalog_files_and_torrents_of_what_is_not_installed(data_dir, tmp_path, monkeypatch):
+    _catalog_files(data_dir, tmp_path, monkeypatch)
+    (data_dir / "catalog_validators.json").write_bytes(b"v" * 20)
+    p = manage._cache_info_payload()
+    assert p["catalog_copies"] == {"count": 3, "size_bytes": 300 + 20 + 5000}
+
+
+def test_purging_them_keeps_the_torrent_of_an_installed_zim(data_dir, tmp_path, monkeypatch):
+    tdir = _catalog_files(data_dir, tmp_path, monkeypatch)
+    assert manage._purge_catalog_copies() == 5300
+    assert (tdir / "installed.zim.torrent").exists()
+    assert not (tdir / "elsewhere.zim.torrent").exists() and not (data_dir / "catalog_cache.json").exists()
+    assert manage._cache_info_payload()["catalog_copies"] == {"count": 0, "size_bytes": 0}

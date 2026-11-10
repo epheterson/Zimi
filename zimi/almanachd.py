@@ -43,13 +43,22 @@ MANIFEST = "zimi_almanac_maxi.json"
 RELEASE_URL = "https://github.com/epheterson/Zimi/releases/download/{tag}/{file}"
 #: What a manifest may name: the flavour's file, nothing else (it becomes a path and a URL).
 _FILE_RE = re.compile(r"^zimi_almanac_maxi_\d{4}-\d{2}[a-z]?\.zim$")
+#: A layer too big for one release file (GitHub's limit is 2 GiB a file) is a part: a ZIM of its own,
+#: ``zimi_almanac_hd_<part>_<month>.zim``, with an ``hd.json`` listing only its layers. The 3D view reads the set as one.
+PARTS = ("moon", "mars", "mercury", "earth")
+PART_PREFIX = "zimi_almanac_hd_"
+_PART_RE = re.compile(
+    r"^zimi_almanac_hd_(?:%s)_\d{4}-\d{2}[a-z]?\.zim$" % "|".join(PARTS)
+)
 _SHA_RE = re.compile(r"^[0-9a-f]{64}$")
 MANIFEST_TIMEOUT_S = 10
 MANIFEST_MAX_BYTES = 4096
 #: A manifest that could not be read (no such release, no network) is looked for again after this long.
 MANIFEST_RETRY_S = 6 * 3600
 #: The pinned tile source (scripts/build_almanac_maxi.py): its size is most of the flavour's, and known without the internet.
-TILES_PIN = os.path.join(os.path.dirname(os.path.abspath(__file__)), "assets", "almanac-tiles.json")
+TILES_PIN = os.path.join(
+    os.path.dirname(os.path.abspath(__file__)), "assets", "almanac-tiles.json"
+)
 ESTIMATE_STEP = 10_000_000
 #: Where the queue says a download came from: also what keeps it out of
 #: NOMAD's library (library._enqueue_zim_download hands only catalog ones over).
@@ -74,39 +83,74 @@ def manifest_url(version=None):
     return RELEASE_URL.format(tag="v" + (version or _version()), file=MANIFEST)
 
 
+def part_name(part):
+    """The name the server has a part's ZIM under."""
+    return PART_PREFIX + part
+
+
+def _good_file(item, pattern):
+    return (
+        isinstance(item, dict)
+        and isinstance(item.get("file"), str)
+        and pattern.match(item["file"])
+        and isinstance(item.get("size"), int)
+        and not isinstance(item["size"], bool)
+        and item["size"] > 0
+        and isinstance(item.get("sha256"), str)
+        and _SHA_RE.match(item["sha256"])
+    )
+
+
 def parse_manifest(raw, version=None):
-    """The manifest as ``{"file", "size", "sha256", "tag"}`` when it is a good one for this version's release, else None."""
+    """The manifest as ``{"file", "size", "sha256", "tag", "parts"}`` (``parts``: the other ZIMs of the set, each
+    ``{"part", "file", "size", "sha256"}``, none for a single file) when it is a good one for this version's release,
+    else None."""
     try:
         rel = json.loads(raw)
     except (TypeError, ValueError):
         return None
     if not isinstance(rel, dict):
         return None
-    ok = (
-        isinstance(rel.get("file"), str)
-        and _FILE_RE.match(rel["file"])
-        and isinstance(rel.get("size"), int)
-        and not isinstance(rel["size"], bool)
-        and rel["size"] > 0
-        and isinstance(rel.get("sha256"), str)
-        and _SHA_RE.match(rel["sha256"])
-        and rel.get("tag") == "v" + (version or _version())
-    )
-    return {k: rel[k] for k in ("file", "size", "sha256", "tag")} if ok else None
+    parts = rel.get("parts", [])
+    if (
+        not _good_file(rel, _FILE_RE)
+        or rel.get("tag") != "v" + (version or _version())
+        or not isinstance(parts, list)
+        or not all(
+            _good_file(x, _PART_RE)
+            and x.get("part") in PARTS
+            and x["file"].startswith(part_name(x["part"]) + "_")
+            for x in parts
+        )
+    ):
+        return None
+    out = {k: rel[k] for k in ("file", "size", "sha256", "tag")}
+    if parts:
+        out["parts"] = [
+            {k: x[k] for k in ("part", "file", "size", "sha256")} for x in parts
+        ]
+    return out
 
 
 def _read_manifest():
     """Read the manifest from this version's release, now. The good one is kept; None when there is none (a dev
-    build, no network). Only ever called once the setting has said yes (``start``): Ask first reaches nothing before."""
+    build, no network). Only ever called once the setting has said yes (``start``): Ask first reaches nothing before.
+    """
     rel = None
     try:
         from zimi import server as _srv
         from zimi.library import USER_AGENT
 
         req = urllib.request.Request(manifest_url(), headers={"User-Agent": USER_AGENT})
-        with urllib.request.urlopen(req, timeout=MANIFEST_TIMEOUT_S, context=_srv.SSL_CTX) as resp:
+        with urllib.request.urlopen(
+            req, timeout=MANIFEST_TIMEOUT_S, context=_srv.SSL_CTX
+        ) as resp:
             raw = resp.read(MANIFEST_MAX_BYTES + 1)
-        rel = parse_manifest(raw.decode("utf-8", "replace")) if len(raw) <= MANIFEST_MAX_BYTES else None
+        rel = (
+            parse_manifest(raw.decode("utf-8", "replace"))
+            if len(raw) <= MANIFEST_MAX_BYTES
+            else None
+        )
     except Exception as e:  # no release for this version, no network: nothing to fetch
         log.info("Almanac HD: no manifest (%s)", loggable(type(e).__name__))
     with _manifest_lock:
@@ -128,7 +172,8 @@ def release(read=False):
 
 def estimate():
     """About how big the download is, known offline: the pinned tile source's size plus the Almanac in the package
-    (the flavour is the two together), to the nearest ten MB. None when either is unknown."""
+    (the flavour is the two together), to the nearest ten MB. None when either is unknown. The Ultra parts are
+    not in it: each is its own choice, with its own size."""
     from zimi import ownzims
 
     try:
@@ -157,7 +202,28 @@ def present():
     return next((n for n in (NAME, LEGACY_NAME) if n in have), None)
 
 
+def parts_present():
+    """``{part: name}`` of the parts of the set that the server has."""
+    from zimi import server as _srv
+
+    have = _srv._zim_files_cache or {}
+    return {p: part_name(p) for p in PARTS if part_name(p) in have}
+
+
+def _known_parts(rel=None):
+    """The Ultra parts of this version's set as ``{"part", "file", "size", "sha256"}``: the release's own list once its
+    manifest has been read, else the pinned one (offline: the sizes the offer shows)."""
+    if rel and rel.get("parts"):
+        return list(rel["parts"])
+    try:
+        with open(TILES_PIN, encoding="utf-8") as f:
+            return [x for x in json.load(f).get("parts", []) if x.get("part") in PARTS and isinstance(x.get("size"), int)]
+    except (OSError, ValueError, TypeError, AttributeError):
+        return []
+
+
 def installed():
+    """The core of Almanac HD (the flavour or 1.15.3's tile ZIM) is in the library. Ultra parts are separate choices."""
     return present() is not None
 
 
@@ -167,22 +233,35 @@ def base():
     return None if name is None else "/w/%s/%s" % (name, "hd/" if name == NAME else "")
 
 
-def _downloading():
-    """The queue's record for Almanac HD, active or waiting, or None."""
+def parts_bases():
+    """``{part: /w/<name>/}`` for each part present: the other folders the 3D view reads tiles from."""
+    return {p: "/w/%s/" % n for p, n in parts_present().items()}
+
+
+def _downloading_all():
+    """The queue's records for Almanac HD files (the Almanac's flavour or a part), active or waiting."""
     from zimi import library
 
     with library._download_lock:
         recs = list(library._active_downloads.values()) + list(library._download_queue)
-    return next(
-        (
-            d
-            for d in recs
-            if (d.get("_source") == SOURCE or _FILE_RE.match(str(d.get("filename"))))
-            and not d.get("error")
-            and not d.get("done")  # a finished transfer is kept for a while: HD deleted since is to be fetched again
-        ),
-        None,
-    )
+    return [
+        d
+        for d in recs
+        if (
+            d.get("_source") == SOURCE
+            or _FILE_RE.match(str(d.get("filename")))
+            or _PART_RE.match(str(d.get("filename")))
+        )
+        and not d.get("error")
+        and not d.get(
+            "done"
+        )  # a finished transfer is kept for a while: HD deleted since is to be fetched again
+    ]
+
+
+def _downloading():
+    """The first of them, or None."""
+    return next(iter(_downloading_all()), None)
 
 
 def status():
@@ -193,81 +272,160 @@ def status():
     have = installed()
     out = {
         "installed": have,
-        "base": base() if have else None,
+        "base": base(),
+        "parts": parts_bases(),
         "mode": mode,
         "locked": locked,
         "offer": None,
         "downloading": None,
     }
+    out["ultra"] = _ultra(mode)
     if have or mode == outbound.NEVER:
         return out
     rel = release()
-    size = rel["size"] if rel else estimate()
+    size = _missing_size(rel) if rel else estimate()
     if size:
-        out["offer"] = {"file": rel["file"], "size": size} if rel else {"size": size, "approx": True}
-    dl = _downloading()
-    if dl:
-        done = dl.get("downloaded_bytes") or 0
+        out["offer"] = (
+            {"file": rel["file"], "size": size}
+            if rel
+            else {"size": size, "approx": True}
+        )
+    dls = _downloading_all()
+    if dls:  # the set's files together: one bar
         out["downloading"] = {
-            "id": dl.get("id"),
-            "done": done,
-            "size": dl.get("size_bytes") or size or 0,
+            "id": dls[0].get("id"),
+            "done": sum(d.get("downloaded_bytes") or 0 for d in dls),
+            "size": sum(d.get("size_bytes") or 0 for d in dls) or size or 0,
         }
     return out
 
 
+def _ultra(mode):
+    """The Ultra parts, each a choice of its own: ``{"part", "size", "installed", "file", "downloading"}`` (the bytes
+    done and the size, while it comes). Offered while the core is there and the setting lets Zimi fetch; one that is
+    installed is listed always, so it can be removed, whether the release pin knows it or someone copied it in."""
+    have, core = parts_present(), installed()
+    dls = _downloading_all()
+    out = []
+    known = _known_parts(release())
+    for part in PARTS:  # a part copied in by hand has no pinned size: the file's own
+        if part in have and part not in {k["part"] for k in known}:
+            path = _installed_path(part_name(part))
+            try:
+                known.append({"part": part, "size": os.path.getsize(path), "file": os.path.basename(path)})
+            except OSError:
+                continue
+    for x in sorted(known, key=lambda k: PARTS.index(k["part"])):
+        part, mine = x["part"], part_name(x["part"])
+        got = part in have
+        if not got and not (core and mode != outbound.NEVER):
+            continue
+        dl = next((d for d in dls if str(d.get("filename") or "").startswith(mine + "_")), None)
+        out.append(
+            {
+                "part": part,
+                "size": x["size"],
+                "installed": got,
+                "file": os.path.basename(_installed_path(mine)) if got else x["file"],
+                "downloading": {"done": dl.get("downloaded_bytes") or 0, "size": dl.get("size_bytes") or x["size"]} if dl else None,
+            }
+        )
+    return out
+
+
+def _installed_path(name):
+    from zimi import server as _srv
+
+    return (_srv._zim_files_cache or {}).get(name) or name
+
+
+def _items(rel, part=None):
+    """What of a release one step fetches, each ``{"file", "size", "sha256", "tag"}``: the core (unless it is there), or,
+    for ``part``, that Ultra part alone. Under Automatically only the core is ever fetched on its own."""
+    if part:
+        return [dict(x, tag=rel["tag"]) for x in rel.get("parts", []) if x["part"] == part]
+    return [] if present() else [{k: rel[k] for k in ("file", "size", "sha256", "tag")}]
+
+
+def _missing_size(rel):
+    return sum(x["size"] for x in _items(rel))
+
+
 def saved_release(item):
     """The release a pending download recorded (downloads.json: url, filename, size_bytes, sha256), if it names
-    one of ours. A restart resumes from this: the manifest is read in the background and may not be there yet."""
+    one of ours. A restart resumes from this: the manifest is read in the background and may not be there yet.
+    """
     m = re.match(
-        r"^" + re.escape(RELEASE_URL).replace(r"\{tag\}", r"(?P<tag>v[\w.\-]+)").replace(r"\{file\}", r"(?P<file>[\w.\-]+)") + r"$",
+        r"^"
+        + re.escape(RELEASE_URL)
+        .replace(r"\{tag\}", r"(?P<tag>v[\w.\-]+)")
+        .replace(r"\{file\}", r"(?P<file>[\w.\-]+)")
+        + r"$",
         str(item.get("url") or ""),
     )
     size, sha = item.get("size_bytes"), str(item.get("sha256") or "")
-    if not (m and _FILE_RE.match(m["file"]) and m["file"] == item.get("filename") and isinstance(size, int) and _SHA_RE.match(sha)):
+    if not (
+        m
+        and (_FILE_RE.match(m["file"]) or _PART_RE.match(m["file"]))
+        and m["file"] == item.get("filename")
+        and isinstance(size, int)
+        and _SHA_RE.match(sha)
+    ):
         return None
     return {"file": m["file"], "size": size, "sha256": sha, "tag": m["tag"]}
 
 
-def start(actor=None, saved=None):
-    """Queue the download. ``(download id, error)``: error is "never" (the
-    setting, or ZIMI_OFFLINE), "installed", or "unavailable" (no file named
-    for this version). ``saved``: a pending download to resume (saved_release)."""
+def start(actor=None, saved=None, part=None):
+    """Queue the download of the core, or of one Ultra ``part``. ``(download id, error)``: error is "never" (the
+    setting, or ZIMI_OFFLINE), "installed", "needs_core" (a part reads beside the core) or "unavailable" (no file
+    named for this version). ``saved``: a pending download to resume (saved_release)."""
     if POLICY.mode()[0] == outbound.NEVER:
         return None, "never"
-    if installed():
-        return None, "installed"
-    rel = release(read=True) or (saved_release(saved) if saved else None)
-    if not rel:
+    if part is not None and part not in PARTS:
         return None, "unavailable"
+    if part and not installed():
+        return None, "needs_core"
+    if (part and part in parts_present()) or (not part and installed()):
+        return None, "installed"
+    rel = release(read=True)
+    items = (
+        _items(rel, part)
+        if rel
+        else ([saved_release(saved)] if saved and saved_release(saved) else [])
+    )
+    if not items:
+        return None, "unavailable"
+    from zimi import library
     from zimi import server as _srv
     from zimi.safety import join_inside
 
-    dest = join_inside(_srv.ZIM_DIR, rel["file"])
-    if dest is None or os.path.exists(dest):
-        return (
-            None,
-            "installed",
-        )  # on disk already (a scan not yet run): never fetched over it
-    from zimi import library
-
-    link = url(rel)
+    first = None
     with _start_lock:
-        dl = _downloading()
-        if dl:
-            return dl.get("id"), None
-        log.info("Almanac HD: fetching %s", loggable(rel["file"]))
-        return library._enqueue_zim_download(
-            link,
-            [link],
-            rel["file"],
-            size_bytes=rel["size"],
-            extra={
-                "_source": SOURCE,
-                "_activity": {"actor": actor},
-                "_sha256": rel.get("sha256") or None,
-            },
-        )
+        queued = {d.get("filename") for d in _downloading_all()}
+        for item in items:
+            dest = join_inside(_srv.ZIM_DIR, item["file"])
+            if dest is None or os.path.exists(dest) or item["file"] in queued:
+                continue  # on disk already (a scan not yet run) or on its way: never fetched over it
+            link = url(item)
+            log.info("Almanac HD: fetching %s", loggable(item["file"]))
+            dl_id, err = library._enqueue_zim_download(
+                link,
+                [link],
+                item["file"],
+                size_bytes=item["size"],
+                extra={
+                    "_source": SOURCE,
+                    "_activity": {"actor": actor},
+                    "_sha256": item.get("sha256") or None,
+                },
+            )
+            if err:
+                return dl_id, err
+            first = first or dl_id
+        if first is None:
+            dl = _downloading()
+            return (dl.get("id"), None) if dl else (None, "installed")
+    return first, None
 
 
 def _auto_start():
@@ -280,12 +438,18 @@ def _auto_start():
 
 def on_almanac_open():
     """The Almanac asked. Under Automatically the first ask fetches it, in the background (the manifest is read and
-    the download queued by a thread nobody waits for); under Ask first nothing is fetched until ``start``."""
+    the download queued by a thread nobody waits for); under Ask first nothing is fetched until ``start``.
+    """
     st = status()
     if st["mode"] == outbound.AUTO and st["offer"] and not st["downloading"]:
         with _manifest_lock:
-            go = not _manifest["busy"] and time.time() - _manifest["tried"] >= MANIFEST_RETRY_S
+            go = (
+                not _manifest["busy"]
+                and time.time() - _manifest["tried"] >= MANIFEST_RETRY_S
+            )
             _manifest["busy"] = go or _manifest["busy"]
         if go:
-            threading.Thread(target=_auto_start, name="almanac-hd-auto", daemon=True).start()
+            threading.Thread(
+                target=_auto_start, name="almanac-hd-auto", daemon=True
+            ).start()
     return st

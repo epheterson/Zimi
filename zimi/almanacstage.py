@@ -32,20 +32,46 @@ HOST = os.path.join(os.path.dirname(os.path.abspath(__file__)), "builtin", "alma
 #: What the Almanac loads, in order (they share one global scope). app.js's
 #: _ALMANAC_MODULES, then what it adds on open and on use.
 SCRIPTS = (
+    "capability.js",
     "almanac-links.js",
     "almanac-orrery.js",
     "almanac-sky.js",
     "almanac-skygl.js",
+    "almanac-onesky.js",
     "zone-places.js",
     "almanac-skyfacts.js",
+    "almanac-skyscene.js",
     "almanac.js",
     "almanac-ephem.js",
     "almanac-earth.js",
 )
 #: Loaded later, on first use, by the Almanac itself (by relative URL).
 LAZY = (
+    "almanac-sun.js",
+    "almanac-staticglobe.js",
     "almanac-look.js",
+    "almanac-oneland.js",
+    "almanac-skyland.js",
     "almanac-skyfind.js",
+    "almanac-terrain.js",
+    "almanac-terrainshade.js",
+    "almanac-standlook.js",
+    "almanac-standhost.js",
+    "almanac-standgl.js",
+    "almanac-stand.js",
+    "almanac-oneair.js",
+    "almanac-sites.js",
+    "almanac-sites-ground.js",
+    "almanac-sites-drive.js",
+    "almanac-sites-launch.js",
+    "almanac-sites-trail.js",
+    "almanac-missions.js",
+    "almanac-missions-plan.js",
+    "almanac-sats.js",
+    "almanac-orrery3d.js",
+    "almanac-launches.js",
+    "almanac-thens.js",
+    "almanac-launchflight.js",
     "almanac-tides.js",
     "almanac-tides.css",
     "almanac-reference.css",
@@ -120,6 +146,7 @@ SHELL_SEEDS = (
 GUARDED = frozenset(
     (
         "_MAPS_SVG",
+        "_mapHere",
         "_armTapRelay",
         "_chromeReset",
         "_getPrefLanguages",
@@ -364,13 +391,21 @@ def _snapshots(dest):
     assets = os.path.join(os.path.dirname(os.path.abspath(__file__)), "assets")
     out = os.path.join(dest, "data")
     os.makedirs(out, exist_ok=True)
-    for name in ("satellites-snapshot.json", "tides-snapshot.json.gz"):
+    for name in ("satellites-snapshot.json", "satellites-all-snapshot.json.gz", "launches-snapshot.json.gz", "tides-snapshot.json.gz"):
         if not os.path.exists(os.path.join(assets, name)):
             raise StageError("assets/%s is missing" % name)
     shutil.copyfile(
         os.path.join(assets, "satellites-snapshot.json"),
         os.path.join(out, "satellites-snapshot.json"),
     )
+    with gzip.open(os.path.join(assets, "satellites-all-snapshot.json.gz"), "rb") as f:
+        everything = f.read()
+    with open(os.path.join(out, "satellites-all-snapshot.json"), "wb") as f:
+        f.write(everything)
+    with gzip.open(os.path.join(assets, "launches-snapshot.json.gz"), "rb") as f:
+        launches = f.read()
+    with open(os.path.join(out, "launches-snapshot.json"), "wb") as f:
+        f.write(launches)
     with gzip.open(os.path.join(assets, "tides-snapshot.json.gz"), "rb") as f:
         raw = f.read()
     with open(os.path.join(out, "tides-snapshot.json"), "wb") as f:

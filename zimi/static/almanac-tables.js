@@ -1446,6 +1446,22 @@ function _tbMadeFill(x) {
   if (eq) eq.addEventListener('toggle', function () { if (eq.open) _tbEqOpen(eq); });
 }
 // Which Constants tile holds each constant a method rests on.
+// Capability levels (capability.js, ZimiCap.TABLE): what each level draws, low · standard · high, one row a limit.
+function _tbCapabilityRows() {
+  if (typeof ZimiCap === 'undefined') return [];
+  var T = ZimiCap.TABLE, trio = function (key, k) { return ['low', 'standard', 'high'].map(function (l) { var v = T[l][key]; return v === 0 && key === 'fpsMax' ? '∞' : _arNum(v * (k || 1), 2); }).join(' · '); }, SRC = 'Zimi';
+  return [
+    ['cap_dpr', trio('dprMax'), 0, '×', SRC],
+    ['cap_stand_dpr', trio('standDprMax'), 0, '×', SRC],
+    ['cap_sats', trio('satMax'), 0, '', SRC],
+    ['cap_hd_mem', trio('hdMemMB'), 0, 'MB', SRC],
+    ['cap_texture', trio('textureMax'), 0, 'px', SRC],
+    ['cap_gpu', trio('gpuMB'), 0, 'MB', SRC],
+    ['cap_fps', trio('fpsMax'), 0, '/s', SRC],
+    ['cap_slow', trio('slowMs'), 0, 'ms', SRC],
+    ['cap_steps', ZimiCap.STEP.join(', '), 0, '×', SRC]
+  ];
+}
 var TB_MADE_CONST_TILE = { aberration: 'k_physics', light: 'k_physics', parallax: 'k_nav', moonk: 'k_sunmoon', synodic: 'k_sunmoon',
   sidereal: 'k_earth', year: 'k_time', tai: 'k_time' };
 
@@ -1854,6 +1870,7 @@ var TB_ISA_T0_C = 15;                // ICAO standard atmosphere at sea level
 var TB_ISA_LAPSE_K_PER_KM = 6.5;
 var TB_SAROS_SYNODIC = 223;          // the Saros: 223 synodic months
 var TB_S_PER_DAY_SI = 86400;
+var TB_S_PER_HOUR = 3600;
 var TB_SRC_EXACT = 'SI';
 // Rows: [name key, value, digits, unit, source]; value a number, or text.
 var TB_CONST_ROWS = {
@@ -1880,6 +1897,11 @@ var TB_CONST_ROWS = {
       ['moon_k', AR_MOON_K, 7, '', 'IAU'],
       ['moon_motion', AE_MOON_MEAN_LON_RATE / JULIAN_CENTURY, 6, '°/d', 'Meeus 47.1'],
       ['sun_motion', AE_SUN_ANOMALY_RATE / JULIAN_CENTURY, 6, '°/d', 'Meeus 47.3'],
+      ['sun_rotation', AE_SUN_CARRINGTON_DEG_DAY, 4, '°/d', 'IAU 2015'],
+      ['sun_diff_rot', AE_SNODGRASS.join(', '), 0, '°/d', 'Snodgrass & Ulrich 1990'],
+      ['sun_granules', AE_GRANULES_PER_RADIUS, 0, '', 'Zimi (real: about 700)'],
+      ['sun_prom_height', AE_PROM_HEIGHT.join(' to '), 0, 'R☉', 'Zimi (real: up to about 0.15)'],
+      ['sun_flare', AE_FLARE_RISE_MIN + ', ' + AE_FLARE_DECAY_MIN, 0, 'min', 'Zimi (illustrative)'],
       ['synodic', _CN_SYN, 6, 'd', 'Meeus 49'],
       ['tropical_month', _tbPeriod(AE_MOON_MEAN_LON_RATE), 6, 'd', 'Meeus 47.1'],
       ['anomalistic', _tbPeriod(AE_MOON_ANOMALY_RATE), 6, 'd', 'Meeus 47.4'],
@@ -1921,7 +1943,60 @@ var TB_CONST_ROWS = {
       ['sunrise_alt', AR_SUNRISE_ALT * TB_ARCMIN_PER_DEG, 0, '′', 'NOAA'],
       ['moon_hp', AR_MOON_HP_FACTOR, 4, '× HP', 'Meeus 15'],
       ['sun_parallax', AR_SOLAR_PARALLAX_ARCSEC, 3, '″', 'IAU'],
-      ['twilights', [AR_TWILIGHT_ALTS.civil, AR_TWILIGHT_ALTS.nautical, AR_TWILIGHT_ALTS.astronomical].join('°, ') + '°', 0, '', 'USNO']
+      ['twilights', [AR_TWILIGHT_ALTS.civil, AR_TWILIGHT_ALTS.nautical, AR_TWILIGHT_ALTS.astronomical].join('°, ') + '°', 0, '', 'USNO'],
+      // The all-satellites layer (almanac-sats.js): what it draws, lists and estimates by.
+      ['sat_age_fresh', AE_SATS_REF.ageFreshDays, 0, 'd', 'Zimi'],
+      ['sat_age_gone', AE_SATS_REF.ageGoneDays, 0, 'd', 'Zimi'],
+      ['sat_leo_max', AE_SATS_REF.leoMaxKm, 0, 'km', 'Zimi'],
+      ['sat_geo_min', AE_SATS_REF.geoMinKm, 0, 'km', 'Zimi'],
+      ['sat_pass_el', AE_SATS_REF.passMinEl, 0, '°', 'Zimi'],
+      ['sat_pass_sun', AE_SATS_REF.passSunAlt, 0, '°', 'USNO'],
+      ['sat_pass_mag', AE_SATS_REF.passMag, 1, '', 'Zimi'],
+      ['sat_sky_mag', AE_SATS_REF.skyMag, 1, '', 'Zimi'],
+      ['sat_albedo', AE_SATS_REF.albedo, 2, '', 'Zimi'],
+      ['sat_sun_mag', AE_SATS_REF.sunMag, 2, '', 'IAU'],
+      ['sat_model', 'm = m☉ − 2.5 log₁₀(a · A · p(φ) / (π d²))', 0, '', 'Russell 1916 (Lambert sphere)'],
+      ['sat_area_iss', AE_SATS_REF.areaM2.iss, 0, 'm²', 'Fitted to McCants −1.8 (standard magnitude)'],
+      ['sat_pass_max', AE_SATS_REF.passMax, 0, '', 'Zimi'],
+      ['sat_lone_starlinks', AE_SATS_REF.loneStarlinks, 0, '', 'Zimi'],
+      ['sat_area_starlink', AE_SATS_REF.areaM2.starlink, 0, 'm²', 'Zimi'],
+      ['sat_area_oneweb', AE_SATS_REF.areaM2.oneweb, 0, 'm²', 'Zimi'],
+      ['sat_area_iridium', AE_SATS_REF.areaM2.iridium, 0, 'm²', 'Zimi'],
+      ['sat_min_rcs', AE_SATS_REF.minRcsM2, 0, 'm²', 'Zimi'],
+      ['sat_train_gap', AE_SATS_REF.trainGapS, 0, 's', 'Zimi'],
+      ['sat_train_plane', AE_SATS_REF.trainRaanDeg, 0, '°', 'Zimi'],
+      ['sat_gps_el', AE_SATS_REF.gpsMinEl, 0, '°', 'Zimi'],
+      ['sat_leo_gone', AE_SATS_REF.leoGoneDays, 0, 'd', 'Zimi'],
+      // Launches (almanac-launches.js, almanac-launchflight.js): what a launch's ascent and the batch it leaves are drawn by.
+      ['launch_min_el', AE_LAUNCH_REF.minElDeg, 0, '°', 'Zimi'],
+      ['launch_dark_sun', AE_LAUNCH_REF.darkSunAlt, 0, '°', 'USNO'],
+      ['launch_plume_km', AE_LAUNCH_REF.plumeMinKm, 0, 'km', 'Zimi'],
+      ['launch_coast', AE_LAUNCH_REF.coastS, 0, 's', 'Zimi'],
+      ['launch_insertion', AE_LAUNCH_REF.insertionKm.join('–'), 0, 'km', 'Zimi'],
+      ['launch_burn_typical', AE_LAUNCH_REF.typicalBurnS.typical, 0, 's', 'Zimi (typical low-orbit ascents)'],
+      ['launch_burn_shuttle', AE_LAUNCH_REF.typicalBurnS.shuttle, 0, 's', 'Space Shuttle press kit'],
+      ['launch_burn_saturn', AE_LAUNCH_REF.typicalBurnS.saturn, 0, 's', 'Apollo 11 Mission Report'],
+      ['launch_falcon_maxq', AE_LAUNCH_REF.falcon.maxQS, 0, 's', 'SpaceX Starlink 4-9 timeline'],
+      ['launch_falcon_meco', AE_LAUNCH_REF.falcon.mecoS, 0, 's', 'SpaceX Starlink 4-9 timeline'],
+      ['launch_falcon_sep', AE_LAUNCH_REF.falcon.sepS, 0, 's', 'SpaceX Starlink 4-9 timeline'],
+      ['launch_falcon_ses', AE_LAUNCH_REF.falcon.sesS, 0, 's', 'SpaceX Starlink 4-9 timeline'],
+      ['launch_falcon_seco', AE_LAUNCH_REF.falcon.secoS, 0, 's', 'SpaceX Starlink 4-9 timeline'],
+      ['launch_falcon_fairing', AE_LAUNCH_REF.falcon.fairingS, 0, 's', 'SpaceX Starlink 4-9 timeline'],
+      ['launch_falcon_entry', AE_LAUNCH_REF.falcon.entryBurnS.join('–'), 0, 's', 'SpaceX Starlink 4-9 timeline'],
+      ['launch_falcon_land', AE_LAUNCH_REF.falcon.landS, 0, 's', 'SpaceX Starlink 4-9 timeline'],
+      ['launch_sight_mag', Object.keys(AE_LAUNCH_REF.sightMag).map(function (k) { return k + ' ' + AE_LAUNCH_REF.sightMag[k]; }).join(', '), 0, '', 'Zimi (estimates)'],
+      ['launch_batch_mag', AE_LAUNCH_REF.batchMag550, 1, '', 'Mallama 2020, Starlink brightness before VisorSat'],
+      ['launch_batch_raising', AE_LAUNCH_REF.batchRaisingMag, 1, '', 'Tregloan-Reed et al. 2020; fitted'],
+      ['launch_shadow_edge', AE_LAUNCH_REF.shadowEdgeKm, 0, 'km', 'Zimi (assumed)'],
+      ['launch_azimuth', 'sin A = cos i / cos φ', 0, '', 'Sutton, Rocket Propulsion Elements'],
+      ['launch_j2', AE_LAUNCH_REF.j2.toExponential(5), 0, '', 'Earth Gravitational Model 1996'],
+      ['launch_earth_rate', AE_LAUNCH_REF.earthRateRadS.toExponential(7), 0, 'rad/s', 'IERS'],
+      ['launch_mean_radius', AE_LAUNCH_REF.meanRadiusKm, 4, 'km', 'IUGG'],
+      ['launch_checkout', AE_LAUNCH_REF.checkoutDays, 0, 'd', 'Zimi (assumed)'],
+      ['launch_raise_days', AE_LAUNCH_REF.raiseTotalDays, 0, 'd', 'McDowell et al. 2020, Astrophysical Journal Letters 892 L6'],
+      ['launch_spread', AE_LAUNCH_REF.spreadKm, 1, 'km', 'Fitted to a news report of 6 May 2021 and Langbroek, SatTrackCam'],
+      ['launch_release', AE_LAUNCH_REF.releaseGapDeg, 3, '°', 'Zimi'],
+      ['launch_shells', Object.keys(AE_LAUNCH_REF.starlinkShells).filter(function (k) { return k !== 'other'; }).map(function (k) { return k + '° ' + AE_LAUNCH_REF.starlinkShells[k]; }).join(', '), 0, 'km', 'SpaceX regulatory filings']
     ];
   },
   k_physics: function () {
@@ -1938,6 +2013,32 @@ var TB_CONST_ROWS = {
       ['zero_c', TB_ZERO_C_K, 2, 'K', TB_SRC_EXACT]
     ];
   },
+  // The sky and its scene: the air the sky is computed from (almanac-skygl.js), the day's cloud deck (almanac-onesky.js), and the things that
+  // cross it (almanac-skyscene.js, almanac-sky.js), drawn for illustration to these sizes.
+  k_scene: function () {
+    var SRC = 'Zimi', AIR = 'Hillaire 2020';
+    var per = function (a, d) { return a.map(function (x) { return _arNum(x * 1000, d); }).join(' / '); };   // per km in the model, per Mm here
+    var span = function (pair, k) { return _arNum(pair[0] * (k || 1), 1) + ' – ' + _arNum(pair[1] * (k || 1), 1); };
+    return [
+      ['air_rayleigh', per(SG_RAYLEIGH, 2), 0, '/Mm', AIR],
+      ['air_rayleigh_h', SG_RAYLEIGH_H, 1, 'km', AIR],
+      ['air_mie', _arNum(SG_MIE_SCATTER * 1000, 2) + ' + ' + _arNum(SG_MIE_ABSORB * 1000, 2), 0, '/Mm', AIR],
+      ['air_mie_h', SG_MIE_H, 1, 'km', AIR],
+      ['air_ozone', per(SG_OZONE, 3), 0, '/Mm', AIR],
+      ['cloud_base', OS_CLOUD_BASE_M / 1000, 1, 'km', SRC],
+      ['cloud_thick', OS_CLOUD_THICK_M / 1000, 1, 'km', SRC],
+      ['cloud_cover', '0 – 100', 0, '%', SRC],
+      ['cloud_wind', span(OS_CLOUD_WIND_MS), 0, 'm/s', SRC],
+      ['cloud_scale', SG_CLOUD_SCALE_M / 1000, 1, 'km', SRC],
+      ['airliner_h', span(SKY_PLANE_KM), 0, 'km', SRC],
+      ['airliner_v', span(SKY_PLANE_KM_S, TB_S_PER_HOUR), 0, 'km/h', SRC],
+      ['heli_h', span(SKY_HELI.km), 0, 'km', SRC],
+      ['heli_v', span(SKY_HELI.kms, TB_S_PER_HOUR), 0, 'km/h', SRC],
+      ['heli_beacon', SKY_HELI_BEACON_MS, 0, 'ms', SRC]
+    ];
+  },
+  // What each capability level draws (capability.js): the table a light device, a standard one and a roomy one read.
+  k_capability: function () { return _tbCapabilityRows(); },
   k_units: function () {
     var rows = [];
     Object.keys(TB_UNITS).forEach(function (kind) {
@@ -1965,12 +2066,14 @@ var TB_CONST_LINKS = {
   draconic: 'term:lunar_month', saros: 'term:saros', sidereal_day: 'term:sidereal_time',
   tropical_year: 'term:tropical_year', julian_year: 'term:julian_year', jd_j2000: 'term:epoch',
   jd_unix: 'term:unix_time', delta_t: 'term:delta_t', delta_t_measured: 'term:delta_t',
+  sat_leo_max: 'term:leo', sat_geo_min: 'term:geo', sat_pass_sun: 'term:twilight', sat_pass_mag: 'term:apparent_magnitude', sat_sun_mag: 'term:apparent_magnitude',
   tai_utc: 'term:leap_second', last_leap: 'term:leap_second', nmi: 'term:nautical_mile', knot: 'term:knot',
   refraction: 'term:atmospheric_refraction', std_air: 'term:isa', dip: 'term:horizon', horizon: 'term:horizon',
   sun_sd: 'term:angular_diameter', sunrise_alt: 'term:sunrise', moon_hp: 'term:parallax',
   sun_parallax: 'term:parallax', twilights: 'term:twilight', c: 'term:speed_of_light',
   g: 'term:gravitational_constant', aberration: 'term:aberration', atm: 'term:standard_atmosphere',
-  sea_pressure: 'term:isa', isa_t0: 'term:isa', lapse: 'term:isa'
+  sea_pressure: 'term:isa', isa_t0: 'term:isa', lapse: 'term:isa',
+  airliner_h: 'sky:airliner', airliner_v: 'sky:airliner', heli_h: 'sky:helicopter', heli_v: 'sky:helicopter'
 };
 // What a row cites: each name below becomes its article's link wherever it stands in the
 // Source column ("Meeus 12.4" links Meeus; "SI · exact" links SI).
@@ -2000,7 +2103,8 @@ function _tbRenderConst(body) {
       '<td class="tb-src">' + _tbSource(r[4] === TB_SRC_EXACT ? 'SI · ' + _tbT('k_exact') : r[4]) + '</td></tr>';
   }).join('');
   body.innerHTML = '<div id="tb-print-head"></div><div class="tb-out" id="tb-out">' +
-    _tbTable(_tbHead([_tbH('k_name'), _tbH('k_value') + ' (' + _tbH('k_unit') + ')', _tbH('k_source')]), rows, 'tb-consts') + '</div>';
+    _tbTable(_tbHead([_tbH('k_name'), _tbH('k_value') + ' (' + _tbH('k_unit') + ')', _tbH('k_source')]), rows, 'tb-consts') +
+    (_tb.id === 'k_scene' ? _tbNote(_tbH('scene_note')) : '') + '</div>';
   _tbEl('tb-print-head').innerHTML = _tbPrintHead([]);
 }
 

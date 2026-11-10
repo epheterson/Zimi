@@ -348,8 +348,8 @@ def test_go_to_the_minimap_and_the_orrery_s_way_in(served):
                 "Array.from(document.querySelectorAll('#ae-go h4')).length"
             )
             assert (
-                groups == 6
-            ), groups  # Earth and Moon, Planets, Moons, Dwarf planets, Spacecraft, Moon landings
+                groups == 7
+            ), groups  # Earth and Moon, Planets, Moons, Dwarf planets, Spacecraft, Moon landings, Missions
             assert pg.evaluate(
                 "Array.from(document.querySelectorAll('#ae-go .ae-go-row')).every(r => !!r.querySelector('.ae-go-dot'))"
             )
@@ -716,7 +716,7 @@ def test_every_destination_flies(served, start):
             )
             # Every body (the landing sites are the landmarks test's).
             keys = pg.evaluate(
-                "_aeGoGroups().reduce((a, g) => a.concat(g[1]), []).filter(k => k.indexOf(AE_GO_LM) !== 0 && k !== AE_GO_LOADING && k !== AE_SPIN_KEY).concat(['sun', 'planets', 'sats'])"
+                "_aeGoGroups().reduce((a, g) => a.concat(g[1]), []).filter(k => k.indexOf(':') < 0 && k !== AE_GO_LOADING && k !== AE_SPIN_KEY).concat(['sun', 'planets', 'sats'])"
             )
             pg.evaluate(
                 "_aeShowGo(false); window._almReduceMotion = function () { return true; };"
@@ -785,7 +785,7 @@ def test_every_destination_arrives_with_its_card(served):
                 timeout=60_000,
             )
             keys = pg.evaluate(
-                "_aeGoGroups().reduce((a, g) => a.concat(g[1]), []).filter(k => k.indexOf(AE_GO_LM) !== 0 && k !== AE_GO_LOADING && k !== AE_SPIN_KEY).concat(['sun'])"
+                "_aeGoGroups().reduce((a, g) => a.concat(g[1]), []).filter(k => k.indexOf(':') < 0 && k !== AE_GO_LOADING && k !== AE_SPIN_KEY).concat(['sun'])"
             )
             pg.evaluate(
                 "_aeShowGo(false); window._almReduceMotion = function () { return true; };"
@@ -1329,7 +1329,7 @@ def test_every_probe_model_is_small_and_knows_where_it_points():
         raw = open(os.path.join(earth, "craft-%s-v1.bin" % model), "rb").read()
         assert len(gzip.compress(raw, 9)) < 400_000, model
         head = struct.unpack("<4sIf6f3f3fI", raw[:64])
-        assert head[0] == b"ZCRF" and 1 <= head[15] <= 8, (model, head[0], head[15])
+        assert head[0] == b"ZCR2" and 1 <= head[15] <= 12, (model, head[0], head[15])
         aim, across = head[9:12], head[12:15]
         assert (
             abs(math.hypot(*aim) - 1) < 1e-3 and abs(math.hypot(*across) - 1) < 1e-3

@@ -1554,6 +1554,10 @@ def _init():
         global _auto_update_enabled, _auto_update_freq, _auto_update_skips
         _auto_update_enabled, _auto_update_freq = _load_auto_update_config()
         _auto_update_skips = _load_auto_update_skips()
+    if bundled("addons"):  # installed add-ons (browser, SingleFile, video) onto PATH / sys.path
+        from zimi import addons
+
+        addons.activate()
 
 
 def _migrate_data_files():
@@ -3266,7 +3270,7 @@ def get_zim_files():
 
 #: ZIMs that are data for a part of Zimi, not something to read: served at /w/<name>/ to the part that uses them,
 #: never on Home, in the library's grid, in search or in the title indexes (Almanac HD: the Almanac's tiles, in the Almanac's maxi flavour or 1.15.3's tile ZIM).
-DATA_PACKS = frozenset(("zimi_almanac_maxi", "zimi_almanac_hd"))
+DATA_PACKS = frozenset(("zimi_almanac_maxi", "zimi_almanac_hd", "zimi_almanac_hd_moon", "zimi_almanac_hd_mars", "zimi_almanac_hd_mercury", "zimi_almanac_hd_earth"))   # the last four: parts of a split set (almanachd.PARTS)
 
 
 def content_zims():
@@ -5501,6 +5505,14 @@ def main():
     p_doctor.add_argument("--kind", choices=("docker", "desktop", "portable", "pip"), help=argparse.SUPPRESS)
     add_boot_flags(p_doctor)
 
+    p_check = sub.add_parser(
+        "check", help="Is a ZIM well formed: checksum, metadata, icon, redirects, links"
+    )
+    p_check.add_argument("files", nargs="+", metavar="FILE", help="the .zim files to check")
+    p_check.add_argument(
+        "--quick", action="store_true", help="skip the checksum and the link scan"
+    )
+
     p_service = sub.add_parser("service", help="The systemd unit that runs Zimi at boot (Linux)")
     p_service.add_argument("action", choices=("print", "install"), help="print the unit, or install it for systemd")
     p_service.add_argument("--to", help="where install writes it (default /etc/systemd/system/zimi.service)")
@@ -5511,6 +5523,11 @@ def main():
         from zimi import service as _service
 
         return _service.cli_service(args)
+
+    if args.command == "check":
+        from zimi import zimcheck as _zimcheck
+
+        return _zimcheck.cli_check(args)
 
     settings, config_path, data_dir_problem = _resolve_boot(args)
     host = settings["host"][0]
@@ -5910,6 +5927,15 @@ def warm_indexes():
         except Exception as e:
             log.warning("Map places phase failed: %s", e)
 
+        # Phase 1e: the documents of each PDF collection (titles from its
+        # listing, the PDFs' text), so a search finds a factsheet by its words.
+        try:
+            from zimi import docindex as _docindex
+
+            _docindex.build_all()
+        except Exception as e:
+            log.warning("Document index phase failed: %s", e)
+
         # Phase 2: build/refresh Q-ID indexes (one Archive open at a time).
         try:
             _build_all_qid_indexes()
@@ -6112,6 +6138,7 @@ from zimi.search import (  # noqa: E402, F401
     extract_pdf_text,
     get_catalog,
     parse_catalog,
+    list_entries,
     # Content serving & discover
     random_entry,
     _get_dated_entry,

@@ -63,7 +63,17 @@
     'planet:europa':   { q: 'Q3143', en: 'Europa (moon)' },
     'planet:ganymede': { q: 'Q3169', en: 'Ganymede (moon)' },
     'planet:callisto': { q: 'Q3134', en: 'Callisto (moon)' },
-    'planet:titan':    { q: 'Q2565', en: 'Titan (moon)' }
+    'planet:titan':    { q: 'Q2565', en: 'Titan (moon)' },
+    'planet:vesta':    { q: 'Q3030', en: '4 Vesta' },
+    'planet:mimas':    { q: 'Q15034', en: 'Mimas' },
+    'planet:enceladus': { q: 'Q3303', en: 'Enceladus' },
+    'planet:tethys':   { q: 'Q15047', en: 'Tethys (moon)' },
+    'planet:dione':    { q: 'Q15040', en: 'Dione (moon)' },
+    'planet:rhea':     { q: 'Q15050', en: 'Rhea (moon)' },
+    'planet:iapetus':  { q: 'Q17958', en: 'Iapetus (moon)' },
+    'planet:triton':   { q: 'Q3359', en: 'Triton (moon)' },
+    'planet:charon':   { q: 'Q6604', en: 'Charon (moon)' },
+    'planet:phobos':   { q: 'Q7547', en: 'Phobos (moon)' }
   };
 
   var PROBES = {
@@ -689,6 +699,15 @@
     'term:gps':            { q: 'Q18822',  en: 'Global Positioning System' },
     'term:iss':            { q: 'Q25271',  en: 'International Space Station' },
     'term:time_dilation':  { q: 'Q185918', en: 'Time dilation' },
+    // The all-satellites layer's card (almanac-sats.js); Q-IDs read from enwiki pageprops 2026-11-09
+    'term:starlink':       { q: 'Q19867977', en: 'Starlink' },
+    'term:oneweb':         { q: 'Q24039799', en: 'Eutelsat OneWeb' },
+    'term:iridium':        { q: 'Q2672736', en: 'Iridium satellite constellation' },
+    'term:gnss':           { q: 'Q18822', en: 'Global Positioning System' },
+    'term:satellite_constellation': { q: 'Q967145', en: 'Satellite constellation' },
+    'term:leo':            { q: 'Q663611', en: 'Low Earth orbit' },
+    'term:meo':            { q: 'Q218414', en: 'Medium Earth orbit' },
+    'term:geo':            { q: 'Q192316', en: 'Geostationary orbit' },
     // The tables, calculations and constants (almanac-tables.js, almanac-reference.js)
     'term:sunrise':                { q: 'Q193294', en: 'Sunrise' },
     'term:sunset':                 { q: 'Q166564', en: 'Sunset' },
@@ -948,6 +967,8 @@
     'sky:aurora':  { q: 'Q40609', en: 'Aurora' },
     'sky:whale':   { q: 'Q132905', en: 'Humpback whale' },
     'sky:airliner': { q: 'Q210932', en: 'Airliner' },
+    'sky:helicopter': { q: 'Q34486', en: 'Helicopter' },
+    'sky:cloud':   { q: 'Q8074', en: 'Cloud' },
     'sky:meteor':  { q: 'Q7012', en: 'Meteoroid' },
     'sky:sea':     { q: 'Q165', en: 'Sea' },
     'sky:ship':    { q: 'Q11446', en: 'Ship' },

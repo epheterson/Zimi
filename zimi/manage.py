@@ -469,7 +469,10 @@ def _first_run_window_open():
     if not setup_pending():
         return False
     started = _read_app_update_prefs().get("setup_started")
-    return isinstance(started, (int, float)) and time.time() - started <= FIRST_RUN_LAN_SECONDS
+    return (
+        isinstance(started, (int, float))
+        and time.time() - started <= FIRST_RUN_LAN_SECONDS
+    )
 
 
 def _owner_proof(handler):
@@ -480,7 +483,11 @@ def _owner_proof(handler):
     # carries _is_loopback_client, so production always takes the strict
     # loopback path, and test_bootstrap_takeover pins that.
     is_local = getattr(handler, "_is_loopback_client", handler._is_private_client)
-    return (_host_is_owner() and is_local()) or _bootstrap_key_ok(handler) or _first_run_lan_client(handler)
+    return (
+        (_host_is_owner() and is_local())
+        or _bootstrap_key_ok(handler)
+        or _first_run_lan_client(handler)
+    )
 
 
 def _host_is_owner():
@@ -979,7 +986,9 @@ def _app_version_newer(remote, current):
     if r[0] != c[0]:
         return r[0] > c[0]
     r_final, c_final = r[1][0] == _FINAL_STAGE, c[1][0] == _FINAL_STAGE
-    return r_final and not c_final  # a final beats its own pre-release, never the reverse
+    return (
+        r_final and not c_final
+    )  # a final beats its own pre-release, never the reverse
 
 
 def detect_install_type():
@@ -1180,6 +1189,40 @@ def _search_background_failures():
     return background_failures()
 
 
+def _catalog_copies():
+    """The catalog copies Zimi keeps on disk and can fetch again, as paths: the
+    cached catalog pages and their validators, and the .torrent kept for each
+    catalog item that is not installed (mirror mode holds one for every item,
+    tens of MB). A .torrent for an installed ZIM stays: seeding it and checking
+    its pieces need it."""
+    from zimi import library as _lib
+
+    data_dir = _srv.ZIMI_DATA_DIR
+    paths = [_lib._catalog_cache_path(), _lib._validators_path()]
+    tdir = os.path.join(data_dir, "bt", "torrents")
+    try:
+        names = os.listdir(tdir)
+    except OSError:
+        names = []
+    for name in names:
+        if name.endswith(".torrent") and not os.path.exists(os.path.join(_srv.ZIM_DIR, name[: -len(".torrent")])):
+            paths.append(os.path.join(tdir, name))
+    return [p for p in paths if os.path.isfile(p)]
+
+
+def _purge_catalog_copies():
+    """Delete _catalog_copies(); how many bytes that freed."""
+    freed = 0
+    for path in _catalog_copies():
+        try:
+            size = os.path.getsize(path)
+            os.remove(path)
+            freed += size
+        except OSError as e:
+            log.debug("catalog copy not removed: %s", e)
+    return freed
+
+
 def _cache_info_payload():
     """Size breakdown of the Zimi data dir (indexes + caches, NOT the ZIM
     library). Walks only the small-file-count data dir — never the ZIM files.
@@ -1277,8 +1320,10 @@ def _cache_info_payload():
         {"key": "other", "size_bytes": other_bytes},
     ]
     bar_total = sum(seg["size_bytes"] for seg in breakdown)
+    copies = _catalog_copies()
     return {
         "caches": caches,
+        "catalog_copies": {"count": len(copies), "size_bytes": sum(_file_size(p) for p in copies)},
         "total_bytes": sum(c["size_bytes"] for c in caches.values()),
         "data_dir_total_bytes": bar_total,
         "breakdown": breakdown,
@@ -2344,7 +2389,11 @@ def _private_rule():
 
     from zimi.creator import private_addresses_refused
 
-    return contextlib.nullcontext() if _create_allows_private() else private_addresses_refused()
+    return (
+        contextlib.nullcontext()
+        if _create_allows_private()
+        else private_addresses_refused()
+    )
 
 
 def _under_private_rule(fn):
@@ -2766,7 +2815,9 @@ def _create_derive_line(job, text):
             enter("package")
         elif low.startswith("zim written"):
             enter("register")
-        elif re.match(r"^[\d,]+ (posts|comments) fetched", low) or low.startswith(("retrieving ", "adding ", "writing ")):
+        elif re.match(r"^[\d,]+ (posts|comments) fetched", low) or low.startswith(
+            ("retrieving ", "adding ", "writing ")
+        ):
             settle()
         events.append({"t": "phase", "phase": job.phase, "detail": line})
         return events, phase
@@ -3130,7 +3181,9 @@ def _create_validate(data):
 
         sub = normalize_subreddit(source)
         if not sub:
-            raise ValueError("not a subreddit name (letters, digits and _, like r/kiwix)")
+            raise ValueError(
+                "not a subreddit name (letters, digits and _, like r/kiwix)"
+            )
         source = sub
     elif mode == "import":
         # Back on the web (a user: "I'd like a way to convert warc files
@@ -3293,7 +3346,11 @@ def _create_patterns(value):
     if value in (None, ""):
         return []
     items = value if isinstance(value, list) else [value]
-    return [str(v).strip() for v in items if isinstance(v, (str, int, float)) and str(v).strip()]
+    return [
+        str(v).strip()
+        for v in items
+        if isinstance(v, (str, int, float)) and str(v).strip()
+    ]
 
 
 def _create_scope(data):
@@ -3304,8 +3361,11 @@ def _create_scope(data):
     from zimi.creator import CreateError
 
     raw = {
-        "scope": (str(data.get("scope")).strip().lower() or None)
-        if data.get("scope") not in (None, "") else None,
+        "scope": (
+            (str(data.get("scope")).strip().lower() or None)
+            if data.get("scope") not in (None, "")
+            else None
+        ),
         "include": _create_patterns(data.get("include")),
         "exclude": _create_patterns(data.get("exclude")),
         "extra_hops": _create_int(data.get("extra_hops"), 0, None),
@@ -3331,7 +3391,9 @@ def _create_capture_options(data, engine, keys=None):
     try:
         options = capture_options(data, engine, strict=False, keys=keys)
         if data.get("cookies") and "cookies" not in options:
-            capture_options({"cookies": data["cookies"]}, engine, strict=True, keys=keys)
+            capture_options(
+                {"cookies": data["cookies"]}, engine, strict=True, keys=keys
+            )
         return options
     except CreateError as e:
         raise ValueError(str(e))
@@ -3428,12 +3490,16 @@ def _create_engine(value):
     # a form that lies.
     if name == "rendered" and not _create_browser_ready():
         raise ValueError(
-            "the rendered engine needs a browser this server does not have " "installed"
+            _addon_refusal(
+                "the rendered engine needs a browser this server does not have installed", "browser"
+            )
         )
     if name == "singlefile" and not _create_singlefile_ready():
         raise ValueError(
-            "the singlefile engine needs the SingleFile CLI, and this server "
-            "does not have it installed"
+            _addon_refusal(
+                "the singlefile engine needs the SingleFile CLI, and this server does not have it installed",
+                "singlefile",
+            )
         )
     if name == "zimit" and not _create_allows_private():
         # Its browser is in Docker, out of the capture proxy's reach.
@@ -3447,10 +3513,28 @@ def _create_engine(value):
         )
     if name == "alive" and not _create_alive_ready():
         raise ValueError(
-            "the alive engine needs both a browser and the warc2zim sidecar, "
-            "and this server is missing at least one of them"
+            _addon_refusal(
+                "the alive engine needs both a browser and the warc2zim sidecar, "
+                "and this server is missing at least one of them",
+                "browser",
+                "warc2zim",
+            )
         )
     return name
+
+
+def _addon_refusal(message, *keys):
+    """Words for a capture mode this server lacks. When an add-on supplies it: under Automatically the first missing
+    one starts installing now (the job is refused, not held for a download), otherwise the words say where to add it."""
+    from zimi import addons, outbound
+
+    missing = [k for k in keys if not addons.available(k)]
+    if not missing or not addons.supported() or addons.POLICY.mode()[0] == outbound.NEVER:
+        return message
+    if addons.POLICY.mode()[0] == outbound.AUTO:
+        addons.install(missing[0], None)
+        return message + "; adding it now, try again when it is ready"
+    return message + "; add it in Settings > Server > Add-ons"
 
 
 def _create_blocking_engine(engine):
@@ -3798,13 +3882,18 @@ def _create_finish(job, **outcome):
         # The done event goes up with the flag, under the same lock: a poll that
         # sees done reads its events next and expects the last one to be done.
         # Published after the lock, one poll could land in the gap (CI did).
-        job._push_events([{"t": "phase", "phase": "done", "detail": _create_job_state(job)}])
+        job._push_events(
+            [{"t": "phase", "phase": "done", "detail": _create_job_state(job)}]
+        )
         tail = list(job.lines[-CREATE_SERVER_LOG_LINES:]) if not job.ok else []
     if tail:
         # The server's log (docker logs) has it too, for whoever reads there.
         log.warning(
             "Create %s failed (%s): %s\n  %s",
-            job.mode, job.source, job.error, "\n  ".join(tail),
+            job.mode,
+            job.source,
+            job.error,
+            "\n  ".join(tail),
         )
     # The create journal serves the Create page; the activity journal serves the
     # operator asking what has been happening to this library. A settled job is
@@ -3909,8 +3998,10 @@ def _create_limits(mode, opts):
         # keeps.
         return {"pages": bound("max_pages", crawler.DEFAULT_MAX_PAGES)}
     if mode == "site":
-        return {"pages": bound("max_pages", crawler.DEFAULT_MAX_PAGES),
-                "bytes": bound("max_bytes", crawler.DEFAULT_MAX_BYTES)}
+        return {
+            "pages": bound("max_pages", crawler.DEFAULT_MAX_PAGES),
+            "bytes": bound("max_bytes", crawler.DEFAULT_MAX_BYTES),
+        }
     if mode == "video":
         return {"bytes": bound("max_bytes", video.DEFAULT_MAX_ZIM_BYTES)}
     return {}
@@ -3986,7 +4077,9 @@ def _fieldmanual_status(fieldguide):
     Only text Create already sends the client reaches it."""
     out = fieldguide.manual_status()
     with _create_lock:
-        job = _create_job if (_create_job and _create_job.mode == "fieldmanual") else None
+        job = (
+            _create_job if (_create_job and _create_job.mode == "fieldmanual") else None
+        )
         queued = any(j.mode == "fieldmanual" for j, _o in _create_queue)
     if (job is not None and not job.done) or queued:
         out["state"] = "running"
@@ -4286,7 +4379,11 @@ def _create_archives():
         depth = 0 if rel_dir == "." else rel_dir.count(os.sep) + 1
         # Hidden folders are the library's own (.zimi, .data) and nobody's
         # archives; past the depth the walk stops descending.
-        dirnames[:] = sorted(d for d in dirnames if not d.startswith(".")) if depth < CREATE_ARCHIVE_MAX_DEPTH else []
+        dirnames[:] = (
+            sorted(d for d in dirnames if not d.startswith("."))
+            if depth < CREATE_ARCHIVE_MAX_DEPTH
+            else []
+        )
         for n in filenames:
             if not n.lower().endswith(ARCHIVE_EXTS) or n.startswith("."):
                 continue
@@ -4298,7 +4395,13 @@ def _create_archives():
             if not os.path.isfile(full):
                 continue
             rel = n if rel_dir == "." else os.path.join(rel_dir, n)
-            found.append({"name": rel.replace(os.sep, "/"), "size_bytes": st.st_size, "mtime": st.st_mtime})
+            found.append(
+                {
+                    "name": rel.replace(os.sep, "/"),
+                    "size_bytes": st.st_size,
+                    "mtime": st.st_mtime,
+                }
+            )
             if len(found) >= CREATE_ARCHIVE_MAX_FILES:
                 break
         if len(found) >= CREATE_ARCHIVE_MAX_FILES:
@@ -4348,7 +4451,9 @@ def _create_tree(rel, offset):
 
     root = _create_archives_root()
     try:
-        listing = folderfiles.list_level(root, rel, offset=offset, exclude=_create_folder_exclude())
+        listing = folderfiles.list_level(
+            root, rel, offset=offset, exclude=_create_folder_exclude()
+        )
     except folderfiles.OutsideRoot as e:
         return {"error": str(e)}, 400
     except FileNotFoundError:
@@ -4358,7 +4463,9 @@ def _create_tree(rel, offset):
         return {"error": "that folder cannot be read"}, 500
     # The root's own name, so the picker can label its top row; the path
     # itself is already on the page (archives_dir) for the same viewer.
-    listing["root_name"] = os.path.basename(os.path.realpath(root).rstrip(os.sep)) or root
+    listing["root_name"] = (
+        os.path.basename(os.path.realpath(root).rstrip(os.sep)) or root
+    )
     return listing, 200
 
 
@@ -4424,7 +4531,8 @@ def _probe_folder(source, only):
         "families": families,
         "unsupported": len(plan["unsupported"]),
         "unsupported_examples": [
-            {"path": rel, "reason": reason} for rel, reason in plan["unsupported"][:CREATE_FOLDER_PROBE_EXAMPLES]
+            {"path": rel, "reason": reason}
+            for rel, reason in plan["unsupported"][:CREATE_FOLDER_PROBE_EXAMPLES]
         ],
         "plays_some": plays_some,
         "metadata": meta,
@@ -4610,7 +4718,16 @@ def _create_alive_ready():
 # yet, and a bucket that is always present but sometimes zero is a stabler
 # contract than one that appears the day the first edit lands.
 
-_CREATOR_TYPES = ("page", "site", "video", "import", "reddit", "folder", "export", "edit")
+_CREATOR_TYPES = (
+    "page",
+    "site",
+    "video",
+    "import",
+    "reddit",
+    "folder",
+    "export",
+    "edit",
+)
 
 _CREATOR_TYPE_BY_MODE = {
     "page": "page",
@@ -5119,7 +5236,9 @@ def _probe_claims_video(source):
 
         return video_available() and claims_video_host(str(source).strip())
     except Exception:
-        log.debug("video claim check failed for %s", loggable(repr(source)), exc_info=True)
+        log.debug(
+            "video claim check failed for %s", loggable(repr(source)), exc_info=True
+        )
         return False
 
 
@@ -5338,7 +5457,9 @@ def handle_manage_get(handler, parsed, params):
             return handler._json(*denial)
         return handler._json(
             410,
-            {"error": "this folder picker is gone; the Create page's Folder mode uses /manage/create/tree"},
+            {
+                "error": "this folder picker is gone; the Create page's Folder mode uses /manage/create/tree"
+            },
         )
     if parsed.path == "/manage/create/tree":
         # One level of the create root, for the Folder picker. Gated exactly
@@ -5349,7 +5470,9 @@ def handle_manage_get(handler, parsed, params):
             return handler._json(*denial)
         if not _primary_admin_authorized(handler):
             return handler._json(403, _DISK_PRIMARY_ONLY)
-        payload, status = _create_tree(param("path", ""), _create_int(param("offset"), 0, 2**31) or 0)
+        payload, status = _create_tree(
+            param("path", ""), _create_int(param("offset"), 0, 2**31) or 0
+        )
         return handler._json(status, payload)
     challenge = _manage_auth_challenge(handler)
     if challenge:
@@ -5363,7 +5486,9 @@ def handle_manage_get(handler, parsed, params):
             200,
             {
                 "zim_count": zim_count,
-                "total_size_gb": round(total_gb, 6),  # as each ZIM's size_gb: 0.1 GB read 0 B for small libraries
+                "total_size_gb": round(
+                    total_gb, 6
+                ),  # as each ZIM's size_gb: 0.1 GB read 0 B for small libraries
                 "from_folders": libfolders.shares(),
                 "manage_enabled": True,
                 "linked_zims": linked_zims,
@@ -5495,7 +5620,9 @@ def handle_manage_get(handler, parsed, params):
 
             fallback, offline_source, offline_as_of = _offline.offline_catalog()
             if not fallback:
-                return handler._json(502, {"error": f"Kiwix catalog fetch failed: {err}"})
+                return handler._json(
+                    502, {"error": f"Kiwix catalog fetch failed: {err}"}
+                )
             if query:
                 needle = query.lower()
                 fallback = [
@@ -5617,9 +5744,13 @@ def handle_manage_get(handler, parsed, params):
                 if backend:
                     # A client engine answers from its last list, refreshed in
                     # the background; the built-in one from memory.
-                    rows = getattr(backend, "list_managed_cached", backend.list_managed)()
+                    rows = getattr(
+                        backend, "list_managed_cached", backend.list_managed
+                    )()
                     seeding_count = sum(
-                        1 for raw in rows if raw.get("seeder") == "true" and raw.get("status") == "active"
+                        1
+                        for raw in rows
+                        if raw.get("seeder") == "true" and raw.get("status") == "active"
                     )
         except Exception:
             pass
@@ -5897,7 +6028,11 @@ def handle_manage_get(handler, parsed, params):
         shown = _srv.apps_shown()
         return handler._json(
             200,
-            {"enabled": bool(shown), "shown": [n for n in _srv.APP_NAMES if n in shown], "env_locked": _srv._apps_env() is not None},
+            {
+                "enabled": bool(shown),
+                "shown": [n for n in _srv.APP_NAMES if n in shown],
+                "env_locked": _srv._apps_env() is not None,
+            },
         )
 
     elif parsed.path == "/manage/own-zims":
@@ -5906,6 +6041,12 @@ def handle_manage_get(handler, parsed, params):
         from zimi import ownzims
 
         return handler._json(200, {"zims": ownzims.catalog()})
+
+    elif parsed.path == "/manage/addons":
+        # Add-ons (addons.py): what can be added, what is there, the install under way, the setting.
+        from zimi import addons as _addons
+
+        return handler._json(200, _addons.status())
 
     elif parsed.path == "/manage/outbound":
         # "What Zimi fetches from the internet": every destination, what sets
@@ -5941,7 +6082,12 @@ def handle_manage_get(handler, parsed, params):
         items, source, as_of, refreshing = streetzim.get()
         return handler._json(
             200,
-            {"items": mapregions.annotate(list(items)), "source": source, "as_of": as_of, "refreshing": refreshing},
+            {
+                "items": mapregions.annotate(list(items)),
+                "source": source,
+                "as_of": as_of,
+                "refreshing": refreshing,
+            },
         )
 
     elif parsed.path == "/manage/library-folders":
@@ -5955,7 +6101,9 @@ def handle_manage_get(handler, parsed, params):
         # design: the environment belongs to whoever starts the process.
         from zimi import envinfo
 
-        return handler._json(200, {"vars": envinfo.effective(published=_srv.CONFIG_PUBLISHED)})
+        return handler._json(
+            200, {"vars": envinfo.effective(published=_srv.CONFIG_PUBLISHED)}
+        )
 
     elif parsed.path == "/manage/bt-status":
         # Surface the BT engine state so the user can self-diagnose:
@@ -6265,7 +6413,10 @@ def access_answer(handler):
         # running Zimi, or the home network while a fresh install's page is up
         # (_first_run_lan_client). Elsewhere inside the network a device is
         # offered the key field; outside it, only "being set up".
-        "keyless": (_host_is_owner() and bool(getattr(handler, "_is_loopback_client", lambda: False)()))
+        "keyless": (
+            _host_is_owner()
+            and bool(getattr(handler, "_is_loopback_client", lambda: False)())
+        )
         or _first_run_lan_client(handler),
         "inside": handler._is_private_client(),
         # The account name, for the admin editing it: never to anyone else, or
@@ -6297,21 +6448,29 @@ def _handle_access(handler, data):
     which asks for the current one."""
     env_open = manage_open_env()
     if env_open:  # the environment opened it; only the environment closes it
-        return handler._json(403, {"error": "env_controlled", "var": "ZIMI_MANAGE_OPEN"})
+        return handler._json(
+            403, {"error": "env_controlled", "var": "ZIMI_MANAGE_OPEN"}
+        )
     challenge = _manage_auth_challenge(handler)
     if challenge:
         return handler._json(*challenge)
     if data.get("require_password") is not True:
         if env_open is False:  # ZIMI_MANAGE_OPEN=0 forbids only this answer
-            return handler._json(403, {"error": "env_controlled", "var": "ZIMI_MANAGE_OPEN"})
+            return handler._json(
+                403, {"error": "env_controlled", "var": "ZIMI_MANAGE_OPEN"}
+            )
         return _open_to_anyone(handler, data)
     # No username sent leaves the stored one alone (only a form showing the
     # field can rename the account).
-    username = str(data.get("username") or "").strip()[:64] if "username" in data else None
+    username = (
+        str(data.get("username") or "").strip()[:64] if "username" in data else None
+    )
     password = str(data.get("password") or "").strip()
     stored = _get_manage_password_hash()
     if os.environ.get("ZIMI_MANAGE_PASSWORD", "") and password:
-        return handler._json(403, {"error": "env_controlled", "var": "ZIMI_MANAGE_PASSWORD"})
+        return handler._json(
+            403, {"error": "env_controlled", "var": "ZIMI_MANAGE_PASSWORD"}
+        )
     if not stored and not password:
         return handler._json(400, {"error": "needs_password"})
     if stored and password:
@@ -6320,7 +6479,12 @@ def _handle_access(handler, data):
         if open_from_settings():
             return handler._json(403, {"error": "open_locked"})
         return handler._json(400, {"error": "change it with the current password"})
-    if stored and open_from_settings() and username is not None and username != _file_username():
+    if (
+        stored
+        and open_from_settings()
+        and username is not None
+        and username != _file_username()
+    ):
         # Nor a new name for it: the kept password would no longer log in.
         return handler._json(403, {"error": "open_locked"})
     if os.environ.get("ZIMI_MANAGE_USER", "").strip():
@@ -6356,9 +6520,13 @@ def _open_to_anyone(handler, data):
     if data.get("open_confirm") is not True:
         return handler._json(400, {"error": "open_unconfirmed"})
     if _env_flag("ZIMI_MANAGE_EXTERNAL") is False:
-        return handler._json(403, {"error": "env_controlled", "var": "ZIMI_MANAGE_EXTERNAL"})
+        return handler._json(
+            403, {"error": "env_controlled", "var": "ZIMI_MANAGE_EXTERNAL"}
+        )
     if os.environ.get("ZIMI_MANAGE_PASSWORD", ""):
-        return handler._json(403, {"error": "env_controlled", "var": "ZIMI_MANAGE_PASSWORD"})
+        return handler._json(
+            403, {"error": "env_controlled", "var": "ZIMI_MANAGE_PASSWORD"}
+        )
     if _lan_admin_env() is False:
         return handler._json(403, {"error": "env_controlled", "var": "ZIMI_LAN_ADMIN"})
     stored = _get_manage_password_hash()
@@ -6427,15 +6595,23 @@ def _delete_through_nomad(handler, filename):
     try:
         _srv.release_zim_handles([_srv._zim_short_name(filename)])
     except Exception as e:
-        log.debug("Handle release before NOMAD deletes %s: %s", loggable(filename), loggable(e))
+        log.debug(
+            "Handle release before NOMAD deletes %s: %s",
+            loggable(filename),
+            loggable(e),
+        )
     try:
         nomadapi.delete(filename)
     except nomadapi.NomadError as e:
-        log.warning("Project NOMAD would not delete %s: %s", loggable(filename), loggable(e))
+        log.warning(
+            "Project NOMAD would not delete %s: %s", loggable(filename), loggable(e)
+        )
         status = 404 if e.status == 404 else 502
         return handler._json(status, {"error": "Project NOMAD did not delete it"})
     record_activity("delete", title, actor=activity_actor(handler))
-    _srv._append_history({"event": "deleted", "ts": time.time(), "filename": filename, "title": title})
+    _srv._append_history(
+        {"event": "deleted", "ts": time.time(), "filename": filename, "title": title}
+    )
     return handler._json(200, {"status": "deleted", "filename": filename})
 
 
@@ -6475,7 +6651,9 @@ def _handle_library_folders(handler, data):
             libfolders.dismiss(path)
         elif action == "nomad":
             if nomadapi.settings()["locked"]:
-                return handler._json(403, {"error": "env_locked", "error_key": "configured_via_env"})
+                return handler._json(
+                    403, {"error": "env_locked", "error_key": "configured_via_env"}
+                )
             nomadapi.save(bool(data.get("enabled")), str(data.get("url") or ""))
         else:
             return handler._json(400, {"error": "bad_action"})
@@ -6507,7 +6685,13 @@ def _handle_bt_client(handler, data):
 
     locked = _btc_locked()
     if locked:
-        return handler._json(403, {"error": "env_controlled" if locked != "open" else "open_locked", "var": locked})
+        return handler._json(
+            403,
+            {
+                "error": "env_controlled" if locked != "open" else "open_locked",
+                "var": locked,
+            },
+        )
     if p2p.is_offline():  # BitTorrent is off, and Settings hides the card
         return handler._json(403, {"error": "env_controlled", "var": "ZIMI_OFFLINE"})
     old = btclient.config() or {}
@@ -6530,7 +6714,8 @@ def _handle_bt_client(handler, data):
         "url": url,
         "user": str(data.get("user") or "").strip()[:128],
         "password": str(password)[:256],
-        "category": str(data.get("category") or "").strip()[:64] or btclient.DEFAULT_CATEGORY,
+        "category": str(data.get("category") or "").strip()[:64]
+        or btclient.DEFAULT_CATEGORY,
         "paths": btclient.parse_paths(data.get("paths") or ""),
     }
     if data.get("test"):
@@ -6554,8 +6739,13 @@ def _handle_bt_client(handler, data):
         }
     )
     if not saved:
-        return handler._json(500, {"error": "could not save setting (config dir not writable)"})
-    log.info("BitTorrent engine: %s", f"{btclient.label(kind)} at {btclient.loggable(url)}" if kind else "built in")
+        return handler._json(
+            500, {"error": "could not save setting (config dir not writable)"}
+        )
+    log.info(
+        "BitTorrent engine: %s",
+        f"{btclient.label(kind)} at {btclient.loggable(url)}" if kind else "built in",
+    )
 
     def _switch():
         from zimi import library as _lib
@@ -6766,7 +6956,10 @@ def handle_manage_post(handler, parsed, data):
         if fieldguide.installed_manual():
             return handler._json(
                 409,
-                {"error": "installed", "message": "The field manual is already in the library."},
+                {
+                    "error": "installed",
+                    "message": "The field manual is already in the library.",
+                },
             )
         payload, status = _create_start(
             {"mode": "fieldmanual"}, actor=activity_actor(handler)
@@ -6907,8 +7100,10 @@ def handle_manage_post(handler, parsed, data):
 
     elif parsed.path == "/manage/cache-action":
         # Lightweight cache maintenance for the Server-settings UI.
-        # action ∈ {clear-search, clear-suggest, rebuild-title, rebuild-qid}
+        # action ∈ {clear-search, clear-suggest, rebuild-title, rebuild-qid, purge-catalog}
         action = data.get("action", "")
+        if action == "purge-catalog":
+            return handler._json(200, {"status": "cleared", "target": "catalog", "freed_bytes": _purge_catalog_copies()})
         if action == "clear-search":
             _srv._search_cache_clear()
             return handler._json(200, {"status": "cleared", "target": "search"})
@@ -7031,8 +7226,17 @@ def handle_manage_post(handler, parsed, data):
         # the Catalog. The file is part of the package and is never deleted.
         name, gone = data.get("name"), data.get("removed")
         if not isinstance(gone, bool) or not _srv.set_own_zim_removed(str(name), gone):
-            return handler._json(400, {"error": "name is zimi_games or zimi_almanac, removed is true or false"})
-        log.info("%s %s", "Removed" if gone else "Added back", str(name).replace("\r", "").replace("\n", ""))
+            return handler._json(
+                400,
+                {
+                    "error": "name is zimi_games or zimi_almanac, removed is true or false"
+                },
+            )
+        log.info(
+            "%s %s",
+            "Removed" if gone else "Added back",
+            str(name).replace("\r", "").replace("\n", ""),
+        )
         from zimi import ownzims
 
         return handler._json(200, {"zims": ownzims.catalog()})
@@ -7051,8 +7255,10 @@ def handle_manage_post(handler, parsed, data):
         # ordinary ZIM (deleted below), unless the package's file holds the name.
         own_name = _own.name_of_file(filename)
         served = (_srv.get_zim_files() or {}).get(own_name) if own_name else None
-        if served and (not _own.is_own_path(served) or os.path.basename(served) != filename):
-            own_name = None   # not the package's file: an ordinary ZIM, deleted below
+        if served and (
+            not _own.is_own_path(served) or os.path.basename(served) != filename
+        ):
+            own_name = None  # not the package's file: an ordinary ZIM, deleted below
         if own_name:
             _srv.set_own_zim_removed(own_name, True)
             return handler._json(200, {"status": "removed", "own": own_name})
@@ -7073,12 +7279,20 @@ def handle_manage_post(handler, parsed, data):
                 if os.path.basename(candidate) != filename:
                     continue
                 label = libfolders.owner(candidate)
-                if label is not None and nomadapi.managed() and nomadapi.is_nomad_path(candidate):
+                if (
+                    label is not None
+                    and nomadapi.managed()
+                    and nomadapi.is_nomad_path(candidate)
+                ):
                     return _delete_through_nomad(handler, filename)
                 if label is not None:
                     return handler._json(
                         403,
-                        {"error": "not_ours", "error_key": "folder_not_ours", "label": label},
+                        {
+                            "error": "not_ours",
+                            "error_key": "folder_not_ours",
+                            "label": label,
+                        },
                     )
                 resolved = os.path.realpath(candidate)
                 if resolved == root or not resolved.startswith(root + os.sep):
@@ -7119,7 +7333,11 @@ def handle_manage_post(handler, parsed, data):
             try:
                 _srv.release_zim_handles([_srv._zim_short_name(filename)])
             except Exception as e:
-                log.debug("Handle release before deleting %s: %s", loggable(filename), loggable(e))
+                log.debug(
+                    "Handle release before deleting %s: %s",
+                    loggable(filename),
+                    loggable(e),
+                )
             os.remove(filepath)
             log.info("Deleted ZIM: %s", loggable(filename))
             record_activity(
@@ -7265,7 +7483,9 @@ def handle_manage_post(handler, parsed, data):
         with _srv._zim_lock:
             _srv.mark_auto_update_skips(_srv._zim_list_cache)
         _srv._changes.announce("library", None)
-        return handler._json(200, {"zim": name, "skip": name in _srv._auto_update_skips})
+        return handler._json(
+            200, {"zim": name, "skip": name in _srv._auto_update_skips}
+        )
 
     elif parsed.path == "/manage/app-update-check":
         # "Check now" for the Zimi APP release check — bypasses the daily
@@ -7302,12 +7522,26 @@ def handle_manage_post(handler, parsed, data):
         # The server-wide apps switch. Same env-lock contract as the other
         # settings: ZIMI_APPS wins and the write is refused, not ignored.
         # ``shown`` names the apps offered; ``enabled`` is the old all-or-nothing.
-        enabled, err = _srv.set_apps_enabled(data.get("shown") if "shown" in data else data.get("enabled"))
+        enabled, err = _srv.set_apps_enabled(
+            data.get("shown") if "shown" in data else data.get("enabled")
+        )
         if err == "env_locked":
-            return handler._json(403, {"error": "Apps are controlled by the %s env var" % _srv.APPS_ENV})
+            return handler._json(
+                403, {"error": "Apps are controlled by the %s env var" % _srv.APPS_ENV}
+            )
         shown = _srv.apps_shown()
-        log.info("Apps offered: %s", ", ".join(n for n in _srv.APP_NAMES if n in shown) or "none")
-        return handler._json(200, {"enabled": enabled, "shown": [n for n in _srv.APP_NAMES if n in shown], "env_locked": False})
+        log.info(
+            "Apps offered: %s",
+            ", ".join(n for n in _srv.APP_NAMES if n in shown) or "none",
+        )
+        return handler._json(
+            200,
+            {
+                "enabled": enabled,
+                "shown": [n for n in _srv.APP_NAMES if n in shown],
+                "env_locked": False,
+            },
+        )
 
     elif parsed.path == "/manage/satellites":
         # "Satellite data from the internet": {"mode": "ask"|"auto"|"never"}.
@@ -7323,7 +7557,10 @@ def handle_manage_post(handler, parsed, data):
         if err == _sats.LOCKED_ENV:
             return handler._json(
                 403,
-                {"error": "Satellite data is controlled by the %s env var" % _sats.UPDATES_ENV},
+                {
+                    "error": "Satellite data is controlled by the %s env var"
+                    % _sats.UPDATES_ENV
+                },
             )
         if err:
             return handler._json(500, {"error": "Could not save the setting"})
@@ -7332,13 +7569,20 @@ def handle_manage_post(handler, parsed, data):
     elif parsed.path == "/manage/almanac-hd":
         # Almanac HD: {"mode": "ask"|"auto"|"never"} saves the setting (the
         # env-lock contract: ZIMI_ALMANAC_HD or ZIMI_OFFLINE wins); {"start":
-        # true} queues the download, the Almanac's offer said yes.
+        # true} queues the download, the Almanac's offer said yes; {"start":
+        # true, "part": "moon"} one Ultra part (removed with /manage/delete, as any ZIM is).
         from zimi import almanachd as _hd
 
         if data.get("start"):
-            dl_id, err = _hd.start(activity_actor(handler))
+            dl_id, err = _hd.start(
+                activity_actor(handler), part=data.get("part") or None
+            )
+            if err == "needs_core":
+                return handler._json(409, {"error": "Almanac HD comes first"})
             if err == "never":
-                return handler._json(409, {"error": "Almanac HD is set to never be fetched"})
+                return handler._json(
+                    409, {"error": "Almanac HD is set to never be fetched"}
+                )
             if err == "unavailable":
                 return handler._json(404, {"error": "No Almanac HD for this version"})
             if err and err != "installed":
@@ -7350,19 +7594,81 @@ def handle_manage_post(handler, parsed, data):
         if err == outbound.LOCKED_OFFLINE:
             return handler._json(403, {"error": "Zimi is offline (ZIMI_OFFLINE)"})
         if err == outbound.LOCKED_ENV:
-            return handler._json(403, {"error": "Almanac HD is controlled by the %s env var" % _hd.ENV})
+            return handler._json(
+                403, {"error": "Almanac HD is controlled by the %s env var" % _hd.ENV}
+            )
         if err:
             return handler._json(500, {"error": "Could not save the setting"})
         return handler._json(200, _hd.status())
+
+    elif parsed.path == "/manage/spacetrack":
+        # The person's own Space-Track login, for the exact sky of a past date (spacetrack.py). Never echoed back.
+        from zimi import spacetrack as _st
+
+        if not _st.save(data.get("user"), data.get("password")):
+            return handler._json(500, {"error": "Could not save the setting"})
+        return handler._json(200, _st.view())
+
+    elif parsed.path == "/manage/spacetrack/fetch":
+        from zimi import spacetrack as _st
+
+        try:
+            records = _st.get(data.get("tag"), data.get("ms"))
+        except _st.SpaceTrackError as e:
+            return handler._json(e.status, {"error": e.code})
+        except (TypeError, ValueError):
+            return handler._json(400, {"error": "tag"})
+        return handler._json(200, {"records": records})
+
+    elif parsed.path == "/manage/addons":
+        # {"mode": "ask"|"auto"|"never"} saves the setting (ZIMI_ADDONS or ZIMI_OFFLINE wins); {"install": key}
+        # starts one in the background; {"cancel": true} stops it; {"remove": key} takes one away.
+        from zimi import addons as _addons
+
+        if data.get("install"):
+            ok, err = _addons.install(str(data["install"]), activity_actor(handler))
+            if err == "unknown":
+                return handler._json(404, {"error": "No such add-on"})
+            if err in ("never", "unsupported", "busy"):
+                return handler._json(409, {"error": "Cannot add it here" if err != "busy" else "Another add-on is installing"})
+            return handler._json(200, _addons.status())
+        if data.get("cancel"):
+            _addons.cancel()
+            return handler._json(200, _addons.status())
+        if data.get("remove"):
+            if not _addons.remove(str(data["remove"])):
+                return handler._json(409, {"error": "Nothing to remove"})
+            return handler._json(200, _addons.status())
+        _mode, err = _addons.POLICY.set(data.get("mode"))
+        if err == "invalid":
+            return handler._json(400, {"error": "mode is ask, auto or never"})
+        if err == outbound.LOCKED_OFFLINE:
+            return handler._json(403, {"error": "Zimi is offline (ZIMI_OFFLINE)"})
+        if err == outbound.LOCKED_ENV:
+            return handler._json(403, {"error": "Add-ons are controlled by the %s env var" % _addons.ENV})
+        if err:
+            return handler._json(500, {"error": "Could not save the setting"})
+        return handler._json(200, _addons.status())
 
     elif parsed.path == "/manage/satellites/refresh":
         # The Earth view's "Get fresh data": one CelesTrak fetch, waited for,
         # answered with the view's payload so it redraws from the answer.
         from zimi import satellites as _sats
 
-        payload, err = _sats.refresh_now()
+        if data.get("launches"):
+            from zimi import launches as _launches
+
+            payload, err = _launches.refresh_now()
+        elif data.get("all"):
+            from zimi import satcatalog as _cat
+
+            payload, err = _cat.refresh_now()
+        else:
+            payload, err = _sats.refresh_now()
         if err == "never":
-            return handler._json(409, {"error": "Satellite data is set to never be fetched"})
+            return handler._json(
+                409, {"error": "Satellite data is set to never be fetched"}
+            )
         if err:
             return handler._json(502, {"error": "Could not reach CelesTrak"})
         payload["can_change"] = True
@@ -7381,7 +7687,10 @@ def handle_manage_post(handler, parsed, data):
         if err == outbound.LOCKED_ENV:
             return handler._json(
                 403,
-                {"error": "Voices are controlled by the %s env var" % _voices.DOWNLOADS_ENV},
+                {
+                    "error": "Voices are controlled by the %s env var"
+                    % _voices.DOWNLOADS_ENV
+                },
             )
         if err:
             return handler._json(500, {"error": "Could not save the setting"})
@@ -7393,7 +7702,9 @@ def handle_manage_post(handler, parsed, data):
         from zimi import voices as _voices
 
         if not _voices.set_choice(data.get("lang"), data.get("engine")):
-            return handler._json(409, {"error": "That voice cannot say this language here"})
+            return handler._json(
+                409, {"error": "That voice cannot say this language here"}
+            )
         return handler._json(200, _voices.manage_payload())
 
     elif parsed.path == "/manage/voices/download":
@@ -7464,7 +7775,10 @@ def handle_manage_post(handler, parsed, data):
         if err == outbound.LOCKED_ENV:
             return handler._json(
                 403,
-                {"error": "Update checks are controlled by the %s env var" % APP_UPDATE_CHECK_ENV},
+                {
+                    "error": "Update checks are controlled by the %s env var"
+                    % APP_UPDATE_CHECK_ENV
+                },
             )
         if err:
             return handler._json(500, {"error": "Could not save the setting"})

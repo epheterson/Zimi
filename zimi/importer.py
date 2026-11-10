@@ -57,6 +57,8 @@ from zimi.zimwriter import _slug, scraper_string
 WARC2ZIM_PY_MIN = (3, 14)
 WARC2ZIM_PY_MAX_EXCL = (3, 15)
 WARC2ZIM_REQUIREMENT = "warc2zim"
+# The Python uv is asked for when it makes the sidecar (the add-on has no 3.14 of its own).
+WARC2ZIM_PYTHON = "%d.%d" % WARC2ZIM_PY_MIN
 PY_REQUIREMENT_TEXT = "Python >=3.14,<3.15"
 
 _SIDECAR_MARKER = ".zimi-sidecar.json"
@@ -391,14 +393,17 @@ def ensure_sidecar(sink=None):
             "warc2zim sidecar install failed (the job log has the tool's "
             "output). Nothing was left behind; re-run to try again."
         )
-    version = _tool_version(exe)
+    finish_sidecar(venv, say, python=f"{ver[0]}.{ver[1]}")
+    return exe
+
+
+def finish_sidecar(venv, say, python=WARC2ZIM_PYTHON):
+    """A freshly built sidecar: the one-time script patches, and the marker that makes Zimi treat it as installed."""
+    version = _tool_version(_venv_bin(venv, "warc2zim"))
     patched = _patch_srcset_comma_bug(venv, say)
     _patch_block_scoped_globals(venv, say)
-    _write_marker(
-        venv, warc2zim=version, python=f"{ver[0]}.{ver[1]}", srcset_patch=patched
-    )
+    _write_marker(venv, warc2zim=version, python=python, srcset_patch=patched)
     say(f"warc2zim {version or '(unknown version)'} ready")
-    return exe
 
 
 # ── one upstream bug, held open until upstream closes it ────────────────────

@@ -217,6 +217,7 @@ def test_offline_zimi_reaches_nothing_on_the_internet(offline_server, tripwire):
         "/w/water/A/Water",
         "/static/exchange.html",
         "/almanac-satellites",
+        "/almanac-launches",
     ):
         status, _h, _b = call("GET", path)
         assert status < 500, (path, status)

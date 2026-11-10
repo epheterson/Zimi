@@ -1,0 +1,445 @@
+"""Every active satellite in the 3D Earth view: the points draw, a filter works, a tap gives a card, the frame time holds.
+
+Zimi serves the shipped catalogue (the snapshot) and the Earth view is driven in headless Chromium at a phone's size.
+SATS_SHOTS=<folder> saves screenshots of each state there.
+
+Run: pytest tests/test_almanac_sats_browser.py -v
+"""
+
+import os
+import sys
+import threading
+
+import pytest
+
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
+GL_ARGS = [
+    "--use-angle=swiftshader",
+    "--enable-unsafe-swiftshader",
+    "--ignore-gpu-blocklist",
+]
+VIEW = {"width": 390, "height": 844}
+PLACE = '{"lat":40.71,"lon":-74.0,"name":"New York"}'
+READY_MS = 400_000
+SHOTS = os.environ.get("SATS_SHOTS", "")
+# A phone has to hold its frame rate in this view with the whole catalogue drawn. Software GL on a busy desktop is far
+# slower than a phone's GPU (a frame here can take a second), so the test bounds the layer's own main-thread work per
+# frame (its frame hook, and copying a worker sample into the buffers), not the rate. Both are a fraction of a 16 ms frame.
+MAX_LAYER_FRAME_MS = 3
+MAX_SAMPLE_COPY_MS = 8
+MIN_CATALOGUE = 5000
+MOON_RE = 60                       # the Moon's distance in Earth radii
+MIN_DRAWN_SHARE = 0.8
+
+
+@pytest.fixture(scope="module")
+def browser():
+    import zimi.renderer as renderer
+
+    if not renderer.browser_available():
+        pytest.skip("playwright + chromium are not usable here")
+    from playwright.sync_api import sync_playwright
+
+    with sync_playwright() as pw:
+        br = pw.chromium.launch(args=GL_ARGS)
+        yield br
+        br.close()
+
+
+@pytest.fixture
+def served(tmp_path):
+    from http.server import ThreadingHTTPServer
+
+    import zimi.server as srv
+    from zimi.http import ZimHandler
+
+    old = (srv.ZIM_DIR, srv.ZIMI_DATA_DIR)
+    (tmp_path / "zims").mkdir()
+    (tmp_path / "data").mkdir()
+    srv.ZIM_DIR, srv.ZIMI_DATA_DIR = str(tmp_path / "zims"), str(tmp_path / "data")
+    srv.load_cache(force=True)
+    httpd = ThreadingHTTPServer(("127.0.0.1", 0), ZimHandler)
+    threading.Thread(target=httpd.serve_forever, daemon=True).start()
+    yield "http://127.0.0.1:%d" % httpd.server_address[1]
+    httpd.shutdown()
+    srv.ZIM_DIR, srv.ZIMI_DATA_DIR = old
+
+
+def _frame_ms(pg, frames=90):
+    return pg.evaluate(
+        """(n) => new Promise(res => { var t = [], l = performance.now(), k = 0;
+            function f(now) { t.push(now - l); l = now; _ae.dirty = true; if (++k < n) requestAnimationFrame(f);
+              else { t.sort((a, b) => a - b); res(t[Math.floor(n / 2)]); } }
+            requestAnimationFrame(f); })""",
+        frames,
+    )
+
+
+def _shot(pg, name):
+    if SHOTS:
+        pg.screenshot(path=os.path.join(SHOTS, name))
+
+
+FIND_A_DOT = """() => {
+  var a = _as.cloud.geometry.attributes, p = a.position.array, v = a.aVel.array, s = a.aSize.array, al = a.aAlpha.array,
+      dt = _as.cloud.material.uniforms.dt.value, cz = Math.cos(_as.cloud.rotation.z), sz = Math.sin(_as.cloud.rotation.z);
+  for (var i = 0; i < s.length; i++) {
+    if (!s[i] || al[i] <= 0) continue;
+    var k = i * 3, x = p[k] + v[k] * dt, y = p[k + 1] + v[k + 1] * dt, z = p[k + 2] + v[k + 2] * dt, q = [x * cz - y * sz, x * sz + y * cz, z];
+    if (_aeBehindEarth(q)) continue;
+    var sc = _aeProject(q);
+    if (sc && sc.x > 30 && sc.x < _ae.w - 30 && sc.y > 120 && sc.y < _ae.h - 220) return { i: i, x: sc.x, y: sc.y };
+  }
+  return null;
+}"""
+WORKS_OUT_SHOWN = "(() => { var g = _as.data.group, s = _as.cloud.geometry.attributes.aSize.array; for (var i = 0; i < g.length; i++) if (s[i] > 0 && g[i] !== 0) return false; return true; })()"
+
+
+def test_the_catalogue_draws_filters_and_answers_a_tap(browser, served):
+    ctx = browser.new_context(
+        viewport=VIEW,
+        device_scale_factor=2,
+        has_touch=True,
+        is_mobile=True,
+        service_workers="block",
+    )
+    ctx.add_init_script(
+        "try { localStorage.setItem('zimi_almanac_place', %r); } catch (e) {}" % PLACE
+    )
+    pg = ctx.new_page()
+    errors = []
+    pg.on("pageerror", lambda e: errors.append(str(e)))
+    pg.on("console", lambda m: errors.append(m.text) if m.type == "error" else None)
+    try:
+        pg.goto(served + "/#almanac", wait_until="load")
+        pg.wait_for_function(
+            "() => typeof openAlmanacEarth === 'function' && typeof _aeLoadThree === 'function'",
+            timeout=READY_MS,
+        )
+        pg.evaluate("openAlmanacEarth({ target: 'earth' })")
+        pg.wait_for_function(
+            "() => typeof _aeReady === 'function' && _aeReady() && _aeIsOpen",
+            timeout=READY_MS,
+            polling=250,
+        )
+        # Nothing of the layer is loaded until it is asked for.
+        assert pg.evaluate("typeof _asSet") == "undefined"
+        base = _frame_ms(pg)
+        _shot(pg, "sats-off.png")
+        pg.click("#ae-sats-btn")
+        pg.wait_for_function(
+            "() => typeof _as !== 'undefined' && (_as.state === 'ready' || _as.state === 'failed')",
+            timeout=READY_MS,
+            polling=250,
+        )
+        assert pg.evaluate("_as.state") == "ready"
+        pg.wait_for_function("() => _as.sampleMs > 0", timeout=READY_MS, polling=250)
+        n = pg.evaluate("_as.data.n")
+        assert n > MIN_CATALOGUE
+        # Points are in the buffer, lit, and nearly all have valid positions.
+        drawn = pg.evaluate(
+            "(() => { var a = _as.cloud.geometry.attributes.aAlpha.array, c = 0; for (var i = 0; i < a.length; i++) if (a[i] > 0) c++; return c; })()"
+        )
+        assert drawn > n * MIN_DRAWN_SHARE, (drawn, n)
+        assert pg.evaluate("_as.cloud.visible") is True
+        # Written where SGP4 puts them: none inside the Earth, none past the Moon.
+        radii = pg.evaluate(
+            "(() => { var p = _as.cloud.geometry.attributes.position.array, lo = 9, hi = 0; for (var i = 0; i < p.length; i += 3) { var r = Math.hypot(p[i], p[i + 1], p[i + 2]); if (r > 0) { lo = Math.min(lo, r); hi = Math.max(hi, r); } } return [lo, hi]; })()"
+        )
+        assert radii[0] > 1.0 and radii[1] < MOON_RE, radii   # high orbits (Chandra, XMM, IBEX) go well past GEO
+        pg.wait_for_timeout(1500)
+        _shot(pg, "sats-on.png")
+        on = _frame_ms(pg, 30)
+        cost = pg.evaluate(
+            """() => new Promise(res => { var f = window._asSatFrame, n = 0, t = 0;
+              window._asSatFrame = function (ms, sc) { var a = performance.now(); f(ms, sc); t += performance.now() - a; n++; };
+              var c = _as.cloud.geometry.attributes, r = { pos: new Float32Array(c.position.array), vel: new Float32Array(c.aVel.array) };
+              var go = () => { if (n < 12) { _ae.dirty = true; _aeKick(); setTimeout(go, 100); return; }
+                window._asSatFrame = f;
+                var ms = _aeDisplayMs(), a2 = performance.now();
+                for (var j = 0; j < 20; j++) { c.position.array.set(r.pos); c.aVel.array.set(r.vel); _asAlphas(ms + j * 6000); }
+                res({ frame: t / n, copy: (performance.now() - a2) / 20, frames: n }); };
+              go(); })"""
+        )
+        print(
+            "frame ms median: off %.1f, on %.1f; layer hook %.3f ms over %d frames, sample copy %.2f ms"
+            % (base, on, cost["frame"], cost["frames"], cost["copy"])
+        )
+        assert (
+            cost["frame"] < MAX_LAYER_FRAME_MS and cost["copy"] < MAX_SAMPLE_COPY_MS
+        ), cost
+        # A filter: Starlink alone is most of the sky and less than all of it.
+        total = pg.evaluate("_as.shown")
+        pg.click("#as-bar [data-v=starlink]")
+        some = pg.evaluate("_as.shown")
+        assert 0 < some < total, (some, total)
+        assert pg.evaluate(WORKS_OUT_SHOWN)
+        _shot(pg, "sats-starlink.png")
+        pg.click("#as-bar [data-v=starlink]")
+        assert pg.evaluate("_as.shown") == total
+        # A tap on a dot opens its card with its name and altitude.
+        pg.evaluate("_aePreset('earth'); _ae.fly = null")
+        hit = pg.evaluate(FIND_A_DOT)
+        assert hit
+        pg.evaluate("(h) => _aeTap(h.x, h.y)", hit)
+        assert pg.evaluate("_as.sel") >= 0
+        card = pg.inner_text("#ae-card")
+        assert pg.evaluate("_as.data.name[_as.sel]") in card and "km" in card, card
+        _shot(pg, "sats-card.png")
+        # The passes sheet opens and lists passes or says there are none.
+        pg.click("#as-passes")
+        pg.wait_for_function("() => _as.passes !== null", timeout=READY_MS, polling=500)
+        assert pg.is_visible(".as-sheet")
+        _shot(pg, "sats-passes.png")
+        # The live sky: at the middle of the first pass, the sky's painter draws that satellite and keeps itself awake.
+        painted = pg.evaluate(
+            """async () => { var p = _as.passes[0]; if (!p) return null; var pl = _asPlace(), cv = document.createElement('canvas'); cv.width = 780; cv.height = 600;
+              var s = { W: 780, H: 600, bodies: [], center: 180, span: 360, dpr: 2, lat: pl.lat, lon: pl.lon, nowTime: p.peak, eph: { sunGeoAlt: -12 } };
+              var live = window._almFocus; window._almFocus = new Date(p.peak);
+              var ctx = cv.getContext('2d'), pix = () => ctx.getImageData(0, 0, 780, 600).data.reduce((n, v, i) => n + (i % 4 === 3 && v ? 1 : 0), 0);
+              s.lm = 7; _osObjects('earth', pl.lat, pl.lon, p.peak); await new Promise(r => setTimeout(r, 2500));
+              var before = pix(); _osPaintObjects(ctx, s); window._almFocus = live;
+              return { drawn: pix() - before, awake: !!s.issUp, name: _as.data.name[p.i] }; }"""
+        )
+        assert painted and painted["drawn"] > 0 and painted["awake"], painted
+        assert not errors, errors
+    finally:
+        ctx.close()
+
+
+LAYOUTS = [
+    ("portrait-dark", {"width": 390, "height": 844}, "dark"),
+    ("portrait-light", {"width": 390, "height": 844}, "light"),
+    ("landscape-dark", {"width": 844, "height": 390}, "dark"),
+    ("landscape-light", {"width": 844, "height": 390}, "light"),
+]
+
+
+@pytest.mark.parametrize("name,view,scheme", LAYOUTS, ids=[x[0] for x in LAYOUTS])
+def test_the_strip_and_the_sheet_fit_a_phone_either_way_up(
+    browser, served, name, view, scheme
+):
+    """The filter strip stays on screen and above the view chips; the passes sheet fits inside the view."""
+    ctx = browser.new_context(
+        viewport=view,
+        device_scale_factor=2,
+        has_touch=True,
+        is_mobile=True,
+        service_workers="block",
+        color_scheme=scheme,
+    )
+    ctx.add_init_script(
+        "try { localStorage.setItem('zimi_almanac_place', %r); localStorage.setItem('zimi_ae_sats_all', '1'); } catch (e) {}"
+        % PLACE
+    )
+    pg = ctx.new_page()
+    try:
+        pg.goto(served + "/#almanac", wait_until="load")
+        pg.wait_for_function(
+            "() => typeof openAlmanacEarth === 'function' && typeof _aeLoadThree === 'function'",
+            timeout=READY_MS,
+        )
+        pg.evaluate("openAlmanacEarth({ target: 'earth' })")
+        # The layer was left on: it comes back by itself.
+        pg.wait_for_function(
+            "() => typeof _as !== 'undefined' && _as.state === 'ready' && _as.sampleMs > 0 && !!document.getElementById('as-bar')",
+            timeout=READY_MS,
+            polling=250,
+        )
+        pg.wait_for_timeout(1000)
+        _shot(pg, "layout-%s-strip.png" % name)
+        box = pg.evaluate(
+            """() => { var r = id => { var e = document.getElementById(id); if (!e || e.hidden) return null; var b = e.getBoundingClientRect(); return { l: b.left, t: b.top, r: b.right, b: b.bottom }; };
+              return { bar: r('as-bar'), views: r('ae-views'), w: innerWidth, h: innerHeight }; }"""
+        )
+        assert (
+            box["bar"]
+            and box["bar"]["l"] >= 0
+            and box["bar"]["r"] <= box["w"] + 1
+            and box["bar"]["b"] <= box["h"]
+        ), box
+        if name.startswith("portrait") and box["views"]:
+            assert box["bar"]["b"] <= box["views"]["t"] + 1, box
+        pg.click("#as-passes")
+        pg.wait_for_function("() => _as.passes !== null", timeout=READY_MS, polling=500)
+        pg.wait_for_timeout(500)
+        _shot(pg, "layout-%s-sheet.png" % name)
+        sheet = pg.evaluate(
+            "() => { var b = document.querySelector('.as-sheet').getBoundingClientRect(); return { l: b.left, t: b.top, r: b.right, b: b.bottom, w: innerWidth, h: innerHeight }; }"
+        )
+        assert (
+            sheet["l"] >= 0
+            and sheet["r"] <= sheet["w"] + 1
+            and sheet["t"] >= 0
+            and sheet["b"] <= sheet["h"]
+        ), sheet
+    finally:
+        ctx.close()
+
+
+def test_the_catalogue_draws_from_inside_the_almanac_zim_with_no_network(browser, tmp_path):
+    """What Kiwix does: the ZIM's own page (?raw=1) with nothing of Zimi's app around it. The layer's catalogue is the
+    snapshot inside the ZIM (local.js answers /almanac-satellites?all=1 from data/satellites-all-snapshot.json), and
+    nothing is asked of any host but the one serving the file."""
+    from http.server import ThreadingHTTPServer
+
+    import zimi.server as srv
+    from zimi import ownzims
+    from zimi.http import ZimHandler
+
+    old = (srv.ZIM_DIR, srv.ZIMI_DATA_DIR)
+    (tmp_path / "zims").mkdir()
+    (tmp_path / "data").mkdir()
+    ownzims.write_zim(
+        next(o for o in ownzims.OWN if o.name == "zimi_almanac"),
+        str(tmp_path / "zims" / "zimi_almanac_2026-11.zim"),
+    )
+    srv.ZIM_DIR, srv.ZIMI_DATA_DIR = str(tmp_path / "zims"), str(tmp_path / "data")
+    srv.load_cache(force=True)
+    httpd = ThreadingHTTPServer(("127.0.0.1", 0), ZimHandler)
+    threading.Thread(target=httpd.serve_forever, daemon=True).start()
+    host = "127.0.0.1:%d" % httpd.server_address[1]
+    ctx = browser.new_context(
+        viewport=VIEW, device_scale_factor=2, has_touch=True, is_mobile=True, service_workers="block"
+    )
+    ctx.add_init_script("try { localStorage.setItem('zimi_almanac_place', %r); } catch (e) {}" % PLACE)
+    pg = ctx.new_page()
+    reqs, errors = [], []
+    pg.on("request", lambda r: reqs.append(r.url))
+    pg.on("pageerror", lambda e: errors.append(str(e)))
+    try:
+        pg.goto("http://%s/w/zimi_almanac/index.html?raw=1" % host, wait_until="load")
+        pg.wait_for_function("() => typeof openAlmanacEarth === 'function'", timeout=READY_MS)
+        pg.evaluate("openAlmanacEarth({ target: 'earth' })")
+        pg.wait_for_function(
+            "() => typeof _aeReady === 'function' && _aeReady() && _aeIsOpen", timeout=READY_MS, polling=250
+        )
+        pg.click("#ae-sats-btn")
+        pg.wait_for_function(
+            "() => typeof _as !== 'undefined' && (_as.state === 'ready' || _as.state === 'failed')",
+            timeout=READY_MS,
+            polling=250,
+        )
+        assert pg.evaluate("_as.state") == "ready"
+        assert pg.evaluate("_as.data.n") > MIN_CATALOGUE
+        pg.wait_for_function("() => _as.sampleMs > 0", timeout=READY_MS, polling=250)
+        _shot(pg, "sats-in-zim.png")
+        outside = [u for u in reqs if not u.startswith(("http://" + host, "data:", "blob:"))]
+        assert not outside, outside[:5]
+        assert any("almanac-satellites" in u or "satellites-all-snapshot" in u for u in reqs), reqs[-10:]
+        assert errors == []
+    finally:
+        ctx.close()
+        httpd.shutdown()
+        srv.ZIM_DIR, srv.ZIMI_DATA_DIR = old
+DRAWN_SHARE = """() => { var a = _as.cloud.geometry.attributes.aAlpha.array, c = 0; for (var i = 0; i < a.length; i++) if (a[i] > 0) c++; return c / a.length; }"""
+
+
+def test_the_shipped_snapshot_draws_at_the_present_offline_however_old_it_is(
+    browser, served, monkeypatch
+):
+    """The layer was chosen before (the preference is set, nothing is clicked) on a server that never goes online: the
+    shipped snapshot draws. However old the snapshot is, the present is drawn as fresh as the data; moving the date
+    away from the present is what ages the elements out."""
+    monkeypatch.setenv("ZIMI_OFFLINE", "1")
+    ctx = browser.new_context(
+        viewport=VIEW,
+        device_scale_factor=2,
+        has_touch=True,
+        is_mobile=True,
+        service_workers="block",
+    )
+    ctx.add_init_script(
+        "try { localStorage.setItem('zimi_almanac_place', %r); localStorage.setItem('zimi_ae_sats_all', '1'); } catch (e) {}"
+        % PLACE
+    )
+    pg = ctx.new_page()
+    errors = []
+    pg.on("pageerror", lambda e: errors.append(str(e)))
+    try:
+        pg.goto(served + "/#almanac", wait_until="load")
+        pg.wait_for_function(
+            "() => typeof openAlmanacEarth === 'function'", timeout=READY_MS
+        )
+        pg.evaluate("openAlmanacEarth({ target: 'earth' })")
+        pg.wait_for_function(
+            "() => typeof _aeReady === 'function' && _aeReady() && _aeIsOpen",
+            timeout=READY_MS,
+            polling=250,
+        )
+        pg.wait_for_function(
+            "() => typeof _as !== 'undefined' && (_as.state === 'ready' || _as.state === 'failed') && _as.sampleMs > 0",
+            timeout=READY_MS,
+            polling=250,
+        )
+        assert pg.evaluate("_as.state") == "ready" and pg.evaluate("_as.on") is True
+        assert pg.evaluate(DRAWN_SHARE) > MIN_DRAWN_SHARE
+        # A snapshot sixty days old (its elements and its read date both): still all there at the present ...
+        pg.evaluate(
+            "() => { var d = _as.data, ms = 60 * 864e5; for (var i = 0; i < d.n; i++) d.epoch[i] -= 60;"
+            " d.fetched = new Date(Date.parse(d.fetched) - ms).toISOString(); _as.alphaAt = -Infinity; _asAlphas(Date.now()); }"
+        )
+        assert pg.evaluate(DRAWN_SHARE) > 0.5
+        # ... and a date three months away is not drawn, whatever the data's age.
+        pg.evaluate(
+            "() => { _as.alphaAt = -Infinity; _asAlphas(Date.now() + 90 * 864e5); }"
+        )
+        assert pg.evaluate(DRAWN_SHARE) < 0.05
+        assert not errors, errors
+    finally:
+        ctx.close()
+def test_the_layer_gives_the_ground_view_its_sky(browser, served):
+    """Stand here draws what a source gives it (almanac-onesky.js _osSkySource): while the layer is on, the satellites over
+    the place are such a source, and its objects are what the ground view reads (az, el, mag, kind, a trail, a name).
+    """
+    ctx = browser.new_context(
+        viewport=VIEW,
+        device_scale_factor=2,
+        has_touch=True,
+        is_mobile=True,
+        service_workers="block",
+    )
+    ctx.add_init_script(
+        "try { localStorage.setItem('zimi_almanac_place', %r); localStorage.setItem('zimi_ae_sats_all', '1'); } catch (e) {}"
+        % PLACE
+    )
+    pg = ctx.new_page()
+    errors = []
+    pg.on("pageerror", lambda e: errors.append(str(e)))
+    try:
+        pg.goto(served + "/#almanac", wait_until="load")
+        pg.wait_for_function(
+            "() => typeof openAlmanacEarth === 'function'", timeout=READY_MS
+        )
+        pg.evaluate("openAlmanacEarth({ target: 'earth' })")
+        pg.wait_for_function(
+            "() => typeof _aeReady === 'function' && _aeReady() && _aeIsOpen",
+            timeout=READY_MS,
+            polling=250,
+        )
+        pg.wait_for_function(
+            "() => typeof _as !== 'undefined' && _as.state === 'ready' && _as.sampleMs > 0",
+            timeout=READY_MS,
+            polling=250,
+        )
+        pg.evaluate("() => _aeStandReady()")
+        pg.wait_for_function(
+            "() => typeof _osSources !== 'undefined' && _osSources.length === 1",
+            timeout=READY_MS,
+            polling=250,
+        )
+        # Asked as the ground view asks (place, instant), at the instant of a bright pass; its objects read as the hook says.
+        got = pg.evaluate(
+            """async () => { var pl = _asPlace(); _asNeedPasses(pl); while (_as.passes === null) await new Promise(r => setTimeout(r, 200));
+              var p = _as.passes.slice().sort((u, v) => u.mag - v.mag)[0], src = _osSources[0], t = p.peak;
+              var ans = await src.ask(pl.lat, pl.lon, t), list = src.at(ans, t);
+              return { n: list.length, kinds: Array.from(new Set(list.map(o => o.kind))), ok: list.every(o => o.el >= 0 && o.az >= 0 && o.az < 360 && typeof o.mag === 'number' && (typeof o.name === 'string' || o.name === undefined) && Array.isArray(o.trail) && o.trail.length <= 6) }; }"""
+        )
+        assert got["n"] > 0 and got["ok"] and set(got["kinds"]) <= {"sat", "train"}, got
+        # Turned off, the source is taken out again.
+        pg.evaluate("() => _asSet(false)")
+        assert pg.evaluate("_osSources.length") == 0
+        assert not errors, errors
+    finally:
+        ctx.close()

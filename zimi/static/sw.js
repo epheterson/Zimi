@@ -214,7 +214,7 @@ function _isOwnZimEntry(url) {
 // /almanac-satellites too: the freshest orbital elements when the server
 // answers, the last ones seen when it does not. /catalog (a document library's
 // listing) too: a ZIM carried on this phone answers it from its own database.js.
-const NETWORK_FIRST_PREFIXES = ['/read', '/health', '/manage', '/article-languages', '/languages', '/almanac-satellites', '/almanac-ages', '/catalog'];
+const NETWORK_FIRST_PREFIXES = ['/read', '/health', '/manage', '/article-languages', '/languages', '/almanac-satellites', '/almanac-launches', '/almanac-ages', '/catalog'];
 
 // The reconnect probe: /health with a cache-busting ping.
 function _isProbe(path, search) {

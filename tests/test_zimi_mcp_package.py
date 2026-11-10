@@ -135,6 +135,7 @@ _PROBE = textwrap.dedent("""
         "read": m.read("wikipedia_en_test", "Water"),
         "suggest": m.suggest("wat"),
         "get_chunks": m.get_chunks("wikipedia_en_test", "Water"),
+        "list_entries": m.list_entries("wikipedia_en_test", mime="text/html"),
         "list_sources": m.list_sources(),
         "read_with_links": m.read_with_links("wikipedia_en_test", "Water"),
         "deep_search": m.deep_search("water"),
@@ -179,6 +180,7 @@ def test_a_staged_zimi_mcp_answers_every_tool_alone(tmp_path):
     assert "inorganic compound" in got["read"]
     assert "Water" in got["suggest"]
     assert json.loads(got["get_chunks"])["total_chunks"] >= 1
+    assert json.loads(got["list_entries"])["count"] >= 1
     assert "3 sources" in got["list_sources"]
     assert "Cooking" in got["list_questions"]
     assert got["read_question"].startswith("# How can I chop onions")

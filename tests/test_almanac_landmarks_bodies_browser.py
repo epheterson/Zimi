@@ -70,7 +70,7 @@ def served(tmp_path_factory):
 
 
 # The sphere's own vertex for (lat, lon), by the uv the shader reads the map at, against where the landmark system
-# puts the same latitude and longitude: they are one point, for every body.
+# puts the same latitude and longitude: they are one point, for every body (the Earth's picture row is the geodetic latitude).
 VERTEX_VS_LANDMARK = """(a) => {
     var S = _ae.gl, out = {};
     a.bodies.forEach(function (key) {
@@ -82,11 +82,17 @@ VERTEX_VS_LANDMARK = """(a) => {
         a.grid.forEach(function (g) {
             var u = (g[1] + 180) / 360, v = (g[0] + 90) / 180, best = -1, bd = 1e9;
             for (var i = 0; i < uv.count; i++) {
-                var d = Math.hypot(uv.getX(i) - u, uv.getY(i) - v);
+                // The Earth's picture is read by the geodetic latitude of the vertex's point (AE_EARTH_VERT), not by its uv.
+                var vv = key === 'earth' ? 0.5 + Math.atan2(pos.getZ(i), (1 - AE_EARTH_FLATTENING) * Math.hypot(pos.getX(i), pos.getY(i))) / Math.PI : uv.getY(i);
+                var d = Math.hypot(uv.getX(i) - u, vv - v);
                 if (d < bd) { bd = d; best = i; }
             }
             var w = new S.THREE.Vector3(pos.getX(best), pos.getY(best), pos.getZ(best)).applyMatrix4(mesh.matrixWorld);
-            var dd = _aeLmDir(b, g[0], g[1]);
+            // The Earth's grid is not on its vertices (they lie on the flattened sphere's own latitudes): the landmark
+            // system is asked about the vertex's own geodetic point instead.
+            var lat = g[0], lon = g[1];
+            if (key === 'earth') { lat = (0.5 + Math.atan2(pos.getZ(best), (1 - AE_EARTH_FLATTENING) * Math.hypot(pos.getX(best), pos.getY(best))) / Math.PI - 0.5) * 180; lon = uv.getX(best) * 360 - 180; bd = 0; }
+            var dd = _aeLmDir(b, lat, lon);
             var p = [b.center[0] + dd[0] * b.r, b.center[1] + dd[1] * b.r, b.center[2] + dd[2] * b.r];
             worst = Math.max(worst, Math.hypot(w.x - p[0], w.y - p[1], w.z - p[2]) / b.r);
             off = Math.max(off, bd);
@@ -218,10 +224,10 @@ def test_landmarks_on_every_body_and_a_flight_to_a_rover(served):
                 )
                 == 25
             )
-            heading = pg.evaluate(
-                "Array.from(document.querySelectorAll('#ae-go h4')).map(h => h.textContent).pop()"
+            headings = pg.evaluate(
+                "Array.from(document.querySelectorAll('#ae-go h4')).map(h => h.textContent)"
             )
-            assert heading == "Landing sites", heading
+            assert "Landing sites" in headings, headings
             pg.click("#ae-go .ae-go-row:has-text('Curiosity')")
             pg.wait_for_function(
                 "() => { _ae.dirty = true; _aeKick(); return !_ae.fly && _ae.target === 'mars' && ("

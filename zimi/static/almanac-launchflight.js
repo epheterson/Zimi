@@ -1,0 +1,472 @@
+// ── Almanac: the maths of a launch ──
+// Pure functions, no page: almanac-launches.js draws them, tests/test_almanac_launches.cjs checks them.
+//   - the launch azimuth from the target inclination and the pad's latitude (the Earth's turning subtracted);
+//   - the ascent: altitude, speed and ground range against time, from a vehicle family's published events
+//     (Falcon 9 from SpaceX's webcast telemetry; other vehicles a typical profile of the same shape, scaled to the burn
+//     time), laid along the great circle from the pad at the launch azimuth;
+//   - what a place sees of it: elevation and azimuth each second, whether the rocket is in sunlight, and which of
+//     the sights that is (the lit exhaust of a twilight launch, an engine's glow, a daytime dot);
+//   - the deployment: the batch's orbit plane from where the rocket was when it let go, the string spreading by
+//     the satellites' small differences in height, the Earth's bulge (J2) turning the plane, the raising of a
+//     Starlink batch to its shell.
+// Thresholds are AE_LAUNCH_REF (almanac-earth.js), which the Almanac's constants pages show with their sources.
+// Shares almanac-earth.js's global scope (AE_EARTH_RADIUS_KM, AE_GM_EARTH, MS_PER_DAY).
+
+var LF_D2R = Math.PI / 180;
+var LF_EARTH_RATE_RAD_S = AE_LAUNCH_REF.earthRateRadS, LF_J2 = AE_LAUNCH_REF.j2, LF_MEAN_RADIUS_KM = AE_LAUNCH_REF.meanRadiusKm;
+var LF_SOUTH_SITE = /^Vandenberg$/;          // range safety lets nothing fly north from here
+var LF_NORTH_SITE = /^Plesetsk$/;            // and the polar launches from here fly north
+var LF_STEP_S = 1;                           // the ascent is sampled every second
+var LF_TABLE_STEP_S = 1200;                  // the deployment's integrals are tabled at this step
+var LF_SPREAD_SEED = 2654435761;
+// Families by the vehicle's name: the profile it flies and the time to the end of its last burn (s).
+var LF_FAMILIES = [
+  [/^Falcon/, 'falcon'],
+  [/^Space Shuttle/, 'shuttle'],
+  [/^Saturn/, 'saturn']
+];
+// Falcon 9 from the first stage's lift-off: seconds, height (km) and speed relative to the Earth (km/s). SpaceX's launch
+// webcasts print these two every second; rounded here to the nearest few percent.
+var LF_FALCON_KNOTS = [
+  [0, 0, 0], [10, 0.25, 0.05], [30, 2.2, 0.2], [60, 8, 0.4], [72, 12.5, 0.52], [100, 26, 0.95], [120, 38, 1.3],
+  [151, 68, 2.1], [160, 76, 2.1], [180, 96, 2.4], [240, 130, 3.4], [300, 160, 4.2], [360, 185, 5.0], [420, 210, 5.8],
+  [480, 240, 6.6], [526, 270, 7.35]
+];
+// The first stage's way back to a drone ship: seconds, height (km) and ground range (km) from the pad.
+var LF_FALCON_BOOSTER_KNOTS = [[155, 76, null], [235, 140, 260], [409, 70, 490], [429, 40, 520], [505, 3, 590], [527, 0, 610]];
+
+function _lfFamily(name) {
+  for (var i = 0; i < LF_FAMILIES.length; i++) if (LF_FAMILIES[i][0].test(name || '')) return LF_FAMILIES[i][1];
+  return 'typical';
+}
+
+// ── The azimuth ──
+// The compass heading, degrees clockwise from north, a rocket leaves a pad at to reach an orbit of inclination `inc`
+// at height `altKm`. sin(azimuth) = cos(inclination) / cos(latitude) in the stars' frame; the Earth's turning carries the
+// rocket east at omega R cos(latitude) already, which is taken off the orbital speed. `south`: the branch that flies
+// south of east. An inclination below the pad's latitude cannot be reached by one burn: due east (a dog-leg later).
+function _lfAzimuth(latDeg, incDeg, altKm, south) {
+  var lat = latDeg * LF_D2R, ratio = Math.cos(incDeg * LF_D2R) / Math.cos(lat), reach = Math.abs(ratio) <= 1;
+  var inertial = Math.asin(Math.max(-1, Math.min(1, ratio)));
+  if (south) inertial = Math.PI - inertial;
+  var v = Math.sqrt(AE_GM_EARTH / (AE_EARTH_RADIUS_KM + altKm));
+  var vx = v * Math.sin(inertial) - LF_EARTH_RATE_RAD_S * AE_EARTH_RADIUS_KM * Math.cos(lat), vy = v * Math.cos(inertial);
+  return { az: (Math.atan2(vx, vy) / LF_D2R + 360) % 360, inertial: (inertial / LF_D2R + 360) % 360, reach: reach,
+    speed: Math.hypot(vx, vy) };
+}
+// Which way a pad's launches go when both would reach the orbit: the site's rule, then the inclination's.
+function _lfSouth(siteName, incDeg) {
+  if (LF_SOUTH_SITE.test(siteName || '')) return true;
+  if (LF_NORTH_SITE.test(siteName || '')) return false;
+  return incDeg > 90;
+}
+
+// ── The ascent ──
+// A monotone cubic through (x, y) knots (Fritsch-Carlson), so a profile never overshoots between two readings.
+function _lfMonotone(xs, ys) {
+  var n = xs.length, d = [], m = [], i;
+  for (i = 0; i < n - 1; i++) d.push((ys[i + 1] - ys[i]) / (xs[i + 1] - xs[i]));
+  m[0] = d[0]; m[n - 1] = d[n - 2];
+  for (i = 1; i < n - 1; i++) m[i] = d[i - 1] * d[i] <= 0 ? 0 : (d[i - 1] + d[i]) / 2;
+  for (i = 0; i < n - 1; i++) {
+    if (d[i] === 0) { m[i] = m[i + 1] = 0; continue; }
+    var a = m[i] / d[i], b = m[i + 1] / d[i], s = a * a + b * b;
+    if (s > 9) { var t = 3 / Math.sqrt(s); m[i] = t * a * d[i]; m[i + 1] = t * b * d[i]; }
+  }
+  return function (x) {
+    if (x <= xs[0]) return ys[0];
+    if (x >= xs[n - 1]) return ys[n - 1];
+    var k = 0;
+    while (x > xs[k + 1]) k++;
+    var h = xs[k + 1] - xs[k], t2 = (x - xs[k]) / h, t3 = t2 * t2, t4 = t3 * t2;
+    return (2 * t4 - 3 * t3 + 1) * ys[k] + (t4 - 2 * t3 + t2) * h * m[k] + (-2 * t4 + 3 * t3) * ys[k + 1] + (t4 - t3) * h * m[k + 1];
+  };
+}
+// The profile's knots for a family, stretched to a burn that ends `endS` seconds after lift-off at `endKm` and `endKmS`.
+function _lfKnots(family, endKm, endKmS) {
+  var ref = AE_LAUNCH_REF, base = LF_FALCON_KNOTS, tEnd = base[base.length - 1][0], tMeco = ref.falcon.mecoS;
+  var scale = (family === 'falcon' ? tEnd : ref.typicalBurnS[family] || ref.typicalBurnS.typical) / tEnd;
+  var endBase = base[base.length - 1];
+  return base.map(function (k) {
+    var t = k[0], past = t > tMeco ? (t - tMeco) / (tEnd - tMeco) : 0;
+    return [t * scale, k[1] + (endKm - endBase[1]) * past, k[2] + (endKmS - endBase[2]) * past];
+  });
+}
+// The great-circle point `rangeKm` from (lat, lon) along `azDeg`.
+function _lfDestination(latDeg, lonDeg, azDeg, rangeKm) {
+  var d = rangeKm / LF_MEAN_RADIUS_KM, la = latDeg * LF_D2R, az = azDeg * LF_D2R;
+  var sla = Math.sin(la) * Math.cos(d) + Math.cos(la) * Math.sin(d) * Math.cos(az);
+  var lo = lonDeg * LF_D2R + Math.atan2(Math.sin(az) * Math.sin(d) * Math.cos(la), Math.cos(d) - Math.sin(la) * sla);
+  return { lat: Math.asin(Math.max(-1, Math.min(1, sla))) / LF_D2R, lon: ((lo / LF_D2R + 540) % 360) - 180 };
+}
+// A launch's ascent. in: {name, lat, lon, siteName, incDeg, perigeeKm, ok}. out: samples every second (t s, h km, speed
+// km/s, ground range km, lat, lon, burn: 0 coasting, 1 first stage, 2 later stage), the events, the azimuth, and for a
+// Falcon the first stage's way back. A launch with no known orbit flies due east to 200 km (`guessed`).
+function _lfAscent(L) {
+  var ref = AE_LAUNCH_REF, family = _lfFamily(L.name), guessed = L.incDeg == null;
+  var inc = guessed ? Math.abs(L.lat) : L.incDeg;
+  var endKm = Math.max(ref.insertionKm[0], Math.min(ref.insertionKm[1], L.perigeeKm == null ? ref.insertionKm[0] : L.perigeeKm));
+  var az = _lfAzimuth(L.lat, inc, endKm, _lfSouth(L.siteName, inc)), knots = _lfKnots(family, endKm, az.speed);   // the speed at the end, relative to the ground, is what the azimuth was worked from
+  var ts = knots.map(function (k) { return k[0]; }), height = _lfMonotone(ts, knots.map(function (k) { return k[1]; }));
+  var speed = _lfMonotone(ts, knots.map(function (k) { return k[2]; }));
+  var tEnd = ts[ts.length - 1], stretch = tEnd / LF_FALCON_KNOTS[LF_FALCON_KNOTS.length - 1][0], firstEnd = ref.falcon.mecoS * stretch;
+  var stop = L.ok === false ? firstEnd : tEnd;   // a launch that failed is drawn to where its first stage ended
+  var pts = [], range = 0, prevH = 0;
+  for (var t = 0; t <= stop; t += LF_STEP_S) {
+    var h = height(t), v = speed(t), dh = h - prevH, vh = Math.sqrt(Math.max(0, v * v - dh * dh));
+    range += vh * LF_STEP_S * LF_MEAN_RADIUS_KM / (LF_MEAN_RADIUS_KM + h);
+    prevH = h;
+    var at = _lfDestination(L.lat, L.lon, az.az, range);
+    pts.push({ t: t, h: h, v: v, range: range, lat: at.lat, lon: at.lon, burn: t <= firstEnd ? 1 : t >= firstEnd + ref.coastS ? 2 : 0 });
+  }
+  var events = [{ t: 0, key: 'liftoff' }, { t: ref.falcon.maxQS * stretch, key: 'maxq' }, { t: firstEnd, key: 'meco' },
+    { t: firstEnd + ref.coastS, key: 'stage2' }];
+  if (family === 'falcon') events.push({ t: ref.falcon.sepS, key: 'sep' }, { t: ref.falcon.fairingS, key: 'fairing' });
+  events.sort(function (a, b) { return a.t - b.t; });
+  events.push({ t: tEnd, key: 'seco' });
+  events = events.filter(function (e) { return e.t <= stop; });
+  var out = { family: family, az: az.az, azInertial: az.inertial, reach: az.reach, guessed: guessed, endKm: endKm, tEnd: tEnd, stop: stop,
+    points: pts, events: events, insertion: stop === tEnd ? pts[pts.length - 1] : null, booster: null, incDeg: inc };
+  if (family === 'falcon' && stop === tEnd) out.booster = _lfBooster(L, az.az, pts);
+  return out;
+}
+// The Falcon first stage after it lets go: up to its highest point, the entry burn, the landing, on a drone ship.
+function _lfBooster(L, az, pts) {
+  var ref = AE_LAUNCH_REF, k = LF_FALCON_BOOSTER_KNOTS, from = pts[Math.min(pts.length - 1, ref.falcon.sepS)];
+  var ts = [], hs = [], rs = [];
+  k.forEach(function (row, i) { ts.push(row[0]); hs.push(row[1]); rs.push(i === 0 ? from.range : row[2]); });
+  var height = _lfMonotone(ts, hs), range = _lfMonotone(ts, rs), out = [];
+  for (var t = ts[0]; t <= ts[ts.length - 1]; t += LF_STEP_S) {
+    var at = _lfDestination(L.lat, L.lon, az, range(t));
+    out.push({ t: t, h: height(t), lat: at.lat, lon: at.lon, burn: t >= ref.falcon.entryBurnS[0] && t <= ref.falcon.entryBurnS[1] ? 3 : t >= ref.falcon.landS - ref.falcon.landBurnS ? 4 : 0 });
+  }
+  return out;
+}
+
+// ── The Sun, and what a place sees ──
+// The Sun's direction (a unit vector, equatorial) to a few hundredths of a degree: all a twilight and a shadow need.
+function _lfSunUnit(ms) {
+  var n = ms / MS_PER_DAY + 2440587.5 - 2451545.0;
+  var L = (280.460 + 0.9856474 * n) * LF_D2R, g = (357.528 + 0.9856003 * n) * LF_D2R;
+  var lam = L + (1.915 * Math.sin(g) + 0.020 * Math.sin(2 * g)) * LF_D2R, eps = (23.439 - 0.0000004 * n) * LF_D2R;
+  return [Math.cos(lam), Math.cos(eps) * Math.sin(lam), Math.sin(eps) * Math.sin(lam)];
+}
+function _lfGmst(ms) {
+  var n = ms / MS_PER_DAY + 2440587.5 - 2451545.0;
+  return (((18.697374558 + 24.06570982441908 * n) % 24 + 24) % 24) * 15 * LF_D2R;
+}
+// A point at (lat, lon, height) as a vector in the stars' frame, kilometres, on the sphere.
+function _lfEci(latDeg, lonDeg, hKm, gmst) {
+  var la = latDeg * LF_D2R, th = lonDeg * LF_D2R + gmst, r = LF_MEAN_RADIUS_KM + hKm;
+  return [r * Math.cos(la) * Math.cos(th), r * Math.cos(la) * Math.sin(th), r * Math.sin(la)];
+}
+function _lfDot(a, b) { return a[0] * b[0] + a[1] * b[1] + a[2] * b[2]; }
+// The Sun's height above the horizon at a place (degrees).
+function _lfSunAlt(ms, lat, lon) {
+  var up = _lfEci(lat, lon, 0, _lfGmst(ms));
+  return Math.asin(_lfDot(up, _lfSunUnit(ms)) / LF_MEAN_RADIUS_KM) / LF_D2R;
+}
+// Whether sunlight reaches a point (stars' frame, km): in front of the Earth, or outside the shadow's cylinder.
+function _lfSunlit(posKm, sun) {
+  var along = _lfDot(posKm, sun);
+  if (along >= 0) return true;
+  var px = posKm[0] - sun[0] * along, py = posKm[1] - sun[1] * along, pz = posKm[2] - sun[2] * along;
+  return Math.sqrt(px * px + py * py + pz * pz) > LF_MEAN_RADIUS_KM;
+}
+// Elevation, azimuth (degrees) and range (km) of a point at (lat, lon, height) from a place on the ground.
+function _lfLook(obsLat, obsLon, lat, lon, hKm) {
+  var la = obsLat * LF_D2R, lo = obsLon * LF_D2R, p = _lfEci(lat, lon, hKm, 0), o = _lfEci(obsLat, obsLon, 0, 0);
+  var dx = p[0] - o[0], dy = p[1] - o[1], dz = p[2] - o[2], range = Math.hypot(dx, dy, dz);
+  var sl = Math.sin(la), cl = Math.cos(la), so = Math.sin(lo), co = Math.cos(lo);
+  var up = dx * cl * co + dy * cl * so + dz * sl, east = -dx * so + dy * co, north = -dx * sl * co - dy * sl * so + dz * cl;
+  return { el: Math.asin(Math.max(-1, Math.min(1, up / range))) / LF_D2R, az: (Math.atan2(east, north) / LF_D2R + 360) % 360, range: range };
+}
+// Great-circle distance between two points on the ground (km).
+function _lfGroundKm(lat1, lon1, lat2, lon2) {
+  var p1 = lat1 * LF_D2R, p2 = lat2 * LF_D2R, dp = p2 - p1, dl = (lon2 - lon1) * LF_D2R;
+  var a = Math.sin(dp / 2) * Math.sin(dp / 2) + Math.cos(p1) * Math.cos(p2) * Math.sin(dl / 2) * Math.sin(dl / 2);
+  return 2 * LF_MEAN_RADIUS_KM * Math.asin(Math.min(1, Math.sqrt(a)));
+}
+// What the sight is. 'below': under the horizon. 'jellyfish': an engine burning high, its exhaust lit by a Sun that has
+// set for the watcher. 'flame': a burning engine against a dark sky with the rocket itself in shadow. 'dot': a coasting
+// stage lit against the twilight. 'day': a bright point and a white trail in daylight.
+function _lfSight(burning, lit, sunAlt, el, hKm) {
+  var ref = AE_LAUNCH_REF;
+  if (el < ref.minElDeg) return 'below';
+  if (sunAlt > ref.darkSunAlt) return 'day';
+  if (burning && lit && hKm >= ref.plumeMinKm) return 'jellyfish';
+  if (burning) return 'flame';
+  return lit ? 'dot' : 'below';
+}
+// A launch as one place sees it. flight: _lfAscent's. ms0: lift-off. out: a sample each second the rocket is up, a summary,
+// and for a place too far away, how far.
+function _lfObserve(flight, L, ms0, obsLat, obsLon) {
+  var padKm = _lfGroundKm(obsLat, obsLon, L.lat, L.lon), samples = [], best = null, first = null, last = null, peak = null;
+  var rank = { below: 0, dot: 1, day: 2, flame: 3, jellyfish: 4 };
+  flight.points.forEach(function (p) {
+    var ms = ms0 + p.t * 1000, lk = _lfLook(obsLat, obsLon, p.lat, p.lon, p.h), sunAlt = _lfSunAlt(ms, obsLat, obsLon);
+    var lit = _lfSunlit(_lfEci(p.lat, p.lon, p.h, _lfGmst(ms)), _lfSunUnit(ms));
+    var sight = _lfSight(p.burn > 0, lit, sunAlt, lk.el, p.h);
+    var s = { t: p.t, el: lk.el, az: lk.az, range: lk.range, h: p.h, lit: lit, sunAlt: sunAlt, sight: sight, burn: p.burn };
+    samples.push(s);
+    if (sight === 'below') return;
+    if (!first) first = s;
+    last = s;
+    if (!peak || s.el > peak.el) peak = s;
+    if (!best || rank[sight] > rank[best]) best = sight;
+  });
+  var closest = samples.reduce(function (m, s) { return Math.min(m, s.range); }, Infinity);
+  return { seen: !!first, sight: best, first: first, last: last, peak: peak, samples: samples, padKm: padKm, closestKm: closest };
+}
+
+// ── The deployment ──
+function _lfCircularRate(aKm) { return Math.sqrt(AE_GM_EARTH / (aKm * aKm * aKm)); }   // rad/s
+// The mean rate of the argument of latitude and the node's drift (rad/s) for a circular orbit of radius aKm, inclination
+// iRad, with the Earth's bulge: u' = n (1 + 1.5 J2 (Re/a)^2 (3 - 4 sin^2 i)), node' = -1.5 J2 n (Re/a)^2 cos i.
+function _lfRates(aKm, iRad) {
+  var n = _lfCircularRate(aKm), q = LF_J2 * Math.pow(AE_EARTH_RADIUS_KM / aKm, 2), si = Math.sin(iRad);
+  return { u: n * (1 + 1.5 * q * (3 - 4 * si * si)), node: -1.5 * q * n * Math.cos(iRad) };
+}
+// A deterministic number in [0, 1) from an integer, so a batch spreads the same way every time it is drawn.
+function _lfHash01(i) { return ((Math.imul(i + 1, LF_SPREAD_SEED) >>> 0) % 65536) / 65536; }
+// The Starlink shell a batch is raised to, by its inclination (degrees).
+function _lfShellKm(incDeg) {
+  var shells = AE_LAUNCH_REF.starlinkShells, best = shells.other;
+  Object.keys(shells).forEach(function (k) { if (k !== 'other' && Math.abs(Number(k) - incDeg) < 2) best = shells[k]; });
+  return best;
+}
+// A batch let go at `sepMs` from the rocket's last place on its ascent. L: {mission, inc, n, depKm}; flight: the ascent;
+// ms0: lift-off; sepMin: minutes from lift-off to separation. Returns {at(ms, k): the satellite's position in the stars'
+// frame, node, plane, raising(ms)} for k in [0, n).
+function _lfDeploy(L, flight, ms0, sepMin) {
+  var ref = AE_LAUNCH_REF, inc = L.inc * LF_D2R, ins = flight.insertion || flight.points[flight.points.length - 1];
+  var tsep = ms0 + sepMin * 60000, tins = ms0 + ins.t * 1000, depA = AE_EARTH_RADIUS_KM + L.depKm;
+  // The plane: the rocket's place at insertion, on the orbit of this inclination, flying with the launch azimuth.
+  var gm = _lfGmst(tins), la = ins.lat * LF_D2R, lonI = ins.lon * LF_D2R + gm;
+  var ascending = Math.cos(flight.azInertial * LF_D2R) >= 0;
+  var u = Math.asin(Math.max(-1, Math.min(1, Math.sin(la) / Math.sin(inc))));
+  if (!ascending) u = Math.PI - u;
+  var node0 = lonI - Math.atan2(Math.cos(inc) * Math.sin(u), Math.cos(u));
+  var starlink = /^Starlink/i.test(L.mission || ''), shellKm = starlink ? _lfShellKm(L.inc) : null;
+  var raiseFrom = tsep + ref.checkoutDays * MS_PER_DAY;
+  var raiseMs = shellKm == null ? 0 : (ref.raiseTotalDays - ref.checkoutDays) * MS_PER_DAY;
+  function heightAt(ms) {
+    if (shellKm == null || ms <= raiseFrom) return L.depKm;
+    return ms >= raiseFrom + raiseMs ? shellKm : L.depKm + (shellKm - L.depKm) * (ms - raiseFrom) / raiseMs;
+  }
+  // The string's centre: its argument of latitude and node, tabled from separation on at LF_TABLE_STEP_S.
+  var table = [{ ms: tsep, u: u + _lfCircularRate(depA) * (tsep - tins) / 1000, node: node0, drift: 0 }], dep = {};
+  function extend(ms) {
+    var last = table[table.length - 1];
+    while (last.ms < ms) {
+      var mid = last.ms + LF_TABLE_STEP_S * 500, r = _lfRates(AE_EARTH_RADIUS_KM + heightAt(mid), inc);
+      var am = AE_EARTH_RADIUS_KM + heightAt(mid);
+      last = { ms: last.ms + LF_TABLE_STEP_S * 1000, u: last.u + r.u * LF_TABLE_STEP_S, node: last.node + r.node * LF_TABLE_STEP_S,
+        drift: last.drift - 1.5 * _lfCircularRate(am) / am * LF_TABLE_STEP_S };
+      table.push(last);
+    }
+  }
+  function centre(ms) {
+    extend(ms + LF_TABLE_STEP_S * 1000);
+    var k = Math.max(0, Math.min(table.length - 2, Math.floor((ms - tsep) / (LF_TABLE_STEP_S * 1000)))), a = table[k], b = table[k + 1], f = (ms - a.ms) / (b.ms - a.ms);
+    return { u: a.u + (b.u - a.u) * f, node: a.node + (b.node - a.node) * f, drift: a.drift + (b.drift - a.drift) * f };
+  }
+  var n = L.n;
+  dep.n = n; dep.sepMs = tsep; dep.shellKm = shellKm; dep.raiseFromMs = raiseFrom; dep.raiseDoneMs = shellKm == null ? tsep : raiseFrom + raiseMs;
+  // Satellite k is ahead of or behind the centre by its own small difference in height (a string, ordered by it) and a
+  // short step apart at release. A difference da in height drifts a satellite by du/dt = -1.5 n da / a, summed in the table.
+  dep.offsetKm = function (k) { return ref.spreadKm * ((k + 0.5) / n * 2 - 1); };
+  dep.at = function (ms, k) {
+    var c = centre(ms), a = AE_EARTH_RADIUS_KM + heightAt(ms), da = dep.offsetKm(k);
+    var uk = c.u + c.drift * da + (k - (n - 1) / 2) * ref.releaseGapDeg * LF_D2R, ci = Math.cos(inc), si = Math.sin(inc);
+    var cu = Math.cos(uk), su = Math.sin(uk), cn = Math.cos(c.node), sn = Math.sin(c.node), r = a + da;
+    return [r * (cn * cu - sn * ci * su), r * (sn * cu + cn * ci * su), r * si * su];
+  };
+  dep.heightKm = heightAt;
+  dep.raising = function (ms) { return shellKm != null && ms > raiseFrom && ms < dep.raiseDoneMs; };
+  return dep;
+}
+// A place at an instant, ready to look at many positions (the Sun and the Earth's turning worked out once).
+function _lfWatcher(ms, obsLat, obsLon) {
+  var gm = _lfGmst(ms), la = obsLat * LF_D2R, th = obsLon * LF_D2R + gm, sun = _lfSunUnit(ms);
+  var up = [Math.cos(la) * Math.cos(th), Math.cos(la) * Math.sin(th), Math.sin(la)];
+  return { o: _lfEci(obsLat, obsLon, 0, gm), sl: Math.sin(la), cl: Math.cos(la), st: Math.sin(th), ct: Math.cos(th), sun: sun,
+    sunAlt: Math.asin(_lfDot(up, sun)) / LF_D2R };
+}
+// A position (stars' frame, km) seen by a watcher: elevation, azimuth, range, and whether it is in sunlight.
+function _lfSeenBy(w, posKm) {
+  var dx = posKm[0] - w.o[0], dy = posKm[1] - w.o[1], dz = posKm[2] - w.o[2], range = Math.hypot(dx, dy, dz);
+  var up = dx * w.cl * w.ct + dy * w.cl * w.st + dz * w.sl, east = -dx * w.st + dy * w.ct, north = -dx * w.sl * w.ct - dy * w.sl * w.st + dz * w.cl;
+  return { el: Math.asin(Math.max(-1, Math.min(1, up / range))) / LF_D2R, az: (Math.atan2(east, north) / LF_D2R + 360) % 360, range: range,
+    lit: _lfSunlit(posKm, w.sun) };
+}
+function _lfSeenFrom(posKm, ms, obsLat, obsLon) { return _lfSeenBy(_lfWatcher(ms, obsLat, obsLon), posKm); }
+// The windows in which a released batch can be seen from a place between two instants: the Sun below the dark limit, the
+// satellite in sunlight and above `minEl`. Merged where the gap is under a step. Each: {start, end, peakEl, count, azStart,
+// azEnd, peakMs}.
+function _lfBatchWindows(dep, fromMs, toMs, obsLat, obsLon, minEl, stepMs) {
+  var ref = AE_LAUNCH_REF, out = [], cur = null;
+  for (var ms = Math.max(fromMs, dep.sepMs); ms <= toMs; ms += stepMs) {
+    var w = _lfWatcher(ms, obsLat, obsLon), count = 0, peak = -90, azFirst = null, azLast = null;
+    if (w.sunAlt < ref.darkSunAlt) {
+      for (var k = 0; k < dep.n; k++) {
+        var v = _lfSeenBy(w, dep.at(ms, k));
+        if (v.el >= minEl && v.lit) { count++; if (v.el > peak) { peak = v.el; } if (azFirst === null) azFirst = v.az; azLast = v.az; }
+      }
+    }
+    if (count) {
+      if (!cur || ms - cur.end > stepMs * 1.5) { cur = { start: ms, end: ms, peakEl: peak, count: count, azStart: azFirst, azEnd: azLast, peakMs: ms }; out.push(cur); }
+      else { cur.end = ms; cur.count = Math.max(cur.count, count); cur.azEnd = azLast; if (peak > cur.peakEl) { cur.peakEl = peak; cur.peakMs = ms; } }
+    }
+  }
+  return out;
+}
+
+// ── There and then ──
+// The shape of a moment worth standing in, so a curated list can sit beside the launches (nothing lists them yet):
+//   { id, family, title, place: {name, lat, lon, kind}, instant (ms, UTC), look: {az, el, spanDeg}, see (what the sight is,
+//     a key the words are looked up by), source: {name, url, licence} }
+// `family` names who made it ('launch' here); `id` is "<family>:<key>" and stable; `look` is where to face at `instant`.
+var LF_THEN_LOOK_SPAN_DEG = 60;   // the width of sky a "look" asks for
+// A launch seen from a place (name, lat, lon) as a moment, or null when the place could not see it. L: the launch;
+// seen: _lfObserve's answer for that place.
+function _lfThen(L, place, seen) {
+  if (!seen || !seen.seen) return null;
+  return {
+    id: 'launch:' + L.tag + ':' + place.lat.toFixed(2) + ',' + place.lon.toFixed(2),
+    family: 'launch',
+    title: L.name + (L.mission ? ' · ' + L.mission : ''),
+    place: { name: place.name || '', lat: place.lat, lon: place.lon, kind: place.kind || 'place' },
+    instant: Math.round(L.ms + seen.peak.t * 1000),
+    look: { az: seen.peak.az, el: seen.peak.el, spanDeg: LF_THEN_LOOK_SPAN_DEG },
+    see: seen.sight,
+    source: { name: 'GCAT (McDowell)', url: 'https://planet4589.org/space/gcat', licence: 'CC BY 4.0' }
+  };
+}
+
+// ── For a sky that draws what it is given ──
+// What a place sees at an instant, as plain objects a sky can paint: {kind, name, az, el, mag, rgb, trail, sight}. The 2D live
+// sky (almanac-launches.js) and the ground view's sky-objects hook both read these.
+var LF_BATCH_TRAIL_STEPS = 3, LF_BATCH_TRAIL_STEP_S = 1.5, LF_BATCH_TRAIL_FADE = 1.6;   // a released satellite's tail as the satellites layer draws one: three steps of 1.5 s, each dimmer by this many magnitudes
+var LF_MIN_SHARE = 0.02;   // a satellite with less than this share of sunlight is not drawn
+var LF_SKY_TRAIL_S = 12, LF_SKY_TRAIL_STEP_S = 2;   // a rocket's trail: this far back, a point this often
+var LF_SIGHT_RGB = { jellyfish: [160, 215, 255], flame: [255, 170, 90], dot: [255, 244, 225], day: [255, 244, 225] };
+// The rocket of a launch (flight: _lfAscent's, L: the launch) at ms as seen from a place, or null when it is not up or not
+// seen. mag is an estimate by the sight (AE_LAUNCH_REF.sightMag).
+function _lfSkyRocket(flight, L, ms, obsLat, obsLon) {
+  var t = (ms - L.ms) / 1000;
+  if (t < 0 || t > flight.stop) return null;
+  var sunAlt = _lfSunAlt(ms, obsLat, obsLon), trail = [], head = null;
+  for (var k = 0; k <= LF_SKY_TRAIL_S; k += LF_SKY_TRAIL_STEP_S) {
+    var p = flight.points[Math.max(0, Math.min(flight.points.length - 1, Math.round(t - k)))], lk = _lfLook(obsLat, obsLon, p.lat, p.lon, p.h);
+    if (lk.el < 0) break;
+    var at = ms - k * 1000, lit = _lfSunlit(_lfEci(p.lat, p.lon, p.h, _lfGmst(at)), _lfSunUnit(at));
+    var sight = _lfSight(p.burn > 0, lit, sunAlt, lk.el, p.h);
+    if (k === 0) head = { az: lk.az, el: lk.el, sight: sight, h: p.h };
+    else trail.push({ az: lk.az, el: lk.el });
+  }
+  if (!head || head.sight === 'below') return null;
+  return { kind: 'rocket', name: L.name + (L.mission ? ' · ' + L.mission : ''), az: head.az, el: head.el, mag: AE_LAUNCH_REF.sightMag[head.sight],
+    rgb: LF_SIGHT_RGB[head.sight], trail: trail, sight: head.sight, km: head.h };
+}
+// The exhaust plume as the ground view's sky takes an extended thing (almanac-stand.js, "Sky objects with an angular size"): the lit
+// length of the powered track behind the rocket, as the watcher sees it. Its length is the last LF_PLUME_TRAIL_S of powered track above
+// LF_PLUME_FLOOR_KM (above plumeMinKm while the rocket itself is lower), measured as the angle between the rocket and the oldest of those
+// points, so the range and the foreshortening are the watcher's own; its width is a third of that; both are held to a sky's worth.
+var LF_PLUME_TRAIL_S = 75, LF_PLUME_FLOOR_KM = 100, LF_PLUME_ASPECT = 3;
+var LF_PLUME_MAX_ALONG_DEG = 60, LF_PLUME_MAX_ACROSS_DEG = 20, LF_PLUME_MIN_ALONG_DEG = 0.05;
+var LF_PLUME_SUN_FULL_DEG = [-12, -1], LF_PLUME_SUN_FADE_DEG = 3;   // fully lit with the watcher's Sun between these; fading to nothing this far outside
+var LF_PLUME_RGB = [0.86, 0.93, 1], LF_PLUME_BASE_RGB = [1, 0.72, 0.45];   // cool white, a warm base where the engine still burns
+function _lfSkyUnit(az, el) {
+  var a = az * LF_D2R, e = el * LF_D2R;
+  return [Math.cos(e) * Math.sin(a), Math.cos(e) * Math.cos(a), Math.sin(e)];
+}
+function _lfAngleDeg(u, v) { return Math.acos(Math.max(-1, Math.min(1, _lfDot(u, v)))) / LF_D2R; }
+// 1 with the watcher's Sun between the plume's bounds, falling smoothly to 0 over LF_PLUME_SUN_FADE_DEG outside them.
+function _lfPlumeSunFactor(sunAlt) {
+  var lo = LF_PLUME_SUN_FULL_DEG[0], hi = LF_PLUME_SUN_FULL_DEG[1], d = sunAlt < lo ? lo - sunAlt : sunAlt > hi ? sunAlt - hi : 0;
+  var u = Math.max(0, Math.min(1, 1 - d / LF_PLUME_SUN_FADE_DEG));
+  return u * u * (3 - 2 * u);
+}
+// flight, L, ms, the watcher's place and the sky rocket (_lfSkyRocket's) -> {az, el (the plume's middle), sizeDeg: [along, across],
+// axisAz, axisEl (the old end of it), rgb, rgbBase, lum} or null where there is no extent to give (the point is then all there is).
+function _lfPlume(flight, L, ms, obsLat, obsLon, r) {
+  var t = Math.round((ms - L.ms) / 1000), top = Math.min(flight.points.length - 1, t), head = flight.points[top];
+  if (!head || r.sight !== 'jellyfish') return null;
+  var floor = head.h >= LF_PLUME_FLOOR_KM ? LF_PLUME_FLOOR_KM : AE_LAUNCH_REF.plumeMinKm, tail = null;
+  for (var i = top; i >= Math.max(0, top - LF_PLUME_TRAIL_S); i--) {
+    var p = flight.points[i];
+    if (!(p.burn > 0 && p.h >= floor)) break;
+    tail = p;
+  }
+  if (!tail) return null;
+  var hl = _lfLook(obsLat, obsLon, head.lat, head.lon, head.h), tl = _lfLook(obsLat, obsLon, tail.lat, tail.lon, tail.h);
+  var hu = _lfSkyUnit(hl.az, hl.el), tu = _lfSkyUnit(tl.az, tl.el), along = Math.min(LF_PLUME_MAX_ALONG_DEG, _lfAngleDeg(hu, tu));
+  if (!(along >= LF_PLUME_MIN_ALONG_DEG)) return null;
+  var across = Math.min(LF_PLUME_MAX_ACROSS_DEG, along / LF_PLUME_ASPECT);
+  var mid = [hu[0] + tu[0], hu[1] + tu[1], hu[2] + tu[2]], ml = Math.hypot(mid[0], mid[1], mid[2]) || 1;
+  var midEl = Math.asin(Math.max(-1, Math.min(1, mid[2] / ml))) / LF_D2R, midAz = (Math.atan2(mid[0], mid[1]) / LF_D2R + 360) % 360;
+  var lit = _lfSunShare(_lfEci(head.lat, head.lon, head.h, _lfGmst(ms)), _lfSunUnit(ms));
+  return { az: midAz, el: midEl, sizeDeg: [along, across], axisAz: tl.az, axisEl: tl.el, rgb: LF_PLUME_RGB, rgbBase: LF_PLUME_BASE_RGB,
+    lum: lit * _lfPlumeSunFactor(_lfSunAlt(ms, obsLat, obsLon)) };
+}
+// A diffuse sphere's phase law (Lambert, Russell 1916), 1 at a quarter phase (90 degrees).
+function _lfPhaseLaw(phase) { return Math.max(1e-6, (Math.sin(phase) + (Math.PI - phase) * Math.cos(phase)) / 1); }
+// The magnitude of a freshly released Starlink: Mallama (2020) puts a v1.0 satellite on station at 550 km at about 4.6 (standard:
+// 550 km, quarter phase); the range's square and the phase law scale it, and while it is being raised it flies with its panel
+// to the Sun, which Tregloan-Reed et al. (2020) saw as brighter by about a magnitude and a half.
+function _lfBatchMagnitude(rangeKm, phase, raising) {
+  var ref = AE_LAUNCH_REF;
+  return ref.batchMag550 + 5 * Math.log10(rangeKm / 550) - 2.5 * Math.log10(_lfPhaseLaw(phase) / _lfPhaseLaw(Math.PI / 2)) + (raising ? ref.batchRaisingMag : 0);
+}
+// The share of sunlight reaching a point: all of it outside the Earth's shadow, none inside, and across an edge shadowEdgeKm each
+// side of it (the air at the limb) a smooth fade: a satellite does not blink out, it fades over some seconds.
+function _lfSunShare(posKm, sun) {
+  var along = _lfDot(posKm, sun);
+  if (along >= 0) return 1;
+  var px = posKm[0] - sun[0] * along, py = posKm[1] - sun[1] * along, pz = posKm[2] - sun[2] * along;
+  var e = AE_LAUNCH_REF.shadowEdgeKm, u = Math.max(0, Math.min(1, (Math.sqrt(px * px + py * py + pz * pz) - (LF_MEAN_RADIUS_KM - e)) / (2 * e)));
+  return u * u * (3 - 2 * u);
+}
+// The satellites of a reconstructed batch at ms as seen from a place: those above the horizon, in sunlight, with the Sun
+// below the passes' limit (AE_SATS_REF.passSunAlt + 1, as the 2D sky draws them).
+function _lfSkyBatch(dep, ms, obsLat, obsLon) {
+  var out = [];
+  if (!dep || ms < dep.sepMs) return out;
+  var w = _lfWatcher(ms, obsLat, obsLon);
+  if (w.sunAlt >= AE_SATS_REF.passSunAlt + 1) return out;
+  var raising = dep.shellKm != null && ms < dep.raiseDoneMs, before = [];
+  for (var k = 1; k <= LF_BATCH_TRAIL_STEPS; k++) before.push(_lfWatcher(ms - k * LF_BATCH_TRAIL_STEP_S * 1000, obsLat, obsLon));
+  for (var i = 0; i < dep.n; i++) {
+    var pos = dep.at(ms, i), v = _lfSeenBy(w, pos);
+    var share = _lfSunShare(pos, w.sun);
+    if (v.el < 0 || share < LF_MIN_SHARE) continue;
+    var rho = [w.o[0] - pos[0], w.o[1] - pos[1], w.o[2] - pos[2]], phase = Math.acos(Math.max(-1, Math.min(1, _lfDot(w.sun, rho) / v.range)));
+    var trail = [], mag = _lfBatchMagnitude(v.range, phase, raising) - 2.5 * Math.log10(share);
+    for (k = 0; k < before.length; k++) {
+      var q = _lfSeenBy(before[k], dep.at(ms - (k + 1) * LF_BATCH_TRAIL_STEP_S * 1000, i));
+      if (q.el < 0) break;
+      trail.push({ az: q.az, el: q.el, mag: mag + (k + 1) * LF_BATCH_TRAIL_FADE });
+    }
+    out.push({ kind: 'sat', name: '', trail: trail, az: v.az, el: v.el, share: share, mag: mag, km: Math.hypot(pos[0], pos[1], pos[2]) - LF_MEAN_RADIUS_KM });
+  }
+  return out;
+}
+
+// What the ground view's sky takes (_aeStandSkySource): objects {kind: 'rocket' | 'plume' | 'train', az, el (degrees, az from
+// north), mag, rgb (0 to 1), trail, name}. A lit exhaust is a rocket point and a large soft plume at the same place; the
+// reconstructed batch is a 'train'.
+function _lfStandObjects(flight, L, dep, ms, lat, lon) {
+  var out = [], r = _lfSkyRocket(flight, L, ms, lat, lon);
+  if (r) {
+    var rgb = r.rgb.map(function (c) { return c / 255; });
+    out.push({ kind: 'rocket', name: r.name, az: r.az, el: r.el, mag: r.mag, rgb: rgb, trail: r.trail });
+    if (r.sight === 'jellyfish') {
+      var pl = { kind: 'plume', name: r.name, az: r.az, el: r.el, mag: r.mag, rgb: rgb }, ext = _lfPlume(flight, L, ms, lat, lon, r);
+      if (ext) for (var key in ext) pl[key] = ext[key];   // an extended plume where there is a length to give; else the point as before
+      out.push(pl);
+    }
+  }
+  _lfSkyBatch(dep, ms, lat, lon).forEach(function (v) { out.push({ kind: 'train', name: L.mission || L.name, az: v.az, el: v.el, mag: v.mag, rgb: [1, 0.94, 0.8], trail: v.trail }); });
+  return out;
+}

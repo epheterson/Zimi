@@ -18,6 +18,7 @@ KINDS = (DOCKER, DESKTOP, PORTABLE, PIP)
 # How a feature arrives on a kind of install.
 BUNDLED = "bundled"  # there from the start
 SETS_UP = "sets_up"  # Zimi installs it the first time it is used
+ADDON = "addon"  # an add-on (addons.py): fetched once into the data folder, under Ask first / Automatically / Never
 EXTRA = "extra"  # pip install "zimi[<extra>]"
 COMMAND = "command"  # one named command installs it
 EXTERNAL = "external"  # the operator installs a tool Zimi calls
@@ -47,7 +48,17 @@ def _voices_can_set_up():
 
 # For a feature that sets itself up: whether it could, on this install. Not
 # ready is fine (it has not been used yet); unable is a dead end (#113).
-CAN_SET_UP = {"voices": _voices_can_set_up}
+def _addons_can_set_up():
+    """Whether an add-on could be fetched here: Linux on a CPU the recipes are pinned for."""
+    from zimi import addons
+
+    return addons.supported()
+
+
+CAN_SET_UP = {
+    "voices": _voices_can_set_up,
+    **{key: _addons_can_set_up for key in ("rendered", "import", "alive", "singlefile", "video")},
+}
 
 
 def _bt():
@@ -112,7 +123,7 @@ _FEATURES = (
         "Dictionary voices (Piper, Kokoro)",
         _voices,
         {
-            DOCKER: Way(BUNDLED, ""),
+            DOCKER: Way(ADDON, "the first voice download sets them up"),
             DESKTOP: Way(BUNDLED, "the app's voice helper"),
             PIP: Way(
                 SETS_UP,
@@ -147,7 +158,7 @@ _FEATURES = (
         "Create: pages built by JavaScript",
         _browser,
         {
-            DOCKER: Way(BUNDLED, ""),
+            DOCKER: Way(ADDON, "Settings > Server > Add-ons: Browser"),
             DESKTOP: Way(
                 ABSENT,
                 "needs a browser engine the app does not carry; use pip or Docker",
@@ -162,7 +173,7 @@ _FEATURES = (
         "Create: import WARC/WACZ (warc2zim)",
         _sidecar("importer"),
         {
-            DOCKER: Way(BUNDLED, ""),
+            DOCKER: Way(ADDON, "Settings > Server > Add-ons: Import"),
             DESKTOP: Way(ABSENT, "needs Python 3.14 beside the app; use pip or Docker"),
             PIP: Way(
                 SETS_UP,
@@ -175,7 +186,7 @@ _FEATURES = (
         "Create: alive pages (JavaScript kept running)",
         _alive,
         {
-            DOCKER: Way(BUNDLED, ""),
+            DOCKER: Way(ADDON, "Settings > Server > Add-ons: Browser and Import"),
             DESKTOP: Way(
                 ABSENT, "needs the browser engine and warc2zim; use pip or Docker"
             ),
@@ -189,7 +200,7 @@ _FEATURES = (
         "Create: SingleFile pages",
         _singlefile,
         {
-            DOCKER: Way(BUNDLED, ""),
+            DOCKER: Way(ADDON, "Settings > Server > Add-ons: SingleFile"),
             DESKTOP: Way(
                 ABSENT, "needs Node and the SingleFile CLI; use pip or Docker"
             ),
@@ -201,7 +212,7 @@ _FEATURES = (
         "Create: video playlists (yt-dlp)",
         _module("yt_dlp"),
         {
-            DOCKER: Way(BUNDLED, ""),
+            DOCKER: Way(ADDON, "Settings > Server > Add-ons: Video"),
             DESKTOP: Way(ABSENT, "yt-dlp is not in the app; use pip or Docker"),
             PIP: Way(EXTERNAL, "pip install yt-dlp (and ffmpeg for YouTube)"),
         },
@@ -296,13 +307,14 @@ def problems(rows):
     return [
         f.key
         for f, way, ready in rows
-        if not ready and (way.how == BUNDLED or (way.how == SETS_UP and stuck(f)))
+        if not ready and (way.how == BUNDLED or (way.how in (SETS_UP, ADDON) and stuck(f)))
     ]
 
 
 _HOW_TEXT = {
     BUNDLED: "included",
     SETS_UP: "sets itself up",
+    ADDON: "add-on",
     EXTRA: "optional extra",
     COMMAND: "one command",
     EXTERNAL: "separate tool",
