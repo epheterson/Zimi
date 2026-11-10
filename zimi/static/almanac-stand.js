@@ -1114,7 +1114,7 @@ function _aeStandDiscMap(st, key, close) {
   }
   return st.discMaps[key] && st.discMaps[key] !== true ? st.discMaps[key] : null;
 }
-var AE_STAND_MOON_URL = '/static/earth/moon-v1.webp', AE_STAND_MOON_HI_URL = '/static/earth/moon-4k-v1.webp', AE_STAND_MOON_CLOSE_PX = 24;   // the disc's radius in pixels from which the 4k map is used
+var AE_STAND_MOON_URL = _almAsset('/static/earth/moon-v1.webp'), AE_STAND_MOON_HI_URL = _almAsset('/static/earth/moon-4k-v1.webp'), AE_STAND_MOON_CLOSE_PX = 24;   // the disc's radius in pixels from which the 4k map is used
 var AE_STAND_CRAFT_TOP_PX = 110, AE_STAND_CRAFT_BOTTOM_PX = 120;   // the bar and the clock keep their own bands
 var AE_STAND_CRAFT_CHAR_PX = 7, AE_STAND_CRAFT_LINE_PX = 16;       // a name's width per letter, and a line's height
 var AE_STAND_STATION_REACH_KM = 2e4;                                  // the station is a mark only from the Earth's neighbourhood

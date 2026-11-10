@@ -12,7 +12,7 @@
 
 var AE_MOTION_KEY = 'zimi_ae_stand_motion';
 var AE_MOTION_ALT_MAX = 89;
-var AE_MOTION_LOOK_JS = '/static/almanac-look.js';
+var AE_MOTION_LOOK_JS = _almAsset('/static/almanac-look.js');
 var _aeMotionLoading = null;
 
 function _aeMotionAvailable() { return typeof DeviceOrientationEvent !== 'undefined' && window.isSecureContext !== false; }

@@ -46,6 +46,16 @@ window.addEventListener('unhandledrejection', function(e) {
 // ── Config (injected by server via inline script) ──
 var _cfg = window.__ZIMI_CONFIG || {};
 var _i18nVer = _cfg.i18nHash || '0';
+// A /static data file's address with the version of the file: the server sends /static as immutable for a year, so a file whose
+// content changed under the same name (the 3D view's models and maps did, from 1.15 to 1.16) is only fetched afresh when its address
+// changes. The server gives the page each data file's content hash (__ZIMI_CONFIG.assets, by path under static/); a file it does not
+// list takes the build's. A query on the address is replaced by it; the Almanac inside its own ZIM has no
+// config and keeps its relative paths as they are.
+function _almAsset(path) {
+  var base = String(path).replace(/[?#].*$/, ''), c = window.__ZIMI_CONFIG || {};
+  var rel = base.replace(/^\/?static\//, ''), v = (c.assets && c.assets[rel]) || c.build || '';
+  return v ? base + '?v=' + encodeURIComponent(v) : base;
+}
 
 // ── Storage Keys ──
 var SK = {
@@ -7328,8 +7338,8 @@ function _localMoonName(name) { return _MOON_PHASE_I18N[name] ? t(_MOON_PHASE_I1
 // The 4096 one (730 KB) is asked for only once the page has painted and gone
 // idle (_moonAfterFirstPaint), and from then on every disc wide enough to
 // show it is drawn from it; the Today card's disc is too small to.
-var _MOON_MAP_URL = '/static/earth/moon-v1.webp';
-var _MOON_MAP_HI_URL = '/static/earth/moon-4k-v1.webp';
+var _MOON_MAP_URL = _almAsset('/static/earth/moon-v1.webp');
+var _MOON_MAP_HI_URL = _almAsset('/static/earth/moon-4k-v1.webp');
 var _MOON_TEX = new Image();
 var _MOON_TEX_HI = null;          // the 4096 map's Image, once it has loaded
 var _moonTexReady = false;
