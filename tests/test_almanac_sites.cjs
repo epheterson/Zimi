@@ -37,6 +37,7 @@ const ctx = {
   _aeLatLonVec: (lat, lon) => { const la = lat * Math.PI / 180, lo = lon * Math.PI / 180; return [Math.cos(la) * Math.cos(lo), Math.cos(la) * Math.sin(lo), Math.sin(la)]; }
 };
 vm.createContext(ctx);
+ctx._almAsset = (p) => p;   // app.js: a /static address with its version; here, as it is
 for (const f of ['almanac-sites.js', 'almanac-sites-ground.js', 'almanac-sites-drive.js', 'almanac-sites-launch.js', 'almanac-sites-trail.js']) vm.runInContext(read(f), ctx, { filename: f });
 const S = (name) => vm.runInContext(name, ctx);
 

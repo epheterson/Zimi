@@ -10,7 +10,7 @@ var ASG_SIZE_PX = 512;                 // the picture's side; the page scales it
 var ASG_RADIUS = 0.94;                 // the globe's share of the picture's half-width
 var ASG_AMBIENT = 0.07;                // the night side, in the day map's light
 var ASG_DEFAULT_PLACE = [20, 0];       // where it looks without a place chosen: lat, lon
-var ASG_MAP_URL = '/static/earth/earth-day-v1.webp';
+var ASG_MAP_URL = _almAsset('/static/earth/earth-day-v1.webp');
 var _asg = { ms: null, canvas: null, busy: false };
 
 var ASG_VS = '#version 300 es\nin vec2 p;out vec2 q;void main(){q=p;gl_Position=vec4(p,0.,1.);}';

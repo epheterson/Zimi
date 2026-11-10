@@ -5,7 +5,7 @@
 // One tap stands there then: the ground view where the body is supported, else the live sky.
 // Shares the Almanac's global scope; every name here is _at* or AT_*.
 
-var AT_URL = '/static/earth/thens-v1.json';
+var AT_URL = _almAsset('/static/earth/thens-v1.json');
 var AT_GROUPS = ['spaceflight', 'sky', 'history', 'places'];
 var AT_FACE_UP_DEG = 8;                    // the ground view is turned so the thing stands this far above the middle of the screen
 var AT_FACE_MAX_DEG = 70;

@@ -79,10 +79,14 @@ function _osSkyQuality() {
   var q = ZimiCap.get('skyQuality');
   return typeof q === 'number' && q >= 0 && q <= OS_QUALITY_MAX ? q : OS_QUALITY_MAX;
 }
-// A canvas's pixel ratio under the device's cap (the card's and Look's).
+// The card's and Look's canvas pixel ratio: the device's own, always. The card is cheap (the 3D view's cap, and the governor's steps for the
+// 3D scenes, are not the card's to take): only the lowest level (skyQuality 0, no clouds, a plain machine) lowers it, to the 3D view's cap.
 function _osDpr() {
   var d = window.devicePixelRatio || 1;
-  if (typeof ZimiCap !== 'undefined' && ZimiCap && typeof ZimiCap.dprCap === 'function') { var c = ZimiCap.dprCap('earth'); if (c > 0) d = Math.min(d, c); }
+  if (typeof ZimiCap !== 'undefined' && ZimiCap && typeof ZimiCap.get === 'function' && typeof ZimiCap.dprCap === 'function' && ZimiCap.get('skyQuality') === 0) {
+    var c = ZimiCap.dprCap('earth');
+    if (c > 0) d = Math.min(d, c);
+  }
   return d;
 }
 // A drawn frame, for the governor that steps quality down when frames run long.
@@ -261,13 +265,13 @@ function _osStandHere() {
 }
 // The card's picture held as a still over the 3D view while it opens, so the page never shows a globe: it fades out when Stand's first live
 // ground picture is drawn (h.firstFrame), or after OS_STILL_MAX_MS if that never comes.
-var OS_STILL_MAX_MS = 6000, OS_STILL_FADE_MS = 450;
+var OS_STILL_MAX_SIDE_PX = 2800, OS_STILL_MAX_MS = 6000, OS_STILL_FADE_MS = 450;
 function _osStill(canvas) {
   var s = typeof _skyState !== 'undefined' ? _skyState : null, src = canvas || (s && s.canvas);
   if (!src || !src.isConnected || !src.width || !src.height) return null;
   try {
     var el = document.createElement('canvas'), W = window.innerWidth, H = window.innerHeight, k = Math.max(W / src.width, H / src.height), w = src.width * k, h = src.height * k;
-    el.width = Math.round(W * (window.devicePixelRatio || 1) / 2); el.height = Math.round(H * (window.devicePixelRatio || 1) / 2);
+    var q = Math.min(window.devicePixelRatio || 1, OS_STILL_MAX_SIDE_PX / Math.max(W, H)); el.width = Math.round(W * q); el.height = Math.round(H * q);
     el.getContext('2d').drawImage(src, (W - w) / 2 * el.width / W, (H - h) / 2 * el.height / H, w * el.width / W, h * el.height / H);
     el.className = 'os-still'; el.setAttribute('aria-hidden', 'true');
     el.style.cssText = 'position:fixed;inset:0;width:100%;height:100%;z-index:10040;pointer-events:none;transition:opacity ' + OS_STILL_FADE_MS + 'ms ease';
@@ -330,7 +334,7 @@ function _osStandFromLook() {
 // ── The place's own night ──
 // The light-pollution dial's starting point, from a one-degree night-lights grid (zimi/static/earth/nightlights-v1.bin, 5.8 KB, from the Black
 // Marble: scripts/build_nightlights.py): a city under its glow, a desert under none. The person's own choice of dial wins (almanac-sky.js).
-var OS_NIGHT_URL = '/static/earth/nightlights-v1.bin', OS_NIGHT_MAGIC = 'ZNLT', OS_NIGHT_HEADER = 10, OS_NIGHT_MAX_DIAL = 1;
+var OS_NIGHT_URL = _almAsset('/static/earth/nightlights-v1.bin'), OS_NIGHT_MAGIC = 'ZNLT', OS_NIGHT_HEADER = 10, OS_NIGHT_MAX_DIAL = 1;
 var _osPlaceDial = null, _osNight = null, _osNightLoading = false;
 function _osNightParse(buf) {
   if (!buf || buf.byteLength < OS_NIGHT_HEADER) return null;
@@ -376,7 +380,7 @@ function _osSetPlaceDial(s) {
 // The foreground of the live sky is the place's own land (almanac-skyland.js, from the one grid: almanac-oneland.js). Until the grid is in
 // it is a plain horizon, never the palms; the grid and the painter load after the card's first picture, and the answer for a place is
 // kept (a place is the same land next time) so a return visit paints it at once.
-var OS_LAND_KEY = 'zimi_sky_land', OS_LAND_SRCS = ['/static/almanac-oneland.js', '/static/almanac-skyland.js'];
+var OS_LAND_KEY = 'zimi_sky_land', OS_LAND_SRCS = [_almAsset('/static/almanac-oneland.js'), _almAsset('/static/almanac-skyland.js')];
 var _osLandLoading = false, _osLandFailed = false;
 function _osLandKey(s) { return Math.floor(s.lat) + ',' + Math.floor(s.lon); }
 function _osLandRemembered(key) {

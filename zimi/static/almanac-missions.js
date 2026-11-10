@@ -15,7 +15,7 @@
 // A leg's rows may carry an up vector (cols 7-9) for the vehicles whose pointing is not along their velocity.
 
 // ── Constants ──
-var AM_DATA_URL = '/static/earth/missions-v1.json';
+var AM_DATA_URL = _almAsset('/static/earth/missions-v1.json');
 var AM_MRE = 1 / (AE_EARTH_RADIUS_KM * 1000);               // one metre, in Earth radii
 var AM_MOON_FIX_NEAR_KM = 40000, AM_MOON_FIX_FAR_KM = 150000;   // the Moon's correction is all the way in by the first, gone by the second
 var AM_SEAM_DECAY_S = 600;                                  // a leg that begins off the end of the last one (two models of the Earth's turn) closes the gap over this long
@@ -244,7 +244,7 @@ function _amTurnX(b, deg) {
 }
 
 // The planner is its own file, fetched when asked for.
-var AM_PLAN_JS = '/static/almanac-missions-plan.js', _amPlanLoading = false;
+var AM_PLAN_JS = _almAsset('/static/almanac-missions-plan.js'), _amPlanLoading = false;
 function _amPlanLoad(then) {
   if (typeof _apOpen === 'function') { then(); return; }
   if (_amPlanLoading) return;

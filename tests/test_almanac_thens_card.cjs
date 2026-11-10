@@ -14,6 +14,7 @@ function check(ok, label) {
 const S = vm.createContext({
   Intl, Date, JSON, Math, String, Array, isFinite,
   _aeT: (k) => '[' + k + ']',
+  _almAsset: (p) => p,
   _almEsc: (x) => String(x).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/"/g, '&quot;'),
   _almTzForLocation: () => 'America/Los_Angeles',
   _tzFmt: (tz, o) => new Intl.DateTimeFormat('en-US', Object.assign({ timeZone: tz }, o)),

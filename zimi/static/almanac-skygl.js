@@ -16,9 +16,9 @@
 // ══ Pure: what colour, which way, how bright ═════════════════════════════
 
 var SG_EXTINCTION_MAG = 0.2;                             // magnitudes a star loses per airmass beyond the zenith's
-var SG_STARS_URL = '/static/earth/stars-v1.bin';          // scripts/build_star_catalog.py documents the format
-var SG_NAMES_URL = '/static/earth/stars-names-v1.json';   // the bright stars' designations, from scripts/build_star_catalog.py
-var SG_MILKYWAY_URL = '/static/earth/milkyway-v1.webp';   // ESO / S. Brunier, galactic coordinates, stars removed
+var SG_STARS_URL = _almAsset('/static/earth/stars-v1.bin');          // scripts/build_star_catalog.py documents the format
+var SG_NAMES_URL = _almAsset('/static/earth/stars-names-v1.json');   // the bright stars' designations, from scripts/build_star_catalog.py
+var SG_MILKYWAY_URL = _almAsset('/static/earth/milkyway-v1.webp');   // ESO / S. Brunier, galactic coordinates, stars removed
 var SG_STARS_HEADER_BYTES = 4, SG_STARS_VERSION = 1, SG_STARS_BYTES_EACH = 6;
 var SG_STARS_U16_STEPS = 65536, SG_STARS_U16_MAX = 65535;
 var SG_STARS_MAG_OFFSET = 2, SG_STARS_MAG_SCALE = 25;

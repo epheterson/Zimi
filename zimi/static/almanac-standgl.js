@@ -228,7 +228,7 @@ function _aeStTreeFrag(albLines, uniforms) {
   ].join('\n');
 }
 var AE_ST_TREE_FRAG = _aeStTreeFrag([
-  '  vec3 alb = vTree.z > 3.5 ? vec3(0.07, 0.075, 0.035) : vTree.z < 0.5 ? vec3(0.026, 0.05, 0.03) : vTree.z < 1.5 ? vec3(0.03, 0.05, 0.026) : vTree.z < 2.5 ? vec3(0.05, 0.09, 0.035) : vec3(0.04, 0.028, 0.02);',
+  '  vec3 alb = vTree.z > 3.5 ? vec3(0.12, 0.11, 0.055) : vTree.z < 0.5 ? vec3(0.026, 0.05, 0.03) : vTree.z < 1.5 ? vec3(0.03, 0.05, 0.026) : vTree.z < 2.5 ? vec3(0.05, 0.09, 0.035) : vec3(0.04, 0.028, 0.02);',
   '  alb *= (0.8 + 0.4 * vTree.y) * (0.6 + 0.4 * min(vTree.x, 1.0));'   // each tree its own shade, darker below, paler at the tips
 ].join('\n'), '');
 // Grass: blades in tufts, the ground's own colour (uGrassAlb) darker at the root and paler dry at the tip, swaying a little (uSway: 0 under reduced motion).
@@ -313,13 +313,31 @@ var AE_ST_BODY_VERT = [
 ].join('\n');
 // A sky object with an angular size (a twilight rocket plume: a sunlit cloud tens of degrees long): a soft billboard in angular units, long along its track.
 var AE_ST_BOARD_FRAG = [
-  'precision highp float; uniform vec2 uAxis, uSize; uniform vec3 uCol; uniform float uLum, uHalf; varying vec2 vUv;',
+  'precision highp float; uniform vec2 uAxis, uSize, uSunTan; uniform vec3 uCol, uColBase; uniform float uLum, uHalf, uSeed; varying vec2 vUv;',
+  'float h2(vec2 p) { return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453); }',
+  'float n2(vec2 p) { vec2 i = floor(p), f = fract(p); f = f * f * (3.0 - 2.0 * f); return mix(mix(h2(i), h2(i + vec2(1, 0)), f.x), mix(h2(i + vec2(0, 1)), h2(i + vec2(1, 1)), f.x), f.y); }',
+  // A twilight rocket plume: a small very bright core at the rocket's end (+axis), then a fan that widens and thins along the track behind it, a narrow head and a broad translucent bell,
+  // its edges broken by noise; blue-white where it is lit, going pale gold and pink toward the tail and the Sun's side. Never white but at the core.
   'void main() {',
   '  vec2 q = vUv * uHalf, perp = vec2(-uAxis.y, uAxis.x);',
-  '  float al = dot(q, uAxis) / uSize.x, ac = dot(q, perp) / uSize.y, r = sqrt(al * al + ac * ac);',
-  '  float a = pow(max(1.0 - r, 0.0), 1.1) * (0.6 + 0.4 * smoothstep(0.0, 0.5, 1.0 - r));',
-  '  if (a <= 0.002) discard;',
-  '  gl_FragColor = vec4(uCol * 0.95, clamp(a * uLum, 0.0, 0.92));',   // additive blending multiplies the colour by the alpha itself: the colour is not premultiplied
+  '  float u = dot(q, uAxis) / uSize.x, v = dot(q, perp) / uSize.y;',          // u: -1 the tail .. +1 the head; v: across, in the fan's own half-widths
+  '  float t = clamp((u + 1.0) * 0.5, 0.0, 1.0);',
+  '  if (u < -1.05 || u > 1.05) discard;',
+  '  float env = 0.08 + 0.92 * pow(sin(min((1.0 - t) / 0.8, 1.0) * 1.5708), 0.6);',                                // the fan's half-width: narrow at the head, broad behind
+  '  vec2 np = vec2(u * 3.2 + uSeed * 9.0, v * 2.2);',
+  '  float brk = (n2(np) - 0.5) * 0.7 + (n2(np * 2.7 + 5.0) - 0.5) * 0.35;',      // noise-broken edges and the soft banding of a real plume
+  '  float vv = abs(v) / env + brk * (0.25 + 0.6 * (1.0 - t));',
+  '  float across = pow(max(1.0 - vv, 0.0), 1.3);',
+  '  float tail = smoothstep(0.0, 0.28, t);',                                      // the tail end dissolves
+  '  float fan = across * tail * (0.28 + 0.72 * pow(t, 0.9)) * (0.85 + 0.3 * n2(np * 1.3 + 11.0));',
+  '  vec2 hd = vec2((u - 0.98) * uSize.x, v * uSize.y) / (uSize.y * 0.11);',   // the core: tiny and round, at the head
+  '  float core = exp(-dot(hd, hd) * 1.4);',
+  '  float sunSide = clamp(dot(vec2(-uAxis.y, uAxis.x) * sign(v), uSunTan) * 0.5 + 0.5, 0.0, 1.0);',
+  '  float warm = clamp((1.0 - t) * 0.85 + (sunSide - 0.5) * 0.5 * (1.0 - t) + 0.12, 0.0, 1.0);',
+  '  vec3 c = mix(uCol, uColBase, warm);',
+  '  float a = clamp(fan * 0.8, 0.0, 0.8) + core * 0.75;',
+  '  if (a <= 0.003) discard;',
+  '  gl_FragColor = vec4(mix(c * 0.92, vec3(1.0), clamp(core * 0.8, 0.0, 1.0)), clamp(a * uLum, 0.0, 1.0));',   // additive blending multiplies the colour by the alpha itself
   '}'
 ].join('\n');
 // The Moon's dark disc in a total eclipse: near black with a trace of earthshine, over the sky's glow.
