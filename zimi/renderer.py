@@ -2684,6 +2684,9 @@ def _driver_pid(playwright):
     for chain in (
         ("_connection", "_transport", "_proc"),
         ("_impl_obj", "_connection", "_transport", "_proc"),
+        # 1.65 moved the transport off the connection onto the sync context manager's client; stop() is that
+        # manager's bound __exit__.
+        ("stop", "__self__", "_client", "_transport", "_proc"),
     ):
         node = playwright
         for name in chain:
