@@ -673,6 +673,7 @@ var AE_CSS = [
   '.ae-go-grid .ae-go-row{flex-direction:column;justify-content:flex-start;gap:5px;min-height:84px;padding:6px 2px;text-align:center;font-size:12px;line-height:1.2}',
   '.ae-go-grid .ae-go-row span:not(.ae-go-thumb){display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;overflow-wrap:anywhere}',
   '.ae-go-grid .ae-go-wait,.ae-go-grid h4{grid-column:1/-1}',
+  '#ae-go-groups:not(.ae-go-grid) .ae-go-row>span:not(.ae-go-thumb){min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}',
   // Short landscape: the head is tighter and the list's rows touch, so six of them show.
   '@media (orientation:landscape) and (max-height:460px){.ae-go-head{padding-bottom:2px}.ae-go-find{min-height:44px}.ae-go-body{padding-top:0}#ae-go-groups:not(.ae-go-grid) .ae-go-list{gap:0}}',
   '.night-red .ae-go,.night-red .ae-go-find{background:' + AE_PANEL_BG_RED + '}',
