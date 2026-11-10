@@ -26,6 +26,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ### Fixed
 
+- Games: Drop Pin on your own map no longer says the map has not loaded over a map that has, and the map is only a map there: its search box, place chips, cards and menus are put away and the place's own name is taken off its labels.
+
 - Games: a daily played past midnight counts for the day it began; ZimCity's money warning follows this year's taxes, a kept city's buttons act on that city, and a paused city stops redrawing; Canasta fits eleven melds a side on a short wide screen.
 
 ## [1.15.4]
