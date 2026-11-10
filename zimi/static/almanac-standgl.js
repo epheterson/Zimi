@@ -210,7 +210,7 @@ function _aeStTreeFrag(albLines, uniforms) {
   'precision highp float;',
   AE_ST_GLSL_ATMO, AE_ST_GLSL_TONE,
   _aeStInscatterGlsl('inscatterGround', AE_ST_STEPS_GROUND),
-  'uniform vec3 uCam, uAmbient; uniform float uK, uCloudDim;' + uniforms,
+  'uniform vec3 uCam, uAmbient; uniform float uKg, uCloudDim;' + uniforms,
   'varying vec3 vP, vN, vTree;',
   'void main() {',
   '  gJit = fract(52.9829189 * fract(dot(gl_FragCoord.xy, vec2(0.06711056, 0.00583715))));',
@@ -222,7 +222,7 @@ function _aeStTreeFrag(albLines, uniforms) {
   '    vec3 o = uCam * 0.001, d = -V, Tt, ins; float t0, t1;',
   '    if (airSpan(o, d, t0, t1)) { t1 = min(t1, dist * 0.001); if (t1 > t0) { ins = inscatterGround(o + d * t0, d, t1 - t0, Tt); L = L * Tt + ins; } }',
   '  }',
-  '  gl_FragColor = vec4(tone(L, uK), 1.0);',
+  '  gl_FragColor = vec4(tone(L, uKg), 1.0);',
   '}'
   ].join('\n');
 }
@@ -241,7 +241,7 @@ var AE_ST_GRASS_VERT = [
   '}'
 ].join('\n');
 var AE_ST_GRASS_FRAG = _aeStTreeFrag([
-  '  vec3 alb = uGrassAlb * (0.65 + 0.7 * vTree.y) * (0.5 + 0.5 * min(vTree.x, 1.0)); alb = mix(alb, alb * vec3(1.5, 1.35, 0.7), smoothstep(0.55, 1.0, vTree.x) * vTree.y);'
+  '  vec3 alb = uGrassAlb * (0.85 + 0.5 * vTree.y) * (0.75 + 0.45 * min(vTree.x, 1.0)); alb = mix(alb, alb * vec3(1.6, 1.45, 0.8), smoothstep(0.4, 1.0, vTree.x) * (0.5 + 0.5 * vTree.y));'
 ].join('\n'), ' uniform vec3 uGrassAlb;');
 // Clouds: one deck over the Earth, from a field of (place, day): a plane `base` metres over the ground, fbm density thresholded by the
 // coverage, lit by the Sun through the air up to the deck, thin edges bright and thick bodies dark. `osClouds(d, o)` (d: unit view
@@ -425,7 +425,7 @@ var AE_ST_GROUND_FRAG = [
   'precision highp float;',
   AE_ST_GLSL_ATMO, AE_ST_GLSL_TONE, AE_ST_GLSL_NOISE,
   _aeStInscatterGlsl('inscatterGround', AE_ST_STEPS_GROUND),
-  'uniform vec3 uCam; uniform float uK, uPixAng, uTime;',
+  'uniform vec3 uCam; uniform float uKg, uPixAng, uTime;',
   'uniform sampler2D uMap; uniform float uMapped, uGrey; uniform vec3 uBase, uGain;',
   'uniform vec3 uAmbient, uSkyHor, uSkyZen, uE2, uDir2;',
   'uniform vec2 uHead; uniform float uCloudDim; uniform float uGrass, uCanopy; uniform float uLommel, uRough, uRock, uDetail, uCover, uDiffuse, uVis, uDirect; uniform vec3 uDiffSky;',
@@ -489,7 +489,7 @@ var AE_ST_GROUND_FRAG = [
   // Grass cells (the land-cover grid's): a dry season's Blue Marble is tan, but the ground is still grass: its brightness kept, its hue pulled green where the map is not.
   '  if (uDetail > 0.5 && vSea < 0.5 && uGrass > 0.0) {',
   '    float lg = min(dot(alb, vec3(0.3, 0.59, 0.11)), 0.2), dull = 1.0 - smoothstep(0.0, 0.06, alb.g - max(alb.r, alb.b));',
-  '    alb = mix(alb, vec3(0.72, 1.0, 0.42) * lg * 0.7, uGrass * (0.3 + 0.5 * dull));',
+  '    alb = mix(alb, vec3(0.72, 1.0, 0.42) * lg * 0.7, uGrass * (0.55 + 0.4 * dull));',
   '  }',
   // Ground cover by height, slope and latitude (the Earth's): snow above the snow line, bare rock on steep ground and above the
   // trees, the Blue Marble's own tint elsewhere; the lines wander with a slow noise so no height is a ruled edge.
@@ -543,7 +543,7 @@ var AE_ST_GROUND_FRAG = [
   '    vec3 o = uCam * 0.001, d = -V, Tt, ins; float t0, t1;',
   '    if (airSpan(o, d, t0, t1)) { t1 = min(t1, dist * 0.001); if (t1 > t0) { ins = inscatterGround(o + d * t0, d, t1 - t0, Tt); L = L * Tt + ins; } }',
   '  }',
-  '  gl_FragColor = vec4(tone(L, uK), 1.0);',
+  '  gl_FragColor = vec4(tone(L, uKg), 1.0);',
   '}'
 ].join('\n');
 

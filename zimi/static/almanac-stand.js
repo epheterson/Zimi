@@ -331,7 +331,7 @@ function _aeStandGroundMesh(st, pend, U, mat) {
     uMap: { value: pend.tex || null }, uMapped: { value: pend.tex ? 1 : 0 }, uGrey: { value: AE_STAND_GREY_MAP[st.key] ? 1 : 0 },
     uBase: { value: AE_STAND_BASE[st.key] || [0.5, 0.5, 0.5] }, uGain: { value: AE_STAND_TINT[st.key] || [1, 1, 1] },
     uAmbient: { value: [0, 0, 0] }, uSkyHor: { value: [0, 0, 0] }, uSkyZen: { value: [0, 0, 0] }, uE2: { value: [0, 0, 0] }, uDir2: { value: [0, 0, 1] },
-    uLommel: { value: a ? 0 : 1 }, uRough: { value: AE_STAND_ROUGH[st.key] || (st.b.fbm.amp > 100 ? 1.3 : 1) }, uRock: { value: AE_STAND_ROCK[st.key] || 0.25 }, uDetail: { value: st.key === 'earth' ? 1 : 0 }, uCloudDim: { value: 1 }, uGrass: { value: 0 }, uCanopy: { value: 0 }, uHead: { value: [0, 1] }, uCover: { value: st.key === 'earth' ? 1 : 0 },
+    uLommel: { value: a ? 0 : 1 }, uRough: { value: AE_STAND_ROUGH[st.key] || (st.b.fbm.amp > 100 ? 1.3 : 1) }, uRock: { value: AE_STAND_ROCK[st.key] || 0.25 }, uDetail: { value: st.key === 'earth' ? 1 : 0 }, uCloudDim: { value: 1 }, uKg: { value: 1 }, uGrass: { value: 0 }, uCanopy: { value: 0 }, uHead: { value: [0, 1] }, uCover: { value: st.key === 'earth' ? 1 : 0 },
     uDiffuse: { value: d ? 1 : 0 }, uVis: { value: d ? d.vis : 1 }, uDirect: { value: 1 }, uDiffSky: { value: [0, 0, 0] }
   }, U);
   var ground = st.groundMesh = new THREE.Mesh(g, mat(AE_ST_GROUND_VERT, AE_ST_GROUND_FRAG, gu, {}));
@@ -358,6 +358,7 @@ var AE_STAND_STATION_MIN_LIM = 3;           // the station is marked once the sk
 var AE_STAND_PROBE_MARKS = false;          // deep-space probes are pinpoints nobody could see: not marked (the station's pass is, near Earth)
 var AE_STAND_SKY_MATCH_SHARE = 0.55;      // and how far (in log) toward it: a view with sunlit ground in it cannot be exposed for the sky alone
 var AE_STAND_SKY_MATCH_DEG = [-20, 6];     // the Sun's height over which the Earth's exposure goes from this view's own to the 2D sky's
+var AE_STAND_GROUND_OWN_K_DEG = [-6, 10];   // the Sun heights between which the ground's exposure goes from the provider's to this view's own
 var AE_STAND_NIGHT_GLOW = 9e-7;           // the least light the Earth's ground has (starlight and airglow, in this view's units: the Sun at the Earth is 1): a dark-adapted eye makes out the ground and its horizon
 var AE_STAND_SLICE_MS = 8;                 // a slice of building between breaths of the page
 var AE_STAND_SHADE_LOD = 1.5;              // the shadow grids hold wavelengths down to this many cells
@@ -464,13 +465,13 @@ function _aeStCrown(tri, t, sd, kind) {
   }
 }
 // Open country's trees stand in clumps and along draws, not scattered: a density (0..1) at a place round the viewer from two slow noises.
-var AE_STAND_GRASS_NEAR_MIN = 10;
+var AE_STAND_GRASS_NEAR_MIN = 24, AE_STAND_SAVANNA_THIN_M = [60, 130];   // open country: trees from 60 m, in their full number by 130
 function _aeStSavanna(x, y) {
   var clump = Math.max(0, _aeNoise3(x / 140, y / 140, 0.5, 31)), draw = Math.exp(-Math.pow(_aeNoise3(x / 260, y / 260, 3.5, 47) / 0.07, 2));
   return Math.min(0.85, AE_STAND_GRASS_TREES * (0.25 + 9 * clump * clump) + 0.5 * draw);
 }
 // The class's ground: grass pulled green and the distant woods' texture, by the cell the viewer stands in; and the tufts of grass round the feet.
-var AE_STAND_GRASS_COUNT = 7000, AE_STAND_GRASS_RANGE_M = [1.3, 38], AE_STAND_GRASS_DENSITY = { grass: 1, broadleaf: 0.5, conifer: 0.35, tundra: 0.2 };
+var AE_STAND_GRASS_COUNT = 18000, AE_STAND_GRASS_RANGE_M = [1.0, 15], AE_STAND_GRASS_DENSITY = { grass: 1, broadleaf: 0.5, conifer: 0.35, tundra: 0.2 };
 function _aeStandGround(st, land, px) {
   var g = st.ground, cls = land && land.cls;
   g.uGrass.value = cls === 'grass' ? 1 : 0;
@@ -485,11 +486,11 @@ function _aeStandGrass(st, dens, cls, px) {
   var n = Math.round(AE_STAND_GRASS_COUNT * dens * _aeStandDetail()), P = [], N = [], T = [], lo = AE_STAND_GRASS_RANGE_M[0], hi = AE_STAND_GRASS_RANGE_M[1];
   for (var i = 0; i < n; i++) {
     var r = lo + (hi - lo) * Math.pow(rnd(), 0.8), th = rnd() * 2 * Math.PI, x0 = r * Math.sin(th), y0 = r * Math.cos(th);
-    var fade = 1 - Math.min(1, Math.max(0, (r - 24) / (hi - 24))), tall = (cls === 'tundra' ? 0.1 : 0.14 + 0.3 * rnd()) * fade;   // the tufts shrink away into the texture by the range's end
+    var fade = 1 - Math.min(1, Math.max(0, (r - 8) / (hi - 8))), tall = (cls === 'tundra' ? 0.04 : 0.05 + 0.1 * rnd()) * fade;   // the tufts shrink away into the texture by the range's end
     if (tall < 0.03) continue;
-    var z0 = _aeTerrainLocal('earth', lat0, lon0, h0, x0, y0, r * 0.0005, st.pend && st.pend.flat), sd = rnd(), blades = 5;
+    var z0 = _aeTerrainLocal('earth', lat0, lon0, h0, x0, y0, r * 0.0005, st.pend && st.pend.flat), sd = rnd(), blades = 4;
     for (var b = 0; b < blades; b++) {
-      var ang = rnd() * 2 * Math.PI, w = 0.016 + 0.016 * rnd(), hh = tall * (0.6 + 0.6 * rnd()), lean = 0.08 + 0.25 * rnd(), lx = Math.cos(ang) * lean * hh, ly = Math.sin(ang) * lean * hh;
+      var ang = rnd() * 2 * Math.PI, w = 0.008 + 0.007 * rnd(), hh = tall * (0.6 + 0.6 * rnd()), lean = 0.08 + 0.25 * rnd(), lx = Math.cos(ang) * lean * hh, ly = Math.sin(ang) * lean * hh;
       var bx = x0 + (rnd() - 0.5) * 0.25, by = y0 + (rnd() - 0.5) * 0.25, px2 = -Math.sin(ang + 1.2) * w, py2 = Math.cos(ang + 1.2) * w;
       var nx = Math.cos(ang) * 0.3, ny = Math.sin(ang) * 0.3;
       [[bx - px2, by - py2, z0, 0], [bx + px2, by + py2, z0, 0], [bx + lx, by + ly, z0 + hh, 1]].forEach(function (q) { P.push(q[0], q[1], q[2]); N.push(nx, ny, 0.95); T.push(q[3], sd, 0); });
@@ -516,7 +517,7 @@ function _aeStGrassColour(st, px, cls) {
     var dull = lin[1] < Math.max(lin[0], lin[2]) * 1.05;
     c = dull || cls === 'grass' ? [0.72 * l * 0.85, 1.0 * l * 0.85, 0.42 * l * 0.85].map(function (v, k) { return 0.5 * v + 0.5 * [0.2, 0.28, 0.1][k] * Math.min(1, l / 0.25 + 0.4); }) : lin;
   }
-  return c.map(function (v) { return Math.min(0.5, Math.max(0.01, v)); });
+  return c.map(function (v) { return Math.min(0.5, Math.max(0.01, v * 1.3)); });   // blades are lit: paler than the soil and the matted turf round their roots
 }
 function _aeStandTrees(st) {
   if (!st || !st.scene || st.trees || st.key !== 'earth') return;
@@ -531,7 +532,8 @@ function _aeStandTrees(st) {
   }
   var R = st.b.km * 1000, h0 = st.h0, lat0 = st.lat, lon0 = st.lon, THREE = _ae.gl.THREE;
   var seed = (Math.round(lat0 * 1e4) * 73856093) ^ (Math.round(lon0 * 1e4) * 19349663), rnd = function () { seed |= 0; seed = seed + 0x6D2B79F5 | 0; var t = Math.imul(seed ^ seed >>> 15, 1 | seed); t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t; return ((t ^ t >>> 14) >>> 0) / 4294967296; };
-  var list = [], ratio = AE_STAND_TREES_RANGE_M[1] / AE_STAND_TREES_RANGE_M[0], thin = AE_STAND_TREES_THIN_M;
+  var landAt = typeof _osLandCover === 'function' ? _osLandCover(lat0, lon0) : null;
+  var list = [], ratio = AE_STAND_TREES_RANGE_M[1] / AE_STAND_TREES_RANGE_M[0], thin = landAt && landAt.cls === 'grass' ? AE_STAND_SAVANNA_THIN_M : AE_STAND_TREES_THIN_M;
   for (var k = 0, maxTrees = Math.round(AE_STAND_TREES_MAX * _aeStandDetail()); k < AE_STAND_TREES_TRIES && list.length < maxTrees; k++) {
     var r = AE_STAND_TREES_RANGE_M[0] * Math.pow(ratio, rnd()), th = rnd() * 2 * Math.PI, d = _aeDestination(lat0, lon0, r / R, th);
     var near = Math.max(0, Math.min(1, (r - thin[0]) / (thin[1] - thin[0])));
@@ -552,8 +554,11 @@ function _aeStandTrees(st) {
   }
   // Open country always has some near: a few oaks within 300 m, wherever the clumps happen to fall.
   var landHere = typeof _osLandCover === 'function' ? _osLandCover(lat0, lon0) : null, nearTrees = list.filter(function (t) { return Math.hypot(t.x, t.y) < 300; }).length;
-  for (var fz = 0; landHere && landHere.cls === 'grass' && nearTrees < AE_STAND_GRASS_NEAR_MIN && fz < 60; fz++) {
-    var fr2 = 70 + 230 * rnd(), ft = rnd() * 2 * Math.PI, fx = fr2 * Math.sin(ft), fy = fr2 * Math.cos(ft), fh = 6 + 7 * Math.pow(rnd(), 1.3);
+  var cx0 = 0, cy0 = 0;   // the fill-in comes in clumps of five or six round a centre 70 to 260 m out
+  for (var fz = 0; landHere && landHere.cls === 'grass' && nearTrees < AE_STAND_GRASS_NEAR_MIN && fz < 80; fz++) {
+    if (fz % 6 === 0) { var cr = 70 + 190 * rnd(), ca = rnd() * 2 * Math.PI; cx0 = cr * Math.sin(ca); cy0 = cr * Math.cos(ca); }
+    var fx = cx0 + (rnd() - 0.5) * 50, fy = cy0 + (rnd() - 0.5) * 50, fr2 = Math.hypot(fx, fy), fh = 6 + 7 * Math.pow(rnd(), 1.3);
+    if (fr2 < 55) continue;
     var fzz = _aeTerrainLocal('earth', lat0, lon0, h0, fx, fy, fr2 * 0.0005, st.pend && st.pend.flat);
     list.push({ kind: 'broadleaf', x: fx, y: fy, z: fzz, h: fh, seed: rnd(), lean: (rnd() - 0.5) * 0.12, w: 0.8 + rnd() * 0.5 }); nearTrees++;
   }
@@ -763,7 +768,13 @@ function _aeStPhoto(st, fr) {
   if (_aeStandAirOn(st) && _aeStandAir.exposureK) {   // a provider's atmosphere brings its own exposure, for everything in the picture
     var kp = null;
     try { kp = _aeStandAir.exposureK(st, fr, p); } catch (e) {}
-    if (kp > 0) p.k = kp;
+    if (kp > 0) {
+      // The ground is lit in the same units but the 2D sky's exposure is a gentler curve than this view's: by day the ground keeps this view's own exposure (it
+      // read a washed pale green under the sky's), through twilight and night the provider's own.
+      var wg = _smoothstep(AE_STAND_GROUND_OWN_K_DEG[0], AE_STAND_GROUND_OWN_K_DEG[1], fr.sunAlt);
+      p.kGround = Math.exp(Math.log(kp) * (1 - wg) + Math.log(p.k) * wg);
+      p.k = kp;
+    }
   }
   // The provider's eclipse: the share of the Sun's light that reaches the place (the ground, its shadows and the Sun's sprite), the faintest star the dimmed sky shows, and the disc geometry.
   if (_aeStandAirOn(st)) {
@@ -912,7 +923,7 @@ function _aeStandPlaceCamera(st) {
 // The sky, the stars and the air every shader shares.
 function _aeStandApplyAir(st, fr, ph, view) {
   var U = st.uni, sk = st.sky, e = view.e;
-  U.uSunDir.value = fr.sun; U.uSunE.value = ph.sunE; U.uK.value = ph.k;
+  U.uSunDir.value = fr.sun; U.uSunE.value = ph.sunE; U.uK.value = ph.k; if (st.ground) st.ground.uKg.value = ph.kGround || ph.k;
   sk.uCam.value = [view.pos[0] / 1000, view.pos[1] / 1000, view.pos[2] / 1000];
   sk.uFwd.value = [-e[8], -e[9], -e[10]]; sk.uRight.value = [e[0], e[1], e[2]]; sk.uUp.value = [e[4], e[5], e[6]];
   sk.uTan.value = [view.tanV * view.aspect, view.tanV];
