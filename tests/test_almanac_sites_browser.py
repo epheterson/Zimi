@@ -313,7 +313,6 @@ def test_the_rover_jumps_in_the_moons_gravity_and_lands_again(page):
         pytest.fail("the rover did not rebound")
     page.evaluate("() => { _asGroundAt = window.__gnd; }")
 
-
 def test_a_mars_rover_has_six_wheels_and_the_ground_there_is_not_the_moons(page):
     st = _visit(page, "mars", "Perseverance", drive=True)
     assert len(st["rover"]["wheels"]) == 6
