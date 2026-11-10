@@ -97,6 +97,11 @@ var _oaAir = {
     u.uMoonAz.value = p.moonAz * DEG_TO_RAD; u.uMoonLux.value = lv.moonLux;
     u.uGlow.value = lv.glow; u.uEclPole.value = p.eclPole; u.uSunVec.value = p.sunVec;
   },
+  // An eclipse: the share of the Sun's light that reaches the place (the ground's light and the Sun's own), the faintest star the dimmed sky shows,
+  // and the discs (almanac-onesky.js _osEclipse), for the ground view's Sun and Moon.
+  sunShare: function (st, fr) { return _osSkyState(_oaDef(st, fr)).sunShare; },
+  limitMag: function (st, fr) { return _osSkyState(_oaDef(st, fr)).lm; },
+  eclipse: function (st, fr) { return _osEclipse(_oaDef(st, fr)); },
   // The card's exposure, in Stand here's units (the same eye for the sky, the ground and everything on it).
   exposureK: function (st, fr) {
     var lv = _osSkyState(_oaDef(st, fr)).lv;

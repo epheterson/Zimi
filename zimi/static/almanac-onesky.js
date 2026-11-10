@@ -33,7 +33,7 @@ function _osSkyState(def) {
   var s = { eph: f.eph, moonData: f.moonData, now: now, lat: def.lat, lon: def.lon };
   _skyBrightness(s);
   var p = _skyLightParams(s);
-  var state = { eph: s.eph, moonData: s.moonData, now: now, p: p, lv: _sgLightValues(p), lm: s.lm, lum: s.lum };
+  var state = { eph: s.eph, moonData: s.moonData, now: now, p: p, lv: _sgLightValues(p), lm: s.lm, lum: s.lum, obsc: s.obsc, sunShare: s.sunShare, moonShare: s.moonShare };
   _osStateCache = { lat: def.lat, lon: def.lon, t: def.tMs, dial: p.dial, state: state };
   return state;
 }
@@ -70,6 +70,18 @@ function _osCloudField(def) {
 function _osCloudValues(def, sunShare) {
   var f = _osCloudField(def), day = _osSolarDay(def.tMs, def.lon);
   return { cloud: [f.coverage, f.base, f.thickness, f.seed[0]], wind: [f.wind[0], f.wind[1], (day - Math.floor(day)) * OS_DAY_S], sunE: SG_SUN_LUX * (sunShare == null ? 1 : sunShare) };
+}
+
+// ── An eclipse of the Sun ──
+// What a window needs to draw one: how much of the Sun's disc the Moon covers (the card's own two-circle overlap), where each stands and
+// how big each is, and the corona's strength (it comes out in the last tenth before totality). The light it takes from the sky is already
+// in _osSkyState (sunShare, the lux and the exposure); this is for the discs.
+var OS_CORONA_FROM = 0.9;
+function _osEclipse(def) {
+  var S = _osSkyState(def), e = S.eph;
+  return { obsc: S.obsc, sunShare: S.sunShare, sunAz: e.sun.az, sunAlt: e.sun.alt, moonAz: e.moon.azimuth, moonAlt: e.moon.altitude,
+    sunSemiDeg: SKY_SUN_SEMI_DEG, moonSemiDeg: _skyMoonSemi(S.now, e.moon.altitude),
+    corona: S.obsc > OS_CORONA_FROM ? Math.pow((S.obsc - OS_CORONA_FROM) / (1 - OS_CORONA_FROM), 3) : 0 };
 }
 
 // ── The sky's objects ──

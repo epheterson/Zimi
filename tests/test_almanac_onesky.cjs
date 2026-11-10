@@ -20,6 +20,16 @@ const day = run('_osSkyState(_osDef({ lat: 40.71, lon: -74, tMs: Date.parse("202
 const night = run('_osSkyState(_osDef({ lat: 40.71, lon: -74, tMs: Date.parse("2026-09-12T05:00:00Z") })).lv.exposure');
 check(night > 100 * day, 'the eye is set a hundred times more sensitive at night than by day (' + day.toExponential(1) + ' against ' + night.toExponential(1) + ')');
 
+// ── An eclipse of the Sun ──
+const ecl = (iso) => run('_osEclipse(_osDef({ lat: 30.0474, lon: -99.1403, tMs: Date.parse("' + iso + '") }))');
+const tot = ecl('2024-04-08T18:34:50Z'), part = ecl('2024-04-08T17:45:00Z'), none = ecl('2024-04-08T14:00:00Z');
+check(tot.obsc > 0.99 && tot.sunShare < 0.01 && tot.corona > 0.9, 'Kerrville at totality: the Moon covers the Sun (' + tot.obsc.toFixed(3) + '), the sky keeps ' + tot.sunShare.toFixed(3) + ' of its light, the corona is out');
+check(part.obsc > 0.2 && part.obsc < 0.95 && part.corona === 0 && part.sunShare > 0.05, 'before it, a partial phase (' + part.obsc.toFixed(2) + ') has no corona');
+check(none.obsc === 0 && none.sunShare === 1, 'hours before, none');
+check(Math.abs(tot.sunSemiDeg - 0.2666) < 0.01 && tot.moonSemiDeg > 0.24 && tot.moonSemiDeg < 0.29, 'the discs are half a degree across (Sun ' + tot.sunSemiDeg + ', Moon ' + tot.moonSemiDeg.toFixed(3) + ' radius)');
+const sep = Math.hypot((tot.sunAz - tot.moonAz) * Math.cos(tot.sunAlt * Math.PI / 180), tot.sunAlt - tot.moonAlt);
+check(sep < 0.15, 'and the Moon is on the Sun (' + sep.toFixed(3) + ' deg)');
+
 // ── The day's clouds ──
 const field = (lat, lon, t) => run('_osCloudField(_osDef({ lat: ' + lat + ', lon: ' + lon + ', tMs: ' + t + ' }))');
 const a = field(40.71, -74, Date.parse('2026-09-11T14:00:00Z')), b = field(40.71, -74, Date.parse('2026-09-11T20:00:00Z'));
