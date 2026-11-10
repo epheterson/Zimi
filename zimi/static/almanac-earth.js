@@ -629,7 +629,7 @@ var AE_CSS = [
   '@media (max-width:370px){#ae-views,.ae-chips{gap:3px}#ae-views .ae-btn{font-size:12px}#ae-views .ae-btn:not(.ae-round){padding-inline:5px}#ae-views .ae-round{width:30px;height:30px}}',
   // Short landscape (a phone on its side, 390 high): the sheet takes the height, short of the control column, so a list of places shows
   // six rows, not one and a half.
-  '@media (orientation:landscape) and (max-height:460px){.ae-go{inset-inline:12px 68px;top:8px;height:auto}.ae-go-head{display:flex;align-items:center}.ae-go-find{flex:0 0 min(300px,40%)}.ae-go-pills.pills-row{flex:1;min-width:0;width:auto;padding-bottom:0}.ae-go-head{padding-bottom:2px}.ae-go-find{min-height:44px}.ae-go-body{padding-top:0}.ae-go-list{gap:0}}',
+  '@media (orientation:landscape) and (max-height:460px){.ae-go{inset-inline:12px 68px;top:8px;height:auto}.ae-go-head{display:flex;align-items:center}.ae-go-find{flex:0 0 min(300px,40%)}.ae-go-pills.pills-row{flex:1;min-width:0;width:auto;padding-bottom:0}}',
   '.ae-go-head{flex:none;border-bottom:1px solid var(--border);padding:0 6px 6px}',
   '.ae-go-find{display:flex;align-items:center;gap:8px;min-height:48px;padding:0 4px 0 8px;color:var(--text3)}',
   '.ae-go-find input{flex:1;min-width:0;height:32px;border:0;background:none;color:var(--text);font:inherit;font-size:16px;outline:none;-webkit-user-select:text;user-select:text;-webkit-appearance:none;appearance:none}',
@@ -673,6 +673,8 @@ var AE_CSS = [
   '.ae-go-grid .ae-go-row{flex-direction:column;justify-content:flex-start;gap:5px;min-height:84px;padding:6px 2px;text-align:center;font-size:12px;line-height:1.2}',
   '.ae-go-grid .ae-go-row span:not(.ae-go-thumb){display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;overflow-wrap:anywhere}',
   '.ae-go-grid .ae-go-wait,.ae-go-grid h4{grid-column:1/-1}',
+  // Short landscape: the head is tighter and the list's rows touch, so six of them show.
+  '@media (orientation:landscape) and (max-height:460px){.ae-go-head{padding-bottom:2px}.ae-go-find{min-height:44px}.ae-go-body{padding-top:0}#ae-go-groups:not(.ae-go-grid) .ae-go-list{gap:0}}',
   '.night-red .ae-go,.night-red .ae-go-find{background:' + AE_PANEL_BG_RED + '}',
   // Where you are among the planets, in a corner while near one: tap for the whole system.
   // On a phone the sheet lifts the picture into the minimap's corner: the minimap steps aside while it is up.
