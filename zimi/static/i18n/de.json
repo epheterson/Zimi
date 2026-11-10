@@ -4119,5 +4119,8 @@
   "lib_hd_where": "Wird in den Einstellungen des Almanach gewählt",
   "lib_hd_meta": "{n} Dateien · {size}",
   "older_copies_title": "Ältere Kopien",
-  "older_copies_row": "Ersetzt durch {file}"
+  "older_copies_row": "Ersetzt durch {file}",
+  "alm_go_small": "Kleine Welten",
+  "go_view_grid": "Raster",
+  "go_view_list": "Liste"
 }

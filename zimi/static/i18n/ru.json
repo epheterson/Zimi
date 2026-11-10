@@ -4119,5 +4119,8 @@
   "lib_hd_where": "Выбирается в настройках Альманаха",
   "lib_hd_meta": "Файлов: {n} · {size}",
   "older_copies_title": "Старые копии",
-  "older_copies_row": "Заменена: {file}"
+  "older_copies_row": "Заменена: {file}",
+  "alm_go_small": "Малые миры",
+  "go_view_grid": "Сетка",
+  "go_view_list": "Список"
 }

@@ -205,18 +205,24 @@ jobs:
       # 1.15.3 Almanac broke there and nowhere else). Pinned by checksum;
       # required here, so a missing binary fails instead of skipping.
       - name: Install kiwix-serve
-        run: |
-          curl -fsSL --retry 3 -o kiwix-tools.tgz https://download.kiwix.org/release/kiwix-tools/kiwix-tools_linux-x86_64-3.8.2.tar.gz
-          echo "b0ae98dd344aa0469a15ab42feff6d5aafb79541a82fb4e2647c74b073123815  kiwix-tools.tgz" | sha256sum -c -
-          tar xzf kiwix-tools.tgz
-          echo "KIWIX_SERVE=$PWD/kiwix-tools_linux-x86_64-3.8.2/kiwix-serve" >> "$GITHUB_ENV"
-          echo "ZIMI_REQUIRE_KIWIX_SERVE=1" >> "$GITHUB_ENV"
+        run: ci/install_kiwix_serve.sh
 
-      # --shard i/N: the browser modules, balanced by size, each in exactly one
+      # --shard i/N: the browser modules, balanced by measured time, each in exactly one
       # shard (tests/conftest.py); tests/test_ci_contract.py checks the shards
       # add up to the whole.
       - name: Run the browser tests (shard ${{ matrix.shard }} of 4)
-        run: python -m pytest tests/ -m browser --shard ${{ matrix.shard }}/4 -n auto --dist loadgroup -q
+        run: python -m pytest tests/ -m browser --shard ${{ matrix.shard }}/4 -n auto --dist loadgroup -q --durations=25 --junitxml=junit-shard-${{ matrix.shard }}.xml
+
+      # The timing report: the shards are dealt by the seconds in tests/shard_weights.json. Download these
+      # when one shard runs much longer than its siblings and run scripts/shard_weights.py on them.
+      - name: Upload the shard's timings
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: junit-shard-${{ matrix.shard }}
+          path: junit-shard-${{ matrix.shard }}.xml
+          retention-days: 14
+          if-no-files-found: ignore
 
   test:
     if: always() && (github.event_name != 'pull_request' || !github.event.pull_request.draft)

@@ -741,11 +741,16 @@
    marks under it, a tap each. Differences, all forced by the job: the fill grows from the middle (real time), the thumb is
    neutral there and amber everywhere else, and the middle stop is a play/pause button, which is also the thumb's face
    while the thumb stands on it. */
-.alm-spd { --spd-thumb: 20px; --spd-track: 3px; --spd-rail: color-mix(in srgb, var(--text3) 40%, transparent); --spd-h: 32px; --lo: .5; --hi: .5; position: relative; max-width: 560px; margin: 10px auto 0; }
-.alm-spd-tight { --spd-h: 26px; margin-top: 4px; }
-.alm-spd-range { -webkit-appearance: none; appearance: none; display: block; width: 100%; height: var(--spd-h); margin: 0; padding: 0; cursor: pointer; touch-action: none; border-radius: 2px;
+.alm-spd { --spd-thumb: 20px; --spd-track: 3px; --spd-rail: color-mix(in srgb, var(--text3) 40%, transparent); --spd-h: 32px; --spd-up: 12px; --spd-down: 0px; --lo: .5; --hi: .5; display: flow-root; position: relative; max-width: 560px; margin: 10px auto 0; }
+.alm-spd-tight { --spd-h: 26px; --spd-up: 4px; --spd-down: 0px; margin-top: 4px; }   /* the pinned strip: the date line above and the section bar below keep their taps */
+/* A finger grabs the thumb in a 44 px band (30 in the pinned strip, between the date line and the section bar): the range
+   reaches --spd-up above and --spd-down below its --spd-h box (the marks under it keep their own taps, so there the reach
+   is upward) as padding, the track and thumb drawn in the content box where they always were; negative margins give the
+   room back (flow-root: they must not fold into the slider's own margin), so nothing moves. */
+.alm-spd-range { -webkit-appearance: none; appearance: none; display: block; box-sizing: content-box; width: 100%; height: var(--spd-h); margin: calc(-1 * var(--spd-up)) 0 calc(-1 * var(--spd-down)); padding: var(--spd-up) 0 var(--spd-down); cursor: pointer; touch-action: none; border-radius: 2px;
   background: linear-gradient(to right, transparent calc(var(--spd-thumb) / 2 + var(--lo) * (100% - var(--spd-thumb))), var(--amber) 0, var(--amber) calc(var(--spd-thumb) / 2 + var(--hi) * (100% - var(--spd-thumb))), transparent 0) no-repeat center / 100% var(--spd-track),
-              linear-gradient(var(--spd-rail), var(--spd-rail)) no-repeat center / 100% var(--spd-track); }
+              linear-gradient(var(--spd-rail), var(--spd-rail)) no-repeat center / 100% var(--spd-track);
+  background-origin: content-box; }
 .alm-spd-range::-webkit-slider-runnable-track { background: none; }
 .alm-spd-range::-moz-range-track { background: none; }
 .alm-spd-range::-webkit-slider-thumb { -webkit-appearance: none; width: var(--spd-thumb); height: var(--spd-thumb); border-radius: 50%; border: 0; background: var(--text2); box-shadow: 0 1px 4px rgba(0, 0, 0, .55); transition: transform .14s, box-shadow .14s, background .14s; }

@@ -4119,5 +4119,8 @@
   "lib_hd_where": "Se choisit dans les réglages de l’Almanach",
   "lib_hd_meta": "{n} fichiers · {size}",
   "older_copies_title": "Anciennes copies conservées",
-  "older_copies_row": "Remplacée par {file}"
+  "older_copies_row": "Remplacée par {file}",
+  "alm_go_small": "Petits mondes",
+  "go_view_grid": "Grille",
+  "go_view_list": "Liste"
 }

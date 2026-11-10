@@ -301,8 +301,8 @@ function _aeEclipseNow(scene) {
 // the old one.
 var AE_THREE_URL = '/static/earth/three-r186.min.js';
 var AE_SGP4_URL = '/static/earth/satellite-7.1.0.min.js';
-var AE_TEX_DAY = '/static/earth/earth-day-v1.webp';
-var AE_TEX_NIGHT = '/static/earth/earth-night-v1.webp';
+var AE_TEX_DAY = _almAsset('/static/earth/earth-day-v1.webp');
+var AE_TEX_NIGHT = _almAsset('/static/earth/earth-night-v1.webp');
 var AE_TEX_MOON = _MOON_MAP_URL;        // app.js: the 2D Moons' maps, the 1024 one first
 var AE_TEX_MOON_HI = _MOON_MAP_HI_URL;
 // The 4096 map goes to the GPU as one channel (8 MB, not 32): three's
@@ -450,7 +450,7 @@ var AE_PIN_SVG = '<svg viewBox="0 0 24 24" width="17" height="17" fill="none" st
 var AE_ORBIT_SVG = '<svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" aria-hidden="true"><circle cx="12" cy="12" r="6"/><ellipse cx="12" cy="12" rx="10" ry="3.2"/><path d="M12 1.5v21"/></svg>';
 // Every active satellite (almanac-sats.js, loaded on the button's first press): a ring with dots on it.
 var AE_SATS_SVG = '<svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" aria-hidden="true"><circle cx="12" cy="12" r="9" opacity=".55"/><circle cx="6.5" cy="7" r="1.5" fill="currentColor" stroke="none"/><circle cx="16" cy="5.8" r="1.5" fill="currentColor" stroke="none"/><circle cx="18.2" cy="14.5" r="1.5" fill="currentColor" stroke="none"/><circle cx="9.5" cy="17.5" r="1.5" fill="currentColor" stroke="none"/><circle cx="11.8" cy="11.2" r="1.5" fill="currentColor" stroke="none"/></svg>';
-var AE_SATS_JS = '/static/almanac-sats.js?v=1';
+var AE_SATS_JS = _almAsset('/static/almanac-sats.js');
 // What the all-satellites layer decides by (almanac-sats.js), kept here so the Almanac's constants pages can show it.
 var AE_SATS_REF = {
   ageFreshDays: 3, ageGoneDays: 45,     // elements this young are drawn in full; past the second the satellite is not drawn
@@ -468,7 +468,7 @@ var AE_SATS_REF = {
 };
 // Launches (almanac-launches.js, loaded on the button's first press): a rocket rising.
 var AE_LAUNCH_SVG = '<svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 2.5c3 2.6 4.3 6 4.3 9.6l-1.6 3.4H9.3l-1.6-3.4C7.7 8.5 9 5.1 12 2.5z"/><circle cx="12" cy="9.4" r="1.6"/><path d="M8.3 14.2l-2.6 2.6M15.7 14.2l2.6 2.6M10.3 18.5v3M13.7 18.5v3"/></svg>';
-var AE_LAUNCHES_JS = ['/static/almanac-launchflight.js?v=1', '/static/almanac-launches.js?v=1', '/static/almanac-thens.js?v=1'];
+var AE_LAUNCHES_JS = [_almAsset('/static/almanac-launchflight.js'), _almAsset('/static/almanac-launches.js'), _almAsset('/static/almanac-thens.js')];
 // What the launch pages decide by (almanac-launchflight.js), kept here so the Almanac's constants pages can show it.
 var AE_LAUNCH_REF = {
   minElDeg: 1,                          // a rocket is seen above this height over the horizon
@@ -552,6 +552,12 @@ var AE_PROBE_HEX = '#6ee7d8', AE_AMBER_HEX = '#f5c16c';
 // The view's sheets and cards (Go to, settings, a body's card) are solid: the scene and the labels under them never
 // show through what is being read.
 var AE_PANEL_BG = '#0e0e10', AE_PANEL_BG_RED = '#000';
+// The Go to sheet's little bodies: one sprite sheet of lit discs drawn from the base maps (scripts/build_go_discs.py), asked
+// for only when the sheet is first opened. The order is the script's.
+var AE_GO_DISC_URL = _almAsset('/static/earth/go-discs-v1.webp');
+var AE_GO_DISC_KEYS = ['sun', 'earth', 'moon', 'mercury', 'venus', 'mars', 'jupiter', 'saturn', 'uranus', 'neptune', 'pluto', 'ceres', 'vesta', 'io', 'europa',
+  'ganymede', 'callisto', 'titan', 'mimas', 'enceladus', 'tethys', 'dione', 'rhea', 'iapetus', 'triton', 'charon', 'phobos'];
+var AE_GO_DISC_COLS = 7, AE_GO_DISC_ROWS = 4;
 var AE_CSS = [
   '.ae-stand-btn{display:inline-flex;align-items:center;gap:6px}',
   '.ae-stand-btn .ae-tool-svg{width:16px;height:16px;fill:none;stroke:currentColor;stroke-width:1.7;stroke-linecap:round;stroke-linejoin:round}',
@@ -618,7 +624,7 @@ var AE_CSS = [
   '}',
   '.ae-row{display:flex;gap:6px;flex-wrap:wrap;justify-content:center;pointer-events:auto}',
   // Go to: a compact sheet over the controls (the field at its foot, under the thumb; above the keyboard when it is up), its places in groups, each with its small disc.
-  '.ae-go{position:absolute;left:12px;right:12px;bottom:calc(8px + env(safe-area-inset-bottom));max-height:min(50vh,440px,var(--sheet-room,100vh));overflow-y:auto;overscroll-behavior:contain;box-sizing:border-box;background:' + AE_PANEL_BG + ';border:1px solid var(--border);border-radius:14px;padding:6px 6px 8px;pointer-events:auto;z-index:2}',
+  '.ae-go{position:absolute;left:12px;right:12px;bottom:calc(8px + env(safe-area-inset-bottom));height:min(50vh,440px,var(--sheet-room,100vh));display:flex;flex-direction:column;overflow:hidden;box-sizing:border-box;background:' + AE_PANEL_BG + ';border:1px solid var(--border);border-radius:14px;pointer-events:auto;z-index:2}',
   '.ae-go[hidden]{display:none}',
   // On a narrow phone the row's chips draw in a little so the five places and Go to stay one line.
   '#ae-views{flex-wrap:nowrap;align-items:center;max-width:calc(100vw - 24px);margin-inline:auto}',
@@ -632,16 +638,27 @@ var AE_CSS = [
   '@media (max-width:370px){#ae-views,.ae-chips{gap:3px}#ae-views .ae-btn{font-size:12px}#ae-views .ae-btn:not(.ae-round){padding-inline:5px}#ae-views .ae-round{width:30px;height:30px}}',
   // Short landscape (a phone on its side, 390 high): the sheet takes the height, short of the control column, so a list of places shows
   // six rows, not one and a half.
-  '@media (orientation:landscape) and (max-height:460px){.ae-go{inset-inline:12px 68px;top:8px;max-height:none}}',
-  '.ae-go-find{position:sticky;bottom:-8px;z-index:1;display:flex;align-items:center;gap:8px;margin:4px -6px -8px;padding:8px 14px;background:' + AE_PANEL_BG + ';border-top:1px solid var(--border);color:var(--text3)}',
+  '@media (orientation:landscape) and (max-height:460px){.ae-go{inset-inline:12px 68px;top:8px;height:auto}.ae-go-head{display:flex;align-items:center}.ae-go-find{flex:0 0 min(300px,40%)}.ae-go-pills.pills-row{flex:1;min-width:0;width:auto;padding-bottom:0}}',
+  '.ae-go-head{flex:none;border-bottom:1px solid var(--border);padding:0 6px 6px}',
+  '#ae-go-then svg{width:16px;height:16px}',
+  '.ae-go-find{display:flex;align-items:center;gap:8px;min-height:48px;padding:0 4px 0 8px;color:var(--text3)}',
   '.ae-go-find input{flex:1;min-width:0;height:32px;border:0;background:none;color:var(--text);font:inherit;font-size:16px;outline:none;-webkit-user-select:text;user-select:text;-webkit-appearance:none;appearance:none}',
   '.ae-go-find input::-webkit-search-cancel-button{-webkit-appearance:none}',
   '.ae-go-find:focus-within{color:var(--amber)}',
+  '.ae-go-seg{display:inline-flex;flex:none;border:1px solid var(--border);border-radius:20px;overflow:hidden}',
+  '.ae-go-seg button{width:40px;height:32px;border:0;background:none;color:var(--text3);display:inline-flex;align-items:center;justify-content:center;cursor:pointer;padding:0}',
+  '.ae-go-seg button[aria-pressed="true"]{background:var(--amber-glow);color:var(--amber)}',
+  '.ae-go-seg button:focus-visible,.ae-go-pills .pill:focus-visible{outline:2px solid var(--amber);outline-offset:-2px}',
+  '.ae-go-pills.pills-row{padding:0 2px 2px}',
+  '.ae-go-pills .pill{flex:none;position:relative}',
+  '.ae-go-pills .pill::after{content:"";position:absolute;inset:-8px -3px}',
+  '.ae-go-pills .pill-div{flex:none;width:1px;height:16px;background:var(--border)}',
+  '.ae-go-body{flex:1;min-height:0;overflow-y:auto;overscroll-behavior:contain;padding:4px 6px 8px}',
   '.ae-go-found .ae-go-row span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}',
   '.ae-go-town{background:var(--text3);color:var(--text3)}',
   '.ae-go-wait{grid-column:1/-1;padding:10px 12px;font-size:13px;color:var(--text3)}',
   '.ae-go h4{margin:10px 10px 4px;font-size:11px;font-weight:600;letter-spacing:.04em;text-transform:uppercase;color:var(--text3)}',
-  '.ae-go-list{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:2px}',
+  '.ae-go-list{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:2px}',
   '.ae-go-row{display:flex;align-items:center;gap:10px;min-height:44px;padding:0 10px;border:0;border-radius:10px;background:none;font:inherit;font-size:14px;color:var(--text);text-align:start;cursor:pointer}',
   '.ae-go-row:focus-visible{outline:2px solid var(--amber);outline-offset:-2px}',
   '@media (hover:hover){.ae-go-row:hover{background:rgba(255,255,255,.06)}}',
@@ -650,6 +667,25 @@ var AE_CSS = [
   '.ae-go-list.ae-go-found[hidden]{display:none}',
   '.ae-go-dot{flex:0 0 auto;width:14px;height:14px;border-radius:50%;box-shadow:0 0 0 1px rgba(255,255,255,.08)}',
   '.ae-go-probe{width:6px;height:6px;margin:0 4px;box-shadow:0 0 6px currentColor;color:' + AE_PROBE_HEX + '}',
+  // A body's thumbnail: its disc from the sprite sheet, over its own mean-colour gradient (what shows until the sheet
+  // is in, and for good on a low level or if it never comes). --s is its size; --c and --r its cell in the sheet.
+  '.ae-go-thumb{--s:28px;flex:none;position:relative;width:var(--s);height:var(--s)}',
+  '.ae-go-disc,.ae-go-glyph{display:block;width:100%;height:100%;border-radius:50%}',
+  '.ae-go-disc{box-shadow:0 0 0 1px rgba(255,255,255,.08);background-color:var(--cc);background-image:url(' + AE_GO_DISC_URL + '),var(--g);background-repeat:no-repeat;' +
+    'background-size:calc(var(--s) * ' + AE_GO_DISC_COLS + ') calc(var(--s) * ' + AE_GO_DISC_ROWS + '),100% 100%;background-position:calc(var(--s) * var(--c) * -1) calc(var(--s) * var(--r) * -1),0 0}',
+  '.ae-go-disc.ae-go-ring{border-radius:0;box-shadow:none;background-color:transparent;background-image:url(' + AE_GO_DISC_URL + ');background-size:calc(var(--s) * ' + AE_GO_DISC_COLS + ') calc(var(--s) * ' + AE_GO_DISC_ROWS + ');background-position:calc(var(--s) * var(--c) * -1) calc(var(--s) * var(--r) * -1)}',
+  '.ae-go-flat .ae-go-disc,.ae-go-flat .ae-go-disc.ae-go-ring{border-radius:50%;box-shadow:0 0 0 1px rgba(255,255,255,.08);background-color:var(--cc);background-image:var(--g);background-size:100% 100%;background-position:0 0}',
+  '.ae-go-glyph{display:flex;align-items:center;justify-content:center;background:rgba(255,255,255,.06);color:var(--gc,' + AE_PROBE_HEX + ')}',
+  '.ae-go-glyph svg{width:62%;height:62%}',
+  '.ae-go-flag{position:absolute;top:-3px;inset-inline-end:-3px;width:42%;height:42%;color:' + AE_AMBER_HEX + ';filter:drop-shadow(0 0 2px rgba(0,0,0,.9))}',
+  '.ae-go-grid .ae-go-list{grid-template-columns:repeat(auto-fill,minmax(76px,1fr));gap:4px 2px}',
+  '.ae-go-grid .ae-go-thumb{--s:48px}',
+  '.ae-go-grid .ae-go-row{flex-direction:column;justify-content:flex-start;gap:5px;min-height:84px;padding:6px 2px;text-align:center;font-size:12px;line-height:1.2}',
+  '.ae-go-grid .ae-go-row span:not(.ae-go-thumb){display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;overflow-wrap:anywhere}',
+  '.ae-go-grid .ae-go-wait,.ae-go-grid h4{grid-column:1/-1}',
+  '#ae-go-groups:not(.ae-go-grid) .ae-go-row>span:not(.ae-go-thumb){min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}',
+  // Short landscape: the head is tighter and the list's rows touch, so six of them show.
+  '@media (orientation:landscape) and (max-height:460px){.ae-go-head{padding-bottom:2px}.ae-go-find{min-height:44px}.ae-go-body{padding-top:0}#ae-go-groups:not(.ae-go-grid) .ae-go-list{gap:0}}',
   '.night-red .ae-go,.night-red .ae-go-find{background:' + AE_PANEL_BG_RED + '}',
   // Where you are among the planets, in a corner while near one: tap for the whole system.
   // On a phone the sheet lifts the picture into the minimap's corner: the minimap steps aside while it is up.
@@ -835,7 +871,6 @@ function _aeEnsureStyles() {
 // Every place the view can fly to, in groups: Earth and Moon, the planets, their big moons, the dwarf planets, the
 // spacecraft (once their table has come: opening the sheet asks for it). A row is the body's small disc and its name;
 // a tap flies there and puts the sheet away.
-var AE_GO_PROBE_COLOR = AE_PROBE_HEX;
 var AE_GO_LM = 'lm:';   // a landing site's row: lm:<body>:<its index in that body's landmarks>
 // The landing site a Go to row stands for ({ body, row }), once the landmarks are in.
 function _aeGoLmRow(key) {
@@ -846,21 +881,72 @@ function _aeGoLmRow(key) {
 // A compass: Go to sits in the row as one round button, so the row stays one line on a phone.
 var AE_GO_SVG = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">' +
   '<circle cx="12" cy="12" r="9.5"/><path d="M15.8 8.2l-2.2 5.4-5.4 2.2 2.2-5.4z" fill="currentColor" stroke-width="1.4"/></svg>';
-function _aeGoDot(key) {
-  if (key.indexOf(AE_GO_MS) === 0) return '<i class="ae-go-dot ae-go-probe" style="background:' + AE_PROBE_HEX + ';color:' + AE_PROBE_HEX + '"></i>';
-  if (_aeGoLmRow(key)) return '<i class="ae-go-dot ae-go-probe" style="background:' + AE_AMBER_HEX + ';color:' + AE_AMBER_HEX + '"></i>';
-  if (key === 'iss') return '<i class="ae-go-dot ae-go-probe" style="background:rgb(255,209,89);color:rgb(255,209,89)"></i>';
-  if (key === AE_SPIN_KEY) return '<i class="ae-go-dot" style="background:var(--amber)"></i>';
-  if (_aeIsProbe(key)) return '<i class="ae-go-dot ae-go-probe" style="background:' + AE_GO_PROBE_COLOR + '"></i>';
+// A glyph is drawn for what has no disc: a stroke picture, 24 units square.
+function _aeGlyph(inner) {
+  return '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">' + inner + '</svg>';
+}
+var AE_GLYPH_CRAFT = _aeGlyph('<rect x="9" y="9" width="6" height="8" rx="1"/><path d="M3 11h4M17 11h4M3 14h4M17 14h4M12 9V6M9 6a3 3 0 0 0 6 0z"/>');
+var AE_GLYPHS = {
+  iss: _aeGlyph('<path d="M12 5v14M4 8h5v4H4zM15 8h5v4h-5zM4 15h5M15 15h5"/>'),
+  apollo11: _aeGlyph('<path d="M8.5 19l2-12h3l2 12zM7 21.5h10"/>'),
+  perseverance: _aeGlyph('<rect x="6" y="9" width="12" height="4" rx="1"/><circle cx="7" cy="17" r="2"/><circle cx="12" cy="17" r="2"/><circle cx="17" cy="17" r="2"/><path d="M15 9V5h3"/>'),
+  plan: _aeGlyph('<path d="M5 18c4-1 3-7 7-7s3-6 7-6"/><circle cx="5" cy="18" r="1.5"/><circle cx="19" cy="5" r="1.5"/>'),
+  spin: _aeGlyph('<circle cx="8" cy="12" r="4.5"/><circle cx="17" cy="12" r="3"/>')
+};
+var AE_GO_FLAG = '<svg class="ae-go-flag" viewBox="0 0 12 12" aria-hidden="true"><path d="M3 1v10" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/><path d="M3 1.5h6.5L8 4l1.5 2.5H3z" fill="currentColor"/></svg>';
+var AE_GO_ISS_HEX = 'rgb(255,209,89)', AE_GO_SUN_HEX = 'rgb(255,184,74)';
+// A body's mean colour as a CSS colour: its planet's own where the view draws one, else its table colour.
+function _aeGoColor(key) {
+  if (key === 'sun') return AE_GO_SUN_HEX;
   var b = _aePlanetBody(key), hex = null, rgb = b ? b.color : key === 'moon' ? [0.78, 0.78, 0.78] : [0.29, 0.56, 0.85];
   if (b && !b.parent && typeof _PLANETS !== 'undefined' && _PLANETS[b.eph]) hex = _PLANETS[b.eph].color;
   if (key === 'earth' && typeof _PLANETS !== 'undefined') hex = _PLANETS.Earth.color;
-  var c = hex || 'rgb(' + rgb.map(function (v) { return Math.round(v * 255); }).join(',') + ')';
-  return '<i class="ae-go-dot" style="background:radial-gradient(circle at 35% 35%,rgba(255,255,255,.5),' + c + ' 45%,rgba(0,0,0,.55) 100%),' + c + '"></i>';
+  return hex || 'rgb(' + rgb.map(function (v) { return Math.round(v * 255); }).join(',') + ')';
+}
+// The body a landing row is on (lm:<body>:<i>), for the disc its flag stands on.
+function _aeGoLmBody(key) { return key.split(':')[1]; }
+function _aeGoDisc(body) {
+  var i = AE_GO_DISC_KEYS.indexOf(body), c = _aeGoColor(body);
+  return '<i class="ae-go-disc' + (body === 'saturn' || body === 'sun' ? ' ae-go-ring' : '') + '" style="--c:' + (i < 0 ? 0 : i % AE_GO_DISC_COLS) + ';--r:' + (i < 0 ? 0 : Math.floor(i / AE_GO_DISC_COLS)) +
+    ';--cc:' + c + ';--g:radial-gradient(circle at 35% 35%,rgba(255,255,255,.5),' + c + ' 45%,rgba(0,0,0,.55) 100%)"></i>';
+}
+function _aeGoGlyph(inner, color) { return '<i class="ae-go-glyph"' + (color ? ' style="--gc:' + color + '"' : '') + '>' + inner + '</i>'; }
+// What a row leads with: the body's disc, a landing's disc with its flag, a mission's or a spacecraft's glyph.
+function _aeGoThumb(key) {
+  var inner;
+  if (key.indexOf(AE_GO_MS) === 0) inner = _aeGoGlyph(AE_GLYPHS[key.slice(AE_GO_MS.length)] || AE_GLYPH_CRAFT);
+  else if (_aeGoLmRow(key)) inner = _aeGoDisc(_aeGoLmBody(key)) + AE_GO_FLAG;
+  else if (key === 'iss') inner = _aeGoGlyph(AE_GLYPHS.iss, AE_GO_ISS_HEX);
+  else if (key === AE_SPIN_KEY) inner = _aeGoGlyph(AE_GLYPHS.spin, 'var(--amber)');
+  else if (_aeIsProbe(key)) inner = _aeGoGlyph(AE_GLYPH_CRAFT);
+  else inner = _aeGoDisc(key);
+  return '<span class="ae-go-thumb">' + inner + '</span>';
 }
 var AE_GO_LOADING = '…';   // a group's place while its table loads (never a body's key)
+// The pills: what each shows. 'all' keeps the groups under their headings.
+var AE_GO_PILLS = [['all', 'all'], ['planets', 'alm_go_planets'], ['moons', 'alm_go_moons'], ['small', 'alm_go_small'], ['craft', 'alm_go_craft'], ['landings', 'alm_go_landings'], ['missions', 'alm_go_missions']];
+var AE_GO_GROUP_PILL = { alm_go_landings: 'landings' };   // the Moon's Landings chip opens the sheet on that pill
+var AE_GO_VIEW_KEY = 'zimi_go_view';                       // 'grid' (little models) or 'list'; the device's own
+var AE_GO_VIEWS = ['grid', 'list'];
+var _aeGoFilter = 'all';                                   // the pill showing, kept for as long as the page lives
+function _aeGoView() {
+  try { var v = localStorage.getItem(AE_GO_VIEW_KEY); if (AE_GO_VIEWS.indexOf(v) >= 0) return v; } catch (e) {}
+  return AE_GO_VIEWS[0];
+}
+function _aeGoSetView(v) { try { localStorage.setItem(AE_GO_VIEW_KEY, v); } catch (e) {} }
+// The pill a body belongs to.
+function _aeGoKind(key) {
+  if (key.indexOf(AE_GO_MS) === 0) return 'missions';
+  if (key.indexOf(AE_GO_LM) === 0) return 'landings';
+  if (key === 'iss' || _aeIsProbe(key)) return 'craft';
+  var b = _aePlanetBody(key);
+  if (key === 'moon' || (b && b.parent)) return 'moons';
+  return b && b.track ? 'small' : 'planets';
+}
+// [group label key, its keys, its pill when the whole group has one]; Earth and Moon split across Planets and Moons.
 function _aeGoGroups() {
-  var planets = [AE_SPIN_KEY].concat(AE_PLANETS.filter(function (b) { return !b.parent && !b.track; }).map(function (b) { return b.key; }));
+  // The Sun first, Side by side last: a view of them all, not a body, so it closes the list.
+  var planets = ['sun'].concat(AE_PLANETS.filter(function (b) { return !b.parent && !b.track; }).map(function (b) { return b.key; }), [AE_SPIN_KEY]);
   var moons = AE_PLANETS.filter(function (b) { return b.parent; }).map(function (b) { return b.key; });
   var dwarfs = AE_PLANETS.filter(function (b) { return b.track; }).map(function (b) { return b.key; });
   // The spacecraft flying on the shown date: one whose table ends (Cassini into Saturn, Galileo into Jupiter) or has
@@ -877,7 +963,8 @@ function _aeGoGroups() {
   if (!_aeTracks && _aeTracksLoading) craft.push(AE_GO_LOADING);
   if (!_aeLm && _aeLmLoading) landings.push(AE_GO_LOADING);
   var missions = AE_MISSION_IDS.map(function (id) { return AE_GO_MS + id; });
-  return [['alm_go_earth_moon', ['earth', 'moon']], ['alm_go_planets', planets], ['alm_go_missions', missions], ['alm_go_moons', moons], ['alm_go_dwarfs', dwarfs], ['alm_go_craft', craft], ['alm_go_landings', landings]]
+  return [['alm_go_earth_moon', ['earth', 'moon'], null], ['alm_go_planets', planets, 'planets'], ['alm_go_missions', missions, 'missions'], ['alm_go_moons', moons, 'moons'],
+    ['alm_go_dwarfs', dwarfs, 'small'], ['alm_go_craft', craft, 'craft'], ['alm_go_landings', landings, 'landings']]
     .filter(function (g) { return g[1].length; });
 }
 function _aeGoName(key) {
@@ -885,6 +972,7 @@ function _aeGoName(key) {
   var lmRow = _aeGoLmRow(key);
   if (lmRow) return lmRow.row[0];
   if (key === 'earth') return _tp('Earth');
+  if (key === 'sun') return _aeT('alm_sun');
   if (key === AE_SPIN_KEY) return _aeT('alm_spin_view');
   if (key === 'iss') return _aeT('alm_earth_iss_short');
   if (key === 'moon') return _aeT('alm_moon');
@@ -892,36 +980,89 @@ function _aeGoName(key) {
   var b = _aePlanetBody(key);
   return b ? _aeBodyName(b) : key;
 }
-var AE_THEN_DOT = '<svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3l2.4 5.6 6.1.5-4.6 4 1.4 6-5.3-3.2L6.7 19l1.4-6-4.6-4 6.1-.5z"/></svg>';
-// The there-and-then row (almanac-thens.js) at the top of the Go to sheet: a place and a moment to stand in, not a body.
-function _aeGoThenRow() {
-  return '<div class="ae-go-list"><button type="button" class="ae-go-row" id="ae-go-then" data-ae-then>' + AE_THEN_DOT + '<span>' + _almEsc(_aeT('then_title')) + '</span></button></div>';
+// The name a body has in English whatever the language: what is typed in one language still finds it by the other.
+function _aeGoEnglish(key) {
+  if (key.indexOf(AE_GO_MS) === 0) return key.slice(AE_GO_MS.length);
+  if (key.indexOf(AE_GO_LM) === 0) return _aeGoName(key);
+  var b = _aePlanetBody(key);
+  return b ? b.eph || key : key === 'iss' ? 'ISS' : key;
 }
+// The rows (keys) that answer what is typed, best match first: by the name in the language shown or the English one.
+function _aeGoFind(typed) {
+  var hits = [];
+  _aeGoGroups().forEach(function (g) {
+    g[1].forEach(function (k) {
+      if (k === AE_GO_LOADING) return;
+      var m = Math.min.apply(null, [_aeGoName(k), _aeGoEnglish(k)].map(function (n) { var r = _aePlaceMatch(typed, n); return r < 0 ? 99 : r; }));
+      if (m < 99) hits.push({ key: k, match: m, at: hits.length });
+    });
+  });
+  hits.sort(function (a, b) { return a.match - b.match || a.at - b.at; });
+  return hits.map(function (h) { return h.key; });
+}
+var AE_GRID_SVG = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round" aria-hidden="true"><rect x="4" y="4" width="6.5" height="6.5" rx="1.5"/><rect x="13.5" y="4" width="6.5" height="6.5" rx="1.5"/><rect x="4" y="13.5" width="6.5" height="6.5" rx="1.5"/><rect x="13.5" y="13.5" width="6.5" height="6.5" rx="1.5"/></svg>';
+var AE_LIST_SVG = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M9 6h11M9 12h11M9 18h11M4 6h.01M4 12h.01M4 18h.01"/></svg>';
+function _aeGoRow(k) {
+  if (k === AE_GO_LOADING) return '<span class="ae-go-wait" role="status">' + _almEsc(_aeT('loading')) + '</span>';
+  return '<button type="button" class="ae-go-row" data-ae-go="' + k + '" aria-current="' + (k === _ae.target) + '">' + _aeGoThumb(k) + '<span>' + _almEsc(_aeGoName(k)) + '</span></button>';
+}
+function _aeGoLow() { return typeof ZimiCap !== 'undefined' && ZimiCap.level() === 'low'; }
+// The bodies' place in the sheet: what is typed (every row that answers), else the pill showing (All: the groups under
+// their headings; any other: that kind alone).
 function _aeGoRender() {
   var sheet = _aeById('ae-go'), host = _aeById('ae-go-groups');
   if (!sheet || sheet.hidden || !host) return;
-  host.innerHTML = _aeGoThenRow() + _aeGoGroups().map(function (g) {
-    return '<h4 data-g="' + g[0] + '">' + _almEsc(_aeT(g[0])) + '</h4><div class="ae-go-list">' + g[1].map(function (k) {
-      if (k === AE_GO_LOADING) return '<span class="ae-go-wait" role="status">' + _almEsc(_aeT('loading')) + '</span>';
-      return '<button type="button" class="ae-go-row" data-ae-go="' + k + '" aria-current="' + (k === _ae.target) + '">' + _aeGoDot(k) +
-        '<span>' + _almEsc(_aeGoName(k)) + '</span></button>';
-    }).join('') + '</div>';
-  }).join('');
-  var then = _aeById('ae-go-then');
-  if (then) then.onclick = function () { _aeShowGo(false); openAlmanacThens(); };
-  // Opened at a group whose table was still coming (Landings on a first tap): scrolled there once it is drawn.
-  var h = _ae.goGroup ? sheet.querySelector('h4[data-g="' + _ae.goGroup + '"]') : null;
-  if (h) { sheet.scrollTop = h.offsetTop; _ae.goGroup = null; }
+  var q = _aeById('ae-go-q'), typed = q ? q.value.trim() : '', html = '', groups = _aeGoGroups();
+  host.className = (_aeGoView() === 'grid' ? 'ae-go-grid' : '') + (_aeGoLow() ? ' ae-go-flat' : '');
+  _ae.goHits = [];
+  if (typed) {
+    _ae.goHits = _aeGoFind(typed);
+    html = _ae.goHits.length ? '<div class="ae-go-list">' + _ae.goHits.map(_aeGoRow).join('') + '</div>' : '';
+  } else if (_aeGoFilter === 'all') {
+    html = groups.map(function (g) {
+      return '<h4 data-g="' + g[0] + '">' + _almEsc(_aeT(g[0])) + '</h4><div class="ae-go-list">' + g[1].map(_aeGoRow).join('') + '</div>';
+    }).join('');
+  } else {
+    var keys = [];
+    groups.forEach(function (g) {
+      // The Sun leads the Planets pill, ahead of the Earth (whose group comes first in All).
+      g[1].forEach(function (k) { if ((k === AE_GO_LOADING ? g[2] : _aeGoKind(k)) === _aeGoFilter) keys[k === 'sun' ? 'unshift' : 'push'](k); });
+    });
+    html = '<div class="ae-go-list">' + keys.map(_aeGoRow).join('') + '</div>';
+  }
+  host.innerHTML = html;
+  _aeGoNone();
+  Array.prototype.forEach.call(sheet.querySelectorAll('[data-ae-pill]'), function (b) {
+    var on = b.getAttribute('data-ae-pill') === _aeGoFilter && !typed;
+    b.classList.toggle('active', on);
+    b.setAttribute('aria-pressed', String(on));
+  });
+  Array.prototype.forEach.call(sheet.querySelectorAll('[data-ae-gomode]'), function (b) { b.setAttribute('aria-pressed', String(b.getAttribute('data-ae-gomode') === _aeGoView())); });
 }
-// `group`: open scrolled to that group's heading (the Moon's Landings chip), now or as soon as it is there.
+// A body or landing or mission picked: the sheet put away, the view flies there.
+function _aeGoPick(key) {
+  _aeShowGo(false);
+  var lmRow = _aeGoLmRow(key);
+  if (key.indexOf(AE_GO_MS) === 0) { _aeMissionStart(key.slice(AE_GO_MS.length)); return; }
+  if (lmRow) { _aeLmOpen(lmRow.body, lmRow.row); _aeLmFly(lmRow.body, lmRow.row); return; }
+  _aePreset(key);
+}
+// `group`: open on that group's pill (the Moon's Landings chip), now or as soon as its table is there.
 function _aeShowGo(on, group) {
   var sheet = _aeById('ae-go'), btn = _aeById('ae-go-btn');
   if (!sheet) return;
   sheet.hidden = !on;
   if (btn) btn.setAttribute('aria-expanded', String(!!on));
-  _ae.goGroup = on ? group || null : null;
   if (!on) _aeFootDown();
-  if (on) { _aeGoShell(sheet); _aeTracksLoad(); _aeLmLoad(); _aeGoRender(); }
+  if (on) {
+    _aeGoShell(sheet);
+    if (group) _aeGoFilter = AE_GO_GROUP_PILL[group] || 'all';
+    var q = _aeById('ae-go-q');
+    if (q && q.value) { q.value = ''; _aePlaceShow([]); }   // a sheet opened afresh shows the bodies, not the last search
+    _aeTracksLoad(); _aeLmLoad(); _aeGoRender();
+    // The keyboard is the phone's to raise: a field a finger has not touched stays quiet there.
+    if (q && !(window.matchMedia && matchMedia('(pointer:coarse)').matches)) q.focus();
+  }
 }
 var AE_MAP_SVG = '<svg aria-hidden="true" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M9 4L3 6v14l6-2 6 2 6-2V4l-6 2-6-2z"/><path d="M9 4v14M15 6v14"/></svg>';
 var AE_SEARCH_SVG = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><circle cx="11" cy="11" r="7.5"/><path d="m21 21-4.3-4.3"/></svg>';
@@ -1021,18 +1162,20 @@ function _aePlaceRefresh() {
 }
 function _aePlaceShow(list) {
   _ae.placeFound = list;
-  var box = _aeById('ae-go-found'), groups = _aeById('ae-go-groups'), q = _aeById('ae-go-q');
+  var box = _aeById('ae-go-found');
   if (!box) return;
   box.hidden = !list.length;
-  // Nothing by that name once the towns have answered too: said, not a blank sheet.
-  var none = _aeById('ae-go-none');
-  if (none) none.hidden = !!list.length || !(q && q.value.trim()) || !_ae.placeTowns;
   box.innerHTML = list.map(function (p, i) {
     var dot = '<i class="ae-go-dot ae-go-probe' + (p.kind === 'landmark' ? '' : ' ae-go-town') + '"></i>';
     return '<span class="ae-go-item"><button type="button" class="ae-go-row" data-ae-place="' + i + '">' + dot + '<span>' + _almEsc(p.label) + '</span></button>' + _aeGoMapBtn(i) + '</span>';
   }).join('');
-  // The groups give way while something is typed.
-  if (groups) groups.hidden = !!list.length || !!(q && q.value.trim());
+  _aeGoNone();
+}
+// Nothing by that name, once the towns have answered too (no body, landmark, city or town): one line says so, not a
+// blank sheet. While something is typed the groups give way to what it finds (_aeGoRender).
+function _aeGoNone() {
+  var none = _aeById('ae-go-none'), q = _aeById('ae-go-q'), typed = q ? q.value.trim() : '';
+  if (none) none.hidden = !typed || !_ae.placeTowns || !!(_ae.placeFound && _ae.placeFound.length) || !!(_ae.goHits && _ae.goHits.length);
 }
 // A place's map (mapflow.js through the app shell: its installed map, or the one worth downloading), as an icon beside
 // the row; absent where the shell is (the Almanac ZIM on its own).
@@ -1053,10 +1196,18 @@ function _aeCardMapBtn(card, p) {
 // afresh by _aeGoRender without taking the field's focus.
 function _aeGoShell(sheet) {
   if (_aeById('ae-go-q')) return;
-  sheet.innerHTML = '<div class="ae-go-list ae-go-found" id="ae-go-found" hidden></div>' +
-    '<div class="ae-go-wait" id="ae-go-none" role="status" hidden>' + _almEsc(_aeT('no_results')) + '</div><div id="ae-go-groups"></div>' +
-    '<div class="ae-go-find">' + AE_SEARCH_SVG + '<input type="search" id="ae-go-q" autocomplete="off" autocapitalize="off" ' +
-    'spellcheck="false" enterkeyhint="go" placeholder="' + _almEsc(_aeT('search')) + '" aria-label="' + _almEsc(_aeT('search')) + '"></div>';
+  var pills = AE_GO_PILLS.map(function (p) {
+    return '<button type="button" class="pill" data-ae-pill="' + p[0] + '" aria-pressed="false">' + _almEsc(_aeT(p[1])) + '</button>';
+  }).join('');
+  // Then is a door, not a filter: the there-and-then chooser, past a divider, with the sky card's sign for a name (ALM_THEN_SVG, almanac.js).
+  pills += '<i class="pill-div" aria-hidden="true"></i><button type="button" class="pill" id="ae-go-then" data-ae-then aria-label="' + _almEsc(_aeT('then_title')) + '">' + ALM_THEN_SVG + '</button>';
+  var seg = [['grid', AE_GRID_SVG, 'go_view_grid'], ['list', AE_LIST_SVG, 'go_view_list']].map(function (v) {
+    return '<button type="button" data-ae-gomode="' + v[0] + '" aria-pressed="false" aria-label="' + _almEsc(_aeT(v[2])) + '">' + v[1] + '</button>';
+  }).join('');
+  sheet.innerHTML = '<div class="ae-go-head"><div class="ae-go-find">' + AE_SEARCH_SVG + '<input type="search" id="ae-go-q" autocomplete="off" autocapitalize="off" ' +
+    'spellcheck="false" enterkeyhint="go" placeholder="' + _almEsc(_aeT('search')) + '" aria-label="' + _almEsc(_aeT('search')) + '"><div class="ae-go-seg" role="group">' + seg + '</div></div>' +
+    '<div class="pills-row ae-go-pills">' + pills + '</div></div>' +
+    '<div class="ae-go-body"><div class="ae-go-wait" id="ae-go-none" role="status" hidden>' + _almEsc(_aeT('no_results')) + '</div><div id="ae-go-groups"></div><div class="ae-go-list ae-go-found" id="ae-go-found" hidden></div></div>';
   var q = _aeById('ae-go-q'), timer = 0;
   q.oninput = function () {
     clearTimeout(timer);
@@ -1067,12 +1218,14 @@ function _aeGoShell(sheet) {
     _ae.placeSeq = (_ae.placeSeq || 0) + 1;
     if (_ae.placeAbort) _ae.placeAbort.abort();
     _aePlaceShow(_aePlaceMerge(typed, _aePlaceLocal(typed), []));
+    _aeGoRender();
     timer = setTimeout(function () { _aePlaceSearch(typed); }, AE_PLACE_DELAY_MS);
   };
   q.onkeydown = function (e) {
     if (e.key !== 'Enter') return;
     e.preventDefault();
-    if (_ae.placeFound && _ae.placeFound.length) _aePlacePick(_ae.placeFound[0]);
+    if (_ae.goHits && _ae.goHits.length) _aeGoPick(_ae.goHits[0]);   // a body by that name first, then a place
+    else if (_ae.placeFound && _ae.placeFound.length) _aePlacePick(_ae.placeFound[0]);
   };
   // A phone's keyboard covers the foot of the screen: while the field has the focus, the foot stands above it.
   q.onfocus = function () {
@@ -1801,11 +1954,11 @@ function _aeUpdateSpots(S, ms) {
 // ── The Sun close up: prominences, flares and a finer surface (almanac-sun.js) ──
 // Loaded the first time the Sun is wide on screen (never with the view's first frame: from the Earth it is a small
 // disc the plain shaders draw); it swaps the Sun's two shaders for fuller ones and feeds them each frame.
-var AE_SUNFX_JS = '/static/almanac-sun.js?v=45';
+var AE_SUNFX_JS = _almAsset('/static/almanac-sun.js');
 var AE_SUNFX_MIN_PX = 28;            // the Sun's disc, radius in CSS px, past which its close-up is asked for
 function _aeSunFxWanted(S, ms) {
   if (typeof _aeSunFxTick === 'function') { _aeSunFxTick(S, ms); return; }
-  if (S.sunFxAsked || typeof document === 'undefined') return;
+  if (S.sunFxAsked || typeof document === 'undefined' || !_ae.ready || !_aeIsOpen) return;   // nor while the scene is being built (the default camera has the Sun in frame)
   var to = _aeSub([S.sun.position.x, S.sun.position.y, S.sun.position.z], [S.camera.position.x, S.camera.position.y, S.camera.position.z]), d = _aeLen(to);
   if (AE_SUN_SHOW_R / Math.max(1e-9, d) * _ae.h / 2 / Math.tan(_aeRad(S.camera.fov) / 2) < AE_SUNFX_MIN_PX) return;
   // Wide on screen is not enough: on a phone the Sun is "wide" from the first frame, looking the other way. It is asked for when
@@ -2151,6 +2304,11 @@ function _aeLoadMap(S, uni, url, format, load) {
       if (format) tx.format = format;
       if (uni.value) uni.value.dispose();   // a map it replaces (the Moon's 1024 one)
       uni.value = tx;
+      if (typeof ZimiCap !== 'undefined' && tx.image && tx.image.width) {   // the capability level's memory budget (capability.js)
+        if (uni.__capKey) ZimiCap.gpuFree(uni.__capKey);
+        uni.__capKey = 'map:' + url;
+        ZimiCap.gpuTrack(uni.__capKey, tx.image.width * tx.image.height * 4 * 1.34);
+      }
       return true;
     }, function () {
       delete S.maps[url];
@@ -2191,7 +2349,8 @@ function _aeMoonDiscPx(S) {
   return AE_MOON_RADIUS_RE / Math.max(1e-9, d) * _ae.h / 2 / Math.tan(_aeRad(S.camera.fov) / 2) * (typeof window !== 'undefined' && window.devicePixelRatio || 1);
 }
 function _aeMoonHiWanted(S) {
-  if (S.moonHiAsked || !S.moonUni.moonMapped.value) return;
+  // Not while the scene is being built: until the view is ready and open the camera sits at its default distance, where the Moon's disc is wide.
+  if (S.moonHiAsked || !S.moonUni.moonMapped.value || !_ae.ready || !_aeIsOpen) return;
   if (_ae.target !== 'moon' && _aeMoonDiscPx(S) < AE_MOON_LO_MAP_W / 4) return;
   S.moonHiAsked = true;
   _aeLoadMap(S, S.moonUni.moonMap, AE_TEX_MOON_HI, AE_THREE_RED_FORMAT, _aeSharedHiMoon(S));
@@ -2460,7 +2619,7 @@ function _aeHdKeepAbove(S, b) {
 // An installed map's roads and names fade in over the globe as the camera comes down, and over such a map the camera may
 // come much nearer: the lines stay sharp where the picture of the ground blurs. Needs the app shell (the map is a ZIM
 // of the library); the Almanac ZIM on its own has none, and then nothing here runs.
-var AE_MAPS_SRC = '/static/almanac-maps.js?v=1';
+var AE_MAPS_SRC = _almAsset('/static/almanac-maps.js');
 var AE_MAPS = {
   loadDist: 1.6,        // Earth radii from the centre: the module is fetched below this
   startKm: 3000,        // altitude where the roads and names begin to show ...
@@ -2778,7 +2937,7 @@ var AE_RING_FRAG = [
 ].join('\n');
 function _aePlanetBody(key) { for (var i = 0; i < AE_PLANETS.length; i++) if (AE_PLANETS[i].key === key) return AE_PLANETS[i]; return null; }
 function _aeIsPlanet(key) { return !!_aePlanetBody(key); }
-function _aePlanetMapUrl(b) { return '/static/earth/' + b.map + '-v1.webp'; }
+function _aePlanetMapUrl(b) { return _almAsset('/static/earth/' + b.map + '-v1.webp'); }
 // Each planet and moon becomes a place the view knows: a target to circle, a mark with its name. Once, before the
 // view's markup is built (the marks are made from AE_MARKED).
 var _aePlanetsKnown = false;
@@ -3700,7 +3859,7 @@ function _aeDrawAxes(S, sc) {
 // asteroids-v1.bin (scripts/build_asteroids.py, JPL's Small-Body Database): the ~18,000 main-belt asteroids brighter
 // than H 14, as orbital elements, each moved along its ellipse to the shown date and placed as the planets are. Fetched the first time the view stands out among the planets
 // or wide enough to hold the belt; placed again when the shown date has moved a day.
-var AE_AST_URL = '/static/earth/asteroids-v1.bin';
+var AE_AST_URL = _almAsset('/static/earth/asteroids-v1.bin');
 var AE_AST_AU_SPAN = 6, AE_AST_Q = 65535, AE_AST_HEADER = 12;
 var AE_AST_GAUSS_K = 0.01720209895;             // radians a day at 1 AU (Kepler's third law)
 var AE_AST_REPLACE_DAYS = 1;
@@ -3771,7 +3930,7 @@ function _aeUpdateAsteroids(jde, around, sunAt) {
 // beside them. Fetched when first out among the planets. Each probe flying on the shown date is a dot with its name
 // and the path it has flown, placed as the planets are; a tap flies there and its card says where it is and what it
 // last did.
-var AE_TRACKS_URL = '/static/earth/space-tracks-v1.json';
+var AE_TRACKS_URL = _almAsset('/static/earth/space-tracks-v1.json');
 // How far round a planet (AU) a probe is placed in that planet's own frame rather than by the drawn scale.
 var AE_PROBE_REACH_AU = { earth: 0.05, mercury: 0.01, venus: 0.02, mars: 0.02, jupiter: 0.5, saturn: 0.4, uranus: 0.2, neptune: 0.3, pluto: 0.05 };
 var AE_PROBE_COLOR = [0.43, 0.9, 0.85] /* AE_PROBE_HEX */, AE_PROBE_PX = 5, AE_PROBE_CAPACITY = 16;
@@ -4610,7 +4769,7 @@ function _aeDrawMini() {
 // once the body is AE_LM_LANDING_MIN_R_PX in radius, the biggest first and none on top of another. A tap opens its card:
 // what it is, its article when the library has it, and Fly there, down to the surface over it. A body is a key, so Mars
 // and the rest slot in beside the Moon (with a placement in _aeLmBodies).
-var AE_LM_URL = '/static/earth/landmarks-v1.json';
+var AE_LM_URL = _almAsset('/static/earth/landmarks-v1.json');
 var AE_LM_MAX = 18;
 var AE_LM_MIN_PX = 28;
 var AE_LM_LANDING_MIN_R_PX = 80;
@@ -4663,10 +4822,10 @@ function _aeLmLoad() {
 var AE_SITE_FACTS = { solSeconds: 88775.244, marsSolDays: 1.0274912517, msdEpochJd: 2451549.5, msdOffset: 44796.0 - 0.0009626, ttMinusUtcS: 69.184,
   driveLmstH: { msl: 13, m20: 14 }, lrvSpeedMs: 3.61, marsDriveSpeedMs: 3.4, saturnMassKg: 2.97e6, saturnThrustN: 34.5e6, saturnBurnKgS: 13300, saturnCutoffS: 161, launchAzimuthDeg: 72, launchTowerM: 122,
   saturnThrustVacN: 39.0e6, saturnDragCd: 0.5, saturnAreaM2: 80, saturnTilt: { startS: 12, perS: 1.2, pow: 0.78, maxDeg: 62 }, jumpMs: { moon: 3.0, mars: 4.4 } };
-var AE_SITES_JS = ['/static/almanac-sites.js', '/static/almanac-sites-ground.js'];
+var AE_SITES_JS = [_almAsset('/static/almanac-sites.js'), _almAsset('/static/almanac-sites-ground.js')];
 // Missions flown end to end (almanac-missions.js): fetched the first time one is asked for, never with the view. The
 // ids are in the order of the Go to list; their names are alm_ms_<id>.
-var AE_MISSIONS_JS = '/static/almanac-missions.js', AE_MISSION_IDS = ['apollo11', 'perseverance', 'voyager1', 'voyager2', 'plan'], AE_GO_MS = 'ms:', _aeMissionsLoading = false;
+var AE_MISSIONS_JS = _almAsset('/static/almanac-missions.js'), AE_MISSION_IDS = ['apollo11', 'perseverance', 'voyager1', 'voyager2', 'plan'], AE_GO_MS = 'ms:', _aeMissionsLoading = false;
 function _aeMissionStart(id) {
   if (typeof _aeMissionOpen === 'function') { _aeMissionOpen(id); return; }
   if (_aeMissionsLoading) return;
@@ -5151,7 +5310,7 @@ var AE_FLY_OVERVIEW_MS = 2000, AE_FLY_OVERVIEW_STRETCH = 1.25, AE_FLY_OVERVIEW_K
 //   _aeStandAt(body, lat, lon)         enter the view: a promise of whether it started
 //   _aeGroundHeight(body, lat, lon)    metres above the body's mean radius; 0 until the body's terrain is loaded
 var AE_STAND_KEYS = ['earth', 'moon', 'mercury', 'venus', 'mars', 'io', 'europa', 'ganymede', 'callisto', 'titan', 'pluto'];
-var AE_STAND_SRCS = ['/static/almanac-terrain.js', '/static/almanac-terrainshade.js', '/static/almanac-standlook.js', '/static/almanac-standgl.js', '/static/almanac-oneland.js', '/static/almanac-stand.js', '/static/almanac-standhost.js', '/static/almanac-oneair.js'];
+var AE_STAND_SRCS = [_almAsset('/static/almanac-terrain.js'), _almAsset('/static/almanac-terrainshade.js'), _almAsset('/static/almanac-standlook.js'), _almAsset('/static/almanac-standgl.js'), _almAsset('/static/almanac-oneland.js'), _almAsset('/static/almanac-stand.js'), _almAsset('/static/almanac-standhost.js'), _almAsset('/static/almanac-oneair.js')];
 var AE_STAND_FIGURE_SVG = '<svg class="ae-tool-svg" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="5.5" r="2.3"/><path d="M12 8.5v6M8.5 11.5l3.5-1 3.5 1M12 14.5l-2.5 5.5M12 14.5l2.5 5.5"/></svg>';
 var AE_STAND_EYE_M = 1.7;                      // an eye above the ground
 var AE_STAND_AIRLESS_DAY_MU = [-0.05, 0.12], AE_STAND_AIRLESS_DAY_LIM = 0.5;   // the Sun's sine of height where the stars go (-3 to 7 degrees), and the faintest star left
@@ -6253,7 +6412,7 @@ function _aeOrientMoon(sc) {
 // station flies (LVLH: the truss across the direction of travel, the Russian segment behind, the truss on the zenith
 // side), its main solar arrays turned about the truss toward the Sun. Lit by the Sun (the arrays glint), by the Earth
 // below in daylight, and dark in the Earth's shadow. Under AE_CRAFT_MODEL_PX across it is not drawn: the dot is.
-var AE_ISS_URL = '/static/earth/iss-v1.bin';
+var AE_ISS_URL = _almAsset('/static/earth/iss-v1.bin');
 var AE_ISS_SPAN_RE = 109 / 1000 / AE_EARTH_RADIUS_KM;     // the station's 109 m along its truss, in Earth radii
 var AE_ISS_VIEW_DIR = [-0.42, -0.55, 0.72];                 // from it, in its own axes (nadir, forward, starboard): above, behind, to starboard; the Earth below to the horizon
 AE_TARGETS.iss = { min: AE_ISS_SPAN_RE * 0.9, max: 0.5, surface: AE_ISS_SPAN_RE / 2 };
@@ -6534,7 +6693,7 @@ var AE_CRAFT_FLAT_ROUGH_REF = 110, AE_CRAFT_FLAT_ROUGH_MIN = 0.15, AE_CRAFT_FLAT
 var AE_CRAFT_FLAT_METAL_FROM = 0.5, AE_CRAFT_FLAT_METAL_SPAN = 1.5;                                  // and their specular strength as a metalness
 var AE_CRAFT_MAT_DOUBLE = 1, AE_CRAFT_MAT_CUTOUT = 2;
 var AE_CRAFT_NO_TURN = 255;
-function _aeCraftUrl(model) { return model === 'iss' ? AE_ISS_URL : '/static/earth/craft-' + model + '-v1.bin'; }
+function _aeCraftUrl(model) { return model === 'iss' ? AE_ISS_URL : _almAsset('/static/earth/craft-' + model + '-v1.bin'); }
 // Either format into one shape: positions centred on the box, normals (ZCR2) or none (ZCRF: flat), a class (palette
 // entry) per vertex, the look per class ({ rgb, rough, metal, flags, tex, mr }), metres per unit, the widest extent in
 // units and the box's radius; a probe's pointing and across axes, the ISS's turning class and axis.
@@ -6542,6 +6701,7 @@ function _aeCraftParse(buf) {
   var dv = new DataView(buf), f = function (o) { return dv.getFloat32(o, true); };
   var magic = String.fromCharCode(dv.getUint8(0), dv.getUint8(1), dv.getUint8(2), dv.getUint8(3));
   var v2 = magic === 'ZCR2';
+  if (!v2 && magic !== 'ZCRF') throw new Error('craft format ' + magic);   // another format (a file kept from an older release): not read as this one
   var lo = [f(12), f(16), f(20)], hi = [f(24), f(28), f(32)], mid = [0, 1, 2].map(function (k) { return (lo[k] + hi[k]) / 2; });
   var d = { metres: f(8), span: Math.max(hi[0] - lo[0], hi[1] - lo[1], hi[2] - lo[2]), mid: mid, look: [],   // mid: where the box's middle was (the sites' models are placed by their own frame, almanac-sites.js)
     radius: 0.5 * Math.hypot(hi[0] - lo[0], hi[1] - lo[1], hi[2] - lo[2]) }, o, i, k;
@@ -6592,7 +6752,7 @@ var AE_CRAFT_SLOW_MS = 400;
 function _aeCraftLoad(model, then) {
   var c = _aeCraft[model] = _aeCraft[model] || {};
   if (then) c.then = then;
-  if (c.data || c.loading || typeof fetch !== 'function') return;
+  if (c.data || c.loading || c.bad || typeof fetch !== 'function') return;   // c.bad: a file this parser does not read is not asked for again
   c.loading = true;
   c.slow = setTimeout(function () { if (c.loading && _ae && typeof _aeShowHint === 'function') { c.said = true; _aeShowHint(_aeT('alm_craft_loading')); } }, AE_CRAFT_SLOW_MS);
   var done = function () {
@@ -6602,7 +6762,7 @@ function _aeCraftLoad(model, then) {
     var t = c.then; c.then = null; if (t && _ae) t();
   };
   fetch(_aeCraftUrl(model)).then(function (r) { if (!r.ok) throw new Error(model); return r.arrayBuffer(); }).then(function (buf) {
-    c.data = _aeCraftParse(buf);
+    try { c.data = _aeCraftParse(buf); } catch (e) { c.bad = true; throw e; }
     if (_ae) { _ae.dirty = true; _aeKick(); }
     done();
   }).catch(function () {
@@ -6675,7 +6835,7 @@ function _aeCraftBuild(S, model) {
 // (+x in NASA's model; the plate is the white panel there, the record the gilded disc on it). Its face is the
 // Almanac's own picture of the record's cover (static/golden-record/cover.jpg); a tap on it opens that section.
 var AE_CRAFT_RECORD = { voyager: { at: [1.257, -1.95, -2.33], r: 0.155 } };   // metres in the model's frame
-var AE_RECORD_IMG = '/static/golden-record/cover.jpg', AE_RECORD_IMG_R = 0.47;   // the disc's radius in the picture (of its width)
+var AE_RECORD_IMG = _almAsset('/static/golden-record/cover.jpg'), AE_RECORD_IMG_R = 0.47;   // the disc's radius in the picture (of its width)
 var AE_RECORD_VERT = [
   'varying vec2 vUv;',
   'void main() { vUv = uv; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }'
@@ -8219,13 +8379,22 @@ function _aeBindControls() {
     }
     var pl = e.target && e.target.closest ? e.target.closest('[data-ae-place]') : null;
     if (pl) { _aePlacePick(_ae.placeFound[+pl.getAttribute('data-ae-place')]); return; }
+    var pill = e.target && e.target.closest ? e.target.closest('[data-ae-pill]') : null;
+    if (pill) {
+      _aeGoFilter = pill.getAttribute('data-ae-pill');
+      var q = _aeById('ae-go-q');
+      if (q && q.value) { q.value = ''; _aePlaceShow([]); }   // a pill taken ends the search
+      _aeGoRender();
+      var body = _aeById('ae-go').querySelector('.ae-go-body');
+      if (body) body.scrollTop = 0;
+      if (pill.scrollIntoView) pill.scrollIntoView({ inline: 'nearest', block: 'nearest' });   // a pill half out of the row comes whole
+      return;
+    }
+    var mode = e.target && e.target.closest ? e.target.closest('[data-ae-gomode]') : null;
+    if (mode) { _aeGoSetView(mode.getAttribute('data-ae-gomode')); _aeGoRender(); return; }
+    if (e.target && e.target.closest && e.target.closest('[data-ae-then]')) { _aeShowGo(false); openAlmanacThens(); return; }
     var b = e.target && e.target.closest ? e.target.closest('[data-ae-go]') : null;
-    if (!b) return;
-    _aeShowGo(false);
-    var key = b.getAttribute('data-ae-go'), lmRow = _aeGoLmRow(key);
-    if (key.indexOf(AE_GO_MS) === 0) { _aeMissionStart(key.slice(AE_GO_MS.length)); return; }
-    if (lmRow) { _aeLmOpen(lmRow.body, lmRow.row); _aeLmFly(lmRow.body, lmRow.row); return; }
-    _aePreset(key);
+    if (b) _aeGoPick(b.getAttribute('data-ae-go'));
   };
   if (typeof _almDismissable === 'function') {
     _almDismissable('ae-go', function () { _aeShowGo(false); },
@@ -8318,7 +8487,7 @@ var _aePreparing = null;
 // ── Capability levels (capability.js) ──
 var AE_FPS_SLACK_MS = 3;   // a frame this early is still on time (the display's rate does not divide the cap evenly)
 function _aeCapGet(key, dflt) { return typeof ZimiCap !== 'undefined' ? ZimiCap.get(key) : dflt; }
-var AE_STATICGLOBE_JS = '/static/almanac-staticglobe.js';
+var AE_STATICGLOBE_JS = _almAsset('/static/almanac-staticglobe.js');
 // The view set aside shows only its line, its one button and the way back, over the Earth drawn once (almanac-staticglobe.js).
 function _aeStaticGlobe() {
   if (!_ae || !_ae.el) return;
@@ -8811,6 +8980,7 @@ function _aeBackLabel() {
   }
   return _aeFrom === 'orrery' ? _aeT('alm_solar_system') : _aeT('almanac');   // opened from the sky card or the hero: the arrow lands on the Almanac page
 }
+// `toOrrery`: settle onto the page's orrery whatever the view was opened from (the Planets view pulled out far enough).
 // The header's arrow steps out one level: off the ground to the globe of the body stood on (or, when the sky card handed
 // the ground over, back to that card), and from anywhere else out of the view.
 function _aeBack() {
@@ -8957,7 +9127,7 @@ function _aeRelease() {
 window.openAlmanacEarth = openAlmanacEarth;
 // The orrery's lift into this view and back is its own small file (almanac-orrery3d.js), asked for with the page's first
 // tap on the orrery or, quietly, once the view's file is here.
-var AE_ORRERY_JS = '/static/almanac-orrery3d.js';
+var AE_ORRERY_JS = _almAsset('/static/almanac-orrery3d.js');
 var _aeOrreryLoading = null;
 function _aeOrreryLoad() {
   if (typeof _aeOrreryIn === 'function') return Promise.resolve();

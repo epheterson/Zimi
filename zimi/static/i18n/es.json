@@ -4119,5 +4119,8 @@
   "lib_hd_where": "Se elige en los ajustes del Almanaque",
   "lib_hd_meta": "{n} archivos · {size}",
   "older_copies_title": "Copias antiguas guardadas",
-  "older_copies_row": "Sustituida por {file}"
+  "older_copies_row": "Sustituida por {file}",
+  "alm_go_small": "Mundos menores",
+  "go_view_grid": "Cuadrícula",
+  "go_view_list": "Lista"
 }

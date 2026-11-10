@@ -46,6 +46,16 @@ window.addEventListener('unhandledrejection', function(e) {
 // ── Config (injected by server via inline script) ──
 var _cfg = window.__ZIMI_CONFIG || {};
 var _i18nVer = _cfg.i18nHash || '0';
+// A /static data file's address with the version of the file: the server sends /static as immutable for a year, so a file whose
+// content changed under the same name (the 3D view's models and maps did, from 1.15 to 1.16) is only fetched afresh when its address
+// changes. The server gives the page each data file's content hash (__ZIMI_CONFIG.assets, by path under static/); a file it does not
+// list takes the build's. A query on the address is replaced by it; the Almanac inside its own ZIM has no
+// config and keeps its relative paths as they are.
+function _almAsset(path) {
+  var base = String(path).replace(/[?#].*$/, ''), c = window.__ZIMI_CONFIG || {};
+  var rel = base.replace(/^\/?static\//, ''), v = (c.assets && c.assets[rel]) || c.build || '';
+  return v ? base + '?v=' + encodeURIComponent(v) : base;
+}
 
 // ── Storage Keys ──
 var SK = {
@@ -1703,6 +1713,9 @@ function _voicePrefsHtml() {
   var h = _speakingHtml() + '<div class="share-rows set-rows voice-prefs">' + _voiceDefaultHtml(on) + _voiceReadHtml(on) + '</div><div class="share-rows set-rows voice-prefs">' + here.map(function(x) {
     return _voiceRowHtml(x, !x.absent && off.indexOf(x.engine) < 0, on.length === 1);
   }).join('') + '</div>' + _voiceGridHtml();
+  // Why a voice is not offered, or why the last download failed, in the server's words.
+  var why = _voicesHere && (_voicesHere.problem || (_voicesHere.downloading && _voicesHere.downloading.reason));
+  if (why) h += '<div class="ms-hint voice-problem" role="alert">' + esc(why) + '</div>';
   if (_voicesHere && _voicesHere.can_change && _voicesHere.setting) h += _voicesModeHtml(_voicesHere.setting);
   return h + '<div class="ms-hint">' + tH('voices_say_remembers') + '</div>';
 }
@@ -1763,7 +1776,7 @@ function _voicesSend(path, body, failText) {
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(body)
   }).then(function(r) { return r.json(); }).then(function(d) {
-    if (d && d.error) _showToast(failText);
+    if (d && d.error) _showToast(d.detail || failText);
     if (d && d.voices) { d.can_change = !!(_voicesHere && _voicesHere.can_change); _voicesHere = d; _paintVoices(); }
     else _renderVoicePrefs();
     _voicesTellDictionary();
@@ -7331,9 +7344,9 @@ function _localMoonName(name) { return _MOON_PHASE_I18N[name] ? t(_MOON_PHASE_I1
 // (_moonAfterFirstPaint): the hero, at its drawn size, needs no more, and the
 // Today card's disc is too small to use it. The 4096 one (730 KB) is asked for
 // only by what is wider than that: the 3D Moon (almanac-earth.js).
-var _MOON_MAP_URL = '/static/earth/moon-v1.webp';
-var _MOON_MAP_MID_URL = '/static/earth/moon-2k-v1.webp';
-var _MOON_MAP_HI_URL = '/static/earth/moon-4k-v1.webp';
+var _MOON_MAP_URL = _almAsset('/static/earth/moon-v1.webp');
+var _MOON_MAP_MID_URL = _almAsset('/static/earth/moon-2k-v1.webp');
+var _MOON_MAP_HI_URL = _almAsset('/static/earth/moon-4k-v1.webp');
 var _MOON_TEX = new Image();
 var _MOON_TEX_MID = null;         // the 2048 map's Image, once it has loaded and its tone table is built
 var _MOON_TEX_HI = null;          // the 4096 map's Image, once it has loaded
@@ -20879,6 +20892,7 @@ function _prefTake(d) {
 }
 // Settings that changed underneath this page (the account's, or another tab's):
 // what shows them is drawn again.
+var PREF_APPLIED_EVENT = 'zimi-pref-applied';
 function _prefApplied(keys) {
   var has = function (k) { return keys.indexOf(k) >= 0; };
   if (has(SK.UI_LANG)) {
@@ -20915,6 +20929,8 @@ function _prefApplied(keys) {
   // The Almanac, if it is loaded, draws what changed (almanac.js _almPrefsApplied; in the ZIM it hears the
   // same change as a storage event instead).
   if (typeof _almPrefsApplied === 'function') try { _almPrefsApplied(keys); } catch (e) {}
+  // Scripts loaded on first use (manage.js) hear it as an event.
+  document.dispatchEvent(new CustomEvent(PREF_APPLIED_EVENT, { detail: keys }));
   if (has(SK.PREF_FLAVOR)) {
     var fl = document.getElementById('ms-flavor-seg');
     if (fl) fl.innerHTML = _flavorSegInner();

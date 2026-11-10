@@ -4119,5 +4119,8 @@
   "lib_hd_where": "يُختار من إعدادات التقويم",
   "lib_hd_meta": "{n} ملفات · {size}",
   "older_copies_title": "نسخ أقدم محفوظة",
-  "older_copies_row": "استُبدلت بـ {file}"
+  "older_copies_row": "استُبدلت بـ {file}",
+  "alm_go_small": "عوالم صغيرة",
+  "go_view_grid": "شبكة",
+  "go_view_list": "قائمة"
 }

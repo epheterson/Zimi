@@ -351,7 +351,7 @@ def test_go_to_the_minimap_and_the_orrery_s_way_in(served):
                 groups == 7
             ), groups  # Earth and Moon, Planets, Moons, Dwarf planets, Spacecraft, Moon landings, Missions
             assert pg.evaluate(
-                "Array.from(document.querySelectorAll('#ae-go .ae-go-row')).every(r => !!r.querySelector('.ae-go-dot'))"
+                "Array.from(document.querySelectorAll('#ae-go .ae-go-row')).every(r => !!r.querySelector('.ae-go-thumb'))"
             )
             pg.click("#ae-go [data-ae-go='saturn']")
             assert pg.evaluate("document.getElementById('ae-go').hidden")
@@ -1468,8 +1468,9 @@ def test_the_moon_s_landings_on_the_first_tap(served):
             assert pg.evaluate(labels) == []
             pg.click("#ae-views [data-ae-view='landings']")
             seen = pg.evaluate(
-                """() => { var s = document.getElementById('ae-go'), h = s.querySelector('h4[data-g="alm_go_landings"]');
-                if (!h) return null; var a = s.getBoundingClientRect(), b = h.getBoundingClientRect(); return b.top >= a.top - 1 && b.bottom <= a.bottom + 1; }"""
+                """() => { var s = document.getElementById('ae-go'), r = s.querySelector('[data-ae-go^="lm:"]');
+                if (!r || s.querySelector('[data-ae-pill="landings"]').getAttribute('aria-pressed') !== 'true') return null;
+                var a = s.getBoundingClientRect(), b = r.getBoundingClientRect(); return b.top >= a.top - 1 && b.bottom <= a.bottom + 1; }"""
             )
             assert seen is True, seen
             pg.evaluate("_aeShowGo(false)")

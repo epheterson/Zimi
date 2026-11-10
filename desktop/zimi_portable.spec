@@ -51,6 +51,9 @@ a = Analysis(
         (os.path.join(REPO_ROOT, 'zimi/templates'), 'zimi/templates'),
         (os.path.join(REPO_ROOT, 'zimi/assets'), 'zimi/assets'),
         (os.path.join(REPO_ROOT, 'zimi/static'), 'zimi/static'),
+        # The voice engines' helper runs as a script under the voices venv's Python, so it must be a file on
+        # disk beside the package, not only inside the frozen archive (#151).
+        (os.path.join(REPO_ROOT, 'zimi/voicehelper.py'), 'zimi'),
     ] + builtin_datas,
     hiddenimports=['libzim', 'certifi', 'fitz', 'PIL'] + zimi_modules + zeroconf_modules,
     hookspath=[],

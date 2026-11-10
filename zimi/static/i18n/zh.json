@@ -4119,5 +4119,8 @@
   "lib_hd_where": "在年鉴的设置中选择",
   "lib_hd_meta": "{n} 个文件 · {size}",
   "older_copies_title": "保留的旧副本",
-  "older_copies_row": "已由 {file} 取代"
+  "older_copies_row": "已由 {file} 取代",
+  "alm_go_small": "小天体",
+  "go_view_grid": "网格",
+  "go_view_list": "列表"
 }

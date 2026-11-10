@@ -198,8 +198,8 @@ def test_go_to_a_town_flies_over_it_and_its_card_previews_its_article(library):
             rows = _rows(pg)
             # The larger Paris first, with where it is; the other after it.
             assert "France" in rows[0] and "Texas" in rows[1], rows
-            # The groups give way while something is typed.
-            assert pg.evaluate("document.getElementById('ae-go-groups').hidden")
+            # No body answers to Paris: the bodies give way to the places.
+            assert pg.evaluate("document.getElementById('ae-go-groups').children.length") == 0
             pg.click("#ae-go-found .ae-go-item:nth-child(1) .ae-go-row")
             _landed(pg)
             assert _camera_off_deg(pg, *PARIS) < MAX_OFF_DEG
@@ -297,7 +297,7 @@ def test_with_no_map_installed_the_landmarks_and_big_cities_answer_and_nothing_f
             pg.wait_for_timeout(800)
             assert _rows(pg) == []
             words = pg.evaluate(
-                "() => document.getElementById('ae-go').innerText.trim()"
+                "() => document.querySelector('#ae-go .ae-go-body').innerText.trim()"
             )
             assert words == pg.evaluate("t('no_results')"), words
             pg.fill("#ae-go-q", "Mont Blanc")

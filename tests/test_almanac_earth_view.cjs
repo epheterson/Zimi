@@ -68,7 +68,7 @@ const NULL_IDS = new Set(['almanac-orrery']);   // the orrery's canvas: not draw
 const byId = new Map();
 function fakeEl(id) {
   const el = {
-    id, hidden: false, textContent: '', innerHTML: '', className: '', style: {}, attrs: {}, listeners: {},
+    id, hidden: false, textContent: '', innerHTML: '', value: '', className: '', style: {}, attrs: {}, listeners: {},
     clientWidth: 390, clientHeight: 844, parentNode: null,
     classList: {
       set: new Set(),
@@ -80,7 +80,7 @@ function fakeEl(id) {
     appendChild(c) { c.parentNode = el; return c; },
     replaceChild(fresh, old) { fresh.parentNode = el; old.parentNode = null; if (old.id) byId.set(old.id, fresh); },
     cloneNode() { const c = fakeEl(el.id); c.className = el.className; c.attrs = Object.assign({}, el.attrs); return c; },
-    focus() {}, setPointerCapture() {}, getBoundingClientRect() { return { left: 0, top: 0 }; },
+    focus() {}, setPointerCapture() {}, getBoundingClientRect() { return { left: 0, top: 0 }; }, querySelectorAll() { return []; },
     removeAttribute(k) { delete this.attrs[k]; },
   };
   el.style = {
@@ -171,6 +171,7 @@ const S = {
   navigator: { onLine: true },
 };
 vm.createContext(S);
+S._almAsset = (p) => p;   // app.js: a /static address with its version; here, as it is
 vm.runInContext(require("./sk.cjs")(), S);   // app.js SK, loaded before every Almanac file
 vm.runInContext(
   'var JD_UNIX_EPOCH = 2440587.5, JD_J2000 = 2451545.0, MS_PER_DAY = 86400000, JULIAN_CENTURY = 36525;' +
@@ -354,8 +355,8 @@ const run = (code) => vm.runInContext(code, S);
     check(run('_ae.gl') === null, 'and lets the scene go');
     check(held.size > 10 && disposed === held.size, 'every geometry and material is disposed (' + disposed + ' of ' + held.size + ')');
     check(maps.length === 3 && maps.every((x) => x.disposed), 'every map is disposed');
-    check(textures.some((x) => x.url === S.AE_TEX_MOON_HI) && textures.filter((x) => x.url === S.AE_TEX_MOON).every((x) => x.disposed),
-      'the Moon\'s 4096 map replaced its 1024 one, which was given back then');
+    check(!textures.some((x) => x.url === S.AE_TEX_MOON_HI) && textures.filter((x) => x.url === S.AE_TEX_MOON).every((x) => x.disposed),
+      'opened on the Earth the 4096 Moon map is not fetched (tests/test_almanac_lazy_open.cjs has its triggers), and the 1024 one is given back');
     check(r1.did('dispose') && r1.did('forceContextLoss'), 'the renderer is disposed and its context given back');
     const fresh = document.getElementById('ae-canvas');
     check(fresh !== oldCanvas && oldCanvas.parentNode === null, 'a fresh canvas replaces the one whose context is lost');

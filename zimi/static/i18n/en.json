@@ -4119,5 +4119,8 @@
   "lib_hd_where": "Chosen in the Almanac's settings",
   "lib_hd_meta": "{n} files · {size}",
   "older_copies_title": "Older copies kept",
-  "older_copies_row": "Replaced by {file}"
+  "older_copies_row": "Replaced by {file}",
+  "alm_go_small": "Small worlds",
+  "go_view_grid": "Grid",
+  "go_view_list": "List"
 }

@@ -4119,5 +4119,8 @@
   "lib_hd_where": "पंचांग की सेटिंग में चुनें",
   "lib_hd_meta": "{n} फ़ाइलें · {size}",
   "older_copies_title": "रखी गई पुरानी प्रतियाँ",
-  "older_copies_row": "{file} ने इसकी जगह ली"
+  "older_copies_row": "{file} ने इसकी जगह ली",
+  "alm_go_small": "छोटे संसार",
+  "go_view_grid": "ग्रिड",
+  "go_view_list": "सूची"
 }
