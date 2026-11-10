@@ -131,11 +131,11 @@ def _almanac_with(page, served, init, idle_ms=6000):
 def test_the_page_holds_the_3d_files_back_on_what_capability_calls_low(page, served):
     mem1 = "Object.defineProperty(navigator, 'deviceMemory', { get: () => 1 });"
     came, low = _almanac_with(
-        served, mem1 + "try { localStorage.setItem('zimi_cap', 'auto'); } catch (e) {}"
+        page, served, mem1 + "try { localStorage.setItem('zimi_cap', 'auto'); } catch (e) {}"
     )
     assert low is True and came is False, (low, came)
     # Full is the person's word: the same machine fetches them ahead of the tap.
     came, low = _almanac_with(
-        served, mem1 + "try { localStorage.setItem('zimi_cap', 'full'); } catch (e) {}"
+        page, served, mem1 + "try { localStorage.setItem('zimi_cap', 'full'); } catch (e) {}"
     )
     assert low is False and came is True, (low, came)
