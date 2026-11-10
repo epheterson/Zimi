@@ -81,7 +81,7 @@ var _oaAir = {
   wants: function (st) {
     if (st.key !== OA_BODY || !(st.altKm < OA_MAX_HEIGHT_KM) || typeof _ae === 'undefined' || !_ae || !_ae.gl) return false;
     if (!_oa) {
-      try { _oa = _oaBuild(_ae.gl); } catch (e) { _oa = { failed: true }; }
+      try { _oa = _oaBuild(_ae.gl); } catch (e) { _oa = { failed: true, error: String(e && e.message || e).slice(0, 300) }; if (typeof console !== 'undefined') console.warn('oneair: the card\'s air could not be built here: ' + _oa.error); }
     }
     if (_oa.failed) return false;
     this.uniforms = _oa.uniforms;
