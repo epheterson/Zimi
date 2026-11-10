@@ -5169,6 +5169,7 @@
  "shelf.length.l5": "About 5 minutes",
  "shelf.minutes": "{n} min",
  "shelf.minutes.plus": "{n} min+",
+ "shelf.new": "New",
  "shelf.noMatch": "No game matches that.",
  "shelf.play": "Play",
  "shelf.players.line": {
