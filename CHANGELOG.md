@@ -32,7 +32,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 - Voices on the portable Linux build: the helper it was missing is included, a first voice download sets up its engine with the machine's Python or uv, and a disk mounted noexec is named instead of failing (#151).
 - Settings > Language says why a voice can't be installed instead of doing nothing (#151).
-- Settings panes no longer grow wider than their card, so Capture's switches are no longer cut off, and they match the switches everywhere else (#150).
+- Settings panes no longer grow wider than their card, so Capture's switches are no longer cut off, and they match the switches everywhere else; Create's setup commands wrap inside their card too (#150).
 - Reddot, Zimipedia, ZimiTube, the PDF reader and Manage's Maps pane follow a setting changed in another window.
 - A second `zimi serve -d` started while the first is still starting no longer removes its pid file.
 - The portable build includes Pillow.
