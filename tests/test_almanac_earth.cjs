@@ -323,5 +323,35 @@ const utc = (iso) => Date.parse(iso);
   check(worstIss < 0.001, "a ground track's point and the globe's share one ellipsoid (worst " + (worstIss * 1000).toFixed(2) + ' m)');
 }
 
-if (failures) { console.error(failures + ' failure(s)'); process.exit(1); }
-console.log('all passed');
+// Almanac HD as a set of ZIMs: the view's list of layers is every installed ZIM's, each layer remembering whose folder it is
+// in; a part that does not answer leaves its layers out (the body keeps its map); the core's list is required.
+async function hdSetTests() {
+  const lists = {
+    '/w/core/hd/hd.json': { layers: { 'earth/day': { max: 7 }, 'planets/io': { max: 4 }, 'moon/albedo': { max: 5 } } },
+    '/w/moon/hd.json': { layers: { 'moon/albedo': { max: 7, from: 6, inserts: [{ z: 8 }] }, 'terrain/moon': { max: 5 } } },
+    '/w/mars/hd.json': null
+  };
+  S.fetch = (url) => Promise.resolve(lists[url] ? { ok: true, json: () => Promise.resolve(JSON.parse(JSON.stringify(lists[url]))) } : { ok: false, json: () => Promise.reject(new Error('no')) });
+  S._ae = { hdSt: { base: '/w/core/hd/', parts: { moon: '/w/moon/', mars: '/w/mars/' } } };
+  const man = await S._aeHdManifest();
+  const keys = Object.keys(man.layers).sort().join(',');
+  check(keys === 'earth/day,moon/albedo,planets/io,terrain/moon', 'the set\'s layers are the installed ZIMs\' together (' + keys + ')');
+  check(man.layers['earth/day'].base === '/w/core/hd/' && man.layers['terrain/moon'].base === '/w/moon/', 'each layer remembers the folder it is in');
+  const moon = man.layers['moon/albedo'];
+  check(moon.max === 7 && moon.base === '/w/core/hd/' && moon.deep.from === 6 && moon.deep.base === '/w/moon/' && moon.inserts.length === 1, 'a layer split between the core and a part reads the core to its level and the part from there');
+  const url = (z) => S._aeHdTileUrl({ layer: 'moon/albedo', base: moon.base, deep: moon.deep }, { z: z, x: 1, y: 2 });
+  check(url(5) === '/w/core/hd/moon/albedo/5/1/2.webp' && url(6) === '/w/moon/moon/albedo/6/1/2.webp' && url(9) === '/w/moon/moon/albedo/9/1/2.webp', 'a tile is asked of the folder that holds its level');
+  check(S._aeHdBases().join() === '/w/core/hd/,/w/mars/,/w/moon/', 'the folders are read in a fixed order');
+  S._ae = { hdSt: { base: '/w/gone/hd/', parts: { moon: '/w/moon/' } } };
+  let failed = false;
+  try { await S._aeHdManifest(); } catch (e) { failed = true; }
+  check(failed, 'without the core\'s list there is no set');
+  S._ae = { hdSt: { base: '/w/core/hd/', parts: {} } };
+  const alone = await S._aeHdManifest();
+  check(Object.keys(alone.layers).length === 3 && alone.layers['moon/albedo'].max === 5 && !alone.layers['moon/albedo'].deep, 'a core alone is what it was, the Moon to its own level');
+}
+
+hdSetTests().then(() => {
+  if (failures) { console.error(failures + ' failure(s)'); process.exit(1); }
+  console.log('all passed');
+});

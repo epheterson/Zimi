@@ -3891,5 +3891,6 @@
   "alm_ms_ph_splash": "Amerrissage",
   "tb_kn_ms_tli_v": "Décalée d'environ deux minutes par rapport au rapport, à l'heure où l'orbite de parking ajustée atteint la latitude du rapport (8,03 S)",
   "tb_kn_ms_rdv": "Apollo 11 : rendez-vous",
-  "tb_kn_ms_rdv_v": "Une réduction lissée de l'écart du module lunaire avec Columbia jusqu'à l'amarrage ; pas la séquence coelliptique du rapport"
+  "tb_kn_ms_rdv_v": "Une réduction lissée de l'écart du module lunaire avec Columbia jusqu'à l'amarrage ; pas la séquence coelliptique du rapport",
+  "alm_hd_ultra": "Ultra"
 }

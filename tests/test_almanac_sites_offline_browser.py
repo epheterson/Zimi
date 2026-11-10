@@ -204,9 +204,11 @@ def test_a_visit_to_apollo_11_works_with_the_network_cut(pw, server):
         timeout=240_000,
         polling=500,
     )
+    # At the landing the ascent stage stands on the descent stage (until its liftoff, which sites-v1.json carries).
     assert page.evaluate("() => _aeSiteState().parts.map(p => p.model).sort()") == [
         "flag",
         "lm",
+        "lm-ascent",
     ]
     ctx.close()
     br.close()

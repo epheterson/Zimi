@@ -24,6 +24,9 @@ GL_ARGS = [
 VIEW = {"width": 390, "height": 844}
 PLACE = '{"lat":37.77,"lon":-122.42,"name":"San Francisco"}'
 READY_MS = 240_000
+# A wait for tiles under software GL: frames are the point of these. The view's flights are skipped (reduced motion), so no
+# wait depends on how fast frames come.
+WAIT_MS = 60_000
 INSERT = {"site": "apollo11", "lat": 0.67408, "lon": 23.47297, "z": 2, "x0": 4, "x1": 5, "y0": 0, "y1": 1}
 LEVELS = {"earth/day": 2, "earth/night": 1, "moon/albedo": 1, "moon/relief": 1}
 OFFER = {
@@ -137,6 +140,7 @@ def _open_earth(browser, url, route_hd=None, base="/w/zimi_almanac_"):
         has_touch=True,
         is_mobile=True,
         service_workers="block",
+        reduced_motion="reduce",
     )
     ctx.add_init_script(
         "try { localStorage.setItem('zimi_almanac_place', %r); sessionStorage.setItem('zimi_almanac_location', %r);"
@@ -180,7 +184,7 @@ def _open_earth(browser, url, route_hd=None, base="/w/zimi_almanac_"):
 DRAWN = "() => _ae.gl.hd ? _ae.gl.hd.bodies[0].drawn.map(n => n.z) : null"
 
 
-def _settle(pg, js_true, ms=60_000):
+def _settle(pg, js_true, ms=WAIT_MS):
     pg.wait_for_function(
         "() => { _ae.dirty = true; _aeKick(); return (" + js_true + ")(); }",
         timeout=ms,
@@ -204,13 +208,13 @@ def test_tiles_by_view(browser, served):
         assert not [n for n in listed if n.startswith("zimi_almanac_")], listed
         # Every tile came from where this library keeps them: inside the flavour's hd/, or the tiles-only ZIM's root.
         # The view is ready before its first tiles are asked for (hd.json is read after the satellites answer).
-        pg.wait_for_function("() => _ae.gl.hd && _ae.gl.hd.bodies[0].drawn.length > 0", timeout=60_000, polling=200)
+        pg.wait_for_function("() => _ae.gl.hd && _ae.gl.hd.bodies[0].drawn.length > 0", timeout=WAIT_MS, polling=200)
         assert tiles and all(base in u for u in tiles), (base, tiles[:3])
         # Far: level 0 covers the Earth, and its one map steps aside. Far enough that a level-0 tile covers no more
         # device pixels than it has (nearer, at 8 Earth radii and 2x, level 2 is the right choice, and the old check
         # passed only while level 2's tiles were still on their way), not so far the Earth is under 40 px and asks for
         # none. Worked out from the view's own numbers, the flight in done.
-        pg.wait_for_function("() => { _ae.dirty = true; _aeKick(); return !_ae.fly; }", timeout=60_000, polling=200)
+        pg.wait_for_function("() => { _ae.dirty = true; _aeKick(); return !_ae.fly; }", timeout=WAIT_MS, polling=200)
         far = pg.evaluate("""() => { var d = Math.PI * _aeFocalPx() * _ae.gl.dpr / (AE_HD_TILE_PX * AE_HD_SPLIT) + 2.5;
             _ae.dist = d; _ae.dirty = true; _aeKick(); return { dist: d, radiusPx: _aeFocalPx() / d }; }""")
         assert far["radiusPx"] > 40, far
@@ -323,7 +327,7 @@ def test_a_flavour_opened_alone_is_the_almanac_and_the_hd_one_draws_its_own_tile
         ownzims.write_zim(next(o for o in ownzims.OWN if o.name == "zimi_almanac"), str(tmp_path / "zims" / "zimi_almanac_2026-11.zim"))
         httpd = _serve(tmp_path, "without", fresh=False)
         page = "/w/zimi_almanac/index.html?raw=1"
-    ctx = browser.new_context(viewport=VIEW, device_scale_factor=2, has_touch=True, is_mobile=True, service_workers="block")
+    ctx = browser.new_context(viewport=VIEW, device_scale_factor=2, has_touch=True, is_mobile=True, service_workers="block", reduced_motion="reduce")
     ctx.add_init_script("try { localStorage.setItem('zimi_almanac_place', %r); } catch (e) {}" % PLACE)
     pg = ctx.new_page()
     reqs, errors = [], []
@@ -338,8 +342,8 @@ def test_a_flavour_opened_alone_is_the_almanac_and_the_hd_one_draws_its_own_tile
             pg.wait_for_timeout(2500)
             assert pg.evaluate("_ae.gl.hd") is None and not [u for u in reqs if "/hd/" in u and u.endswith(".webp")]
         else:
-            pg.wait_for_function("() => { _ae.dirty = true; _aeKick(); return !!_ae.gl.hd; }", timeout=60_000, polling=250)
-            pg.wait_for_function("() => { _ae.dirty = true; _aeKick(); return !_ae.fly; }", timeout=60_000, polling=200)
+            pg.wait_for_function("() => { _ae.dirty = true; _aeKick(); return !!_ae.gl.hd; }", timeout=WAIT_MS, polling=250)
+            pg.wait_for_function("() => { _ae.dirty = true; _aeKick(); return !_ae.fly; }", timeout=WAIT_MS, polling=200)
             pg.evaluate("_ae.dist = AE_TARGETS.earth.min; _ae.dirty = true; _aeKick()")
             _settle(pg, "() => { var d = (" + DRAWN + ")(); return d && d.length && d.every(z => z === 2); }")
             tiles = [u for u in reqs if u.endswith(".webp") and "/earth/day/" in u and "/hd/" in u]
