@@ -505,8 +505,9 @@ class TestServerFillsTheShellList(unittest.TestCase):
         for name in ("almanac.js", "almanac-sky.js", "almanac-earth.js"):
             self.assertTrue(hashed(name, pack), name)
             self.assertFalse(hashed(name, shell), name)
-        for u in ("/static/earth/moon-v1.webp", "/almanac-satellites"):
-            self.assertIn(u, pack)
+        self.assertIn("/almanac-satellites", pack)
+        # A data file is kept at the address the page asks for it at: its path and its content hash (_almAsset).
+        self.assertTrue(hashed("earth/moon-v1.webp", pack))
         self.assertTrue([u for u in pack if "three-r" in u] and [u for u in pack if "earth-day" in u])
         # The 4096 Moon map waits for the first time it is shown.
         self.assertFalse([u for u in shell + pack if "moon-4k" in u])

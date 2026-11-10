@@ -301,8 +301,8 @@ function _aeEclipseNow(scene) {
 // the old one.
 var AE_THREE_URL = '/static/earth/three-r186.min.js';
 var AE_SGP4_URL = '/static/earth/satellite-7.1.0.min.js';
-var AE_TEX_DAY = '/static/earth/earth-day-v1.webp';
-var AE_TEX_NIGHT = '/static/earth/earth-night-v1.webp';
+var AE_TEX_DAY = _almAsset('/static/earth/earth-day-v1.webp');
+var AE_TEX_NIGHT = _almAsset('/static/earth/earth-night-v1.webp');
 var AE_TEX_MOON = _MOON_MAP_URL;        // app.js: the 2D Moons' maps, the 1024 one first
 var AE_TEX_MOON_HI = _MOON_MAP_HI_URL;
 // The 4096 map goes to the GPU as one channel (8 MB, not 32): three's
@@ -441,7 +441,7 @@ var AE_PIN_SVG = '<svg viewBox="0 0 24 24" width="17" height="17" fill="none" st
 var AE_ORBIT_SVG = '<svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" aria-hidden="true"><circle cx="12" cy="12" r="6"/><ellipse cx="12" cy="12" rx="10" ry="3.2"/><path d="M12 1.5v21"/></svg>';
 // Every active satellite (almanac-sats.js, loaded on the button's first press): a ring with dots on it.
 var AE_SATS_SVG = '<svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" aria-hidden="true"><circle cx="12" cy="12" r="9" opacity=".55"/><circle cx="6.5" cy="7" r="1.5" fill="currentColor" stroke="none"/><circle cx="16" cy="5.8" r="1.5" fill="currentColor" stroke="none"/><circle cx="18.2" cy="14.5" r="1.5" fill="currentColor" stroke="none"/><circle cx="9.5" cy="17.5" r="1.5" fill="currentColor" stroke="none"/><circle cx="11.8" cy="11.2" r="1.5" fill="currentColor" stroke="none"/></svg>';
-var AE_SATS_JS = '/static/almanac-sats.js?v=1';
+var AE_SATS_JS = _almAsset('/static/almanac-sats.js');
 // What the all-satellites layer decides by (almanac-sats.js), kept here so the Almanac's constants pages can show it.
 var AE_SATS_REF = {
   ageFreshDays: 3, ageGoneDays: 45,     // elements this young are drawn in full; past the second the satellite is not drawn
@@ -459,7 +459,7 @@ var AE_SATS_REF = {
 };
 // Launches (almanac-launches.js, loaded on the button's first press): a rocket rising.
 var AE_LAUNCH_SVG = '<svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 2.5c3 2.6 4.3 6 4.3 9.6l-1.6 3.4H9.3l-1.6-3.4C7.7 8.5 9 5.1 12 2.5z"/><circle cx="12" cy="9.4" r="1.6"/><path d="M8.3 14.2l-2.6 2.6M15.7 14.2l2.6 2.6M10.3 18.5v3M13.7 18.5v3"/></svg>';
-var AE_LAUNCHES_JS = ['/static/almanac-launchflight.js?v=1', '/static/almanac-launches.js?v=1', '/static/almanac-thens.js?v=1'];
+var AE_LAUNCHES_JS = [_almAsset('/static/almanac-launchflight.js'), _almAsset('/static/almanac-launches.js'), _almAsset('/static/almanac-thens.js')];
 // What the launch pages decide by (almanac-launchflight.js), kept here so the Almanac's constants pages can show it.
 var AE_LAUNCH_REF = {
   minElDeg: 1,                          // a rocket is seen above this height over the horizon
@@ -623,7 +623,7 @@ var AE_CSS = [
   '@media (max-width:370px){#ae-views,.ae-chips{gap:3px}#ae-views .ae-btn{font-size:12px}#ae-views .ae-btn:not(.ae-round){padding-inline:5px}#ae-views .ae-round{width:30px;height:30px}}',
   // Short landscape (a phone on its side, 390 high): the sheet takes the height, short of the control column, so a list of places shows
   // six rows, not one and a half.
-  '@media (orientation:landscape) and (max-height:460px){.ae-go{inset-inline:12px 68px;top:8px;max-height:none}}',
+  '@media (orientation:landscape) and (max-height:460px){.ae-go{inset-inline:12px 68px;top:8px;max-height:none}.ae-go-row{min-height:34px}.ae-go h4{margin:6px 10px 2px}.ae-go-find{padding:4px 14px}}',
   '.ae-go-find{position:sticky;bottom:-8px;z-index:1;display:flex;align-items:center;gap:8px;margin:4px -6px -8px;padding:8px 14px;background:' + AE_PANEL_BG + ';border-top:1px solid var(--border);color:var(--text3)}',
   '.ae-go-find input{flex:1;min-width:0;height:32px;border:0;background:none;color:var(--text);font:inherit;font-size:16px;outline:none;-webkit-user-select:text;user-select:text;-webkit-appearance:none;appearance:none}',
   '.ae-go-find input::-webkit-search-cancel-button{-webkit-appearance:none}',
@@ -1762,13 +1762,20 @@ function _aeUpdateSpots(S, ms) {
 // ── The Sun close up: prominences, flares and a finer surface (almanac-sun.js) ──
 // Loaded the first time the Sun is wide on screen (never with the view's first frame: from the Earth it is a small
 // disc the plain shaders draw); it swaps the Sun's two shaders for fuller ones and feeds them each frame.
-var AE_SUNFX_JS = '/static/almanac-sun.js?v=45';
+var AE_SUNFX_JS = _almAsset('/static/almanac-sun.js');
 var AE_SUNFX_MIN_PX = 28;            // the Sun's disc, radius in CSS px, past which its close-up is asked for
 function _aeSunFxWanted(S, ms) {
   if (typeof _aeSunFxTick === 'function') { _aeSunFxTick(S, ms); return; }
-  if (S.sunFxAsked || typeof document === 'undefined') return;
-  var d = _aeLen(_aeSub([S.camera.position.x, S.camera.position.y, S.camera.position.z], [S.sun.position.x, S.sun.position.y, S.sun.position.z]));
+  if (S.sunFxAsked || typeof document === 'undefined' || !_ae.ready || !_aeIsOpen) return;   // nor while the scene is being built (the default camera has the Sun in frame)
+  var to = _aeSub([S.sun.position.x, S.sun.position.y, S.sun.position.z], [S.camera.position.x, S.camera.position.y, S.camera.position.z]), d = _aeLen(to);
   if (AE_SUN_SHOW_R / Math.max(1e-9, d) * _ae.h / 2 / Math.tan(_aeRad(S.camera.fov) / 2) < AE_SUNFX_MIN_PX) return;
+  // Wide on screen is not enough: on a phone the Sun is "wide" from the first frame, looking the other way. It is asked for when
+  // the view is on the Sun, or the Sun is within the picture (the angle to it inside the corner of the frame).
+  if (_ae.target !== 'sun') {
+    var f = S.camera.getWorldDirection(S.sunFxDir || (S.sunFxDir = new S.THREE.Vector3())), cosA = (to[0] * f.x + to[1] * f.y + to[2] * f.z) / Math.max(1e-9, d);
+    var tanV = Math.tan(_aeRad(S.camera.fov) / 2), corner = Math.atan(tanV * Math.hypot(1, _ae.w / Math.max(1, _ae.h)));
+    if (Math.acos(Math.max(-1, Math.min(1, cosA))) > corner + AE_SUN_SHOW_R / Math.max(1e-9, d)) return;
+  }
   S.sunFxAsked = true;
   var el = document.createElement('script');
   el.src = AE_SUNFX_JS;
@@ -2033,7 +2040,7 @@ function _aeBuildGl(THREE, canvas) {
     new THREE.SphereGeometry(AE_ATMOSPHERE_SCALE, AE_ATMO_SEGMENTS[0], AE_ATMO_SEGMENTS[1]),
     _aeAddLight(new THREE.ShaderMaterial({
       uniforms: { sunPos: shared.sunPos }, vertexShader: AE_SPHERE_VERT, fragmentShader: AE_ATMO_FRAG,
-      transparent: true, depthWrite: false
+      side: AE_THREE_BACK_SIDE, transparent: true, depthWrite: false   // the shell is its far side: a glow at the limb, not a wash over the disc
     })));
   scene.add(atmo);
 
@@ -2104,6 +2111,11 @@ function _aeLoadMap(S, uni, url, format, load) {
       if (format) tx.format = format;
       if (uni.value) uni.value.dispose();   // a map it replaces (the Moon's 1024 one)
       uni.value = tx;
+      if (typeof ZimiCap !== 'undefined' && tx.image && tx.image.width) {   // the capability level's memory budget (capability.js)
+        if (uni.__capKey) ZimiCap.gpuFree(uni.__capKey);
+        uni.__capKey = 'map:' + url;
+        ZimiCap.gpuTrack(uni.__capKey, tx.image.width * tx.image.height * 4 * 1.34);
+      }
       return true;
     }, function () {
       delete S.maps[url];
@@ -2133,6 +2145,22 @@ function _aeSharedHiMoon(S) {
     });
   };
 }
+// The 4096 Moon (730 KB, 43 MB of texture memory once on the GPU) is asked for when the 1024 map can no longer show the Moon: the
+// Moon is what the view is on (opened from Go to, or a flight there), or its disc is wide enough that a texel of the small map
+// is bigger than a pixel (a hemisphere of the map, W / 2 texels, across a disc 2R pixels wide: W / 4R texels to a pixel). Until
+// then the 3D Moon is drawn from the small map, and the Earth opens without this file.
+var AE_MOON_LO_MAP_W = 1024;          // the width of the small map (AE_TEX_MOON)
+function _aeMoonDiscPx(S) {
+  var e = S.moon.matrixWorld.elements, cam = S.camera.position, d = Math.hypot(cam.x - e[12], cam.y - e[13], cam.z - e[14]);
+  return AE_MOON_RADIUS_RE / Math.max(1e-9, d) * _ae.h / 2 / Math.tan(_aeRad(S.camera.fov) / 2) * (typeof window !== 'undefined' && window.devicePixelRatio || 1);
+}
+function _aeMoonHiWanted(S) {
+  // Not while the scene is being built: until the view is ready and open the camera sits at its default distance, where the Moon's disc is wide.
+  if (S.moonHiAsked || !S.moonUni.moonMapped.value || !_ae.ready || !_aeIsOpen) return;
+  if (_ae.target !== 'moon' && _aeMoonDiscPx(S) < AE_MOON_LO_MAP_W / 4) return;
+  S.moonHiAsked = true;
+  _aeLoadMap(S, S.moonUni.moonMap, AE_TEX_MOON_HI, AE_THREE_RED_FORMAT, _aeSharedHiMoon(S));
+}
 // Loads whatever maps are not in yet; resolves with whether the day map is.
 function _aeLoadMaps(S) {
   _aeLoadStars(S);
@@ -2142,7 +2170,7 @@ function _aeLoadMaps(S) {
   _aeLoadMap(S, S.moonUni.moonMap, AE_TEX_MOON).then(function (ok) {
     if (!ok) return;
     S.moonUni.moonMapped.value = 1;
-    _aeLoadMap(S, S.moonUni.moonMap, AE_TEX_MOON_HI, AE_THREE_RED_FORMAT, _aeSharedHiMoon(S));
+    _aeMoonHiWanted(S);   // the 4096 one at once if the Moon is what the view opens on; else when it is wanted (each frame)
   });
   if (_ae.hdInstalled && !S.hdAsked) { S.hdAsked = true; _aeHdLoad(S); }   // a view built again (it gives the GPU back)
   return _aeLoadMap(S, S.earthUni.dayMap, AE_TEX_DAY);
@@ -2395,7 +2423,7 @@ function _aeHdKeepAbove(S, b) {
 // An installed map's roads and names fade in over the globe as the camera comes down, and over such a map the camera may
 // come much nearer: the lines stay sharp where the picture of the ground blurs. Needs the app shell (the map is a ZIM
 // of the library); the Almanac ZIM on its own has none, and then nothing here runs.
-var AE_MAPS_SRC = '/static/almanac-maps.js?v=1';
+var AE_MAPS_SRC = _almAsset('/static/almanac-maps.js');
 var AE_MAPS = {
   loadDist: 1.6,        // Earth radii from the centre: the module is fetched below this
   startKm: 3000,        // altitude where the roads and names begin to show ...
@@ -2713,7 +2741,7 @@ var AE_RING_FRAG = [
 ].join('\n');
 function _aePlanetBody(key) { for (var i = 0; i < AE_PLANETS.length; i++) if (AE_PLANETS[i].key === key) return AE_PLANETS[i]; return null; }
 function _aeIsPlanet(key) { return !!_aePlanetBody(key); }
-function _aePlanetMapUrl(b) { return '/static/earth/' + b.map + '-v1.webp'; }
+function _aePlanetMapUrl(b) { return _almAsset('/static/earth/' + b.map + '-v1.webp'); }
 // Each planet and moon becomes a place the view knows: a target to circle, a mark with its name. Once, before the
 // view's markup is built (the marks are made from AE_MARKED).
 var _aePlanetsKnown = false;
@@ -2936,7 +2964,7 @@ function _aeUpdatePlanets(sc) {
     }
     return out;
   };
-  if (_aeIsPlanet(_ae.target) || _ae.target === 'sun' || _ae.dist > AE_AST_WIDE_DIST || _aeIsProbe(_ae.target)) _aeTracksLoad();
+  if (_aeTracksNeeded()) _aeTracksLoad();
 
   var cam = S.camera, eye = [cam.position.x, cam.position.y, cam.position.z];
   var pxPerRad = _ae.h / 2 / Math.tan(_aeRad(cam.fov) / 2);
@@ -3635,7 +3663,7 @@ function _aeDrawAxes(S, sc) {
 // asteroids-v1.bin (scripts/build_asteroids.py, JPL's Small-Body Database): the ~18,000 main-belt asteroids brighter
 // than H 14, as orbital elements, each moved along its ellipse to the shown date and placed as the planets are. Fetched the first time the view stands out among the planets
 // or wide enough to hold the belt; placed again when the shown date has moved a day.
-var AE_AST_URL = '/static/earth/asteroids-v1.bin';
+var AE_AST_URL = _almAsset('/static/earth/asteroids-v1.bin');
 var AE_AST_AU_SPAN = 6, AE_AST_Q = 65535, AE_AST_HEADER = 12;
 var AE_AST_GAUSS_K = 0.01720209895;             // radians a day at 1 AU (Kepler's third law)
 var AE_AST_REPLACE_DAYS = 1;
@@ -3706,7 +3734,7 @@ function _aeUpdateAsteroids(jde, around, sunAt) {
 // beside them. Fetched when first out among the planets. Each probe flying on the shown date is a dot with its name
 // and the path it has flown, placed as the planets are; a tap flies there and its card says where it is and what it
 // last did.
-var AE_TRACKS_URL = '/static/earth/space-tracks-v1.json';
+var AE_TRACKS_URL = _almAsset('/static/earth/space-tracks-v1.json');
 // How far round a planet (AU) a probe is placed in that planet's own frame rather than by the drawn scale.
 var AE_PROBE_REACH_AU = { earth: 0.05, mercury: 0.01, venus: 0.02, mars: 0.02, jupiter: 0.5, saturn: 0.4, uranus: 0.2, neptune: 0.3, pluto: 0.05 };
 var AE_PROBE_COLOR = [0.43, 0.9, 0.85] /* AE_PROBE_HEX */, AE_PROBE_PX = 5, AE_PROBE_CAPACITY = 16;
@@ -3748,8 +3776,13 @@ function _aeTrackAt(track, jd) {
   while (hi - lo > 1) { var mid = (lo + hi) >> 1; if (s[mid][0] <= jd) lo = mid; else hi = mid; }
   return _aeHermite(s[lo], s[hi], jd);
 }
+// Whether the view is somewhere the table is needed: among the planets, on the Sun or a probe, or wide enough to see the belt. The Earth and
+// the Moon opened on do not need it (Pluto's place is asked for every frame, so a frame by itself does not count as a reason).
+function _aeTracksNeeded() {
+  return _aeIsPlanet(_ae.target) || _ae.target === 'sun' || _ae.dist > AE_AST_WIDE_DIST || _aeIsProbe(_ae.target);
+}
 function _aeTracked(b, jd) {
-  if (!_aeTracks) { _aeTracksLoad(); return null; }
+  if (!_aeTracks) { if (_aeTracksNeeded()) _aeTracksLoad(); return null; }
   return _aeTrackAt(b.track === 'planets' ? _aeTracks.planets[b.eph] : _aeTracks.tracks[b.trackKey], jd);
 }
 // Where a planet is (heliocentric AU) at any date: the ephemeris, or the table for Pluto.
@@ -4540,7 +4573,7 @@ function _aeDrawMini() {
 // once the body is AE_LM_LANDING_MIN_R_PX in radius, the biggest first and none on top of another. A tap opens its card:
 // what it is, its article when the library has it, and Fly there, down to the surface over it. A body is a key, so Mars
 // and the rest slot in beside the Moon (with a placement in _aeLmBodies).
-var AE_LM_URL = '/static/earth/landmarks-v1.json';
+var AE_LM_URL = _almAsset('/static/earth/landmarks-v1.json');
 var AE_LM_MAX = 18;
 var AE_LM_MIN_PX = 28;
 var AE_LM_LANDING_MIN_R_PX = 80;
@@ -4593,10 +4626,10 @@ function _aeLmLoad() {
 var AE_SITE_FACTS = { solSeconds: 88775.244, marsSolDays: 1.0274912517, msdEpochJd: 2451549.5, msdOffset: 44796.0 - 0.0009626, ttMinusUtcS: 69.184,
   driveLmstH: { msl: 13, m20: 14 }, lrvSpeedMs: 3.61, marsDriveSpeedMs: 3.4, saturnMassKg: 2.97e6, saturnThrustN: 34.5e6, saturnBurnKgS: 13300, saturnCutoffS: 161, launchAzimuthDeg: 72, launchTowerM: 122,
   saturnThrustVacN: 39.0e6, saturnDragCd: 0.5, saturnAreaM2: 80, saturnTilt: { startS: 12, perS: 1.2, pow: 0.78, maxDeg: 62 }, jumpMs: { moon: 3.0, mars: 4.4 } };
-var AE_SITES_JS = ['/static/almanac-sites.js', '/static/almanac-sites-ground.js'];
+var AE_SITES_JS = [_almAsset('/static/almanac-sites.js'), _almAsset('/static/almanac-sites-ground.js')];
 // Missions flown end to end (almanac-missions.js): fetched the first time one is asked for, never with the view. The
 // ids are in the order of the Go to list; their names are alm_ms_<id>.
-var AE_MISSIONS_JS = '/static/almanac-missions.js', AE_MISSION_IDS = ['apollo11', 'perseverance', 'voyager1', 'voyager2', 'plan'], AE_GO_MS = 'ms:', _aeMissionsLoading = false;
+var AE_MISSIONS_JS = _almAsset('/static/almanac-missions.js'), AE_MISSION_IDS = ['apollo11', 'perseverance', 'voyager1', 'voyager2', 'plan'], AE_GO_MS = 'ms:', _aeMissionsLoading = false;
 function _aeMissionStart(id) {
   if (typeof _aeMissionOpen === 'function') { _aeMissionOpen(id); return; }
   if (_aeMissionsLoading) return;
@@ -5081,7 +5114,7 @@ var AE_FLY_OVERVIEW_MS = 2000, AE_FLY_OVERVIEW_STRETCH = 1.25, AE_FLY_OVERVIEW_K
 //   _aeStandAt(body, lat, lon)         enter the view: a promise of whether it started
 //   _aeGroundHeight(body, lat, lon)    metres above the body's mean radius; 0 until the body's terrain is loaded
 var AE_STAND_KEYS = ['earth', 'moon', 'mercury', 'venus', 'mars', 'io', 'europa', 'ganymede', 'callisto', 'titan', 'pluto'];
-var AE_STAND_SRCS = ['/static/almanac-terrain.js', '/static/almanac-terrainshade.js', '/static/almanac-standlook.js', '/static/almanac-standgl.js', '/static/almanac-oneland.js', '/static/almanac-stand.js', '/static/almanac-standhost.js', '/static/almanac-oneair.js'];
+var AE_STAND_SRCS = [_almAsset('/static/almanac-terrain.js'), _almAsset('/static/almanac-terrainshade.js'), _almAsset('/static/almanac-standlook.js'), _almAsset('/static/almanac-standgl.js'), _almAsset('/static/almanac-oneland.js'), _almAsset('/static/almanac-stand.js'), _almAsset('/static/almanac-standhost.js'), _almAsset('/static/almanac-oneair.js')];
 var AE_STAND_FIGURE_SVG = '<svg class="ae-tool-svg" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="5.5" r="2.3"/><path d="M12 8.5v6M8.5 11.5l3.5-1 3.5 1M12 14.5l-2.5 5.5M12 14.5l2.5 5.5"/></svg>';
 var AE_STAND_EYE_M = 1.7;                      // an eye above the ground
 var AE_STAND_AIRLESS_DAY_MU = [-0.05, 0.12], AE_STAND_AIRLESS_DAY_LIM = 0.5;   // the Sun's sine of height where the stars go (-3 to 7 degrees), and the faintest star left
@@ -6176,7 +6209,7 @@ function _aeOrientMoon(sc) {
 // station flies (LVLH: the truss across the direction of travel, the Russian segment behind, the truss on the zenith
 // side), its main solar arrays turned about the truss toward the Sun. Lit by the Sun (the arrays glint), by the Earth
 // below in daylight, and dark in the Earth's shadow. Under AE_CRAFT_MODEL_PX across it is not drawn: the dot is.
-var AE_ISS_URL = '/static/earth/iss-v1.bin';
+var AE_ISS_URL = _almAsset('/static/earth/iss-v1.bin');
 var AE_ISS_SPAN_RE = 109 / 1000 / AE_EARTH_RADIUS_KM;     // the station's 109 m along its truss, in Earth radii
 var AE_ISS_VIEW_DIR = [-0.42, -0.55, 0.72];                 // from it, in its own axes (nadir, forward, starboard): above, behind, to starboard; the Earth below to the horizon
 AE_TARGETS.iss = { min: AE_ISS_SPAN_RE * 0.9, max: 0.5, surface: AE_ISS_SPAN_RE / 2 };
@@ -6457,7 +6490,7 @@ var AE_CRAFT_FLAT_ROUGH_REF = 110, AE_CRAFT_FLAT_ROUGH_MIN = 0.15, AE_CRAFT_FLAT
 var AE_CRAFT_FLAT_METAL_FROM = 0.5, AE_CRAFT_FLAT_METAL_SPAN = 1.5;                                  // and their specular strength as a metalness
 var AE_CRAFT_MAT_DOUBLE = 1, AE_CRAFT_MAT_CUTOUT = 2;
 var AE_CRAFT_NO_TURN = 255;
-function _aeCraftUrl(model) { return model === 'iss' ? AE_ISS_URL : '/static/earth/craft-' + model + '-v1.bin'; }
+function _aeCraftUrl(model) { return model === 'iss' ? AE_ISS_URL : _almAsset('/static/earth/craft-' + model + '-v1.bin'); }
 // Either format into one shape: positions centred on the box, normals (ZCR2) or none (ZCRF: flat), a class (palette
 // entry) per vertex, the look per class ({ rgb, rough, metal, flags, tex, mr }), metres per unit, the widest extent in
 // units and the box's radius; a probe's pointing and across axes, the ISS's turning class and axis.
@@ -6465,6 +6498,7 @@ function _aeCraftParse(buf) {
   var dv = new DataView(buf), f = function (o) { return dv.getFloat32(o, true); };
   var magic = String.fromCharCode(dv.getUint8(0), dv.getUint8(1), dv.getUint8(2), dv.getUint8(3));
   var v2 = magic === 'ZCR2';
+  if (!v2 && magic !== 'ZCRF') throw new Error('craft format ' + magic);   // another format (a file kept from an older release): not read as this one
   var lo = [f(12), f(16), f(20)], hi = [f(24), f(28), f(32)], mid = [0, 1, 2].map(function (k) { return (lo[k] + hi[k]) / 2; });
   var d = { metres: f(8), span: Math.max(hi[0] - lo[0], hi[1] - lo[1], hi[2] - lo[2]), mid: mid, look: [],   // mid: where the box's middle was (the sites' models are placed by their own frame, almanac-sites.js)
     radius: 0.5 * Math.hypot(hi[0] - lo[0], hi[1] - lo[1], hi[2] - lo[2]) }, o, i, k;
@@ -6515,7 +6549,7 @@ var AE_CRAFT_SLOW_MS = 400;
 function _aeCraftLoad(model, then) {
   var c = _aeCraft[model] = _aeCraft[model] || {};
   if (then) c.then = then;
-  if (c.data || c.loading || typeof fetch !== 'function') return;
+  if (c.data || c.loading || c.bad || typeof fetch !== 'function') return;   // c.bad: a file this parser does not read is not asked for again
   c.loading = true;
   c.slow = setTimeout(function () { if (c.loading && _ae && typeof _aeShowHint === 'function') { c.said = true; _aeShowHint(_aeT('alm_craft_loading')); } }, AE_CRAFT_SLOW_MS);
   var done = function () {
@@ -6525,7 +6559,7 @@ function _aeCraftLoad(model, then) {
     var t = c.then; c.then = null; if (t && _ae) t();
   };
   fetch(_aeCraftUrl(model)).then(function (r) { if (!r.ok) throw new Error(model); return r.arrayBuffer(); }).then(function (buf) {
-    c.data = _aeCraftParse(buf);
+    try { c.data = _aeCraftParse(buf); } catch (e) { c.bad = true; throw e; }
     if (_ae) { _ae.dirty = true; _aeKick(); }
     done();
   }).catch(function () {
@@ -6598,7 +6632,7 @@ function _aeCraftBuild(S, model) {
 // (+x in NASA's model; the plate is the white panel there, the record the gilded disc on it). Its face is the
 // Almanac's own picture of the record's cover (static/golden-record/cover.jpg); a tap on it opens that section.
 var AE_CRAFT_RECORD = { voyager: { at: [1.257, -1.95, -2.33], r: 0.155 } };   // metres in the model's frame
-var AE_RECORD_IMG = '/static/golden-record/cover.jpg', AE_RECORD_IMG_R = 0.47;   // the disc's radius in the picture (of its width)
+var AE_RECORD_IMG = _almAsset('/static/golden-record/cover.jpg'), AE_RECORD_IMG_R = 0.47;   // the disc's radius in the picture (of its width)
 var AE_RECORD_VERT = [
   'varying vec2 vUv;',
   'void main() { vUv = uv; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }'
@@ -6950,6 +6984,7 @@ function _aeUpdate(ms) {
   S.sunT.value = (ms / 1000 / AE_GRANULE_LIFE_S) % AE_GRANULE_CYCLE;
   _aeUpdateSpots(S, ms);
   _aeSunFxWanted(S, ms);
+  _aeMoonHiWanted(S);
   _aeUpdateMoonPath(ms);
   _aeUpdateSats(ms, sc);
   if (typeof _asSatFrame === 'function') _asSatFrame(ms, sc);   // every active satellite (almanac-sats.js)
@@ -8554,17 +8589,16 @@ function _aeShow(fromHero) {
 // hero it lands in shows it.
 // Where the header's arrow goes back to: the Almanac's page (the hero, the sky) or its solar system (the orrery).
 // Where the arrow really goes: a lane that put the view here names it (`_ae.backLabel`: a mission, Look); on the ground, the card that handed the sky over (`handoff.backLabel`,
-// else the sky's) or the view of the body it stands on; otherwise where the view was opened from: the Solar System, the sky card, or the Almanac page.
+// else the page's) or the view of the body it stands on; otherwise where the view was opened from: the Solar System, the sky card, or the Almanac page.
 function _aeBackLabel() {
-  var cap = function (t) { return t ? t.charAt(0).toUpperCase() + t.slice(1) : t; };
   if (_ae && _ae.backLabel) return _ae.backLabel;
   var st = _ae && (_ae.stand || _ae.standPending);
   if (st) {
     var h = st.handoff || st.pend && st.pend.handoff || st.handoff;
-    if (h) return h.backLabel || cap(_aeT('alm_sky'));
+    if (h) return h.backLabel || _aeT('almanac');   // a card's hand-off goes back to the card, which is on the Almanac page
     return _aeInfoName(st.key || (st.pend && st.pend.key) || 'earth');
   }
-  return _aeFrom === 'orrery' ? _aeT('alm_solar_system') : _aeFrom === 'sky' ? cap(_aeT('alm_sky')) : _aeT('almanac');
+  return _aeFrom === 'orrery' ? _aeT('alm_solar_system') : _aeT('almanac');   // opened from the sky card or the hero: the arrow lands on the Almanac page
 }
 function _aeClose() {
   if (!_aeIsOpen || (_ae.hand && _ae.hand.dir < 0)) return;

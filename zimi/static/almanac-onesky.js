@@ -334,7 +334,7 @@ function _osStandFromLook() {
 // ── The place's own night ──
 // The light-pollution dial's starting point, from a one-degree night-lights grid (zimi/static/earth/nightlights-v1.bin, 5.8 KB, from the Black
 // Marble: scripts/build_nightlights.py): a city under its glow, a desert under none. The person's own choice of dial wins (almanac-sky.js).
-var OS_NIGHT_URL = '/static/earth/nightlights-v1.bin', OS_NIGHT_MAGIC = 'ZNLT', OS_NIGHT_HEADER = 10, OS_NIGHT_MAX_DIAL = 1;
+var OS_NIGHT_URL = _almAsset('/static/earth/nightlights-v1.bin'), OS_NIGHT_MAGIC = 'ZNLT', OS_NIGHT_HEADER = 10, OS_NIGHT_MAX_DIAL = 1;
 var _osPlaceDial = null, _osNight = null, _osNightLoading = false;
 function _osNightParse(buf) {
   if (!buf || buf.byteLength < OS_NIGHT_HEADER) return null;
@@ -380,7 +380,7 @@ function _osSetPlaceDial(s) {
 // The foreground of the live sky is the place's own land (almanac-skyland.js, from the one grid: almanac-oneland.js). Until the grid is in
 // it is a plain horizon, never the palms; the grid and the painter load after the card's first picture, and the answer for a place is
 // kept (a place is the same land next time) so a return visit paints it at once.
-var OS_LAND_KEY = 'zimi_sky_land', OS_LAND_SRCS = ['/static/almanac-oneland.js', '/static/almanac-skyland.js'];
+var OS_LAND_KEY = 'zimi_sky_land', OS_LAND_SRCS = [_almAsset('/static/almanac-oneland.js'), _almAsset('/static/almanac-skyland.js')];
 var _osLandLoading = false, _osLandFailed = false;
 function _osLandKey(s) { return Math.floor(s.lat) + ',' + Math.floor(s.lon); }
 function _osLandRemembered(key) {

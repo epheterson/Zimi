@@ -448,7 +448,7 @@ function _aeStTreeKind(lat, h, rnd, cls) {
   if (a > 66) return null;
   if (a < 24) return rnd() < 0.3 ? 'palm' : 'broadleaf';
   if (cls === 'conifer') return rnd() < 0.92 ? 'conifer' : 'broadleaf';   // the grid's own word for the cell, over the latitude's guess
-  if (cls === 'broadleaf') return rnd() < 0.92 ? 'broadleaf' : 'conifer';
+  if (cls === 'broadleaf') return rnd() < 0.97 ? 'broadleaf' : 'conifer';
   if (cls === 'grass') return 'broadleaf';   // the tropics: broadleaves and palms up to the tree line (the caller stops there), never firs
   if (a > 44 || h > 1100) return rnd() < 0.9 ? 'conifer' : 'broadleaf';
   return rnd() < 0.7 ? 'broadleaf' : 'conifer';
@@ -1114,7 +1114,7 @@ function _aeStandDiscMap(st, key, close) {
   }
   return st.discMaps[key] && st.discMaps[key] !== true ? st.discMaps[key] : null;
 }
-var AE_STAND_MOON_URL = '/static/earth/moon-v1.webp', AE_STAND_MOON_HI_URL = '/static/earth/moon-4k-v1.webp', AE_STAND_MOON_CLOSE_PX = 24;   // the disc's radius in pixels from which the 4k map is used
+var AE_STAND_MOON_URL = _almAsset('/static/earth/moon-v1.webp'), AE_STAND_MOON_HI_URL = _almAsset('/static/earth/moon-4k-v1.webp'), AE_STAND_MOON_CLOSE_PX = 24;   // the disc's radius in pixels from which the 4k map is used
 var AE_STAND_CRAFT_TOP_PX = 110, AE_STAND_CRAFT_BOTTOM_PX = 120;   // the bar and the clock keep their own bands
 var AE_STAND_CRAFT_CHAR_PX = 7, AE_STAND_CRAFT_LINE_PX = 16;       // a name's width per letter, and a line's height
 var AE_STAND_STATION_REACH_KM = 2e4;                                  // the station is a mark only from the Earth's neighbourhood
@@ -1240,7 +1240,8 @@ function _aeStandCloudSelect(st) {
     st.scene.add(st.cloudMesh); st.cloudSrc = chunk; st.cloudProv = !!prov;
   }
   var u = st.cloudMesh.material.uniforms, clear = !!(st.handoff && st.handoff.clouds === 'clear');
-  if (prov && !clear && typeof _osCloudField === 'function') { var pf = null; try { pf = _osCloudField({ lat: st.lat, lon: st.lon, ms: _aeDisplayMs() }); } catch (e) {} st.cloudDim = pf && pf.coverage > 0 ? 1 - AE_STAND_CLOUD_DIM * Math.pow(Math.min(1, pf.coverage), 1.4) : 1; }
+  if (clear) { st.cloudMesh.visible = false; st.cloudDim = 1; return; }   // a visit that asks for a clear sky gets one, whoever's deck it is
+  if (prov && typeof _osCloudField === 'function') { var pf = null; try { pf = _osCloudField({ lat: st.lat, lon: st.lon, ms: _aeDisplayMs() }); } catch (e) {} st.cloudDim = pf && pf.coverage > 0 ? 1 - AE_STAND_CLOUD_DIM * Math.pow(Math.min(1, pf.coverage), 1.4) : 1; }
   else if (clear) st.cloudDim = 1;
   if (prov) { st.cloudMesh.visible = true; if (prov.update) { try { prov.update(st, st.fr, st.photo, u); } catch (e) {} } return; }
   if (clear) { st.cloudMesh.visible = false; st.cloudDim = 1; return; }   // the card draws none, nor does this
@@ -1271,15 +1272,15 @@ function _aeStandCloudSelect(st) {
 var AE_STAND_SKY_AT_M = 50000;   // a direction in the sky as a point to project: far enough that the camera's 1.7 m of height is not a parallax of ten degrees
 var AE_STAND_SKY_EVERY_MS = 1000, AE_STAND_SKY_TAP_PX = 30, AE_STAND_SKY_TAG_MS = 4000;
 // Sky objects with an angular size (optional): { kind, az, el, sizeDeg: n | [along, across], axisAz, axisEl (a point on its track: the long axis points toward it), rgb, lum 0..1 }.
-// A soft additive billboard in angular units, lit as the sky says: only in twilight (gone by day, and by the Sun's last degrees under the horizon it is the lane's `lum`).
-var AE_STAND_BOARD_MAX = 6, AE_STAND_BOARD_SUN_DEG = [-0.5, -4];   // the most boards, and the Sun heights over which they come in
+// A soft additive billboard in angular units; whether it is lit (sunlit thing, observer in twilight) is the lane's `lum`.
+var AE_STAND_BOARD_MAX = 6;   // the most boards
 function _aeStandSkyBoards(st, boards) {
-  var THREE = _ae.gl.THREE, fr = st.fr, tw = fr ? 1 - _smoothstep(AE_STAND_BOARD_SUN_DEG[1], AE_STAND_BOARD_SUN_DEG[0], fr.sunAlt) : 0;
+  var THREE = _ae.gl.THREE, fr = st.fr, tw = 1;   // (the lane's `lum` already says whether the thing is sunlit and the observer in twilight: not gated twice)
   if (!st.boards) st.boards = [];
   boards.slice(0, AE_STAND_BOARD_MAX).forEach(function (o, i) {
     var b = st.boards[i];
     if (!b) {
-      var uni = { uDir: { value: [0, 1, 0] }, uRight: { value: [1, 0, 0] }, uUp: { value: [0, 0, 1] }, uHalf: { value: 0.1 }, uAxis: { value: [1, 0] }, uSize: { value: [0.1, 0.05] }, uCol: { value: [1, 1, 1] }, uLum: { value: 0 } };
+      var uni = { uDir: { value: [0, 1, 0] }, uRight: { value: [1, 0, 0] }, uUp: { value: [0, 0, 1] }, uHalf: { value: 0.1 }, uAxis: { value: [1, 0] }, uSize: { value: [0.1, 0.05] }, uSunTan: { value: [0, -1] }, uCol: { value: [1, 1, 1] }, uColBase: { value: [1, 0.82, 0.62] }, uLum: { value: 0 }, uSeed: { value: 0 } };
       var m = new THREE.ShaderMaterial({ uniforms: uni, vertexShader: AE_ST_BODY_VERT, fragmentShader: AE_ST_BOARD_FRAG, transparent: true, depthTest: false, depthWrite: false, blending: AE_THREE_ADDITIVE_BLENDING });
       var mesh = new THREE.Mesh(st.sprites[0].mesh.geometry, m);
       mesh.frustumCulled = false; mesh.renderOrder = -1;
@@ -1294,7 +1295,10 @@ function _aeStandSkyBoards(st, boards) {
     }
     var u = b.uni;
     u.uDir.value = d; u.uRight.value = right; u.uUp.value = up; u.uHalf.value = Math.max(A, B) * 1.05; u.uAxis.value = ax; u.uSize.value = [A, B];
-    u.uCol.value = o.rgb || [1, 0.85, 0.7]; u.uLum.value = (o.lum === undefined ? 1 : o.lum) * tw;
+    u.uCol.value = o.rgb || [0.82, 0.9, 1]; u.uColBase.value = o.rgbBase || [1, 0.82, 0.62]; u.uSeed.value = ((o.az * 7.3 + o.el * 3.1) % 1 + 1) % 1;
+    var sv = fr ? [fr.sun[0] - d[0] * _aeDot(fr.sun, d), fr.sun[1] - d[1] * _aeDot(fr.sun, d), fr.sun[2] - d[2] * _aeDot(fr.sun, d)] : [0, 0, -1], sl = Math.hypot(sv[0], sv[1], sv[2]) || 1;
+    u.uSunTan.value = [_aeDot(sv, right) / sl, _aeDot(sv, up) / sl];   // which way the Sun lies across the plume
+    u.uLum.value = (o.lum === undefined ? 1 : o.lum) * tw;
     b.mesh.visible = u.uLum.value > 0.002 && o.el > -3;
   });
   for (var j = boards.length; j < st.boards.length; j++) st.boards[j].mesh.visible = false;
