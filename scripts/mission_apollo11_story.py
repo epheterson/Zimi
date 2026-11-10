@@ -33,6 +33,7 @@ def ev(t, key, en, icon="dot"):
 
 
 def phases():
+    G = X
     return [
         ph(
             -15.0,
@@ -146,7 +147,7 @@ def phases():
             far=False,
         ),
         ph(
-            EXTRA["p64"],
+            X["p64"],
             "descent",
             "Powered descent",
             1.0,
@@ -167,11 +168,19 @@ def phases():
             ref="moon",
             far=False,
         ),
+        ph(E["liftoff_moon"] - 20, "ascent", "Ascent", 0.9, 1, "eagle_asc", {"d": 30, "az": 70, "el": 12, "look": [0, 0, 1]}, ref="moon", far=False),
+        ph(X["insertion_moon"] + 30, "rendezvous", "Rendezvous", 0.9, 150, "eagle_asc", {"d": 60, "az": 80, "el": 14, "look": [0, 0, 0]}, ref="moon"),
+        ph(X["dock2"] + 600, "lunar_orbit", "Lunar orbit", 0.7, 900, "columbia", {"d": 50, "az": 70, "el": 14, "look": [0, 5, 0]}, ref="moon"),
+        ph(E["tei"] - 400, "tei", "Trans-Earth injection", 0.8, 3, "columbia", {"d": 55, "az": 80, "el": 10, "look": [0, 0, 0]}, ref="moon", far=False),
+        ph(E["tei"] + 500, "home", "Coast home", 1.0, 5000, "columbia", {"body": "moon", "d": 4e7, "az": 0.4, "el": 0.2, "mix": 0.4}),
+        ph(E["cm_sm_sep"] - 30, "entry", "Entry", 1.0, 4, "cm", {"d": 40, "az": 100, "el": 12, "look": [0, 0, 0]}, far=False),
+        ph(G["drogue"] - 10, "chutes", "Parachutes", 0.9, 4, "cm", {"d": 170, "az": 60, "el": 4, "look": [0, 0, 24]}, far=False),
+        ph(E["splash"] - 40, "splash", "Splashdown", 0.5, 1, "cm", {"d": 130, "az": 50, "el": 4, "look": [0, 0, 22]}, far=False),
     ]
 
 
 def events():
-    G = EXTRA
+    G = X
     return [
         ev(-6.5, "liftoff", "Ignition", "burn"),
         ev(E["liftoff"], "liftoff", "Liftoff", "burn"),

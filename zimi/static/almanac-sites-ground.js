@@ -326,6 +326,7 @@ function _asPartAdd(st, model, x, y, hdgDeg, opts) {
   var holder = new THREE.Group();
   holder.rotation.order = 'ZXY';
   var root = I.root.clone();
+  if (typeof _aeCraftSiteHd === 'function') _aeCraftSiteHd(I, root);   // the HD ZIM's full model, when it has one (almanac-earth.js)
   root.scale.setScalar(d.metres);
   root.position.set(d.mid[0], d.mid[1], d.mid[2]);
   holder.add(root);
@@ -393,6 +394,19 @@ function _asRoverPlace(st, R, x, y, hdg, z, pitch, roll, spin, gnd, airborne) {
     var base = airborne ? Math.max(gnd.hs[i], z) : gnd.hs[i];
     _asPartPlace(st, R.wheels[i], wx, wy, base + at[i][2], hdg, 0, 0, spin, gnd.mean);
   }
+}
+// A part stands only between its `from` and `until` instants (sites-v1.json, ms): nothing before a landing, the Lunar Module's
+// ascent stage until its liftoff (after it only the descent stage stays), a flag or a rover from the landing on.
+function _asPartsByTime(st) {
+  var defs = st.def ? st.def.parts : [];
+  if (!st.placed || !defs.some(function (pd) { return pd.from !== undefined || pd.until !== undefined; })) return;
+  var ms = _aeDisplayMs();
+  defs.forEach(function (pd, n) {
+    var got = st.siteParts[n];
+    if (!got) return;
+    var on = (pd.from === undefined || ms >= pd.from) && (pd.until === undefined || ms < pd.until);
+    (got.hubs ? [got.body].concat(got.wheels) : [got]).forEach(function (p) { p.holder.visible = on; p.shadow.visible = on; });
+  });
 }
 // The parts the site stands: each where sites-v1.json says, on the ground there.
 function _asPlaceSiteParts(st) {

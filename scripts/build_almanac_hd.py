@@ -276,7 +276,7 @@ LAYERS = {
         )
     },
     # Heights for Stand here, 256 px tiles of 16-bit heights; the sources and their pins are build_terrain.py's.
-    **{"terrain/%s" % k: {"terrain": k, "max": build_terrain.TERRAIN_MAX, "mode": "RGB"} for k in build_terrain.SOURCES},
+    **{"terrain/%s" % k: {"terrain": k, "max": build_terrain.levels_for(k), "mode": "RGB"} for k in build_terrain.SOURCES},
     "moon/relief": {
         "file": "https://svs.gsfc.nasa.gov/vis/a000000/a004700/a004720/ldem_64_uint.tif",
         "max": 5,
@@ -1200,9 +1200,10 @@ MIMES = {
 #: ``zimi_almanac_hd_<part>_<month>.zim`` with an ``hd.json`` listing only their layers (zimi/almanachd.py PARTS).
 #: Everything else is the core, the file the Almanac's HD flavour is made from.
 PARTS = {
-    "moon": ("moon/",),
-    "mars": ("planets/mars/",),
-    "mercury": ("planets/mercury/",),
+    "moon": ("moon/", "terrain/moon/"),
+    "mars": ("planets/mars/", "terrain/mars/"),
+    "mercury": ("planets/mercury/", "terrain/mercury/"),
+    "earth": ("terrain/earth/",),   # the Earth's heights at the source's own resolution: a file of their own
 }
 
 

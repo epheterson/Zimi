@@ -4417,8 +4417,11 @@ function _aeRefAxesRows() {
   add('ms.a11_pdi', _aeT('tb_kn_ms_pdi'), '102:33:05 · 7,129 ft at 125 ft/s (P64, 102:41:32)', '', MR + ', tables 5-I and 5-III');
   add('ms.a11_land', _aeT('tb_kn_ms_land'), '102:45:39.9 · 0.67408 N 23.473 E', '', MR + ', table 5-I; LROC');
   add('ms.a11_ei', _aeT('tb_kn_ms_ei'), '195:03:05.7 · 3.19 S 171.96 E · 36,194 ft/s · −6.48', 'h:mm:ss · ° · °', MR + ', table 7-VII');
+  add('ms.a11_entry_note', _aeT('tb_kn_ms_entry'), _aeT('tb_kn_ms_entry_v'), '', MR + ', table 7-VII');
+  add('ms.a11_tli_time', _aeT('tb_kn_ms_tli'), _aeT('tb_kn_ms_tli_v'), '', MR + ', table 7-II');
+  add('ms.a11_rendezvous', _aeT('tb_kn_ms_rdv'), _aeT('tb_kn_ms_rdv_v'), '', MR + ', table 3-I');
   add('ms.a11_splash', _aeT('tb_kn_ms_splash'), '195:18:35 · 13.30 N 169.15 W', '', MR + ', table 7-VII');
-  add('ms.a11_fit', _aeT('tb_kn_ms_fit'), '× 1.055 (first stage), × 0.983 (second and third)', '', 'Zimi (scripts/mission_ascent_fit.py)');
+  add('ms.a11_fit', _aeT('tb_kn_ms_fit'), '× 1.055 (first stage), × 0.983 (second and third)', '', 'Zimi (scripts/mission_ascent_fit.py), fitted to the first-stage cut-off of the Saturn V AS-506 flight evaluation (67 km, 2.4 km/s)');
   add('ms.voyager_flybys', _aeT('tb_kn_ms_voyager'), 'Jupiter 348,435 · Saturn 184,030 km (Voyager 1)', 'km', 'NASA/JPL Horizons');
   return rows;
 }
@@ -6218,8 +6221,8 @@ var AE_CRAFT_GLSL_SURFACE = [
   '  } else if (kd > 6.5) {',   // a sunshield layer: smooth, billowed, magenta-silver
   '    float fadeS = clamp(pw / 0.3 * 1.5, 0.0, 1.0);',
   '    n = normalize(n + 0.45 * aeVnv(po / 1.4) + (1.0 - fadeS) * 0.1 * aeVnv(po / 0.3));',
-  '    a *= vec3(1.0, 0.9, 1.0) * (0.92 + 0.16 * aeVn(po / 0.6));',
-  '    rough = 0.3;',
+  '    a = mix(vec3(0.7, 0.7, 0.76), vec3(0.85, 0.35, 0.7), pow(1.0 - abs(facing), 2.2)) * (0.9 + 0.2 * aeVn(po / 0.6));',
+  '    metal = 0.65; rough = 0.28;',
   '  } else if (kd > 5.5) {',   // a telescope mirror: a near perfect reflector, in hexagonal segments with gaps, the middle one missing
   '    rough = 0.05; a *= 0.85;',
   AE_CRAFT_GLSL_HEX,
@@ -6676,7 +6679,7 @@ function _aeCraftHdTexture(S, name) {
     return tx;
   });
 }
-function _aeCraftHdBuild(I, d2, textures) {
+function _aeCraftHdMeshes(I, d2, textures) {
   var S = _ae.gl, THREE = S.THREE, d = I.d;
   var shift = [0, 1, 2].map(function (k) { return d2.mid[k] - d.mid[k]; });   // HD positions are about HD's own box middle: into the stock model's
   for (var i = 0; i < d2.pos.length; i += 3) for (var k = 0; k < 3; k++) d2.pos[i + k] += shift[k];
@@ -6693,6 +6696,10 @@ function _aeCraftHdBuild(I, d2, textures) {
     parts.push({ mesh: mesh, local: local });
   });
   if (turning) { pivot.position.set(d2.axis[0] + shift[0], d2.axis[1] + shift[1], 0); group.add(pivot); }
+  return { group: group, pivot: pivot, parts: parts, turning: turning, shift: shift };
+}
+function _aeCraftHdBuild(I, d2, textures) {
+  var S = _ae.gl, d = I.d, m = _aeCraftHdMeshes(I, d2, textures), group = m.group, pivot = m.pivot, parts = m.parts, turning = m.turning, shift = m.shift;
   I.stock.forEach(function (p) { p.mesh.visible = false; });
   I.root.add(group);
   I.hdGroup = group; I.hdPivot = turning ? pivot : null; I.parts = parts; I.hd = true;
@@ -6700,17 +6707,50 @@ function _aeCraftHdBuild(I, d2, textures) {
   if (turning) I.pivot = pivot;
   if (_ae) { _ae.dirty = true; _aeKick(); }
 }
+// craft/index.json once (null: the HD ZIM is not there, or has no craft).
+function _aeCraftHdIndexLoad() {
+  var H = _aeCraftHd;
+  if (H.index !== undefined) return Promise.resolve();
+  if (!H.promise) {
+    H.promise = fetch(_aeCraftHdUrl('index.json')).then(function (r) { if (!r.ok) throw new Error('hd'); return r.json(); })
+      .then(function (j) { H.index = j && j.models ? j.models : null; }, function () { H.index = null; });
+  }
+  return H.promise;
+}
+// A landing site's model with the HD ZIM's full one (almanac-sites-ground.js clones one root for every place the model
+// stands and calls this on each clone): the stock meshes stay in the clone, hidden, and the full model is added; the clones
+// that were made before the file arrived get it when it does. Without the file nothing changes.
+function _aeCraftSiteHd(I, root) {
+  var c = I.siteHd = I.siteHd || { roots: [], group: null, state: 0 };
+  c.roots.push(root);
+  if (c.group) { _aeCraftSiteHdAttach(c, root); return; }
+  if (c.state || typeof fetch !== 'function') return;
+  c.state = 1;
+  var S = _ae.gl;
+  _aeCraftHdIndexLoad().then(function () {
+    var entry = _aeCraftHd.index && _aeCraftHd.index[I.model];
+    if (!entry) return null;
+    return fetch(_aeCraftHdUrl(entry.file)).then(function (r) { if (!r.ok) throw new Error(I.model); return r.arrayBuffer(); }).then(function (buf) {
+      var d2 = _aeCraftParse(buf);
+      return Promise.all((d2.textures || []).map(function (name) { return _aeCraftHdTexture(S, name); })).then(function (tx) { return _aeCraftHdMeshes(I, d2, tx).group; });
+    });
+  }).then(function (group) {
+    if (!group) { c.state = 2; return; }
+    c.group = group; c.state = 3;
+    c.roots.forEach(function (r) { _aeCraftSiteHdAttach(c, r); });
+    if (_ae) { _ae.dirty = true; _aeKick(); }
+  }).catch(function () { c.state = 2; });
+}
+function _aeCraftSiteHdAttach(c, root) {
+  root.children.slice().forEach(function (ch) { if (ch.isMesh) ch.visible = false; });
+  root.add(c.group.clone());
+}
 function _aeCraftHdRequest(I, pos) {
   if (I.hd !== undefined || I.hdLoading || typeof fetch !== 'function') return;
   if (_aeCraftPx(I.d.span * I.d.metres / 1000 / AE_EARTH_RADIUS_KM, pos) < AE_CRAFT_HD_PX) return;
   var H = _aeCraftHd;
   if (H.index === undefined) {
-    if (!H.loading) {
-      H.loading = true;
-      fetch(_aeCraftHdUrl('index.json')).then(function (r) { if (!r.ok) throw new Error('hd'); return r.json(); })
-        .then(function (j) { H.index = j && j.models ? j.models : null; }, function () { H.index = null; })
-        .then(function () { H.loading = false; if (_ae) { _ae.dirty = true; _aeKick(); } });
-    }
+    _aeCraftHdIndexLoad().then(function () { if (_ae) { _ae.dirty = true; _aeKick(); } });
     return;
   }
   var entry = H.index && H.index[I.model];

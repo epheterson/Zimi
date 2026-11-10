@@ -40,15 +40,16 @@ var AE_STAND_STAR_FLOOR_MS = 400;
 // ── The way in ──
 // Called by the Stand here button, and by anything that wants a body's ground (the models lane). Opens the 3D view if it
 // is not up, flies to the place, and drops to the ground once the terrain's mesh is built; resolves true when it started.
-function _aeStandStart(key, lat, lon) {
+function _aeStandStart(key, lat, lon, handoff) {
   if (!_aeStandable(key)) return Promise.resolve(false);
   if (_ae && _ae.stand) _aeStandDrop();
   return _aeStandViewUp().then(function (up) {
     if (!up) return false;
+    if (handoff && handoff.ms !== undefined && handoff.ms !== null && typeof _aeGoTo === 'function') _aeGoTo(handoff.ms);
     // A body with no place for this date (a dwarf planet whose table does not reach it) has no sky to stand under.
     var frame = _aeStBodyNow(key);
     if (!frame) return false;
-    var pend = _ae.standPending = { key: key, lat: lat, lon: lon, ready: false, t0: performance.now(), builder: null, mesh: null, tex: null };
+    var pend = _ae.standPending = { key: key, lat: lat, lon: lon, ready: false, t0: performance.now(), builder: null, mesh: null, tex: null, handoff: handoff || null };
     _ae.pick = null; _ae.lm = null; _ae.place = null; _ae.selected = null;
     _aeRenderCard();
     var body = AE_STAND_BODIES[key];
@@ -83,7 +84,7 @@ function _aeStandBuild(pend, body) {
   _aeTerrainLoad(pend.key).then(function () {
     if (!_aeStandPendAlive(pend)) return;
     var man = _ae.gl && _ae.gl.hd && _ae.gl.hd.man, layer = man && man.layers && man.layers[AE_TERRAIN_HD_LAYER + pend.key];
-    return layer ? _aeTerrainHdLoad(pend.key, pend.lat, pend.lon, _aeHdBase(), layer.max) : null;
+    return layer ? _aeTerrainHdLoad(pend.key, pend.lat, pend.lon, layer.base || _aeHdBase(), layer.max) : null;   // each ZIM of the set stamps its layers with its own folder
   }).catch(function () {}).then(function () {
     if (!_aeStandPendAlive(pend)) return;
     pend.builder = _aeMeshBuilder(pend.key, pend.lat, pend.lon, _aeMeshCap(body.km, pend.alt0), pend.flat);
@@ -169,7 +170,14 @@ function _aeStandEnter(st) {
   _aeResize();
   var fr = _aeStFrame(st, _aeDisplayMs());
   st.yaw = fr.sunAlt > AE_STAND_SUN_FACE_DEG ? fr.sunAz : 0;
+  var ho = st.pend && st.pend.handoff;
+  if (ho) {   // a hand-off from the live sky card: its facing, not the Sun's
+    st.handoff = ho;
+    if (typeof ho.heading === 'number') st.yaw = _aeRad(ho.heading);
+    if (typeof ho.pitch === 'number') st.userPitch = _aeRad(ho.pitch) - _aeRad(AE_STAND_PITCH_DEG);
+  }
   st.yaw0 = 0;
+  if (st.key === 'earth') setTimeout(function () { if (_ae.stand === st || (_ae.site && _ae.site.host && _ae.site.host.st === st)) _aeStandTrees(st); }, AE_STAND_TREES_DELAY_MS);
   _ae.dirty = true;
   _aeKick();
 }
@@ -198,6 +206,7 @@ function _aeStandFinishLeave(st) {
 function _aeStandDrop(closing) {
   var st = _ae && _ae.stand;
   if (_ae) _ae.standPending = null;
+  if (!closing) setTimeout(_aeStandAfterClose, 0);   // the way back, when _aeStandClose asked for it
   if (!st) return;
   _ae.stand = null;
   var S = _ae.gl;
@@ -269,8 +278,9 @@ function _aeStandSkyMesh(st, U, mat) {
   // The same sky drawn small into a target, and a triangle that stretches it back: the air is smooth, the ground stays sharp.
   var low = new THREE.Mesh(tri, sky.material);
   low.frustumCulled = false;
+  st.skyLowMesh = low; st.skyMatOwn = sky.material;
   st.skyScene = new THREE.Scene(); st.skyScene.add(low);
-  var blit = st.skyBlit = new THREE.Mesh(tri, new THREE.ShaderMaterial({ uniforms: { tSky: { value: null }, uRes: { value: [1, 1] } }, vertexShader: AE_ST_SKY_VERT, fragmentShader: AE_ST_BLIT_FRAG, depthTest: false, depthWrite: false }));
+  var blit = st.skyBlit = new THREE.Mesh(tri, new THREE.ShaderMaterial({ uniforms: { tSky: { value: null }, uRes: { value: [1, 1] }, uTexel: { value: [1, 1] } }, vertexShader: AE_ST_SKY_VERT, fragmentShader: AE_ST_BLIT_FRAG, depthTest: false, depthWrite: false }));
   blit.frustumCulled = false; blit.renderOrder = -3; blit.visible = false;
   st.mats.push(blit.material);
   _aeLoadTexture(THREE, SG_MILKYWAY_URL).then(function (t) { uni.uMilky.value = t; st.dirty = true; if (_ae) { _ae.dirty = true; _aeKick(); } }, function () {});
@@ -311,7 +321,7 @@ function _aeStandGroundMesh(st, pend, U, mat) {
     uMap: { value: pend.tex || null }, uMapped: { value: pend.tex ? 1 : 0 }, uGrey: { value: AE_STAND_GREY_MAP[st.key] ? 1 : 0 },
     uBase: { value: AE_STAND_BASE[st.key] || [0.5, 0.5, 0.5] }, uGain: { value: AE_STAND_TINT[st.key] || [1, 1, 1] },
     uAmbient: { value: [0, 0, 0] }, uSkyHor: { value: [0, 0, 0] }, uSkyZen: { value: [0, 0, 0] }, uE2: { value: [0, 0, 0] }, uDir2: { value: [0, 0, 1] },
-    uLommel: { value: a ? 0 : 1 }, uRough: { value: AE_STAND_ROUGH[st.key] || (st.b.fbm.amp > 100 ? 1.3 : 1) }, uRock: { value: AE_STAND_ROCK[st.key] || 0.25 }, uDetail: { value: st.key === 'earth' ? 1 : 0 },
+    uLommel: { value: a ? 0 : 1 }, uRough: { value: AE_STAND_ROUGH[st.key] || (st.b.fbm.amp > 100 ? 1.3 : 1) }, uRock: { value: AE_STAND_ROCK[st.key] || 0.25 }, uDetail: { value: st.key === 'earth' ? 1 : 0 }, uHead: { value: [0, 1] }, uCover: { value: st.key === 'earth' ? 1 : 0 },
     uDiffuse: { value: d ? 1 : 0 }, uVis: { value: d ? d.vis : 1 }, uDirect: { value: 1 }, uDiffSky: { value: [0, 0, 0] }
   }, U);
   var ground = st.groundMesh = new THREE.Mesh(g, mat(AE_ST_GROUND_VERT, AE_ST_GROUND_FRAG, gu, {}));
@@ -329,6 +339,9 @@ var AE_STAND_SLOW_MS = [20, 250], AE_STAND_SLOW_RUN = 3;   // a frame this slow 
 var _aeStandDprCap = AE_STAND_DPR_MAX;     // for the rest of the session: it goes down, never back up
 var AE_STAND_STATION_MIN_LIM = 3;           // the station is marked once the sky is dark enough for stars of this magnitude
 var AE_STAND_PROBE_MARKS = false;          // deep-space probes are pinpoints nobody could see: not marked (the station's pass is, near Earth)
+var AE_STAND_SKY_MATCH_SHARE = 0.55;      // and how far (in log) toward it: a view with sunlit ground in it cannot be exposed for the sky alone
+var AE_STAND_SKY_MATCH_DEG = [-20, 6];     // the Sun's height over which the Earth's exposure goes from this view's own to the 2D sky's
+var AE_STAND_NIGHT_GLOW = 9e-7;           // the least light the Earth's ground has (starlight and airglow, in this view's units: the Sun at the Earth is 1): a dark-adapted eye makes out the ground and its horizon
 var AE_STAND_SLICE_MS = 8;                 // a slice of building between breaths of the page
 var AE_STAND_SHADE_LOD = 1.5;              // the shadow grids hold wavelengths down to this many cells
 var AE_STAND_SHADE_MOVE = 0.0044, AE_STAND_SHADE_EVERY_MS = 300, AE_STAND_SHADE_SLICE_MS = 5;   // the Sun has moved a quarter degree; not again sooner than this; the work a frame
@@ -362,11 +375,114 @@ function _aeStandDispose(st) {
   if (st.craftHost && st.craftHost.parentNode) st.craftHost.parentNode.removeChild(st.craftHost);
   if (st.stars) st.stars.geometry.dispose();
   if (st.skyRT) st.skyRT.dispose();
+  if (st.skyMatAir) st.skyMatAir.dispose();
+  if (st.cloudMesh) st.cloudMesh.material.dispose();
   if (st.skyPts) st.skyPts.mesh.geometry.dispose();
   if (st.skyLines) st.skyLines.mesh.geometry.dispose();
   if (st.skyTag && st.skyTag.parentNode) st.skyTag.parentNode.removeChild(st.skyTag);
   clearTimeout(st.skyTagTimer);
   st.geo = st.mats = null; st.scene = st.camera = null;
+}
+
+// ── Trees ──
+// Where the Blue Marble says forest (a dark green), below the trees' line, not in the sea: dark cones scattered in rings out to a few
+// kilometres, a tree to a few metres at the feet and a wood at the horizon. The same trees every visit to a place (seeded by it).
+var AE_STAND_TREES_DELAY_MS = 40, AE_STAND_TREES_MAX = 3200, AE_STAND_TREES_TRIES = 18000;
+var AE_STAND_TREES_RANGE_M = [60, 4500], AE_STAND_TREES_THIN_M = [60, 380];   // out to here; thinner near the viewer (nothing at all inside the first number's reach)
+var AE_STAND_TREE_KINDS = { conifer: 0, broadleaf: 1, palm: 2, trunk: 3 };   // what the shader colours by
+function _aeStCoverPixels(tex) {   // the colour map's pixels, once
+  if (!tex || !tex.image) return null;
+  var im = tex.image, w = im.width || im.naturalWidth, h = im.height || im.naturalHeight;
+  if (!w || !h) return null;
+  var c = document.createElement('canvas'), mw = Math.min(w, 2048), mh = Math.round(mw * h / w);
+  c.width = mw; c.height = mh;
+  var cx = c.getContext('2d', { willReadFrequently: true });
+  cx.drawImage(im, 0, 0, mw, mh);
+  return { w: mw, h: mh, d: cx.getImageData(0, 0, mw, mh).data };
+}
+function _aeStForest(px, lat, lon) {   // 0..1: how much of this place the map shows as forest (the bitmap is flipped, south first, as the ground's own lookup assumes)
+  var x = Math.min(px.w - 1, Math.max(0, Math.floor((lon + 180) / 360 * px.w))), y = Math.min(px.h - 1, Math.max(0, Math.floor((lat + 90) / 180 * px.h))), i = 4 * (y * px.w + x);
+  var r = px.d[i] / 255, g = px.d[i + 1] / 255, b = px.d[i + 2] / 255, lum = 0.3 * r + 0.59 * g + 0.11 * b;
+  if (g < r * 1.02 || g < b * 1.08) return 0;
+  return Math.max(0, Math.min(1, (0.42 - lum) / 0.2));
+}
+// What grows where: firs and spruce in the north and the mountains (20 to 40 m), round-crowned broadleaves in the temperate lowlands
+// (10 to 25 m), palms in the tropics (8 to 18 m); nothing where the map is not green, above the tree line or beyond the high latitudes.
+function _aeStTreeKind(lat, h, rnd) {
+  var a = Math.abs(lat);
+  if (a > 66) return null;
+  if (a < 24 && h < 1500) return rnd() < 0.7 ? 'palm' : 'broadleaf';
+  if (a > 44 || h > 1100) return rnd() < 0.9 ? 'conifer' : 'broadleaf';
+  return rnd() < 0.7 ? 'broadleaf' : 'conifer';
+}
+function _aeStandTrees(st) {
+  if (!st || !st.scene || st.trees || st.key !== 'earth') return;
+  var px = null;
+  try { px = _aeStCoverPixels(st.pend && st.pend.tex); } catch (e) { px = null; }
+  if (!px) return;
+  var R = st.b.km * 1000, h0 = st.h0, lat0 = st.lat, lon0 = st.lon, THREE = _ae.gl.THREE;
+  var seed = (Math.round(lat0 * 1e4) * 73856093) ^ (Math.round(lon0 * 1e4) * 19349663), rnd = function () { seed |= 0; seed = seed + 0x6D2B79F5 | 0; var t = Math.imul(seed ^ seed >>> 15, 1 | seed); t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t; return ((t ^ t >>> 14) >>> 0) / 4294967296; };
+  var list = [], ratio = AE_STAND_TREES_RANGE_M[1] / AE_STAND_TREES_RANGE_M[0], thin = AE_STAND_TREES_THIN_M;
+  for (var k = 0; k < AE_STAND_TREES_TRIES && list.length < AE_STAND_TREES_MAX; k++) {
+    var r = AE_STAND_TREES_RANGE_M[0] * Math.pow(ratio, rnd()), th = rnd() * 2 * Math.PI, d = _aeDestination(lat0, lon0, r / R, th);
+    var near = Math.max(0, Math.min(1, (r - thin[0]) / (thin[1] - thin[0])));
+    if (rnd() > near * near) continue;   // thinner near the viewer: the first frame is not a wall
+    var wood = _aeStForest(px, d.lat, d.lon);
+    if (wood <= 0 || rnd() > wood) continue;
+    var ht = _aeTerrainHeight('earth', d.lat, d.lon, r * 0.0005);
+    if (ht.sea || ht.h > AE_ST_SNOW_LINE_M * Math.pow(Math.cos(_aeRad(d.lat)), AE_ST_SNOW_LINE_POW) - AE_ST_TREE_BELOW_M) continue;
+    var kind = _aeStTreeKind(d.lat, ht.h, rnd);
+    if (!kind) continue;
+    var x = r * Math.sin(th), y = r * Math.cos(th), z = _aeTerrainLocal('earth', lat0, lon0, h0, x, y, r * 0.0005, st.pend && st.pend.flat);
+    var sz = kind === 'conifer' ? [20, 40] : kind === 'broadleaf' ? [10, 25] : [8, 18], u = Math.pow(rnd(), 1.3);
+    list.push({ kind: kind, x: x, y: y, z: z, h: sz[0] + (sz[1] - sz[0]) * u, seed: rnd(), lean: (rnd() - 0.5) * 0.12, w: 0.8 + rnd() * 0.5 });
+  }
+  if (!list.length) return;
+  var P = [], N = [], T = [];   // flat arrays: positions, normals, (height fraction, seed, kind)
+  var tri = function (a, b, c, ax, kind, seedv, fa, fb, fc) {   // one face, its normal pointing away from the axis point ax
+    var ux = b[0] - a[0], uy = b[1] - a[1], uz = b[2] - a[2], vx = c[0] - a[0], vy = c[1] - a[1], vz = c[2] - a[2];
+    var nx = uy * vz - uz * vy, ny = uz * vx - ux * vz, nz = ux * vy - uy * vx, nl = Math.hypot(nx, ny, nz) || 1;
+    var mx = (a[0] + b[0] + c[0]) / 3 - ax[0], my = (a[1] + b[1] + c[1]) / 3 - ax[1], mz = (a[2] + b[2] + c[2]) / 3 - ax[2];
+    if (nx * mx + ny * my + nz * mz < 0) { nx = -nx; ny = -ny; nz = -nz; }
+    [[a, fa], [b, fb], [c, fc]].forEach(function (q) { P.push(q[0][0], q[0][1], q[0][2]); N.push(nx / nl, ny / nl, nz / nl); T.push(q[1], seedv, kind); });
+  };
+  var cone = function (cx, cy, z0, z1, rad, sides, droop, ax, kind, seedv, f0, f1) {   // a tier: a ring at z0 (the nearer half of it drooping), its tip at z1
+    var ring = [], tip = [cx, cy, z1];
+    for (var q = 0; q < sides; q++) { var an = q / sides * 2 * Math.PI + seedv * 6, w = 0.85 + 0.3 * ((q * 7 + Math.floor(seedv * 50)) % 5) / 4; ring.push([cx + Math.cos(an) * rad * w, cy + Math.sin(an) * rad * w, z0 - (q % 2 ? droop : 0)]); }
+    for (var f = 0; f < sides; f++) tri(ring[f], ring[(f + 1) % sides], tip, ax, kind, seedv, f0, f0, f1);
+  };
+  list.forEach(function (t) {
+    var K = AE_STAND_TREE_KINDS, c0 = [t.x, t.y, t.z], lean = t.lean, cx = function (f) { return t.x + lean * t.h * f; }, sd = t.seed;
+    // the trunk: a dark sliver
+    var tr = Math.max(0.18, t.h * 0.012), tz = t.z + t.h * (t.kind === 'palm' ? 0.85 : t.kind === 'broadleaf' ? 0.55 : 0.22);
+    var tk = [[cx(0) - tr, t.y - tr], [cx(0) + tr, t.y - tr], [cx(0) + tr, t.y + tr], [cx(0) - tr, t.y + tr]];
+    for (var e = 0; e < 4; e++) { var A = tk[e], B = tk[(e + 1) % 4]; tri([A[0], A[1], t.z], [B[0], B[1], t.z], [B[0] + lean * t.h * 0.2, B[1], tz], c0, K.trunk, sd, 0, 0, 0.2); }
+    if (t.kind === 'conifer') {
+      var rad = t.h * 0.13 * t.w;   // three tiers, each narrower, each a little drooped, the lowest well off the ground
+      cone(cx(0.4), t.y, t.z + t.h * 0.14, t.z + t.h * 0.58, rad * 1.15, 7, t.h * 0.03, [cx(0.5), t.y, t.z + t.h * 0.4], K.conifer, sd, 0.14, 0.58);
+      cone(cx(0.65), t.y, t.z + t.h * 0.36, t.z + t.h * 0.82, rad * 0.85, 7, t.h * 0.025, [cx(0.7), t.y, t.z + t.h * 0.6], K.conifer, sd, 0.36, 0.82);
+      cone(cx(0.9), t.y, t.z + t.h * 0.6, t.z + t.h, rad * 0.55, 6, t.h * 0.02, [cx(0.9), t.y, t.z + t.h * 0.8], K.conifer, sd, 0.6, 1.0);
+    } else if (t.kind === 'broadleaf') {
+      var cr = t.h * 0.3 * t.w, cz = t.z + t.h * 0.62, top = [cx(0.7), t.y, t.z + t.h], bot = [cx(0.5), t.y, t.z + t.h * 0.3];   // a crown: a squat bipyramid of seven irregular points
+      var ring = [];
+      for (var q = 0; q < 7; q++) { var an = q / 7 * 2 * Math.PI + sd * 6, w = 0.75 + 0.5 * ((q * 5 + Math.floor(sd * 40)) % 4) / 3; ring.push([cx(0.6) + Math.cos(an) * cr * w, t.y + Math.sin(an) * cr * w, cz + (q % 2 ? 0.05 : -0.04) * t.h]); }
+      for (var g = 0; g < 7; g++) { var A2 = ring[g], B2 = ring[(g + 1) % 7]; tri(A2, B2, top, [cx(0.6), t.y, cz], K.broadleaf, sd, 0.62, 0.62, 1.0); tri(B2, A2, bot, [cx(0.6), t.y, cz], K.broadleaf, sd, 0.62, 0.62, 0.3); }
+    } else {   // a palm: a few long drooping fronds from the top of the trunk
+      var tip2 = [cx(0.85), t.y, t.z + t.h * 0.95], fl = t.h * 0.32;
+      for (var fr = 0; fr < 7; fr++) {
+        var an2 = fr / 7 * 2 * Math.PI + sd * 6, ex = tip2[0] + Math.cos(an2) * fl, ey = tip2[1] + Math.sin(an2) * fl, ez = tip2[2] - fl * 0.45, px2 = -Math.sin(an2) * fl * 0.09, py2 = Math.cos(an2) * fl * 0.09;
+        tri([tip2[0], tip2[1], tip2[2]], [ex + px2, ey + py2, ez], [ex - px2, ey - py2, ez], [tip2[0], tip2[1], tip2[2] - 3], K.palm, sd, 1.0, 0.85, 0.85);
+      }
+    }
+  });
+  var g = new THREE.BufferGeometry();
+  g.setAttribute('position', new THREE.BufferAttribute(new Float32Array(P), 3)); g.setAttribute('aNrm', new THREE.BufferAttribute(new Float32Array(N), 3)); g.setAttribute('aTree', new THREE.BufferAttribute(new Float32Array(T), 3));
+  var m = new THREE.ShaderMaterial({ uniforms: st.ground, vertexShader: AE_ST_TREE_VERT, fragmentShader: AE_ST_TREE_FRAG, side: AE_THREE_DOUBLE_SIDE });
+  var mesh = new THREE.Mesh(g, m);
+  mesh.frustumCulled = false; mesh.renderOrder = 1;
+  st.scene.add(mesh); st.trees = { mesh: mesh, count: list.length };
+  st.geo.push(g); st.mats.push(m);
+  st.dirty = true; _ae.dirty = true; _aeKick();
 }
 
 // ── The sky and the bodies in it, for an instant ──
@@ -446,6 +562,12 @@ function _aeStFrame(st, ms) {
   fr.crafts = _aeStCrafts(sc, all, O, local, ms);
   return fr;
 }
+// A craft in the Earth's shadow (its cylinder, away from the Sun) is dark: nothing to mark. earthPos: the Earth's heliocentric place (km); rel: the craft from the Earth's centre in Earth radii.
+function _aeStationSunlit(earthPos, rel) {
+  var sun = _aeNorm(_aeScale(earthPos, -1)), along = _aeDot(rel, sun);
+  if (along >= 0) return true;
+  return _aeLen(_aeSub(rel, _aeScale(sun, along))) > 1;
+}
 // Spacecraft where they are: the probes from the Horizons tables, the station from its orbit, each as a direction and a name.
 function _aeStCrafts(sc, all, O, local, ms) {
   var out = [], toScene = function (v) { return _ephEclJ2000ToEqOfDate(v, sc.jde); };
@@ -459,7 +581,7 @@ function _aeStCrafts(sc, all, O, local, ms) {
   }
   var iss = _ae.sats && _ae.sats.lib && _ae.sats.list.filter(function (s) { return s.iss; })[0];
   var r = iss ? _aeSatAt(iss, ms, _aeEqEq(sc)) : null;
-  if (r && _aeLen(_aeSub(_aeAdd(all.earth.pos, _aeScale(r.pos, AE_EARTH_RADIUS_KM)), O)) < AE_STAND_STATION_REACH_KM) {
+  if (r && _aeLen(_aeSub(_aeAdd(all.earth.pos, _aeScale(r.pos, AE_EARTH_RADIUS_KM)), O)) < AE_STAND_STATION_REACH_KM && _aeStationSunlit(all.earth.pos, r.pos)) {
     var di = _aeSub(_aeAdd(all.earth.pos, _aeScale(r.pos, AE_EARTH_RADIUS_KM)), O);
     out.push({ key: 'iss', name: _aeT('alm_earth_iss_short'), dir: _aeNorm(local(di)), dist: _aeLen(di) });
   }
@@ -505,6 +627,17 @@ function _aeStPhoto(st, fr) {
   var ref = Math.max(AE_ST_GROUND_ALBEDO_REF * ((directG + e2) / Math.PI + AE_STAND_GROUND_AMBIENT_SHARE * Math.max(p.amb[0], p.amb[1], p.amb[2])),
     1.2 * Math.max(p.zen[0], p.zen[1], p.zen[2]), AE_STAND_NEAR_SUN_SHARE * Math.max(p.near ? p.near[0] : 0, p.near ? p.near[1] : 0, p.near ? p.near[2] : 0), AE_ST_NIGHT_FLOOR);
   p.k = AE_ST_EXPOSURE_TARGET / ref;
+  // The Earth's sky is the 2D sky's, and so is its exposure there by day (the same eye: almanac-skygl.js _sgExposure, converted to this
+  // view's units); through twilight it hands over to this view's own, which sets the exposure by the ground.
+  if (a && st.key === 'earth' && typeof _sgExposure === 'function') {
+    var w = AE_STAND_SKY_MATCH_SHARE * _smoothstep(AE_STAND_SKY_MATCH_DEG[0], AE_STAND_SKY_MATCH_DEG[1], fr.sunAlt), k2 = _sgExposure(fr.sunAlt, -90, 0, 0, 1, 1) * AE_ST_LUX_PER_UNIT;
+    if (w > 0 && k2 > 0) p.k = Math.exp(Math.log(p.k) * (1 - w) + Math.log(k2) * w);
+  }
+  if (_aeStandAirOn(st) && _aeStandAir.exposureK) {   // a provider's atmosphere brings its own exposure, for everything in the picture
+    var kp = null;
+    try { kp = _aeStandAir.exposureK(st, fr, p); } catch (e) {}
+    if (kp > 0) p.k = kp;
+  }
   p.e2 = e2;
   p.mwStrength = _aeClamp((p.lim - 5.2) / 2.5, 0, 1) * p.mw;
   return p;
@@ -574,6 +707,8 @@ function _aeStandPaint(st, now, moving, place) {
 }
 // The sky into its small target (or, with no way to make one, straight to the screen as before).
 function _aeStandSkyPass(st) {
+  _aeStandAirSelect(st);
+  _aeStandCloudSelect(st);
   var S = _ae.gl, r = S.renderer, THREE = S.THREE, use = AE_STAND_SKY_SCALE < 1 && !!st.skyBlit && typeof THREE.WebGLRenderTarget === 'function';
   st.skyMesh.visible = !use; st.skyBlit.visible = use;
   if (!use) return;
@@ -584,7 +719,7 @@ function _aeStandSkyPass(st) {
     st.skyRT = new THREE.WebGLRenderTarget(w, h, { minFilter: THREE.LinearFilter, magFilter: THREE.LinearFilter, depthBuffer: false, stencilBuffer: false });
   }
   var u = st.skyBlit.material.uniforms;
-  u.tSky.value = st.skyRT.texture; u.uRes.value = [W, H];
+  u.tSky.value = st.skyRT.texture; u.uRes.value = [W, H]; u.uTexel.value = [1 / w, 1 / h];
   r.setRenderTarget(st.skyRT); r.render(st.skyScene, st.camera); r.setRenderTarget(null);
 }
 // Frames that run long step the pixel ratio down, for good: a phone that cannot keep up is not asked to try again.
@@ -649,8 +784,10 @@ function _aeStandShadeTick(st, fr, now) {
 }
 function _aeStandApplyGround(st, fr, ph, view, now) {
   var g = st.ground;
-  g.uCam.value = view.pos; g.uPixAng.value = view.pixAng; g.uTime.value = now / 1000;
-  g.uAmbient.value = ph.amb; g.uSkyHor.value = ph.hor; g.uSkyZen.value = ph.zen; g.uDiffSky.value = ph.diffSky;
+  g.uCam.value = view.pos; g.uPixAng.value = view.pixAng;
+  var hl = Math.hypot(view.e[8], view.e[9]) || 1;
+  g.uHead.value = [-view.e[8] / hl, -view.e[9] / hl]; g.uTime.value = now / 1000;
+  g.uAmbient.value = st.key === 'earth' ? ph.amb.map(function (x) { return Math.max(x, AE_STAND_NIGHT_GLOW); }) : ph.amb; g.uSkyHor.value = ph.hor; g.uSkyZen.value = ph.zen; g.uDiffSky.value = ph.diffSky;
   if (fr.light2) { g.uDir2.value = fr.light2.dir; g.uE2.value = fr.light2.rgb; }
   else g.uE2.value = [0, 0, 0];
 }
@@ -741,6 +878,104 @@ function _aeStandCraftMarks(st, fr, view) {
     shown++;
   });
   for (var i = shown; i < host.children.length; i++) host.children[i].hidden = true;
+}
+
+// ── The live sky card's hand-off, and the way back ──
+//   window._osHandoff = { body?: 'earth', lat, lon, ms?, heading?, pitch?, back?() }   the card's place, instant, facing (degrees: heading
+//                                from north clockwise, pitch up) and a function that puts the card back
+//   _aeStandOpen(h?)    opens the 3D view if it is not up, goes to that place and instant, drops to the ground facing that way;
+//                       h defaults to window._osHandoff (which is then cleared); resolves true when it started
+//   _aeStandClose()     the one way back: climbs out of Stand here, closes the 3D view if _aeStandOpen opened it, then calls h.back()
+function _aeStandOpen(h) {
+  h = h || (typeof window !== 'undefined' ? window._osHandoff : null);
+  if (typeof window !== 'undefined' && h && h === window._osHandoff) window._osHandoff = null;
+  if (!h || typeof h.lat !== 'number' || typeof h.lon !== 'number') return Promise.resolve(false);
+  h.openedView = !(typeof _aeIsOpen !== 'undefined' && _aeIsOpen);
+  return _aeStandStart(h.body || 'earth', h.lat, h.lon, h);
+}
+function _aeStandClose() {
+  var st = _ae && _ae.stand, h = (st && st.handoff) || (_ae && _ae.standPending && _ae.standPending.handoff) || null;
+  if (!_ae) return;
+  _ae.standBack = h;
+  if (_ae.stand || _ae.standPending) _aeStandLeave(); else _aeStandAfterClose();
+}
+function _aeStandAfterClose() {
+  var h = _ae && _ae.standBack;
+  if (!h) return;
+  _ae.standBack = null;
+  if (h.openedView && typeof _aeClose === 'function' && typeof _aeIsOpen !== 'undefined' && _aeIsOpen) _aeClose();
+  if (typeof h.back === 'function') { try { h.back(); } catch (e) {} }
+}
+
+// ── An atmosphere from outside (the 2D sky's, for the Earth) ──
+// A provider is an object at `_aeStandAir`; while provider.wants(st) is true (called at every picture) the sky pass is drawn with ITS
+// light and ONE exposure for the sky, the ground and the sprites; otherwise, and with no provider, this view's own ray march.
+//     wants(st) -> bool        st.key, st.altKm (camera height over the ground), st.lat, st.lon are what it will want to know
+//     glsl                     a chunk that defines  vec3 oaSky(vec3 d)  (d: unit view direction in the local frame, x east, y north, z up),
+//                              the sky's radiance there in the units its exposureK goes with (tone is 1 - exp(-L * uK), then gamma);
+//                              it may read this view's uniforms uCam (km, the camera in the local frame), uSunDir (unit, local frame),
+//                              uSunE, uR, uRc, uTop, uAtmo and declare its own `uniform`s, which `uniforms` supplies
+//     uniforms                 { name: initial value } for the chunk's own uniforms (numbers, arrays of 2-4 or 9 numbers, textures)
+//     update(st, fr, ph, u)    optional, at every picture: set u[name].value from the frame (fr: sun and body positions, ph: its photometry)
+//     exposureK(st, fr, ph)    the one uK (a positive number), or null for this view's own
+//     clouds                   optional { glsl, uniforms, update(st, fr, ph, u) }: the cloud deck's own chunk (see Clouds below)
+// The chunk is compiled on first use; a provider whose glsl changes is rebuilt.
+var _aeStandAir = (typeof _aeStandAir !== 'undefined') ? _aeStandAir : null;
+function _aeStandAirOn(st) {
+  var P = _aeStandAir;
+  try { return !!(P && P.glsl && P.wants && P.wants(st)); } catch (e) { return false; }
+}
+function _aeStandAirSelect(st) {
+  var THREE = _ae.gl.THREE, on = _aeStandAirOn(st), P = _aeStandAir;
+  if (on && (!st.skyMatAir || st.skyAirSrc !== P.glsl)) {
+    if (st.skyMatAir) st.skyMatAir.dispose();
+    var own = {};
+    Object.keys(P.uniforms || {}).forEach(function (k) { own[k] = { value: P.uniforms[k] }; });
+    st.skyMatAir = new THREE.ShaderMaterial({ uniforms: Object.assign({}, st.sky, own), vertexShader: AE_ST_SKY_VERT, fragmentShader: _aeStSkyAirFrag(P.glsl), depthTest: false, depthWrite: false });
+    st.skyAirSrc = P.glsl;
+  }
+  var m = on ? st.skyMatAir : st.skyMatOwn;
+  if (st.skyMesh.material !== m) { st.skyMesh.material = m; if (st.skyLowMesh) st.skyLowMesh.material = m; }
+  if (on && P.update) { try { P.update(st, st.fr, st.photo, st.skyMatAir.uniforms); } catch (e) {} }
+  st.airOn = on;
+}
+
+// ── Clouds ──
+// One deck over the Earth, from a field of (place, day). onesky owns the definition: `_osCloudField(def)` with def = { lat, lon, ms } returns
+// { coverage 0..1, wind: [vx, vy] m/s, base (m over the ground), thickness, seed: [a, b] }; without it, this formula (a hash of the day and the
+// place's half-degree cell). A provider (_aeStandAir) may bring `clouds: { glsl, uniforms, update(st, fr, ph, u) }` whose chunk defines
+//     vec4 osClouds(vec3 d, vec3 o)   d: unit view direction (local frame), o: the camera in metres; premultiplied radiance + alpha,
+//                                     in the units of oaSky, so tone(rgb, uK) is its colour
+// and the stand draws it over the sky, the stars and the sprites, under the ground. Earth only; nothing is drawn at coverage under 2 percent.
+var AE_STAND_CLOUD_BASE_M = [1800, 3000], AE_STAND_CLOUD_THICK_M = 700;
+function _aeStHash(a, b, c) { var h = Math.sin(a * 127.1 + b * 311.7 + c * 74.7) * 43758.5453; return h - Math.floor(h); }
+function _aeStandCloudField(st, ms) {
+  if (typeof _osCloudField === 'function') { try { var f = _osCloudField({ lat: st.lat, lon: st.lon, ms: ms }); if (f) return f; } catch (e) {} }
+  var day = Math.floor(ms / 86400000), la = Math.round(st.lat * 2) / 2, lo = Math.round(st.lon * 2) / 2;
+  var r = function (k) { return _aeStHash(day + k * 13.7, la + k * 3.1, lo - k * 5.3); };
+  var ang = r(2) * 2 * Math.PI, sp = 3 + 11 * r(3);
+  return { coverage: Math.pow(r(1), 1.3) * 0.85, wind: [Math.cos(ang) * sp, Math.sin(ang) * sp], base: AE_STAND_CLOUD_BASE_M[0] + (AE_STAND_CLOUD_BASE_M[1] - AE_STAND_CLOUD_BASE_M[0]) * r(4), thickness: AE_STAND_CLOUD_THICK_M, seed: [r(5) * 90, r(6) * 90] };
+}
+function _aeStandCloudSelect(st) {
+  var THREE = _ae.gl.THREE;
+  if (st.key !== 'earth' || !st.sky) return;
+  var P = _aeStandAir, prov = _aeStandAirOn(st) && P.clouds && P.clouds.glsl ? P.clouds : null, chunk = prov ? prov.glsl : AE_ST_CLOUDS_GLSL;
+  if (!st.cloudMesh || st.cloudSrc !== chunk) {
+    if (st.cloudMesh) { st.scene.remove(st.cloudMesh); st.cloudMesh.material.dispose(); }
+    var own = {};
+    if (prov) Object.keys(prov.uniforms || {}).forEach(function (k) { own[k] = { value: prov.uniforms[k] }; });
+    else own = { uCloudA: { value: [0, 2000, 700, 0] }, uCloudB: { value: [0, 0, 0, 0] } };
+    var m = new THREE.ShaderMaterial({ uniforms: Object.assign({}, st.sky, own), vertexShader: AE_ST_SKY_VERT_FAR, fragmentShader: _aeStCloudFrag(chunk), transparent: true, depthTest: true, depthWrite: false });
+    st.cloudMesh = new THREE.Mesh(st.skyMesh.geometry, m);
+    st.cloudMesh.frustumCulled = false; st.cloudMesh.renderOrder = -0.5;
+    st.scene.add(st.cloudMesh); st.cloudSrc = chunk; st.cloudProv = !!prov;
+  }
+  var u = st.cloudMesh.material.uniforms;
+  if (prov) { st.cloudMesh.visible = true; if (prov.update) { try { prov.update(st, st.fr, st.photo, u); } catch (e) {} } return; }
+  var ms = _aeDisplayMs(), f = st.cloudField && Math.abs(ms - st.cloudField.at) < 600000 ? st.cloudField : (st.cloudField = Object.assign(_aeStandCloudField(st, ms), { at: ms }));
+  st.cloudMesh.visible = f.coverage >= 0.02;
+  u.uCloudA.value = [f.coverage, f.base, f.thickness, (ms % 86400000) / 1000];
+  u.uCloudB.value = [f.wind[0], f.wind[1], f.seed[0], f.seed[1]];
 }
 
 // ── Objects in the sky from other lanes ──
@@ -931,12 +1166,20 @@ function _aeStandMotionButton(st, hud) {
   };
   if (_aeMotionKept() && !_aeMotionAsks()) _aeMotionStart(st).then(set);
 }
+// The time at the place itself (its zone, by the Almanac's own nearest-city table), for the Earth: the clock below is the person's.
+function _aeStPlaceTime(st) {
+  if (st.key !== 'earth' || typeof _almTzForLocation !== 'function') return '';
+  try {
+    var tz = _almTzForLocation(st.lat, st.lon), twelve = typeof _almClock12h === 'function' ? _almClock12h() : false;
+    return new Intl.DateTimeFormat(typeof _currentLang !== 'undefined' ? _currentLang : undefined, { hour: 'numeric', minute: '2-digit', hour12: twelve, timeZone: tz, timeZoneName: 'short' }).format(_aeDisplayMs());
+  } catch (e) { return ''; }
+}
 function _aeStandHudText(st) {
   var el = _aeById('ae-stand-text'), fr = st.fr;
   if (!el) return;
   var head = ((st.yaw + st.userYaw) * 180 / Math.PI % 360 + 360) % 360;   // where the view faces; the Sun's own bearing follows its height
   var line2 = (fr ? '☀ ' + Math.round(fr.sunAlt) + '° ' + _aeCompassPoint(fr.sunAz) + '  ·  ' : '') + Math.round(head) + '° ' + _aeCompassPoint(head);
-  var html = '<b>' + _almEsc(_aeInfoName(st.key)) + '</b><span>' + _almEsc(_aeFmtLatLon({ lat: st.lat, lon: st.lon })) + ' · ' + _almEsc(_aeStHeightText(st.h0)) + '</span><span>' + _almEsc(line2) + '</span>';
+  var local = _aeStPlaceTime(st), html = '<b>' + _almEsc(_aeInfoName(st.key)) + '</b><span>' + _almEsc(_aeFmtLatLon({ lat: st.lat, lon: st.lon })) + ' · ' + _almEsc(_aeStHeightText(st.h0)) + '</span><span>' + _almEsc(line2) + '</span>' + (local ? '<span>' + _almEsc(local) + '</span>' : '');
   if (el._html !== html) { el._html = html; el.innerHTML = html; }
 }
 // The eight points of the compass, from the app's own cardinal letters (NE = N then E).
