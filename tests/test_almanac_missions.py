@@ -69,3 +69,33 @@ def test_phases_run_in_order_and_inside_the_mission(missions):
             for leg in v["legs"]:
                 rows = [r[0] for r in leg["s"]]
                 assert rows == sorted(rows), (mid, v["id"])
+
+
+def test_apollo_11_parking_orbit_is_the_reports(missions):
+    """The flown parking orbit (MR: 100.7 x 99.2 nautical miles, 32.521 degrees, S-IVB cut-off 11:39.3 GET): the last Earth-fixed row, the cut-off, as an inertial orbit."""
+    import math
+
+    m = missions["apollo11"]
+    stack = [v for v in m["vehicles"] if v["id"] == "stack"]
+    if not stack:
+        pytest.skip("the full Apollo 11 tables are not in this build")
+    cut = hms(0, 11, 39.3)
+    rows = [r for leg in stack[0]["legs"] if leg["frame"] == "ecef" for r in leg["s"] if r[0] >= cut - 1]
+    if not rows:
+        pytest.skip("no row after the cut-off")
+    t, x, y, z, vx, vy, vz = rows[0][:7]
+    w = 7.2921159e-5
+    r = (x, y, z)
+    v = (vx - w * y, vy + w * x, vz)   # Earth-fixed to inertial: add the turn of the frame
+    rn = math.sqrt(sum(c * c for c in r))
+    vn2 = sum(c * c for c in v)
+    h = (r[1] * v[2] - r[2] * v[1], r[2] * v[0] - r[0] * v[2], r[0] * v[1] - r[1] * v[0])
+    mu = 398600.4418
+    a = 1 / (2 / rn - vn2 / mu)
+    ev = [(v[1] * h[2] - v[2] * h[1]) / mu - r[0] / rn, (v[2] * h[0] - v[0] * h[2]) / mu - r[1] / rn, (v[0] * h[1] - v[1] * h[0]) / mu - r[2] / rn]
+    e = math.sqrt(sum(c * c for c in ev))
+    inc = math.degrees(math.acos(h[2] / math.sqrt(sum(c * c for c in h))))
+    nm = 1.852
+    assert abs(a * (1 + e) - 6378.137 - 100.7 * nm) < 3.0
+    assert abs(a * (1 - e) - 6378.137 - 99.2 * nm) < 3.0
+    assert abs(inc - 32.521) < 0.1

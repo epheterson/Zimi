@@ -716,7 +716,7 @@ def test_every_destination_flies(served, start):
             )
             # Every body (the landing sites are the landmarks test's).
             keys = pg.evaluate(
-                "_aeGoGroups().reduce((a, g) => a.concat(g[1]), []).filter(k => k.indexOf(AE_GO_LM) !== 0 && k !== AE_GO_LOADING && k !== AE_SPIN_KEY).concat(['sun', 'planets', 'sats'])"
+                "_aeGoGroups().reduce((a, g) => a.concat(g[1]), []).filter(k => k.indexOf(':') < 0 && k !== AE_GO_LOADING && k !== AE_SPIN_KEY).concat(['sun', 'planets', 'sats'])"
             )
             pg.evaluate(
                 "_aeShowGo(false); window._almReduceMotion = function () { return true; };"
@@ -785,7 +785,7 @@ def test_every_destination_arrives_with_its_card(served):
                 timeout=60_000,
             )
             keys = pg.evaluate(
-                "_aeGoGroups().reduce((a, g) => a.concat(g[1]), []).filter(k => k.indexOf(AE_GO_LM) !== 0 && k !== AE_GO_LOADING && k !== AE_SPIN_KEY).concat(['sun'])"
+                "_aeGoGroups().reduce((a, g) => a.concat(g[1]), []).filter(k => k.indexOf(':') < 0 && k !== AE_GO_LOADING && k !== AE_SPIN_KEY).concat(['sun'])"
             )
             pg.evaluate(
                 "_aeShowGo(false); window._almReduceMotion = function () { return true; };"
