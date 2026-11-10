@@ -389,3 +389,17 @@ function _lfSkyBatch(dep, ms, obsLat, obsLon) {
   }
   return out;
 }
+
+// What the ground view's sky takes (_aeStandSkySource): objects {kind: 'rocket' | 'plume' | 'train', az, el (degrees, az from
+// north), mag, rgb (0 to 1), trail, name}. A lit exhaust is a rocket point and a large soft plume at the same place; the
+// reconstructed batch is a 'train'.
+function _lfStandObjects(flight, L, dep, ms, lat, lon) {
+  var out = [], r = _lfSkyRocket(flight, L, ms, lat, lon);
+  if (r) {
+    var rgb = r.rgb.map(function (c) { return c / 255; });
+    out.push({ kind: 'rocket', name: r.name, az: r.az, el: r.el, mag: r.mag, rgb: rgb, trail: r.trail });
+    if (r.sight === 'jellyfish') out.push({ kind: 'plume', name: r.name, az: r.az, el: r.el, mag: r.mag + 1, rgb: rgb });
+  }
+  _lfSkyBatch(dep, ms, lat, lon).forEach(function (v) { out.push({ kind: 'train', name: L.mission || L.name, az: v.az, el: v.el, mag: v.mag, rgb: [1, 0.94, 0.8] }); });
+  return out;
+}

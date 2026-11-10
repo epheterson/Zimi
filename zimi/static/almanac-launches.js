@@ -86,9 +86,20 @@ function _alSelect(i) {
   var place = _alPlace();
   if (place) _al.sight = _lfObserve(_al.flight, L, L.ms, place.lat, place.lon);
   _alTrackBuild();
+  _alStandRegister();
   _alKick();
 }
+// The ground view's sky (almanac-stand.js _aeStandSkySource) is given the selected launch's rocket, plume and batch, for as
+// long as the launch is selected.
+function _alStandRegister() {
+  if (_al.standOff || typeof _aeStandSkySource !== 'function') return;
+  _al.standOff = _aeStandSkySource(function (body, lat, lon, ms) {
+    return body === 'earth' && _al.flight && _al.cur ? _lfStandObjects(_al.flight, _al.cur, _al.depSource === AL_SRC.recon ? _al.dep : null, ms, lat, lon) : [];
+  });
+}
+function _alStandUnregister() { if (_al.standOff) { _al.standOff(); _al.standOff = null; } }
 function _alClear() {
+  _alStandUnregister();
   _al.sel = AL_SEL_NONE; _al.cur = null; _al.flight = null; _al.dep = null; _al.sight = null; _al.windows = null; _al.exact = null;
   _alTrackBuild();
   _alKick();
@@ -191,6 +202,12 @@ function _alOpenSheet() {
   if (!_al.filter.year) _al.filter.year = String(new Date(_aeDisplayMs()).getUTCFullYear());
   _alRender();
   _alLoad().then(_alRender).catch(_alRender);
+}
+// Out of the way, the launch kept: the ground view still shows it.
+function _alHideSheet() {
+  _al.sheet = false;
+  if (_al.sheetEl) _al.sheetEl.hidden = true;
+  if (typeof _aeMarkToggles === 'function') _aeMarkToggles();
 }
 function _alCloseSheet() {
   _al.sheet = false;
@@ -353,7 +370,7 @@ function _alBindLaunch() {
   _aeById('al-here').onclick = function () { _alHintDone(); _alStandThen('here'); };
   _aeById('al-frompad').onclick = function () { _alHintDone(); _alStandThen('pad'); };
   var g = _aeById('al-ground');
-  if (g) g.onclick = function () { var L = _al.cur; _alHintDone(); _alCloseSheet(); _aeGoTo(L.ms); _aeStandAt('earth', L.lat, L.lon); };   // the sheet gives the view to the ground
+  if (g) g.onclick = function () { var L = _al.cur; _alHintDone(); _alHideSheet(); _aeGoTo(L.ms); _aeStandAt('earth', L.lat, L.lon); };   // the sheet gives the view to the ground
   var r = _aeById('al-recon'), x = _aeById('al-exact');
   if (r) r.onclick = function () { _al.depSource = AL_SRC.recon; _alRender(); _alKick(); };
   if (x) x.onclick = _alUseExact;

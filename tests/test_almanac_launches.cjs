@@ -265,5 +265,23 @@ const flight = S._lfAscent(SLC40);
   check(Math.abs(m - -1.8) < 0.7, 'a 6,400 square metre sphere at 1,000 km, half lit: magnitude ' + m.toFixed(1) + ' (McCants, about -1.8)');
 }
 
+
+// ── 8. What the ground view's sky is given ─────────────────────────────────
+{
+  const L = { tag: '2022-141', name: 'Falcon 9', mission: 'Starlink Group 4-31', ms: Date.UTC(2022, 9, 28, 1, 14), lat: 34.632, lon: -120.611, siteName: 'Vandenberg', incDeg: 53.2, perigeeKm: 230, ok: true };
+  const f = S._lfAscent(L);
+  const o = S._lfStandObjects(f, L, null, L.ms + 150000, 34.05, -118.24);
+  const rocket = o.find((x) => x.kind === 'rocket'), plume = o.find((x) => x.kind === 'plume');
+  check(o.length === 2 && rocket && plume && rocket.az === plume.az && rocket.el === plume.el && plume.mag === rocket.mag + 1, 'a lit exhaust is a rocket point and a plume at the same place');
+  check(rocket.rgb.every((c) => c >= 0 && c <= 1) && rocket.trail.length > 3 && rocket.name.indexOf('Starlink Group 4-31') >= 0, 'with colours 0 to 1, a trail and a name');
+  check(S._lfStandObjects(f, L, null, L.ms + 150000, 34.05, 100).length === 0, 'nothing for a place on the far side of the Earth');
+  const L25 = { mission: 'Starlink V1.0-L25', inc: 53.05, n: 60, depKm: 268.5 }, t25 = Date.UTC(2021, 4, 4, 19, 1);
+  const f25 = S._lfAscent({ name: 'Falcon 9', lat: 28.608, lon: -80.604, siteName: 'Kennedy', incDeg: 53.05, perigeeKm: 261, ok: true });
+  const dep = S._lfDeploy(L25, f25, t25, 63), at = Date.UTC(2021, 4, 7, 4, 19);
+  const train = S._lfStandObjects(f25, { name: 'Falcon 9', mission: 'Starlink V1.0-L25', ms: t25, lat: 28.608, lon: -80.604, ok: true }, dep, at, 39.22, -121.06);
+  check(train.length > 20 && train.every((x) => x.kind === 'train' && x.el >= 0 && x.az >= 0 && x.az < 360 && isFinite(x.mag)), 'the L25 batch over Grass Valley on 6 May: ' + train.length + ' train points');
+  check(S._lfStandObjects(f25, { name: 'Falcon 9', ms: t25, lat: 28.608, lon: -80.604, ok: true }, null, at, 39.22, -121.06).length === 0, 'and with the batch not asked for, none');
+}
+
 if (failures) { console.error(failures + ' failed'); process.exit(1); }
 console.log('all passed');
