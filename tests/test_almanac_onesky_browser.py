@@ -671,7 +671,7 @@ def test_without_webgl2_the_there_and_then_list_stands_and_the_ground_buttons_do
         timeout=120_000,
     )
     pg.wait_for_function(
-        "() => document.querySelector('.alm-sky-stand') && document.querySelector('.alm-sky-stand').hidden === true",
+        "() => document.querySelector('.alm-sky-stand') && document.querySelector('.alm-sky-stand').hidden === true && getComputedStyle(document.querySelector('.alm-sky-stand')).display === 'none'",
         timeout=30_000,
         polling=250,
     )

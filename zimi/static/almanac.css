@@ -391,6 +391,7 @@
 :is(.alm-sky-look, .alm-sky-then, .alm-sky-gear, .alm-sky-stand) { position: absolute; top: 4px; z-index: 2; width: 44px; height: 44px; border-radius: 22px; border: 0; background: none; color: #fff; display: flex; align-items: center; justify-content: center; padding: 0; cursor: pointer; isolation: isolate; }
 :is(.alm-sky-look, .alm-sky-then, .alm-sky-gear, .alm-sky-stand)::before { content: ""; position: absolute; inset: 6px; z-index: -1; border-radius: 16px; border: 1px solid rgba(255,255,255,.22); background: rgba(8,10,16,.55); backdrop-filter: blur(6px); -webkit-backdrop-filter: blur(6px); }
 :is(.alm-sky-look, .alm-sky-then, .alm-sky-gear, .alm-sky-stand) svg { width: 17px; height: 17px; }
+.alm-sky-stand[hidden], .look-stand[hidden] { display: none !important; }   /* no WebGL2, no ground: a hidden button stays hidden whatever its class sets */
 .almanac-sky-wrap canvas { width: 100%; display: block; border-radius: 12px; touch-action: pan-y; }
 /* The sky is its final size before its first frame (almanac-sky.js sets the same height once it starts, from
    SKY_ASPECT and SKY_ASPECT_PHONE under SKY_PHONE_MAX_W): a canvas waiting at its default 2:1 grew when the

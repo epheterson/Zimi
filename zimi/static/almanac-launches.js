@@ -153,6 +153,8 @@ var AL_CSS = [
   '.al-note{margin:6px 0 0;font-size:11.5px;opacity:.8}',
   '.at-when{margin:0 0 8px;font-size:15px;font-weight:600;color:var(--text)}',
   '.al-acts .at-primary,.al-acts .at-primary:focus-visible{color:#111;background:var(--amber);border-color:var(--amber)}',
+  '.al-acts .at-primary:disabled{opacity:.35;filter:grayscale(.6);cursor:default;pointer-events:none}',
+  '.al-note#at-no3d{margin:8px 0 10px}',
   '@media (hover:hover){.al-acts .at-primary:hover{color:#111;background:var(--amber);border-color:var(--amber);filter:brightness(1.08)}}',
   '.at-group{margin:10px 0 2px;font-size:11px;font-weight:600;letter-spacing:.06em;text-transform:uppercase;color:var(--text2)}',
   '.al-sheet a{color:var(--amber)}',
