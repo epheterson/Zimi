@@ -87,12 +87,12 @@ def test_deploy_sends_dockerignore_to_the_nas():
 # Cold Home on an empty library, as an iPhone loads it: requests and encoded KB until the page has settled
 # (27 requests, 770 KB today, manage.js's 123 KB included: it is fetched once Home is quiet).
 HOME_MAX_REQUESTS = 36
-HOME_MAX_KB = 900
+HOME_MAX_KB = 1000   # 1.15.4 Home was 1.5 MB (the Moon's 4096 map); the 2048 hero map (195 KB) is on it now
 # Opening the Almanac from Home: its modules, stylesheet and first picture (405 KB), then the Moon's 730 KB map, which a first open asks for (1.1 MB in all).
 ALMANAC_MAX_REQUESTS = 20
 ALMANAC_MAX_KB = 1400
 # Then the 3D view, opened as a tap on the Moon opens it (10 requests, 602 KB today).
-EARTH_MAX_REQUESTS = 16
+EARTH_MAX_REQUESTS = 20   # the sky, sun, orrery hand-over and land modules came with 1.16; the 5 percent budget below is the real gate
 EARTH_MAX_KB = 800
 # Files that must NOT come with Home or with the Almanac: the 3D view loads on its first use.
 LAZY_PREFIXES = (

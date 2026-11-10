@@ -60,10 +60,10 @@ def page(served):
         pg.errors = []
         pg.on("pageerror", lambda e: pg.errors.append(str(e)))
         pg.goto(served + "/#almanac", wait_until="load")
-        pg.wait_for_function(
-            "() => typeof openAlmanacEarth === 'function' && typeof ZimiCap !== 'undefined'",
-            timeout=120_000,
-        )
+        pg.wait_for_function("() => typeof _almanacLoaded !== 'undefined' && _almanacLoaded && typeof ZimiCap !== 'undefined'", timeout=120_000)
+        # On what Auto calls low the 3D files are held back until a tap needs them: this is the tap.
+        pg.evaluate("() => _almLoadEarth()")
+        pg.wait_for_function("() => typeof openAlmanacEarth === 'function'", timeout=120_000)
         yield pg
         br.close()
 
