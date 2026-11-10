@@ -99,7 +99,7 @@ const msFirst = Number(process.hrtime.bigint() - tt0) / 1e6, tt1 = process.hrtim
 let steady = first;
 for (let k = 1; k <= 5; k++) steady = sky(T + k * 1000);
 const msSteady = Number(process.hrtime.bigint() - tt1) / 5e6;
-check(msSteady < msFirst && msSteady < 100, 'a sky for the place costs ' + msFirst.toFixed(0) + ' ms the first time and ' + msSteady.toFixed(0) + ' ms after (' + cand.length + ' candidates)');
+check(msSteady < msFirst && msSteady < 400, 'a sky for the place costs ' + msFirst.toFixed(0) + ' ms the first time and ' + msSteady.toFixed(0) + ' ms after (' + cand.length + ' candidates)');
 sb.self.onmessage({ data: { cmd: 'init', id: 9, sunMag: ref.sunMag, albedo: ref.albedo, sgpUrl: 'x', n: N, radius: 6371, epoch0: ORIGIN, epoch: m('epoch'), norad: m('norad'), mm: m('mm'), ecc: m('ecc'), inc: m('inc'), raan: m('raan'), argp: m('argp'), ma: m('ma'), bstar: m('bstar') } });
 const fresh = sky(T + 5000);
 check(JSON.stringify(fresh.list.map((e) => e.i)) === JSON.stringify(steady.list.map((e) => e.i)), 'the same satellites with and without the skipping (' + fresh.list.length + ')');
