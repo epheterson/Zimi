@@ -11,6 +11,8 @@ import os
 import re
 import sys
 
+import pytest
+
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from games_wait import frames  # noqa: E402
 from test_games_persist_browser import GAMES, VIEW, browser, served  # noqa: E402,F401
@@ -29,6 +31,8 @@ def test_added_is_a_release_and_names_a_real_page():
 
 
 def test_the_row_lists_the_latest_release_only(browser, served):
+    if not any("added" in r for r in rows()):
+        pytest.skip("no game in games.json says which release added it")
     ctx = browser.new_context(
         viewport=VIEW, has_touch=True, is_mobile=True, reduced_motion="reduce"
     )
@@ -56,9 +60,16 @@ def test_the_row_lists_the_latest_release_only(browser, served):
     # The table, the world's favorites, what is new, then the rest: the games that use your library are not what the shelf opens on.
     assert order[:3] == ["ar-continue", "ar-world", "ar-new"], order
     assert order.index("ar-new") < order.index("ar-daily")
-    world = page.eval_on_selector_all(".ar-world a.ar-game", "els => els.map(e => e.getAttribute('href'))")
-    assert world[:3] == ["chess.html", "solitaire.html", "checkers.html"] and len(world) == 13, world   # chess is in the row even while the idle table suggests it
-    sections = page.eval_on_selector_all(".sh-list > section", "els => els.map(e => e.querySelector('h2').id)")
+    world = page.eval_on_selector_all(
+        ".ar-world a.ar-game", "els => els.map(e => e.getAttribute('href'))"
+    )
+    assert (
+        world[:3] == ["chess.html", "solitaire.html", "checkers.html"]
+        and len(world) == 13
+    ), world  # chess is in the row even while the idle table suggests it
+    sections = page.eval_on_selector_all(
+        ".sh-list > section", "els => els.map(e => e.querySelector('h2').id)"
+    )
     assert sections[-1] == "ar-library" and sections[0] != "ar-library", sections
     # Not one picture ten times: the first six are not all one kind.
     kinds = {r["path"]: r["kind"] for r in rows() if "kind" in r}
@@ -88,4 +99,14 @@ def test_no_added_no_row(browser, served):
     page.goto("%s/index.html" % served)
     page.wait_for_selector(".ar-daily a.ar-game")
     assert page.locator(".ar-new").count() == 0
+    # Without a New row the shelf still opens on the table and the world's favorites, and the library games come last.
+    order = page.eval_on_selector_all(
+        ".sh-top > section",
+        "els => els.map(e => e.className.split(' ').filter(c => /^ar-(continue|world|daily)$/.test(c))[0])",
+    )
+    assert order[:2] == ["ar-continue", "ar-world"], order
+    sections = page.eval_on_selector_all(
+        ".sh-list > section", "els => els.map(e => e.querySelector('h2').id)"
+    )
+    assert sections[-1] == "ar-library" and sections[0] != "ar-library", sections
     ctx.close()
