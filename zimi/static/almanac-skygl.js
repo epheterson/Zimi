@@ -237,6 +237,15 @@ var SG_TRANS_W = 256, SG_TRANS_H = 64, SG_MS_N = 32, SG_VIEW_W = 256, SG_VIEW_H 
 // The airmass at an altitude in degrees (Kasten and Young): the one formula, from the page's own constants.
 var SG_GLSL_AIRMASS = 'float airmassDeg(float h) { h = max(h, 0.0); return 1.0 / (sin(radians(h)) + ' + SKY_AIRMASS_A + ' * pow(h + ' + SKY_AIRMASS_B + ', -' + SKY_AIRMASS_C + ')); }';
 var SG_LUT_LOG_SCALE = '32.0', SG_LUT_OD_SCALE = '64.0';   // the tables hold the logarithm of the light and the optical depth, scaled to sit where a half float has digits
+// The tables' addressing, the airmass and the log-coded light: the pieces of the air's GLSL that the card's shaders and Stand here's
+// Earth sky (almanac-oneair.js) both stand on.
+var SG_GLSL_LUT_UTIL = [
+  'vec2 unitToTex(vec2 u, vec2 size) { return (u * (size - 1.0) + 0.5) / size; }',
+  SG_GLSL_AIRMASS,
+  // A table's value back to light: a half float cannot hold a twilight's 1e-8, its logarithm it can.
+  'vec3 lutLight(vec3 t) { return exp(t * ' + SG_LUT_LOG_SCALE + '); }',
+  'vec3 lutOut(vec3 L) { return log(max(L, vec3(1e-14))) / ' + SG_LUT_LOG_SCALE + '; }'
+].join('\n');
 var SG_GLSL_HEAD = [
   '#version 300 es', 'precision highp float;', 'precision highp sampler2D;',
   'const float PI = 3.14159265359;',
@@ -258,11 +267,7 @@ var SG_GLSL_HEAD = [
   '  if (D < 0.0 || b >= 0.0) return -1.0;',
   '  return c / (-b + sqrt(D));',
   '}',
-  'vec2 unitToTex(vec2 u, vec2 size) { return (u * (size - 1.0) + 0.5) / size; }',
-  SG_GLSL_AIRMASS,
-  // A table's value back to light: a half float cannot hold a twilight's 1e-8, its logarithm it can.
-  'vec3 lutLight(vec3 t) { return exp(t * ' + SG_LUT_LOG_SCALE + '); }',
-  'vec3 lutOut(vec3 L) { return log(max(L, vec3(1e-14))) / ' + SG_LUT_LOG_SCALE + '; }'
+  SG_GLSL_LUT_UTIL
 ].join('\n');
 
 var SG_GLSL_TRANS_LOOKUP = [
@@ -398,17 +403,17 @@ var SG_GLSL_VIEW = [
   '}'
 ].join('\n');
 
-var SG_FS_SKY = SG_GLSL_HEAD + '\n' + SG_GLSL_VIEW + '\n' + [
-  'uniform sampler2D uSkyS, uSkyM, uMilky;',
-  'uniform float uSunAz, uSunLux, uMoonAz, uMoonLux, uExposure;',
+// The light of the sky in a direction, in cd/m2, as the two lights' tables, the zodiacal light, the airglow and the place's own glow
+// make it (everything but the Milky Way): one function for the card's shader and for Stand here's Earth, so they cannot differ.
+// Needs SG_GLSL_LUT_UTIL and PI; the uniforms are set by _sgDraw here and by almanac-oneair.js there.
+var SG_GLSL_RADIANCE = [
+  'uniform sampler2D uSkyS, uSkyM;',
+  'uniform float uSunAz, uSunLux, uMoonAz, uMoonLux;',
   'uniform vec3 uGlow;',                     // the place's own light, cd/m2
-  'uniform mat3 uGal;',                      // (east, north, up) to galactic
   'uniform vec3 uEclPole, uSunVec;',         // the ecliptic's pole and the Sun, in (east, north, up)
-  'uniform float uMwScale, uMwOn, uZodiScale, uAirglow, uSeed;',
+  'uniform float uZodiScale, uAirglow;',
   'uniform float uZodi[16];',                // S10 table: elongation (rad) and brightness, 8 rows
-  'out vec4 outColor;',
   'float wrapPi(float a) { return a - 2.0 * PI * floor((a + PI) / (2.0 * PI)); }',
-  'float hash(vec2 p) { p = fract(p * vec2(443.897, 441.423)); p += dot(p, p.yx + 19.19); return fract((p.x + p.y) * p.x); }',
   // The light of the sky at a height, by its bearing from the Sun and from the Moon.
   'vec3 lightRel(float phiS, float phiM, float alt) {',
   '  float v = sqrt(clamp(alt, 0.0, PI * 0.5) / (PI * 0.5));',
@@ -430,11 +435,102 @@ var SG_FS_SKY = SG_GLSL_HEAD + '\n' + SG_GLSL_VIEW + '\n' + [
   '  }',
   '  return 0.0;',
   '}',
-  'vec3 finish(vec3 L, vec2 px) {',
+  // The air's extinction of what is behind it (the Milky Way, the zodiacal light), by the height of the direction.
+  'float skyExt(float alt) { return exp(-' + SG_MW_EXTINCTION + ' * (airmassDeg(degrees(alt)) - 1.0)) * smoothstep(0.0, 0.02, alt); }',
+  'vec3 skyAbove(vec3 d, float alt, float az) {',
+  '  float ext = skyExt(alt);',
+  '  vec3 L = skyLight(az, alt);',
+  '  float elong = acos(clamp(dot(d, uSunVec), -1.0, 1.0)), beta = asin(clamp(dot(d, uEclPole), -1.0, 1.0));',
+  '  float w = mix(radians(' + SG_ZODI_WIDTH[0] + '.0), radians(' + SG_ZODI_WIDTH[1] + '.0), min(1.0, elong / (PI * 0.5)));',
+  '  L += vec3(1.0, 0.93, 0.8) * zodiS10(clamp(elong, radians(15.0), PI)) * ' + SG_S10_LUM.toExponential(2) + ' * exp(-0.5 * pow(beta / w, 2.0)) * uZodiScale * ext;',
+  '  L += vec3(0.55, 1.0, 0.7) * uAirglow * (1.0 / sqrt(1.0 - pow(' + (SG_EARTH_R / (SG_EARTH_R + SG_AIRGLOW_H)).toFixed(5) + ' * cos(alt), 2.0))) * exp(-' + SG_AIRGLOW_EXTINCTION + ' * (airmassDeg(degrees(alt)) - 1.0));',
+  '  L += uGlow * (1.0 + 2.0 * exp(-degrees(alt) / 14.0));',
+  '  return L;',
+  '}',
+  // The eye in the dark: its blue shift, applied to the light before the exposure.
+  'vec3 skyScotopic(vec3 L) {',
   '  float Y = dot(L, vec3(0.2126, 0.7152, 0.0722));',
-  '  float scoto = 1.0 - smoothstep(0.003, 0.3, Y);',                        // the eye's blue shift in the dark
-  '  L = mix(L, vec3(Y) * vec3(0.62, 0.82, 1.25), 0.5 * scoto);',
-  '  vec3 c = 1.0 - exp(-L * uExposure);',
+  '  float scoto = 1.0 - smoothstep(0.003, 0.3, Y);',
+  '  return mix(L, vec3(Y) * vec3(0.62, 0.82, 1.25), 0.5 * scoto);',
+  '}'
+].join('\n');
+
+// ── The day's clouds ──
+// One deck of cloud at a height, a field of the place and the day (almanac-onesky.js _osCloudField): the same GLSL draws it on the card
+// and in Stand here. A ray from the viewer meets the deck's base; the density there is a few octaves of noise carried along by the
+// wind, thresholded by the day's cover; its light is the Sun as the cloud itself sees it (the Sun is lower at a cloud far away toward
+// it, and the deck, being high, still catches the light after the ground has lost it: the evening glow), thinned by the air on the Sun's
+// way to it; its underside is dark and takes a little of the ground's light; the far deck is hazed toward the sky behind it.
+// Needs SG_GLSL_LUT_UTIL, SG_GLSL_RADIANCE and SG_GLSL_CLOUD_FIELD. cloudDeck(d, o): d the unit direction (east, north, up), o the viewer in metres in the
+// same frame; returns premultiplied radiance (cd/m2) and alpha.
+var SG_CLOUD_SCALE_M = 2800;               // the largest features of the noise
+var SG_CLOUD_FAR_M = 200000;               // the deck is not followed past this distance
+var SG_CLOUD_HAZE_M = 60000;               // the air between thins a cloud this far to 1/e
+var SG_CLOUD_THRESHOLD = [0.72, 0.18];     // the noise's cut for a clear day and a full one
+var SG_CLOUD_EDGE = 0.16;                  // and how soft it is
+var SG_CLOUD_ALBEDO = 0.8;
+var SG_CLOUD_LIT_FROM = -0.25, SG_CLOUD_LIT_TO = 0.6;   // the Sun's height at the cloud over which it goes from in shade to in the light
+var SG_SUN_DEPTH_RGB = 'vec3(0.10, 0.14, 0.22)';          // optical depth per airmass of the sunlight's path (almanac-sky.js SKY_SUN_DEPTH)
+var SG_CLOUD_EARTH_KM = '6371.0';
+// The deck's shape: where a ray meets it and how much cloud is there. Alone it is all the stars need to hide behind it.
+var SG_GLSL_CLOUD_FIELD = [
+  'uniform vec4 uCloud;',          // cover 0..1, base height (m), thickness (m), the day's offset in the noise
+  'uniform vec3 uCloudWind;',      // wind east and north (m/s), seconds since the day's start
+  'float cloudHash(vec2 p) { p = fract(p * vec2(123.34, 456.21)); p += dot(p, p + 45.32); return fract(p.x * p.y); }',
+  'float cloudNoise(vec2 p) {',
+  '  vec2 i = floor(p), f = fract(p); f = f * f * (3.0 - 2.0 * f);',
+  '  return mix(mix(cloudHash(i), cloudHash(i + vec2(1.0, 0.0)), f.x), mix(cloudHash(i + vec2(0.0, 1.0)), cloudHash(i + vec2(1.0, 1.0)), f.x), f.y);',
+  '}',
+  'float cloudFbm(vec2 p) { float s = 0.0, a = 0.5; for (int i = 0; i < 4; i++) { s += a * cloudNoise(p); p = p * 2.03 + 17.1; a *= 0.5; } return s / 0.9375; }',
+  'float cloudDensity(vec2 xy) {',
+  '  float n = cloudFbm((xy - uCloudWind.xy * uCloudWind.z) / ' + SG_CLOUD_SCALE_M.toFixed(1) + ' + uCloud.w);',
+  '  float th = mix(' + SG_CLOUD_THRESHOLD[0].toFixed(2) + ', ' + SG_CLOUD_THRESHOLD[1].toFixed(2) + ', uCloud.x);',
+  '  return smoothstep(th, th + ' + SG_CLOUD_EDGE.toFixed(2) + ', n);',
+  '}',
+  // The share of the sky the cloud covers along d from o (metres), and where the ray meets the deck.
+  'float cloudHit(vec3 d, vec3 o, out float t, out vec2 xy, out float dens) {',
+  '  t = 0.0; xy = vec2(0.0); dens = 0.0;',
+  '  if (d.z <= 0.003 || o.z >= uCloud.y || uCloud.x <= 0.0) return 0.0;',
+  '  t = min((uCloud.y - o.z) / d.z, ' + SG_CLOUD_FAR_M.toFixed(1) + ');',
+  '  xy = o.xy + d.xy * t;',
+  '  dens = cloudDensity(xy);',
+  '  return smoothstep(0.0, 0.6, dens) * 0.94 * smoothstep(0.003, 0.03, d.z);',
+  '}'
+].join('\n');
+var SG_GLSL_CLOUDS = [
+  'uniform float uCloudSunE, uSunAltDeg;',   // the Sun's illuminance in the open (lux, an eclipse's share in), its geometric height (degrees)
+  'vec4 cloudDeck(vec3 d, vec3 o) {',
+  '  float t, dens; vec2 xy;',
+  '  float a = cloudHit(d, o, t, xy, dens);',
+  '  if (a <= 0.002) return vec4(0.0);',
+  // The cloud's own sun: lower by the way round the Earth toward it, higher by the deck's height (the horizon's dip).
+  '  float az = atan(d.x, d.y), rhoKm = t * length(d.xy) * 0.001, baseKm = uCloud.y * 0.001;',
+  '  float dip = degrees(acos(' + SG_CLOUD_EARTH_KM + ' / (' + SG_CLOUD_EARTH_KM + ' + baseKm)));',
+  '  float sunAlt = dip + uSunAltDeg + degrees(rhoKm / ' + SG_CLOUD_EARTH_KM + ') * cos(az - uSunAz);',
+  '  float lit = smoothstep(' + SG_CLOUD_LIT_FROM.toFixed(2) + ', ' + SG_CLOUD_LIT_TO.toFixed(2) + ', sunAlt);',
+  '  vec3 sunE = uCloudSunE * exp(-' + SG_SUN_DEPTH_RGB + ' * airmassDeg(max(sunAlt, -0.5))) * lit;',
+  // Shadowed where the deck toward the Sun is denser; darker underneath where it is thick; bright where thin and near the Sun.
+  '  vec2 toSun = uSunVec.xy / max(uSunVec.z, 0.15) * uCloud.z;',
+  '  float shade = 1.0 - clamp(cloudDensity(xy + toSun) - dens * 0.5, 0.0, 1.0) * 0.6;',
+  '  float under = 1.0 - 0.45 * dens;',
+  '  float silver = 1.0 + 1.5 * pow(max(dot(d, uSunVec), 0.0), 12.0) * (1.0 - dens);',
+  '  vec3 amb = ambientSky(), ground = ' + SG_GROUND_ALBEDO + ' * (amb + vec3(uSunLux * max(uSunVec.z, 0.0) / PI));',
+  '  vec3 Lc = ' + SG_CLOUD_ALBEDO.toFixed(2) + ' * (sunE / PI * shade * under * silver * 0.8 + amb * (0.95 - 0.3 * dens) + 0.5 * ground * dens);',
+  '  float T = exp(-t / ' + SG_CLOUD_HAZE_M.toFixed(1) + ');',
+  '  vec3 Ls = skyLight(az, max(asin(clamp(d.z, 0.0, 1.0)), 0.02));',
+  '  return vec4((Lc * T + Ls * (1.0 - T)) * a, a);',
+  '}'
+].join('\n');
+
+var SG_FS_SKY = SG_GLSL_HEAD + '\n' + SG_GLSL_VIEW + '\n' + SG_GLSL_RADIANCE + '\n' + SG_GLSL_CLOUD_FIELD + '\n' + SG_GLSL_CLOUDS + '\n' + [
+  'uniform sampler2D uMilky;',
+  'uniform float uExposure;',
+  'uniform mat3 uGal;',                      // (east, north, up) to galactic
+  'uniform float uMwScale, uMwOn, uSeed;',
+  'out vec4 outColor;',
+  'float hash(vec2 p) { p = fract(p * vec2(443.897, 441.423)); p += dot(p, p.yx + 19.19); return fract((p.x + p.y) * p.x); }',
+  'vec3 finish(vec3 L, vec2 px) {',
+  '  vec3 c = 1.0 - exp(-skyScotopic(L) * uExposure);',
   '  c = pow(c, vec3(1.0 / 2.2));',
   '  c += (hash(px + uSeed) - 0.5) / 255.0;',
   '  return clamp(c, 0.0, 1.0);',
@@ -445,18 +541,14 @@ var SG_FS_SKY = SG_GLSL_HEAD + '\n' + SG_GLSL_VIEW + '\n' + [
   '  float alt = asin(clamp(d.z, -1.0, 1.0)), az = atan(d.x, d.y);',
   '  vec3 L;',
   '  if (alt >= 0.0) {',
-  '    L = skyLight(az, alt);',
-  '    float ext = exp(-' + SG_MW_EXTINCTION + ' * (airmassDeg(degrees(alt)) - 1.0)) * smoothstep(0.0, 0.02, alt);',
+  '    L = skyAbove(d, alt, az);',
+  '    vec4 cl = cloudDeck(d, vec3(0.0));',
+  '    L = L * (1.0 - cl.a) + cl.rgb;',
   '    vec3 g = uGal * d;',
   '    vec2 tc = vec2(0.5 - atan(g.y, g.x) / (2.0 * PI), 0.5 - asin(clamp(g.z, -1.0, 1.0)) / PI);',
   '    vec3 mw = pow(texture(uMilky, tc).rgb, vec3(' + SG_MW_GAMMA + '));',
   '    float grain = 0.75 + 0.5 * hash(floor(px * 0.5) + 7.0);',            // the stars too faint to be catalogued
-  '    L += uMwOn * mw * (uMwScale * ext * mix(1.0, grain, clamp(dot(mw, vec3(1.0)) * 4.0, 0.0, 1.0)));',
-  '    float elong = acos(clamp(dot(d, uSunVec), -1.0, 1.0)), beta = asin(clamp(dot(d, uEclPole), -1.0, 1.0));',
-  '    float w = mix(radians(' + SG_ZODI_WIDTH[0] + '.0), radians(' + SG_ZODI_WIDTH[1] + '.0), min(1.0, elong / (PI * 0.5)));',
-  '    L += vec3(1.0, 0.93, 0.8) * zodiS10(clamp(elong, radians(15.0), PI)) * ' + SG_S10_LUM.toExponential(2) + ' * exp(-0.5 * pow(beta / w, 2.0)) * uZodiScale * ext;',
-  '    L += vec3(0.55, 1.0, 0.7) * uAirglow * (1.0 / sqrt(1.0 - pow(' + (SG_EARTH_R / (SG_EARTH_R + SG_AIRGLOW_H)).toFixed(5) + ' * cos(alt), 2.0))) * exp(-' + SG_AIRGLOW_EXTINCTION + ' * (airmassDeg(degrees(alt)) - 1.0));',
-  '    L += uGlow * (1.0 + 2.0 * exp(-degrees(alt) / 14.0));',
+  '    L += (1.0 - cl.a) * uMwOn * mw * (uMwScale * skyExt(alt) * mix(1.0, grain, clamp(dot(mw, vec3(1.0)) * 4.0, 0.0, 1.0)));',
   '  } else {',
   // The ground: what falls on it (the sky's light from above, the Sun's if it is up, the place's own glow) times what it gives back,
   // with a little of the horizon's local light at the horizon; darker the further down. Nothing in it depends on the bearing at the nadir.
@@ -471,7 +563,7 @@ var SG_FS_SKY = SG_GLSL_HEAD + '\n' + SG_GLSL_VIEW + '\n' + [
 // The stars: one instanced quad each, placed by the rotation to the
 // observer's frame, sized and lit by magnitude against the sky's own light,
 // reddened and thinned by the air they come through.
-var SG_VS_STARS = SG_GLSL_HEAD + '\n' + SG_GLSL_VIEW + '\n' + [
+var SG_VS_STARS = SG_GLSL_HEAD + '\n' + SG_GLSL_VIEW + '\n' + SG_GLSL_CLOUD_FIELD + '\n' + [
   'in vec3 aVec; in vec4 aInfo; in vec3 aCol;',      // J2000 unit vector; magnitude, radius (CSS px), seed; colour
   'uniform mat3 uM;', 'uniform float uLm, uDpr, uScint, uSeed, uSat;', 'uniform vec3 uMoon;',   // the Moon's disc: centre and radius, device px
   'out vec2 vLocal; out vec4 vColor; out float vRad; out float vBloom;',
@@ -494,6 +586,8 @@ var SG_VS_STARS = SG_GLSL_HEAD + '\n' + SG_GLSL_VIEW + '\n' + [
   '  float d = uLm - (mag + ' + SG_EXTINCTION_MAG + ' * (X - 1.0));',
   '  float amp = min(' + SG_SCINT_MAX.toFixed(2) + ', ' + SG_SCINT_ZENITH.toFixed(2) + ' * pow(X, 1.5)) * uScint;',
   '  float vis = smoothstep(0.0, ' + SG_STAR_FADE_MAG.toFixed(2) + ', d) * min(1.0, ' + SG_STAR_FLOOR.toFixed(2) + ' * pow(10.0, ' + SG_STAR_PER_MAG.toFixed(2) + ' * d));',
+  '  float ct; vec2 cxy; float cd;',
+  '  vis *= 1.0 - cloudHit(h, vec3(0.0), ct, cxy, cd);',   // a cloud is in front of a star
   '  float rDev = max(' + '0.65' + ', rCss * uDpr);',
   '  float half_ = rDev * 5.0 + 1.5;',
   '  vec2 corner = vec2(float(gl_VertexID & 1), float((gl_VertexID >> 1) & 1)) * 2.0 - 1.0;',
@@ -833,6 +927,25 @@ function _sgBakeLight(sg, which, altDeg) {
   gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
 }
 
+// What an instant's light comes to in the shaders' own numbers: the Sun's and the Moon's illuminance (lux), the exposure the eye is set
+// to, the place's glow (cd/m2). p is _skyLightParams (almanac-sky.js). The card's sky and Stand here's Earth both read this.
+function _sgLightValues(p) {
+  var moonShare = p.moonShare == null ? 1 : p.moonShare, glow = _sgSkyglow(p.dial);
+  return {
+    sunLux: p.sunAltGeo > -26 ? SG_SUN_LUX * (p.sunShare == null ? 1 : p.sunShare) : 0,
+    moonLux: p.moonAlt > -12 && p.moonIllum > 0.5 ? _sgMoonLux(p.moonIllum, p.moonDist) * SG_MOON_GAIN * moonShare : 0,
+    // The eye has not time to adapt to an eclipse's dimming: it keeps most of the daylight's exposure (the square root of the share).
+    exposure: _sgExposure(p.sunAltGeo, p.moonAlt, p.moonIllum, p.dial, p.sunShare == null ? 1 : Math.sqrt(p.sunShare), Math.sqrt(moonShare)),
+    glow: [glow * 1.0, glow * 0.82, glow * 0.6]
+  };
+}
+// The zodiacal light's table as the shader reads it: elongation (rad) and S10 brightness, the far rows first.
+function _sgZodiTable() {
+  var zt = [];
+  for (var i = SG_ZODI_S10.length - 1; i >= 0; i--) zt.push(SG_ZODI_S10[i][0] * DEG_TO_RAD, SG_ZODI_S10[i][1]);
+  return zt;
+}
+var SG_NO_CLOUDS = { cloud: [0, 2500, 700, 0], wind: [0, 0, 0], sunE: 0 };   // a sky with no cloud field to ask (the clouds' own values: almanac-onesky.js _osCloudValues)
 // One frame. p: { W, H, dpr, view, sunAltGeo, sunAz, moonAlt, moonAz, moonIllum,
 // moonDist, horizon (the 9 numbers of _sgHorizonMatrix), eclPole, sunVec,
 // dial, seed, scint, lm, sunShare, moonShare, moonDisc: {x, y, r} in device px
@@ -845,9 +958,7 @@ function _sgDraw(p) {
   gl.bindVertexArray(sg.vao);
   gl.disable(gl.BLEND);
   // The two lights' sky-views (skipped when the light is far below the horizon).
-  var moonShare = p.moonShare == null ? 1 : p.moonShare;
-  var sunLux = p.sunAltGeo > -26 ? SG_SUN_LUX * (p.sunShare == null ? 1 : p.sunShare) : 0;
-  var moonLux = p.moonAlt > -12 && p.moonIllum > 0.5 ? _sgMoonLux(p.moonIllum, p.moonDist) * SG_MOON_GAIN * moonShare : 0;
+  var lv = _sgLightValues(p), sunLux = lv.sunLux, moonLux = lv.moonLux;
   if (sunLux) _sgBakeLight(sg, 'sun', p.sunAltGeo);
   if (moonLux) _sgBakeLight(sg, 'moon', p.moonAlt);
   // The sky itself.
@@ -859,17 +970,15 @@ function _sgDraw(p) {
   _sgViewUniforms(gl, sg.pSky, p);
   gl.uniform1f(u.uSunAz, p.sunAz * DEG_TO_RAD); gl.uniform1f(u.uSunLux, sunLux);
   gl.uniform1f(u.uMoonAz, p.moonAz * DEG_TO_RAD); gl.uniform1f(u.uMoonLux, moonLux);
-  // The eye has not time to adapt to an eclipse's dimming: it keeps most of the daylight's exposure (the square root of the share).
-  gl.uniform1f(u.uExposure, _sgExposure(p.sunAltGeo, p.moonAlt, p.moonIllum, p.dial, p.sunShare == null ? 1 : Math.sqrt(p.sunShare), Math.sqrt(moonShare)));
-  var glow = _sgSkyglow(p.dial);
-  gl.uniform3f(u.uGlow, glow * 1.0, glow * 0.82, glow * 0.6);
+  gl.uniform1f(u.uExposure, lv.exposure);
+  gl.uniform3fv(u.uGlow, lv.glow);
   gl.uniformMatrix3fv(u.uGal, true, _sgMul3(SG_EQ_TO_GAL, _sgTranspose(p.horizon)));
   gl.uniform3fv(u.uEclPole, p.eclPole); gl.uniform3fv(u.uSunVec, p.sunVec);
   gl.uniform1f(u.uMwScale, SG_MW_LUM); gl.uniform1f(u.uMwOn, sg.mwReady ? 1 : 0);
   gl.uniform1f(u.uZodiScale, 1); gl.uniform1f(u.uAirglow, SG_AIRGLOW_LUM); gl.uniform1f(u.uSeed, p.seed || 0);
-  var zt = [];
-  for (var i = SG_ZODI_S10.length - 1; i >= 0; i--) zt.push(SG_ZODI_S10[i][0] * DEG_TO_RAD, SG_ZODI_S10[i][1]);
-  gl.uniform1fv(u['uZodi'], zt);
+  gl.uniform1fv(u['uZodi'], _sgZodiTable());
+  var cv = p.clouds || SG_NO_CLOUDS;
+  gl.uniform4fv(u.uCloud, cv.cloud); gl.uniform3fv(u.uCloudWind, cv.wind); gl.uniform1f(u.uCloudSunE, cv.sunE); gl.uniform1f(u.uSunAltDeg, p.sunAltGeo);
   gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
   // The stars over it, added as light (but not through the Moon's disc: it is in front of them).
   if (sg.starCount) {
@@ -883,6 +992,7 @@ function _sgDraw(p) {
     gl.uniform1f(us.uLm, p.lm); gl.uniform1f(us.uDpr, p.dpr); gl.uniform1f(us.uScint, p.scint ? 1 : 0);
     gl.uniform1f(us.uSeed, p.seed || 0); gl.uniform1f(us.uSat, SG_STAR_SATURATION);
     gl.uniform3f(us.uMoon, md ? md.x : 0, md ? md.y : 0, md ? md.r : 0);
+    gl.uniform4fv(us.uCloud, cv.cloud); gl.uniform3fv(us.uCloudWind, cv.wind);
     gl.drawArraysInstanced(gl.TRIANGLE_STRIP, 0, 4, sg.starCount);
     gl.disable(gl.BLEND);
   }

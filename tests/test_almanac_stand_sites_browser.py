@@ -208,3 +208,34 @@ def test_a_rover_drives_on_the_ground_and_the_visit_ends_cleanly(page):
     )
     assert left["clear"] == 0, "the orbit view's see-through canvas is back"
     assert not page.errors, page.errors
+
+
+def test_the_lunar_module_has_its_ascent_stage_from_landing_to_liftoff(page):
+    """Two stages on one footprint: both at the landing, only the descent stage after the liftoff, nothing before the landing."""
+    _visit(page, "moon", "Apollo 11")
+    shown = """() => { var s = _ae.site; return s.def.parts.map(function (p, i) { return [p.m, !!s.siteParts[i] && s.siteParts[i].holder.visible]; }); }"""
+
+    def at(delta_from, key):
+        page.evaluate(
+            "([k, d]) => _aeGoTo(_ae.site.def[k] + d)", [key, delta_from]
+        )
+        page.wait_for_function(
+            "([k, d]) => Math.abs(_aeDisplayMs() - (_ae.site.def[k] + d)) < 60000",
+            arg=[key, delta_from],
+            timeout=30_000,
+            polling=250,
+        )
+        page.wait_for_timeout(1500)
+        return dict(page.evaluate(shown))
+
+    landed = at(600_000, "ms")
+    assert landed["lm"] and landed["lm-ascent"], landed
+    after = at(3_600_000, "liftoff")
+    assert after["lm"] and not after["lm-ascent"], after
+    before = at(-86_400_000, "ms")
+    assert not before["lm"] and not before["lm-ascent"] and not before["flag"], before
+    fp = page.evaluate(
+        "() => { var p = _ae.site.def.parts; var a = p.filter(x => x.m === 'lm')[0], b = p.filter(x => x.m === 'lm-ascent')[0]; return [a.x === b.x, a.y === b.y, a.h === b.h]; }"
+    )
+    assert fp == [True, True, True], "the ascent stage stands on the descent stage's footprint"
+    assert not page.errors, page.errors

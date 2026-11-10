@@ -2174,7 +2174,7 @@ function _skyPaintActors(ctx, s, ts) {
     }
   }
   if (typeof _aeSatsAllSky === 'function') _aeSatsAllSky(ctx, s);   // the all-satellites layer's passes and the GPS overhead (almanac-sats.js)
-  if (typeof _alSkyPaint === 'function') _alSkyPaint(ctx, s);   // a launch's rocket and the satellites it left (almanac-launches.js)
+  if (typeof _osPaintObjects === 'function') _osPaintObjects(ctx, s);   // the satellites, trains and launches in the one registry (almanac-onesky.js)
 }
 // Spawning: each timer adds one and sets the next; nothing while unseen.
 function _skySpawnPlane() { _skySpawn('plane'); }
@@ -2235,14 +2235,19 @@ function _skyKickDirty() {
   if (s) { s.baseDirty = true; _skyKick(); if (s.eph) _skyFacts(s); }   // the facts carry the Milky Way's credit once the panorama is in
   if (_skyHost) _skyHostDraw();
 }
-function _skyGLParams(s) {
+// The sky's light at an instant and a place, in the terms the shaders take (almanac-oneair.js feeds them to Stand here as well).
+function _skyLightParams(s) {
   var e = s.eph, md = s.moonData, M = _sgHorizonMatrix(e.P, e.lst, s.lat);
   var eps = SKY_OBLIQUITY_J2000_DEG * DEG_TO_RAD, pole = [Math.sin(eps) * -1, Math.cos(eps)];
   var up = [0, 1, 2].map(function (i) { return M[3 * i + 1] * pole[0] + M[3 * i + 2] * pole[1]; });
-  return { W: s.W, H: s.H, dpr: s.dpr, view: _skyGLView(s), sunAltGeo: e.sunGeoAlt, sunAz: e.sun.az,
+  return { sunAltGeo: e.sunGeoAlt, sunAz: e.sun.az,
     moonAlt: e.moon.altitude, moonAz: e.moon.azimuth, moonIllum: md.phase.illumination, moonDist: _moonDistance(s.now),
     horizon: M, eclPole: up, sunVec: _skyEnu(e.sun.az, e.sunGeoAlt), dial: _skySetting('dial'),
-    seed: s.twinkle, scint: !_skyReduceMotion(), lm: s.lm, sunShare: s.sunShare, moonShare: s.moonShare, moonDisc: s.moonDisc };
+    lm: s.lm, sunShare: s.sunShare, moonShare: s.moonShare };
+}
+function _skyGLParams(s) {
+  return Object.assign(_skyLightParams(s), { W: s.W, H: s.H, dpr: s.dpr, view: _skyGLView(s), seed: s.twinkle, scint: !_skyReduceMotion(), moonDisc: s.moonDisc,
+    clouds: _osCloudValues(_osDef({ lat: s.lat, lon: s.lon, tMs: s.nowTime }), s.sunShare) });
 }
 // The page's first sky is held behind the Almanac's veil (almanac.js) until it is the picture that stays: the GPU's,
 // with its stars (and the Milky Way where the sky is dark enough for it), or the Canvas 2D sky where there is no GPU.

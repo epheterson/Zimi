@@ -6,7 +6,7 @@
 //     velocity, and a Web Worker that runs SGP4 for the lot, so the main thread only copies two arrays now and then;
 //   - filters (constellation, orbit, owner), the tapped satellite's card, and its orbit;
 //   - the passes: sunlit satellites over the person's place while the sky is dark, listed in a sheet, drawn as moving
-//     points in the live sky (almanac-sky.js _skyPaintActors calls _asSkyPaint), with the GPS satellites overhead.
+//     points in the live sky (almanac-sky.js _skyPaintActors, from the one registry: almanac-onesky.js _osPaintObjects), with the GPS satellites overhead.
 // The elements fade by age: a set a few days old is as good as exact, one a month old is a rough guess, and past
 // AS_AGE_GONE_DAYS the satellite is not drawn. Brightness is an estimate (a diffuse sphere the size of the satellite's
 // radar cross-section, or a stated size for the big constellations) and the sheet says so.
@@ -834,9 +834,10 @@ function _asSkyAsk(lat, lon, tMs) {
 function _asSkyNow(lat, lon, tMs) { return _asSkyAsk(lat, lon, tMs).then(function (a) { return _asSkyAt(a, tMs); }); }
 // ── The same sky in Stand here ──
 // While the layer is on, the satellites over the stand place are drawn in the ground view's sky (almanac-stand.js
-// _aeStandSkySource): the station and what a dark sky shows, with a short trail each, and Starlinks of one launch that are
+// _osSkySource): the station and what a dark sky shows, with a short trail each, and Starlinks of one launch that are
 // over together as a train. A tap names them.
 var AS_TRAIN_SKY_MIN = 3, AS_TRAIN_SKY_DEG = 25;
+var AS_GPS_MAG = 2;   // a ring, not a point of light: the number only keeps it past the sky's limit
 var AS_SKY_TAIL = { steps: 3, stepS: 1.5, fade: 1.6 };            // a satellite's tail: three steps of a second and a half (4.5 s), each dimmer by this many magnitudes
 var AS_SKY_TAIL_BRIGHT = { mag: 0, steps: 6, stepS: 3, fade: 0.8 };   // the brightest (the station's class, brighter than this) keep a longer, brighter one
 var AS_SKY_RGB = { iss: [1, 0.95, 0.85] };
@@ -852,7 +853,8 @@ function _asStandSkyObjects(answer, tMs) {
     if (g.length >= AS_TRAIN_SKY_MIN) g.forEach(function (e) { train[e.i] = g.length; });
   });
   var stationDrawn = !!(_ae && _ae.sats && _ae.sats.lib && _ae.sats.list.some(function (q) { return q.iss; }));   // the ground view draws the station itself when the Earth's own satellites are loaded
-  return live.map(function (e) {
+  var rings = _asGpsOn() ? _asGpsNow(tMs).map(function (g) { return { kind: 'gps', name: g.name, az: g.az, el: g.el, mag: AS_GPS_MAG }; }) : [];
+  return rings.concat(live.map(function (e) {
     var tail = e.mag < AS_SKY_TAIL_BRIGHT.mag ? AS_SKY_TAIL_BRIGHT : AS_SKY_TAIL, trail = [];
     for (var k = 1; k <= tail.steps; k++) {
       var back = -k * tail.stepS, el = e.el + e.elRate * back;
@@ -864,14 +866,14 @@ function _asStandSkyObjects(answer, tMs) {
       az: e.az, el: e.el, mag: e.mag, kind: inTrain ? 'train' : 'sat', trail: trail, rgb: iss ? AS_SKY_RGB.iss : undefined,
       name: iss && stationDrawn ? undefined : inTrain ? _aeT('alm_sats_train', { n: inTrain }) + ' · ' + e.name : e.name   // the station's name is the ground view's own
     };
-  });
+  }));
 }
 var _asStandSkyOff = function () {};
 function _asStandSkySync() {
-  var want = _as.on && _as.state === 'ready' && typeof _aeStandSkySource === 'function';
+  var want = _as.on && _as.state === 'ready' && typeof _osSkySource === 'function';
   if (want && _asStandSkyOff.registered !== _as.data) {
     _asStandSkyOff();
-    var off = _aeStandSkySource({ ask: _asSkyAsk, at: _asStandSkyObjects });
+    var off = _osSkySource({ ask: _asSkyAsk, at: _asStandSkyObjects });
     _asStandSkyOff = function () { off(); _asStandSkyOff = function () {}; };
     _asStandSkyOff.registered = _as.data;
   } else if (!want) _asStandSkyOff();
@@ -1011,50 +1013,9 @@ function _asSkyTrail(ctx, s, i, ms, place, x, y, near) {
 }
 function _asAltKm(i, ms) { var st = _asStateAt(i, ms); return st ? st.alt : 0; }
 function _skyKickNow() { if (typeof _skyKick === 'function' && typeof _skyState !== 'undefined' && _skyState) _skyKick(); }
-// The live sky: called from almanac-sky.js _skyPaintActors after the ISS. Passes under way now are drawn as moving points
-// at the sky's own positions, with the GPS satellites overhead as small rings when asked for. Panorama only, like the ISS.
-function _asSkyPaint(ctx, s) {
+// The live sky asks for the passes of its place while the layer is on (the sheet lists them); what is in the sky now is drawn by
+// almanac-onesky.js _osPaintObjects from the registry's objects (_asStandSkyObjects).
+function _asSkyPrime(s) {
   if (!_as.on || _as.state !== 'ready') return;
-  var place = { lat: s.lat, lon: s.lon };
-  _asNeedPasses(place);
-  var ms = _skyLive() ? Date.now() : s.nowTime, dpr = s.dpr, drawn = false;
-  if (_as.passes && s.eph && s.eph.sunGeoAlt < AS_PASS_SUN_ALT + 1) {
-    _as.passes.forEach(function (p) {
-      if (ms < p.start || ms > p.end) return;
-      p.members.forEach(function (i, k) {
-        var st = _asStateAt(i, ms);
-        if (!st) return;
-        var lk = _asLook(st.pos, ms, place);
-        if (lk.el < 0) return;
-        var x = _skyX(s, lk.az);
-        if (!_skyInView(s, x, 4)) return;
-        var y = _skyY(s, lk.el), near = _aeClamp(1 - (p.mag - 0) / 6, 0.25, 1);
-        _asSkyTrail(ctx, s, i, ms, place, x, y, near);
-        _skyLight(ctx, x, y, (1.4 + 2 * near) * dpr, [255, 250, 235], 0.6 + 0.4 * near);
-        if (s.bodies && _as.data.norad[i] !== AS_ISS_NORAD) s.bodies.push({ type: 'sat', name: _as.data.name[i], x: x / dpr, y: y / dpr, r: 4, alt: lk.el, az: lk.az, km: _asAltKm(i, ms) });
-        if (p.members.length < AS_TRAIN_MIN || k === 0) {
-          ctx.fillStyle = 'rgba(255,250,235,.8)';
-          ctx.font = (11 * dpr) + 'px sans-serif';
-          ctx.fillText(p.members.length >= AS_TRAIN_MIN ? _aeT('alm_sats_train', { n: p.members.length }) : _as.data.name[i], x + 6 * dpr, y - 6 * dpr);
-        }
-        drawn = true;
-      });
-    });
-  }
-  if (_asGpsOn()) {
-    _asGpsNow(ms, place).forEach(function (g) {
-      var x = _skyX(s, g.az);
-      if (!_skyInView(s, x, 4)) return;
-      var y = _skyY(s, g.el);
-      ctx.strokeStyle = 'rgba(140,215,255,.85)';
-      ctx.lineWidth = 1.2 * dpr;
-      ctx.beginPath(); ctx.arc(x, y, 4 * dpr, 0, 6.2832); ctx.stroke();
-      ctx.fillStyle = 'rgba(140,215,255,.9)';
-      ctx.font = (10 * dpr) + 'px sans-serif';
-      ctx.fillText(String(g.name).replace(/^GPS\s*/, ''), x + 7 * dpr, y + 3 * dpr);
-      drawn = true;
-    });
-  }
-  // The sky repaints twice a second while something of these is up (its ISS timer).
-  if (drawn) s.issUp = true;
+  _asNeedPasses({ lat: s.lat, lon: s.lon });
 }

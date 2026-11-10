@@ -45,6 +45,7 @@ function _aeHostRender() {
   g.updateMatrixWorld(true);
   site.ground.visible = false;   // the ground's own mesh replaces the site's flat patch
   if (site.eye && site.eye.on && !site.launch && !site.camOverride) site.camOverride = _aeHostEyeCam;   // a launch's camera gave way
+  if (typeof _asPartsByTime === 'function') _asPartsByTime(site);   // what stands there at this instant (the ascent stage until its liftoff)
   _aeStandPaint(hst, performance.now(), true, _aeHostPlaceCamera);
   _aeHostEarthHint(site, hst);
   return true;

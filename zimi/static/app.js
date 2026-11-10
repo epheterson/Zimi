@@ -8313,6 +8313,7 @@ var _ALMANAC_MODULES = [
   '/static/almanac-orrery.js?v=45',
   '/static/almanac-sky.js?v=45',
   '/static/almanac-skygl.js?v=45',
+  '/static/almanac-onesky.js?v=45',
   '/static/zone-places.js?v=45',
   '/static/almanac-skyfacts.js?v=45',
   '/static/almanac.js?v=45'

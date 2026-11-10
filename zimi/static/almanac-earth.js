@@ -459,7 +459,7 @@ var AE_SATS_REF = {
 };
 // Launches (almanac-launches.js, loaded on the button's first press): a rocket rising.
 var AE_LAUNCH_SVG = '<svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 2.5c3 2.6 4.3 6 4.3 9.6l-1.6 3.4H9.3l-1.6-3.4C7.7 8.5 9 5.1 12 2.5z"/><circle cx="12" cy="9.4" r="1.6"/><path d="M8.3 14.2l-2.6 2.6M15.7 14.2l2.6 2.6M10.3 18.5v3M13.7 18.5v3"/></svg>';
-var AE_LAUNCHES_JS = ['/static/almanac-launchflight.js?v=1', '/static/almanac-launches.js?v=1'];
+var AE_LAUNCHES_JS = ['/static/almanac-launchflight.js?v=1', '/static/almanac-launches.js?v=1', '/static/almanac-thens.js?v=1'];
 // What the launch pages decide by (almanac-launchflight.js), kept here so the Almanac's constants pages can show it.
 var AE_LAUNCH_REF = {
   minElDeg: 1,                          // a rocket is seen above this height over the horizon
@@ -872,6 +872,7 @@ function _aeGoName(key) {
   var b = _aePlanetBody(key);
   return b ? _aeBodyName(b) : key;
 }
+var AE_THEN_DOT = '<svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3l2.4 5.6 6.1.5-4.6 4 1.4 6-5.3-3.2L6.7 19l1.4-6-4.6-4 6.1-.5z"/></svg>';
 function _aeGoRender() {
   var sheet = _aeById('ae-go'), host = _aeById('ae-go-groups');
   if (!sheet || sheet.hidden || !host) return;
@@ -882,6 +883,10 @@ function _aeGoRender() {
         '<span>' + _almEsc(_aeGoName(k)) + '</span></button>';
     }).join('') + '</div>';
   }).join('');
+  // The there-and-then list (almanac-thens.js) at the top of the sheet: a place and a moment to stand in, not a body.
+  host.insertAdjacentHTML('afterbegin', '<div class="ae-go-list"><button type="button" class="ae-go-row" data-ae-then>' + AE_THEN_DOT + '<span>' + _almEsc(_aeT('then_title')) + '</span></button></div>');
+  var then = host.querySelector('[data-ae-then]');
+  if (then) then.onclick = function () { _aeShowGo(false); openAlmanacThens(); };
   // Opened at a group whose table was still coming (Landings on a first tap): scrolled there once it is drawn.
   var h = _ae.goGroup ? sheet.querySelector('h4[data-g="' + _ae.goGroup + '"]') : null;
   if (h) { sheet.scrollTop = h.offsetTop; _ae.goGroup = null; }
@@ -5014,7 +5019,7 @@ var AE_FLY_OVERVIEW_MS = 2000, AE_FLY_OVERVIEW_STRETCH = 1.25, AE_FLY_OVERVIEW_K
 //   _aeStandAt(body, lat, lon)         enter the view: a promise of whether it started
 //   _aeGroundHeight(body, lat, lon)    metres above the body's mean radius; 0 until the body's terrain is loaded
 var AE_STAND_KEYS = ['earth', 'moon', 'mercury', 'venus', 'mars', 'io', 'europa', 'ganymede', 'callisto', 'titan', 'pluto'];
-var AE_STAND_SRCS = ['/static/almanac-terrain.js', '/static/almanac-terrainshade.js', '/static/almanac-standlook.js', '/static/almanac-standgl.js', '/static/almanac-stand.js', '/static/almanac-standhost.js'];
+var AE_STAND_SRCS = ['/static/almanac-terrain.js', '/static/almanac-terrainshade.js', '/static/almanac-standlook.js', '/static/almanac-standgl.js', '/static/almanac-stand.js', '/static/almanac-standhost.js', '/static/almanac-oneair.js'];
 var AE_STAND_FIGURE_SVG = '<svg class="ae-tool-svg" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="5.5" r="2.3"/><path d="M12 8.5v6M8.5 11.5l3.5-1 3.5 1M12 14.5l-2.5 5.5M12 14.5l2.5 5.5"/></svg>';
 var AE_STAND_EYE_M = 1.7;                      // an eye above the ground
 var AE_STAND_AIRLESS_DAY_MU = [-0.05, 0.12], AE_STAND_AIRLESS_DAY_LIM = 0.5;   // the Sun's sine of height where the stars go (-3 to 7 degrees), and the faintest star left
@@ -5824,6 +5829,17 @@ function _aeLaunchesLoad() {
   }
   return _aeLaunchesPromise;
 }
+// The there-and-then list, from the live sky: the 3D view opens (its sheet is where the list lives) and the list with it.
+function openAlmanacThens() {
+  if (!_aeIsOpen) openAlmanacEarth({ target: 'earth' });
+  _aeLaunchesLoad().then(function () {
+    var tries = 0;
+    (function go() {
+      if (typeof _aeReady === 'function' && _aeReady() && _aeIsOpen) _alOpenThens();
+      else if (++tries < 200) setTimeout(go, 150);
+    })();
+  }).catch(function () {});
+}
 function _aeLaunchesToggle() { _aeLaunchesLoad().then(function () { _alToggle(); _aeMarkToggles(); }).catch(function () {}); }
 function _aeSatsAllSet(on) {
   _aeSatsAllLoad().then(function () { _asSet(on); _aeMarkToggles(); }).catch(function () {});
@@ -5837,7 +5853,7 @@ function _aeSatsAllBoot() {
 // The live sky (almanac-sky.js _skyPaintActors): the passes over the place, once the layer is on; it is brought up from
 // here when the sky is shown and the choice was kept.
 function _aeSatsAllSky(ctx, s) {
-  if (typeof _asSkyPaint === 'function') { _asSkyPaint(ctx, s); return; }
+  if (typeof _asSkyPrime === 'function') { _asSkyPrime(s); return; }
   if (!_aeSatsAllKept() || _aeSatsAllPromise) return;
   _aeSatsAllLoad().then(function () { _asSet(true); _skyKickNow(); }).catch(function () {});
 }
@@ -6207,8 +6223,8 @@ var AE_CRAFT_GLSL_SURFACE = [
   '  } else if (kd > 6.5) {',   // a sunshield layer: smooth, billowed, magenta-silver
   '    float fadeS = clamp(pw / 0.3 * 1.5, 0.0, 1.0);',
   '    n = normalize(n + 0.45 * aeVnv(po / 1.4) + (1.0 - fadeS) * 0.1 * aeVnv(po / 0.3));',
-  '    a *= vec3(1.0, 0.9, 1.0) * (0.92 + 0.16 * aeVn(po / 0.6));',
-  '    rough = 0.3;',
+  '    a = mix(vec3(0.7, 0.7, 0.76), vec3(0.85, 0.35, 0.7), pow(1.0 - abs(facing), 2.2)) * (0.9 + 0.2 * aeVn(po / 0.6));',
+  '    metal = 0.65; rough = 0.28;',
   '  } else if (kd > 5.5) {',   // a telescope mirror: a near perfect reflector, in hexagonal segments with gaps, the middle one missing
   '    rough = 0.05; a *= 0.85;',
   AE_CRAFT_GLSL_HEX,
@@ -6665,7 +6681,7 @@ function _aeCraftHdTexture(S, name) {
     return tx;
   });
 }
-function _aeCraftHdBuild(I, d2, textures) {
+function _aeCraftHdMeshes(I, d2, textures) {
   var S = _ae.gl, THREE = S.THREE, d = I.d;
   var shift = [0, 1, 2].map(function (k) { return d2.mid[k] - d.mid[k]; });   // HD positions are about HD's own box middle: into the stock model's
   for (var i = 0; i < d2.pos.length; i += 3) for (var k = 0; k < 3; k++) d2.pos[i + k] += shift[k];
@@ -6682,6 +6698,10 @@ function _aeCraftHdBuild(I, d2, textures) {
     parts.push({ mesh: mesh, local: local });
   });
   if (turning) { pivot.position.set(d2.axis[0] + shift[0], d2.axis[1] + shift[1], 0); group.add(pivot); }
+  return { group: group, pivot: pivot, parts: parts, turning: turning, shift: shift };
+}
+function _aeCraftHdBuild(I, d2, textures) {
+  var S = _ae.gl, d = I.d, m = _aeCraftHdMeshes(I, d2, textures), group = m.group, pivot = m.pivot, parts = m.parts, turning = m.turning, shift = m.shift;
   I.stock.forEach(function (p) { p.mesh.visible = false; });
   I.root.add(group);
   I.hdGroup = group; I.hdPivot = turning ? pivot : null; I.parts = parts; I.hd = true;
@@ -6689,17 +6709,50 @@ function _aeCraftHdBuild(I, d2, textures) {
   if (turning) I.pivot = pivot;
   if (_ae) { _ae.dirty = true; _aeKick(); }
 }
+// craft/index.json once (null: the HD ZIM is not there, or has no craft).
+function _aeCraftHdIndexLoad() {
+  var H = _aeCraftHd;
+  if (H.index !== undefined) return Promise.resolve();
+  if (!H.promise) {
+    H.promise = fetch(_aeCraftHdUrl('index.json')).then(function (r) { if (!r.ok) throw new Error('hd'); return r.json(); })
+      .then(function (j) { H.index = j && j.models ? j.models : null; }, function () { H.index = null; });
+  }
+  return H.promise;
+}
+// A landing site's model with the HD ZIM's full one (almanac-sites-ground.js clones one root for every place the model
+// stands and calls this on each clone): the stock meshes stay in the clone, hidden, and the full model is added; the clones
+// that were made before the file arrived get it when it does. Without the file nothing changes.
+function _aeCraftSiteHd(I, root) {
+  var c = I.siteHd = I.siteHd || { roots: [], group: null, state: 0 };
+  c.roots.push(root);
+  if (c.group) { _aeCraftSiteHdAttach(c, root); return; }
+  if (c.state || typeof fetch !== 'function') return;
+  c.state = 1;
+  var S = _ae.gl;
+  _aeCraftHdIndexLoad().then(function () {
+    var entry = _aeCraftHd.index && _aeCraftHd.index[I.model];
+    if (!entry) return null;
+    return fetch(_aeCraftHdUrl(entry.file)).then(function (r) { if (!r.ok) throw new Error(I.model); return r.arrayBuffer(); }).then(function (buf) {
+      var d2 = _aeCraftParse(buf);
+      return Promise.all((d2.textures || []).map(function (name) { return _aeCraftHdTexture(S, name); })).then(function (tx) { return _aeCraftHdMeshes(I, d2, tx).group; });
+    });
+  }).then(function (group) {
+    if (!group) { c.state = 2; return; }
+    c.group = group; c.state = 3;
+    c.roots.forEach(function (r) { _aeCraftSiteHdAttach(c, r); });
+    if (_ae) { _ae.dirty = true; _aeKick(); }
+  }).catch(function () { c.state = 2; });
+}
+function _aeCraftSiteHdAttach(c, root) {
+  root.children.slice().forEach(function (ch) { if (ch.isMesh) ch.visible = false; });
+  root.add(c.group.clone());
+}
 function _aeCraftHdRequest(I, pos) {
   if (I.hd !== undefined || I.hdLoading || typeof fetch !== 'function') return;
   if (_aeCraftPx(I.d.span * I.d.metres / 1000 / AE_EARTH_RADIUS_KM, pos) < AE_CRAFT_HD_PX) return;
   var H = _aeCraftHd;
   if (H.index === undefined) {
-    if (!H.loading) {
-      H.loading = true;
-      fetch(_aeCraftHdUrl('index.json')).then(function (r) { if (!r.ok) throw new Error('hd'); return r.json(); })
-        .then(function (j) { H.index = j && j.models ? j.models : null; }, function () { H.index = null; })
-        .then(function () { H.loading = false; if (_ae) { _ae.dirty = true; _aeKick(); } });
-    }
+    _aeCraftHdIndexLoad().then(function () { if (_ae) { _ae.dirty = true; _aeKick(); } });
     return;
   }
   var entry = H.index && H.index[I.model];
