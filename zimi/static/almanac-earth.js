@@ -459,7 +459,7 @@ var AE_SATS_REF = {
 };
 // Launches (almanac-launches.js, loaded on the button's first press): a rocket rising.
 var AE_LAUNCH_SVG = '<svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 2.5c3 2.6 4.3 6 4.3 9.6l-1.6 3.4H9.3l-1.6-3.4C7.7 8.5 9 5.1 12 2.5z"/><circle cx="12" cy="9.4" r="1.6"/><path d="M8.3 14.2l-2.6 2.6M15.7 14.2l2.6 2.6M10.3 18.5v3M13.7 18.5v3"/></svg>';
-var AE_LAUNCHES_JS = ['/static/almanac-launchflight.js?v=1', '/static/almanac-launches.js?v=1'];
+var AE_LAUNCHES_JS = ['/static/almanac-launchflight.js?v=1', '/static/almanac-launches.js?v=1', '/static/almanac-thens.js?v=1'];
 // What the launch pages decide by (almanac-launchflight.js), kept here so the Almanac's constants pages can show it.
 var AE_LAUNCH_REF = {
   minElDeg: 1,                          // a rocket is seen above this height over the horizon
@@ -5818,6 +5818,17 @@ function _aeLaunchesLoad() {
     }, Promise.resolve());
   }
   return _aeLaunchesPromise;
+}
+// The there-and-then list, from the live sky: the 3D view opens (its sheet is where the list lives) and the list with it.
+function openAlmanacThens() {
+  if (!_aeIsOpen) openAlmanacEarth({ target: 'earth' });
+  _aeLaunchesLoad().then(function () {
+    var tries = 0;
+    (function go() {
+      if (typeof _aeReady === 'function' && _aeReady() && _aeIsOpen) _alOpenThens();
+      else if (++tries < 200) setTimeout(go, 150);
+    })();
+  }).catch(function () {});
 }
 function _aeLaunchesToggle() { _aeLaunchesLoad().then(function () { _alToggle(); _aeMarkToggles(); }).catch(function () {}); }
 function _aeSatsAllSet(on) {

@@ -150,6 +150,9 @@ var AL_CSS = [
   '.al-dot{width:8px;height:8px;border-radius:50%;background:#7bd88f;align-self:center}',
   '.al-dot.bad{background:#ff7d6e}',
   '.al-note{margin:6px 0 0;font-size:11.5px;opacity:.8}',
+  '.at-group{margin:10px 0 2px;font-size:11px;font-weight:600;letter-spacing:.06em;text-transform:uppercase;color:var(--text2)}',
+  '.al-sheet a{color:var(--amber)}',
+  '.al-filters input{flex:1 1 0;min-width:0;font:inherit;font-size:12.5px;color:var(--text);background:var(--surface,rgba(255,255,255,.06));border:1px solid var(--border);border-radius:8px;padding:5px 8px}',
   '.al-facts{margin:0 0 8px;padding:0;list-style:none}',
   '.al-facts li{display:flex;gap:8px;align-items:baseline;padding:2px 0}',
   '.al-facts svg{flex:none;opacity:.7;transform:translateY(3px)}',
@@ -176,11 +179,19 @@ var AL_ICON = {
   eye: '<path d="M2 12s3.600-6.500 10-6.500S22 12 22 12s-3.600 6.500-10 6.500S2 12 2 12z"/><circle cx="12" cy="12" r="2.800"/>',
   stand: '<circle cx="12" cy="5" r="2.200"/><path d="M12 8v7M8 11l4-1 4 1M9.500 21l2.500-6 2.500 6"/>',
   dots: '<circle cx="5" cy="15" r="1.600" fill="currentColor" stroke="none"/><circle cx="10" cy="12" r="1.600" fill="currentColor" stroke="none"/><circle cx="15" cy="9" r="1.600" fill="currentColor" stroke="none"/><circle cx="20" cy="6" r="1.600" fill="currentColor" stroke="none"/>',
-  path: '<path d="M4 20c1-9 6-14 16-16"/><circle cx="20" cy="4" r="1.500" fill="currentColor" stroke="none"/>'
+  path: '<path d="M4 20c1-9 6-14 16-16"/><circle cx="20" cy="4" r="1.500" fill="currentColor" stroke="none"/>',
+  then: '<path d="M12 3l2.4 5.6 6.1.5-4.6 4 1.4 6-5.3-3.2L6.7 19l1.4-6-4.6-4 6.1-.5z"/>'
 };
 function _alSvg(name, size) {
   var s = size || 16;
   return '<svg viewBox="0 0 24 24" width="' + s + '" height="' + s + '" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">' + AL_ICON[name] + '</svg>';
+}
+// The there-and-then list (almanac-thens.js) takes the sheet's place: opened from the list's star, or from the live sky.
+function _alOpenThens() {
+  if (!_al.sheet) _alOpenSheet();
+  _al.view = 'thens';
+  _alRender();
+  Promise.all([_alLoad(), _atLoad()]).then(_alRender).catch(_alRender);
 }
 function _alToggle() { if (_al.sheet) _alCloseSheet(); else _alOpenSheet(); }
 function _alOpenSheet() {
@@ -272,6 +283,7 @@ function _alRender() {
   var html = '<button type="button" class="al-x" id="al-x" aria-label="' + _almEsc(_aeT('alm_tm_close')) + '">×</button>';
   if (_al.state === 'failed') html += '<p>' + _almEsc(_aeT('alm_launch_unavailable')) + '</p>';
   else if (_al.state !== 'ready') html += '<h3>' + _almEsc(_aeT('alm_launches')) + '</h3><p class="al-note" aria-busy="true">…</p>';
+  else if (_al.view === 'thens' && typeof _atHtml === 'function') html += _atHtml();
   else if (_al.view === 'launch' && _al.cur) html += _alLaunchHtml();
   else html += _alListHtml();
   el.innerHTML = html;
@@ -279,7 +291,8 @@ function _alRender() {
   setTimeout(_alPlaceSheet, AL_SETTLE_MS);   // the view's stack settles after a flight and a clock jump
   _aeById('al-x').onclick = _alCloseSheet;
   if (_al.state !== 'ready') return;
-  if (_al.view === 'launch' && _al.cur) _alBindLaunch(); else _alBindList();
+  if (_al.view === 'thens' && typeof _atBind === 'function') _atBind();
+  else if (_al.view === 'launch' && _al.cur) _alBindLaunch(); else _alBindList();
 }
 
 // ── The list ──
@@ -304,7 +317,7 @@ function _alListHtml() {
     var from = Math.max(0, Math.min(rows.length - AL_ROWS_MAX, nearest - AL_ROWS_MAX / 2));
     shown = rows.slice(from, from + AL_ROWS_MAX);
   }
-  var html = '<h3>' + _almEsc(_aeT('alm_launches')) + ' · ' + _orrNum(rows.length, null, 0) + '</h3><div class="al-filters">' +
+  var html = '<button type="button" class="al-back" id="al-thens" aria-label="' + _almEsc(_aeT('then_title')) + '" title="' + _almEsc(_aeT('then_title')) + '">' + _alSvg(AL_ICON.then, 18) + '</button><h3>' + _almEsc(_aeT('alm_launches')) + ' · ' + _orrNum(rows.length, null, 0) + '</h3><div class="al-filters">' +
     _alSelectHtml('al-year', 'year', _aeT('alm_launch_year'), _al.years.map(function (y) { return [y, String(y)]; }), f.year) +
     _alSelectHtml('al-site', 'site', _aeT('alm_launch_site'), _al.sites.slice(0, 80).map(function (s) { return [s, s]; }), f.site) +
     _alSelectHtml('al-veh', 'veh', _aeT('alm_launch_vehicle'), _al.vehs.slice(0, 120).map(function (v) { return [v, d.veh[v]]; }), f.veh) + '</div>';
@@ -322,7 +335,8 @@ function _alListHtml() {
   return html;
 }
 function _alBindList() {
-  var el = _al.sheetEl;
+  var el = _al.sheetEl, th = _aeById('al-thens');
+  if (th) th.onclick = _alOpenThens;
   [['al-year', 'year'], ['al-site', 'site'], ['al-veh', 'veh']].forEach(function (p) {
     _aeById(p[0]).onchange = function () { _al.filter[p[1]] = this.value; _alRender(); };
   });
