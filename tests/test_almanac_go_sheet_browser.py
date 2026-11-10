@@ -203,7 +203,11 @@ def test_in_short_landscape_the_go_to_sheet_shows_six_list_rows_or_two_grid_rows
             assert head <= 64, head
             pg.click("[data-ae-gomode=list]")
             pg.click("[data-ae-pill=landings]")
-            assert _row_tops(pg) >= 6, _row_tops(pg)
+            geometry = pg.evaluate(
+                """() => ['#ae-go', '.ae-go-head', '.ae-go-body', '#ae-go-groups .ae-go-row'].map(function (q) {
+                    var r = document.querySelector(q).getBoundingClientRect(); return [Math.round(r.top), Math.round(r.height)]; })"""
+            )
+            assert _row_tops(pg) >= 6, (_row_tops(pg), geometry)
             pg.click("[data-ae-gomode=grid]")
             assert _row_tops(pg) >= 2, _row_tops(pg)
             ctx.close()
