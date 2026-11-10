@@ -3737,5 +3737,9 @@
   "addon_mode_auto": "Automatically",
   "addon_mode_never": "Never",
   "addon_remove": "Remove",
-  "addon_needs": "Needs {name}"
+  "addon_needs": "Needs {name}",
+  "dym_showing": "Showing {s} · search for {o} instead",
+  "pdf_failed_body": "The file is missing or damaged. The rest of the collection is fine.",
+  "pdf_failed_file": "The file you asked for",
+  "pdf_failed_back": "Back to the collection"
 }

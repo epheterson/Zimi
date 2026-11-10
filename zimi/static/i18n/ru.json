@@ -3737,5 +3737,9 @@
   "addon_mode_auto": "Автоматически",
   "addon_mode_never": "Никогда",
   "addon_remove": "Удалить",
-  "addon_needs": "Нужно: {name}"
+  "addon_needs": "Нужно: {name}",
+  "dym_showing": "Показано: {s} · искать {o}",
+  "pdf_failed_body": "Файл отсутствует или повреждён. Остальная часть коллекции в порядке.",
+  "pdf_failed_file": "Запрошенный файл",
+  "pdf_failed_back": "Назад к коллекции"
 }

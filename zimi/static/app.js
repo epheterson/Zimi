@@ -2563,9 +2563,9 @@ const output = document.getElementById('output');
 // alone doesn't survive a double-quote in attribute position).
 output.addEventListener('click', function(e) {
   var link = e.target.closest('.did-you-mean a[data-sugg]');
-  if (!link) return;
-  e.preventDefault();
-  applyDidYouMean(link.getAttribute('data-sugg'));
+  if (link) { e.preventDefault(); applyDidYouMean(link.getAttribute('data-sugg')); return; }
+  var typed = e.target.closest('.did-you-mean a[data-typed]');
+  if (typed) { e.preventDefault(); searchTypedInstead(typed.getAttribute('data-typed')); }
 });
 const mainView = document.getElementById('main-view');
 const statsBar = document.getElementById('stats-bar');
@@ -10183,11 +10183,22 @@ q.addEventListener('keydown', e => {
 
 
 // Re-run the search with a "Did you mean" correction the user clicked.
-function applyDidYouMean(suggestion) {
+// A search that found nothing runs its suggestion itself: {typed, shown} while
+// the suggestion's results are on screen, so they say what they are and the
+// typed words stay a tap away. kept: the typed words someone chose over it.
+var _dymRun = null, _dymKept = null;
+function applyDidYouMean(suggestion, typed) {
   if (!suggestion) return;
   var q = document.getElementById('q');
+  _dymRun = typed ? { typed: typed, shown: suggestion } : null;
   if (q) q.value = suggestion;
-  doSearch(suggestion, 'new');
+  doSearch(suggestion, typed ? true : 'new');
+}
+function searchTypedInstead(typed) {
+  _dymKept = typed;
+  var q = document.getElementById('q');
+  if (q) q.value = typed;
+  doSearch(typed, 'new');
 }
 
 // push: true records the search in the address (replacing a search already
@@ -10202,6 +10213,8 @@ async function doSearch(query, push, perSource) {
   perSource = perSource || SEARCH_PER_SOURCE;
   if (!query) return;
   if (!more) { _searchCardClear(); _gamesRowClear(); } // a new question: the old card goes, its request with it
+  if (!more && !(_dymRun && _dymRun.shown === query)) _dymRun = null;
+  if (_dymKept !== null && _dymKept !== query) _dymKept = null;
   _currentSearchQuery = query;
   clearTimeout(suggestTimer);
   hideSuggest();
@@ -10672,7 +10685,13 @@ function renderSearchResults(data, scope) {
   // 1.8.0: "einstien" still matched 13 things); a second gate here at 3 hid
   // nearly every suggestion it sent.
   var dymHtml = '';
-  if (data.did_you_mean) {
+  var ran = _dymRun && _dymRun.shown === data._query ? _dymRun : null;
+  if (ran) {
+    // Its results are below: one quiet line, and the way back to what was typed.
+    dymHtml = '<div class="did-you-mean dym-ran">' +
+      t('dym_showing', {s: '<b>' + esc(ran.shown) + '</b>', o: '<a href="#" data-typed="' + escAttr(ran.typed) + '">' + esc(ran.typed) + '</a>'}) +
+      '</div>';
+  } else if (data.did_you_mean) {
     var sugg = data.did_you_mean;
     dymHtml = '<div class="did-you-mean">' +
       t('did_you_mean', {s: '<a href="#" data-sugg="' + escAttr(sugg) + '">' + esc(sugg) + '</a>'}) +
@@ -10690,6 +10709,13 @@ function renderSearchResults(data, scope) {
     const guided = !!(!scope && data.fieldguide) || !!(_searchCard && _searchCard.el && _searchCard.el.dataset.card === 'fieldguide');
     // A near: whose place no installed map names says so (near_not_found), not "No results found".
     const nearOnly = data.near && !data.near.found;
+    // Nothing found and a spelling that might: run it rather than argue with it.
+    if (data.did_you_mean && !data.partial && !guided && !nearOnly && !ran && _dymKept !== data._query) {
+      // After this answer's own handler has returned: the new search ends the request that brought it.
+      const from = data._query, sugg = data.did_you_mean;
+      setTimeout(function() { if (_currentSearchQuery === from) applyDidYouMean(sugg, from); }, 0);
+      return;
+    }
     output.innerHTML = chipsHtml + _nearHtml(data.near) + (guided || nearOnly ? dymHtml : '<div class="empty">' + dymHtml + '<p>' + tH('no_results') + '</p><p class="hint">' + tH(asksNothing ? 'search_needs_word' : 'try_different') + '</p></div>');
     _searchCardMount();
     _gamesRowMount();
@@ -11354,6 +11380,7 @@ function showHistoryDropdown(filter) {
     (anySearch ? '<button type="button" class="sg-recent-clear" onmousedown="event.preventDefault();event.stopPropagation();_recentClearSearches()">' + tH('recent_clear_searches') + '</button>' : '') +
     '</div>';
   // What you searched and read first; the library's filter rows under it.
+  _suggestSheet(false);
   suggestDropdown.innerHTML = recentHeader +
     items.map(function(it, i) {
       var forget = t('remove') + ': ' + it.label;
@@ -11400,6 +11427,7 @@ function _recentClearSearches() {
 
 function showSuggest() {
   suggestIndex = -1;
+  _suggestSheet(false);
   suggestDropdown.innerHTML = suggestItems.map((s, i) =>
     '<div class="suggest-item' + (s._place || s._nearPick ? ' sg-place' : '') + '" data-i="' + i + '" onmousedown="selectSuggest(' + i + ')">' +
     '<div class="sg-title"><bdi>' + esc(s.title) + '</bdi></div>' +
@@ -11410,7 +11438,13 @@ function showSuggest() {
   suggestDropdown.style.display = 'block';
 }
 
+// The tips are a sheet from the bar's foot to the screen's, full width; the suggestions stay under the field.
+function _suggestSheet(on) {
+  suggestDropdown.classList.toggle('tips-sheet', on);
+  suggestDropdown.style.top = on ? Math.round(q.closest('.topbar').getBoundingClientRect().bottom) + 'px' : '';
+}
 function hideSuggest() {
+  _suggestSheet(false);
   suggestDropdown.style.display = 'none';
   suggestIndex = -1;
   _searchHelpExpanded(false);
@@ -11427,7 +11461,7 @@ function selectSuggest(i) {
   const s = suggestItems[i];
   if (!s) return;
   hideSuggest();
-  if (s._example) { _searchAgain(s.query); return; }
+  if (s._example) { _useSearchExample(s.query); return; }
   if (s._nearPick) { _pickNearPlace(s); return; }
   // History search item: re-execute the search
   if (s._histSearch) {
@@ -12169,6 +12203,15 @@ function _searchExampleHtml(ex) {
   return '<bdi class="search-example-q" dir="' + (rtl ? 'rtl' : 'ltr') + '">' + out + esc(ex.slice(at)) + '</bdi>';
 }
 
+// A tip tapped: its syntax goes into the box, to be changed and sent. The catalog's box filters as it is typed, so there it runs.
+function _useSearchExample(query) {
+  if (mode === 'manage') { _searchAgain(query); return; }
+  hideSuggest();
+  q.value = query;
+  q.focus();
+  q.setSelectionRange(query.length, query.length);
+}
+
 function toggleSearchTips(e) {
   if (_searchTipsOpen()) { hideSuggest(); return; }
   // From the keyboard, into the box, where the arrows and Enter pick one; a
@@ -12184,9 +12227,10 @@ function toggleSearchTips(e) {
     examples.map((ex, i) =>
       '<div class="suggest-item search-example" data-i="' + i + '" onmousedown="selectSuggest(' + i + ')">' +
         _searchExampleHtml(ex) +
-        searchQueryChips(ex).map(c => _searchChipHtml(c, pool, false)).join('') +
+        '<span class="search-example-note">' + searchQueryChips(ex).map(c => _searchChipLabel(c, pool, true)).join(' ') + '</span>' +
       '</div>').join('') + '</div>';
   suggestDropdown.style.display = 'block';
+  _suggestSheet(true);
   _searchHelpExpanded(true);
 }
 

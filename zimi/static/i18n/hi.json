@@ -3737,5 +3737,9 @@
   "addon_mode_auto": "अपने आप",
   "addon_mode_never": "कभी नहीं",
   "addon_remove": "हटाएँ",
-  "addon_needs": "{name} चाहिए"
+  "addon_needs": "{name} चाहिए",
+  "dym_showing": "{s} के परिणाम दिखा रहे हैं · इसके बजाय {o} खोजें",
+  "pdf_failed_body": "फ़ाइल गायब है या क्षतिग्रस्त है। संग्रह का बाकी हिस्सा ठीक है।",
+  "pdf_failed_file": "आपने जो फ़ाइल माँगी",
+  "pdf_failed_back": "संग्रह पर वापस जाएँ"
 }

@@ -3737,5 +3737,9 @@
   "addon_mode_auto": "אוטומטית",
   "addon_mode_never": "אף פעם",
   "addon_remove": "הסרה",
-  "addon_needs": "דורש {name}"
+  "addon_needs": "דורש {name}",
+  "dym_showing": "מוצגות תוצאות עבור {s} · חיפוש {o} במקום זאת",
+  "pdf_failed_body": "הקובץ חסר או פגום. שאר האוסף תקין.",
+  "pdf_failed_file": "הקובץ שביקשת",
+  "pdf_failed_back": "חזרה לאוסף"
 }

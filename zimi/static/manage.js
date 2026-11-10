@@ -4656,8 +4656,17 @@ async function _renderAddons(opts) {
   var st = null;
   try { st = await _addonsFetch(); } catch (e) {}
   var host = document.getElementById(hostId);
-  if (!host || !st) return st;
-  host.innerHTML = st.supported ? _addonsListHtml(st, opts) : '<div class="ms-hint">' + tH('net_unavailable') + '</div>';
+  if (!host) return st;
+  if (!st) {
+    host.innerHTML = '<div class="ms-hint">' + tH('net_unavailable') + ' <button class="lang-banner-btn" onclick="_renderAddons(_addonsOpts)">' + tH('retry') + '</button></div>';
+    return st;
+  }
+  // Offline says so, in the pane's own words; an install that gets no add-ons has no list to show, so no heading.
+  var offline = st.locked === 'offline';
+  var none = !offline && !st.supported;
+  host.hidden = none;
+  if (host.previousElementSibling && host.previousElementSibling.classList.contains('ms-section-label')) host.previousElementSibling.hidden = none;
+  host.innerHTML = offline ? '<div class="ms-hint">' + tH('net_offline') + '</div>' : (st.supported ? _addonsListHtml(st, opts) : '');
   clearTimeout(_addonsTimer);
   if (st.addons.some(function(a) { return a.progress && a.progress.active; })) {
     _addonsTimer = setTimeout(function() { _renderAddons(opts); }, 1000);

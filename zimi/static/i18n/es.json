@@ -3737,5 +3737,9 @@
   "addon_mode_auto": "Automáticamente",
   "addon_mode_never": "Nunca",
   "addon_remove": "Quitar",
-  "addon_needs": "Necesita {name}"
+  "addon_needs": "Necesita {name}",
+  "dym_showing": "Mostrando {s} · buscar {o} en su lugar",
+  "pdf_failed_body": "Falta el archivo o está dañado. El resto de la colección está bien.",
+  "pdf_failed_file": "El archivo que pediste",
+  "pdf_failed_back": "Volver a la colección"
 }

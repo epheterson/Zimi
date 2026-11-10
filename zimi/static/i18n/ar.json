@@ -3737,5 +3737,9 @@
   "addon_mode_auto": "تلقائيًا",
   "addon_mode_never": "أبدًا",
   "addon_remove": "إزالة",
-  "addon_needs": "يحتاج {name}"
+  "addon_needs": "يحتاج {name}",
+  "dym_showing": "عرض نتائج {s} · ابحث عن {o} بدلاً من ذلك",
+  "pdf_failed_body": "الملف مفقود أو تالف. باقي المجموعة سليم.",
+  "pdf_failed_file": "الملف الذي طلبته",
+  "pdf_failed_back": "العودة إلى المجموعة"
 }

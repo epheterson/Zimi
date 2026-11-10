@@ -3737,5 +3737,9 @@
   "addon_mode_auto": "自动",
   "addon_mode_never": "从不",
   "addon_remove": "移除",
-  "addon_needs": "需要 {name}"
+  "addon_needs": "需要 {name}",
+  "dym_showing": "显示 {s} 的结果 · 改为搜索 {o}",
+  "pdf_failed_body": "文件缺失或已损坏。合集中的其他内容不受影响。",
+  "pdf_failed_file": "你请求的文件",
+  "pdf_failed_back": "返回合集"
 }
