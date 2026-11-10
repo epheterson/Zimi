@@ -1069,6 +1069,21 @@ def test_speak_answers_a_wav_a_range_and_a_404(served):
     assert _get(served + "/dictionary/speak?text=water&lang=en&engine=rm")[0] == 400
 
 
+def test_why_a_setup_failed_is_the_admins_to_read(served, monkeypatch):
+    """A failed set-up's reason can quote pip or a path: a reader sees that it failed, an admin sees why."""
+    from zimi import users
+
+    monkeypatch.setattr(voices, "_download", {"error": "en-US", "reason": "pip: /home/someone/.local failed"})
+    monkeypatch.setattr(users, "_request_is_admin", lambda handler: False)
+    for path in ("/dictionary/voices", "/dictionary/voices?all=1"):
+        got = json.loads(_get(served + path)[2])
+        assert got["can_change"] is False and got["downloading"] == {"error": "en-US"}, path
+    monkeypatch.setattr(server, "ZIMI_MANAGE", True)
+    monkeypatch.setattr(users, "_request_is_admin", lambda handler: True)
+    got = json.loads(_get(served + "/dictionary/voices?all=1")[2])
+    assert got["can_change"] is True and got["downloading"]["reason"].startswith("pip:")
+
+
 def test_a_choice_over_http(served, monkeypatch):
     install("en-US")
     monkeypatch.setattr(voices, "_espeak_voices", lambda: {"en": {"US": "en-us"}})
