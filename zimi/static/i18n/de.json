@@ -3872,5 +3872,14 @@
   "alm_ms_ev_skycrane": "Sky-Crane",
   "alm_ms_ev_m20_touchdown": "Aufsetzen",
   "tb_kn_ms_m20": "Perseverance: Eintritt und Landung",
-  "tb_kn_ms_m20_v": "Folgt den veröffentlichten Ereignissen der Landung und endet am Perseverance-Punkt; Eintrittsrichtung sowie Höhe und Geschwindigkeit zwischen den Ereignissen sind angenommen, nicht simuliert"
+  "tb_kn_ms_m20_v": "Folgt den veröffentlichten Ereignissen der Landung und endet am Perseverance-Punkt; Eintrittsrichtung sowie Höhe und Geschwindigkeit zwischen den Ereignissen sind angenommen, nicht simuliert",
+  "alm_ms_ph_tmi": "Marsinjektion",
+  "alm_ms_ev_srb_sep": "Trennung der Booster",
+  "alm_ms_ev_fairing_sep": "Abwurf der Nutzlastverkleidung",
+  "alm_ms_ev_meco": "Abschaltung des Haupttriebwerks",
+  "alm_ms_ev_centaur_burn": "Zündung der Centaur",
+  "alm_ms_ev_tmi_burn": "Zündung zur Marsinjektion",
+  "alm_ms_ev_sc_sep": "Trennung des Raumfahrzeugs",
+  "tb_kn_ms_m20_launch": "Perseverance: Start und Reiseflug",
+  "tb_kn_ms_m20_launch_v": "Der Aufstieg der Atlas V 541 folgt den veröffentlichten Ereignissen des Starts; Höhe und Geschwindigkeit dazwischen, Startazimut, Parkbahn und die Form des Injektionsbrandes sind angenommen. Ab 12:52 UT stammt das Raumfahrzeug aus JPL Horizons (-168), erdzentriert, dann sonnenzentriert für die 203 Tage bis Mars"
 }

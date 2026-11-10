@@ -21,7 +21,8 @@ var AM_MOON_FIX_NEAR_KM = 40000, AM_MOON_FIX_FAR_KM = 150000;   // the Moon's co
 var AM_SEAM_DECAY_S = 600;                                  // a leg that begins off the end of the last one (two models of the Earth's turn) closes the gap over this long
 var AM_CAM_EASE = 2.4;                                      // 1/s: the camera's pull to the shot of the phase
 var AM_FOV_DEG = 40;
-var AM_DOT_PX = 4.5;
+var AM_MARK_DX = 9, AM_MARK_DY = -7;                  // where the probe's name stands from its dot, in pixels
+var AM_DOT_PX = 4.5, AM_DOT_OVERVIEW_PX = 9;   // the probe's dot: larger in the overview, where the arc is all there is to see it by
 var AM_MODEL_PX = [5, 14];                                  // a model fades in across these widths, its dot out
 var AM_TEXT_MS = 100;
 var AM_SPEEDS = [0.25, 1, 4];                               // the person's pace against the phase's own
@@ -315,7 +316,7 @@ function _amMission() { var s = _amState(); return s && _amData ? _amData.missio
 function _amNowS() { var s = _amState(); return s ? (_aeDisplayMs() - s.zeroMs) / 1000 : 0; }
 
 // Open a mission by id. The view flies there when it is not yet in the mission's space.
-function _aeMissionOpen(id, atT) {
+function _aeMissionOpen(id, atT, back) {
   if (!_ae || !_ae.gl) return;
   if (id === 'plan') { _amPlanLoad(function () { _apOpen(); }); return; }
   if (_ae.site) _aeSiteLeave(true);
@@ -330,14 +331,24 @@ function _aeMissionOpen(id, atT) {
     var s = _ae.mission = {
       id: id, zeroMs: m.zeroMs, parts: {}, flames: {}, dot: null, speedIdx: 1, userCam: false, phaseIdx: -1,
       camAz: 0, camEl: 0.3, camDist: 100, camSet: false, shot: null, back: { ms: _aeDisplayMs(), rate: typeof _almRate === 'number' ? _almRate : 1, live: !_aeFocusSet() },
-      lastText: 0, ended: 0, state: {}, fov: AM_FOV_DEG, pose: null, focus: null, trackAt: -1
+      lastText: 0, ended: 0, state: {}, fov: AM_FOV_DEG, pose: null, focus: null, trackAt: -1, noHandoff: !!back
     };
     _ae.el.classList.add('ae-mission');
     _aeShowGo(false);
     _amHud(true);
     _amJump(m, atT == null ? m.start : atT);
+    if (m.arc) _amArc(m);
     _aeKick();
   });
+}
+
+// A mission whose cruise is a Sun-centred table (m.arc: the vehicle whose helio leg it is) draws that arc and fits its overview shots to it.
+function _amArc(m) {
+  var leg = null;
+  m.vehicles.forEach(function (v) { v.legs.forEach(function (l) { if (!leg && l.frame === 'helio') leg = l; }); });
+  if (!leg) return;
+  m.fitD = _amOverviewDist(leg.s);
+  _amPlanLoad(function () { if (_ae.mission && _amMission() === m && typeof _apArcLine === 'function') _apArcLine(_ae.mission, leg.s); });
 }
 function _amStop(quiet) {
   var s = _ae && _ae.mission;
@@ -444,11 +455,13 @@ function _aeMissionDraw() {
       F.updateMatrixWorld();
     });
     if (st && v.dot !== false) {
-      _aeSetPoint(s.dot, nDots++, st.pos, [1, 0.82, 0.4], Math.max(0, 1 - show) * _aeFadeU.value, AM_DOT_PX);
+      var over = !!(m.phases[Math.max(0, s.phaseIdx)].cam || {}).overview;
+      _aeSetPoint(s.dot, nDots++, st.pos, [1, 0.82, 0.4], (over ? 1 : Math.max(0, 1 - show)) * _aeFadeU.value, over ? AM_DOT_OVERVIEW_PX : AM_DOT_PX);
     }
   });
   _aeCommitPoints(s.dot, nDots);
   if (s.onDraw) s.onDraw();
+  _amMark(m, s);
 }
 
 
@@ -480,15 +493,26 @@ function _amDawn(s, st, sc) {
   if (!on) el.style.opacity = '0';
 }
 
+// The probe's name beside its dot in an overview, the way the planets are named: placed over the picture where the dot is drawn.
+function _amMark(m, s) {
+  var el = _aeById('am-mark');
+  if (!el) return;
+  var ph = m.phases[Math.max(0, s.phaseIdx)], st = s.follow, at = st && (ph.cam || {}).overview ? _aeProject(st.pos) : null;
+  if (!at) { el.hidden = true; return; }
+  if (!el.textContent) el.textContent = m.name;
+  el.hidden = false;
+  el.style.transform = 'translate(' + (at.x + AM_MARK_DX).toFixed(1) + 'px,' + (at.y + AM_MARK_DY).toFixed(1) + 'px)';
+}
+
 // ── The hand-off at touchdown ──
 // On the Moon the mission gives way to the ground's site visit (almanac-sites.js), at the landing instant, with a chip that comes back to the mission at lift-off.
-var AM_SITE_WAIT_MS = 6000, AM_BACK_ID = 'am-back', AM_BACK_WATCH_MS = 600, AM_POLL_MS = 100, AM_RESUME_PAST_S = 25, AM_REPLAY_S = 60;   // the ascent phase begins 20 s before lift-off: the way back lands just after it
+var AM_SITE_WAIT_MS = 6000, AM_BACK_ID = 'am-back', AM_BACK_WATCH_MS = 600, AM_POLL_MS = 100, AM_RESUME_PAST_S = 25;   // the ascent phase begins 20 s before lift-off: the way back lands just after it
 function _amLandingRow(name, body) {
   var rows = (typeof _aeLm !== 'undefined' && _aeLm && _aeLm[body || 'moon']) || [];
   return rows.filter(function (r) { return r[3] === 'landing' && r[0] === name; })[0] || null;
 }
 function _amHandoff(m, pi) {
-  var id = _ae.mission.id, resume = m.phases[pi + 1] ? m.phases[pi + 1].t + AM_RESUME_PAST_S : m.phases[pi].t - AM_REPLAY_S, landed = m.phases[pi].t, zero = _ae.mission.zeroMs;
+  var id = _ae.mission.id, resume = m.phases[pi + 1] ? m.phases[pi + 1].t + AM_RESUME_PAST_S : m.end, landed = m.phases[pi].t, zero = _ae.mission.zeroMs;
   if (typeof _aeSitesLoad !== 'function') return;
   _aeSitesLoad();
   if (typeof _aeLmLoad === 'function') _aeLmLoad();
@@ -516,7 +540,7 @@ function _amBackChip(on, id, t) {
   var b = document.createElement('button');
   b.type = 'button'; b.id = AM_BACK_ID; b.className = 'am-back';
   b.textContent = _aeT('alm_ms_back');
-  b.onclick = function () { _amBackChip(false); _aeSiteLeave(true); _aeMissionOpen(id, t); };
+  b.onclick = function () { _amBackChip(false); _aeSiteLeave(true); _aeMissionOpen(id, t, true); };
   b._watch = setInterval(function () { if (!_ae || !_ae.el || !_ae.site) _amBackChip(false); }, AM_BACK_WATCH_MS);
   _ae.el.appendChild(b);
 }
@@ -524,15 +548,26 @@ function _amPhaseChanged(m, pi) {
   var hud = _aeById('am-hud');
   if (hud) hud.dataset.phase = String(pi);
   _amPaintPhase(m, pi);
-  if (m.handoff && m.phases[pi].k === m.handoff.phase) _amHandoff(m, pi);
+  var s = _ae.mission, there = m.handoff && m.phases[pi].k === m.handoff.phase;
+  if (!there && s) s.noHandoff = false;   // come back to it later (by replay or a jump) and it hands over again
+  if (there && s && !s.noHandoff) _amHandoff(m, pi);
 }
 
+var AM_OVERVIEW_MARGIN = 1.35;               // the overview holds the whole arc (as the view draws it) with this much room round it
+var AM_OVERVIEW_FAR_RE = 36000;              // the camera's far plane stands at about 40000 Earth radii
+// How far above the Sun the overview stands to hold the whole arc, on the view's squeezed scale, in this window's narrower side.
+function _amOverviewDist(rows) {
+  var far = 0;
+  rows.forEach(function (r) { far = Math.max(far, _aeShownDist(Math.hypot(r[1], r[2], r[3]))); });
+  var side = Math.tan(_aeRad(AM_FOV_DEG) / 2) * Math.min(1, (_ae.w || 1) / (_ae.h || 1));
+  return Math.min(AM_OVERVIEW_FAR_RE, far * AM_OVERVIEW_MARGIN / side);
+}
 // ── The camera ──
 // A phase's shot is relative to the vehicle it follows: a distance (metres), an azimuth about its axis (degrees: 0 from its up
 // side, 90 from its right) and how far toward its tail the camera leans (degrees). A hand on the picture takes the camera until a phase is jumped to.
 function _amCamera(m, s, st, ph, dt, sc) {
   var shot = ph.cam || { d: 200, az: 150, el: 15 };
-  var want = { az: _aeRad(shot.az), el: _aeRad(shot.el), dist: shot.d };
+  var want = { az: _aeRad(shot.az), el: _aeRad(shot.el), dist: shot.fit ? (m.fitD || AM_OVERVIEW_FAR_RE / 4) : shot.d };
   if (!s.camSet) {
     // A shot begins where the camera is, in this vehicle's frame, so it eases there rather than cutting.
     s.camSet = true;
@@ -605,6 +640,7 @@ var AM_ICONS = {
   dot: '<svg viewBox="0 0 24 24" width="12" height="12" fill="currentColor" aria-hidden="true"><circle cx="12" cy="12" r="5"/></svg>'
 };
 var AM_CSS = [
+  '.am-mark{position:absolute;left:0;top:0;font-size:12px;color:#ffd166;white-space:nowrap;pointer-events:none;text-shadow:0 1px 2px #000,0 0 4px #000}.am-mark[hidden]{display:none}',
   '.am-dawn{position:absolute;left:-30%;right:-30%;pointer-events:none;opacity:0;background:linear-gradient(to bottom,rgba(255,120,50,0),rgba(255,150,70,.85) 48%,rgba(255,200,120,.55) 52%,rgba(255,120,50,0));mix-blend-mode:screen}',
   '.am-back{position:absolute;left:50%;top:calc(env(safe-area-inset-top,0px) + 64px);transform:translateX(-50%);z-index:60;border:1px solid var(--amber-border);background:rgba(20,20,20,.82);color:var(--amber);border-radius:999px;padding:8px 16px;font:600 13px/1 inherit;cursor:pointer}',
   '.ae-view.ae-mission .ae-top,.ae-view.ae-mission .ae-bottom,.ae-view.ae-mission .ae-labels,.ae-view.ae-mission .ae-lms,.ae-view.ae-mission .ae-mini,.ae-view.ae-mission .ae-info,.ae-view.ae-mission .ae-set{display:none!important}',
@@ -653,7 +689,7 @@ function _amHud(on) {
   hud.className = 'am-hud'; hud.id = 'am-hud';
   var lab = function (k) { return _almEsc(_aeT(k)); };
   var w = _amWidths(m);
-  hud.innerHTML = '<div class="am-dawn" id="am-dawn"></div><div class="am-layer" id="am-layer"></div>' +
+  hud.innerHTML = '<div class="am-mark" id="am-mark" hidden></div><div class="am-dawn" id="am-dawn"></div><div class="am-layer" id="am-layer"></div>' +
     '<div class="am-bar"><button type="button" class="ae-btn ae-round" id="am-exit" aria-label="' + lab('alm_ms_close') + '" title="' + lab('alm_ms_close') + '">' + AM_ICONS.close + '</button>' +
     '<div class="am-title"><b>' + _almEsc(_aeT('alm_ms_' + s.id) === 'alm_ms_' + s.id ? m.name : _aeT('alm_ms_' + s.id)) + '</b><span class="am-met" id="am-met"></span></div>' +
     '<button type="button" class="ae-btn ae-round" id="am-recentre" aria-label="' + lab('alm_ms_recentre') + '" title="' + lab('alm_ms_recentre') + '">' + AM_ICONS.recentre + '</button></div>' +

@@ -3872,5 +3872,14 @@
   "alm_ms_ev_skycrane": "Grúa celeste",
   "alm_ms_ev_m20_touchdown": "Aterrizaje",
   "tb_kn_ms_m20": "Perseverance: entrada y aterrizaje",
-  "tb_kn_ms_m20_v": "Sigue los eventos publicados del aterrizaje y termina en el punto de Perseverance; el rumbo de entrada y la altitud y velocidad entre eventos son supuestos, no simulados"
+  "tb_kn_ms_m20_v": "Sigue los eventos publicados del aterrizaje y termina en el punto de Perseverance; el rumbo de entrada y la altitud y velocidad entre eventos son supuestos, no simulados",
+  "alm_ms_ph_tmi": "Inyección a Marte",
+  "alm_ms_ev_srb_sep": "Separación de los cohetes aceleradores",
+  "alm_ms_ev_fairing_sep": "Eyección de la cofia",
+  "alm_ms_ev_meco": "Apagado del motor principal",
+  "alm_ms_ev_centaur_burn": "Encendido de la Centaur",
+  "alm_ms_ev_tmi_burn": "Encendido de inyección a Marte",
+  "alm_ms_ev_sc_sep": "Separación de la nave",
+  "tb_kn_ms_m20_launch": "Perseverance: lanzamiento y crucero",
+  "tb_kn_ms_m20_launch_v": "El ascenso del Atlas V 541 sigue los eventos publicados del lanzamiento; su altitud y velocidad entre ellos, el acimut, la órbita de aparcamiento y la forma de la inyección son supuestos. Desde las 12:52 UT la nave es la de JPL Horizons (-168), geocéntrica y luego heliocéntrica durante los 203 días hasta Marte"
 }

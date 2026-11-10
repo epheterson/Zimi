@@ -3872,5 +3872,14 @@
   "alm_ms_ev_skycrane": "空中吊车",
   "alm_ms_ev_m20_touchdown": "着陆",
   "tb_kn_ms_m20": "毅力号进入与着陆",
-  "tb_kn_ms_m20_v": "依据已公布的着陆事件，终点为毅力号的标记；进入航向以及事件之间的高度与速度为假设，并非模拟"
+  "tb_kn_ms_m20_v": "依据已公布的着陆事件，终点为毅力号的标记；进入航向以及事件之间的高度与速度为假设，并非模拟",
+  "alm_ms_ph_tmi": "火星转移入轨",
+  "alm_ms_ev_srb_sep": "助推器分离",
+  "alm_ms_ev_fairing_sep": "整流罩抛离",
+  "alm_ms_ev_meco": "主发动机关机",
+  "alm_ms_ev_centaur_burn": "半人马座级点火",
+  "alm_ms_ev_tmi_burn": "火星转移点火",
+  "alm_ms_ev_sc_sep": "航天器分离",
+  "tb_kn_ms_m20_launch": "毅力号发射与巡航",
+  "tb_kn_ms_m20_launch_v": "Atlas V 541 的上升过程依据已公布的发射事件；事件之间的高度与速度、发射方位角、停泊轨道和转移点火的形状为假设。自世界时 12:52 起航天器取自 JPL Horizons（-168），先以地心、再以日心描述，直至 203 天后到达火星"
 }
