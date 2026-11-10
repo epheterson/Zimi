@@ -15,7 +15,9 @@ import pytest
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-WAIT_MS = 15_000
+# Waits for a state, so a long one costs nothing when the state comes: a loaded CI shard took more than 15 s to
+# load manage.js and draw Manage (CI 2026-11-10).
+WAIT_MS = 45_000
 
 
 @pytest.fixture(scope="module")
@@ -132,13 +134,18 @@ def test_manage_maps_pane_redraws_when_the_source_changes(served, browser_ctx):
     pg = browser_ctx.new_page()
     pg.goto(served + "/", wait_until="load")
     pg.evaluate("enterManage()")
-    pg.wait_for_function("() => typeof drillCategory === 'function' && !!document.getElementById('catalog-results')", timeout=WAIT_MS)
+    pg.wait_for_function(
+        "() => typeof drillCategory === 'function' && !!document.getElementById('catalog-results')",
+        timeout=WAIT_MS,
+    )
     pg.evaluate("drillCategory('maps')")
     pg.evaluate(
         "() => { window._drills = []; var real = drillCategory; drillCategory = function (k) { window._drills.push(k); }; window._realDrill = real; }"
     )
     # The account's value comes in: the shell writes it and announces it.
-    pg.evaluate("() => { localStorage.setItem(SK.MAPS_SOURCE, 'streetzim'); _prefApplied([SK.MAPS_SOURCE]); }")
+    pg.evaluate(
+        "() => { localStorage.setItem(SK.MAPS_SOURCE, 'streetzim'); _prefApplied([SK.MAPS_SOURCE]); }"
+    )
     assert pg.evaluate("window._drills") == ["maps"]
     pg.evaluate("() => { localStorage.removeItem(SK.MAPS_SOURCE); }")
     pg.close()
