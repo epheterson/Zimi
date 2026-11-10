@@ -139,6 +139,11 @@ def test_manage_maps_pane_redraws_when_the_source_changes(served, browser_ctx):
         timeout=WAIT_MS,
     )
     pg.evaluate("drillCategory('maps')")
+    # Until manage.js is in, drillCategory is app.js's stub that queues the call: wait for the Maps view it draws.
+    pg.wait_for_function(
+        "() => typeof _browseView !== 'undefined' && _browseView === 'drilldown' && manageCategoryFilter === 'maps'",
+        timeout=WAIT_MS,
+    )
     pg.evaluate(
         "() => { window._drills = []; var real = drillCategory; drillCategory = function (k) { window._drills.push(k); }; window._realDrill = real; }"
     )
@@ -147,5 +152,5 @@ def test_manage_maps_pane_redraws_when_the_source_changes(served, browser_ctx):
         "() => { localStorage.setItem(SK.MAPS_SOURCE, 'streetzim'); _prefApplied([SK.MAPS_SOURCE]); }"
     )
     assert pg.evaluate("window._drills") == ["maps"]
-    pg.evaluate("() => { localStorage.removeItem(SK.MAPS_SOURCE); }")
+    pg.evaluate("() => { drillCategory = window._realDrill; localStorage.removeItem(SK.MAPS_SOURCE); }")
     pg.close()
