@@ -5852,17 +5852,29 @@ function _aeCraftParse(buf) {
   return d;
 }
 // then: a flight waiting on the model (Go to a probe before its model is here), flown when it comes or fails.
+// A model that is slow to come says so (the hint line), and one that does not come says it will be a dot: never a blank view.
+var AE_CRAFT_SLOW_MS = 400;
 function _aeCraftLoad(model, then) {
   var c = _aeCraft[model] = _aeCraft[model] || {};
   if (then) c.then = then;
   if (c.data || c.loading || typeof fetch !== 'function') return;
   c.loading = true;
-  var done = function () { var t = c.then; c.then = null; if (t && _ae) t(); };
+  c.slow = setTimeout(function () { if (c.loading && _ae && typeof _aeShowHint === 'function') { c.said = true; _aeShowHint(_aeT('alm_craft_loading')); } }, AE_CRAFT_SLOW_MS);
+  var done = function () {
+    clearTimeout(c.slow);
+    if (c.said && c.data && _ae && typeof _aeHideHint === 'function') _aeHideHint();
+    c.said = false;
+    var t = c.then; c.then = null; if (t && _ae) t();
+  };
   fetch(_aeCraftUrl(model)).then(function (r) { if (!r.ok) throw new Error(model); return r.arrayBuffer(); }).then(function (buf) {
     c.data = _aeCraftParse(buf);
     if (_ae) { _ae.dirty = true; _aeKick(); }
     done();
-  }).catch(function () { c.loading = false; c.failed = true; done(); });
+  }).catch(function () {
+    c.loading = false; c.failed = true;
+    if (_ae && typeof _aeShowHint === 'function') _aeShowHint(_aeT('alm_craft_failed'));
+    done();
+  });
 }
 function _aeCraftData(model) { return (_aeCraft[model] && _aeCraft[model].data) || null; }
 // Its span in Earth radii, once loaded (0 before).
