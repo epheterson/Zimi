@@ -2009,7 +2009,7 @@ function _aeAddLight(m) {
 // canvas is see-through (the view's own black is behind it), so the Moon
 // can stand over the page in the hero's place before the view grows.
 function _aeBuildGl(THREE, canvas) {
-  var renderer, dpr = Math.min(window.devicePixelRatio || 1, AE_MAX_DPR, _aeCapDpr('earth'));
+  var renderer, dpr = Math.min(window.devicePixelRatio || 1, typeof ZimiCap !== 'undefined' ? ZimiCap.dprCap('earth') : AE_MAX_DPR);   // the level's ratio (2 on a standard device, as 1.15.4 drew)
   try {
     renderer = new THREE.WebGLRenderer({ canvas: canvas, alpha: true, antialias: dpr < AE_MSAA_BELOW_DPR, powerPreference: 'high-performance' });
   } catch (e) {
@@ -2112,6 +2112,7 @@ function _aeBuildGl(THREE, canvas) {
 // next open asks for them again.
 function _aeLoadMap(S, uni, url, format, load) {
   if (!S.maps[url]) {
+    if (typeof ZimiCap !== 'undefined') ZimiCap.hold();   // the frames around a map's load and upload are not the device's pace
     S.maps[url] = (load ? load() : _aeLoadTexture(S.THREE, url)).then(function (tx) {
       tx.anisotropy = S.aniso;
       if (format) tx.format = format;
@@ -2123,6 +2124,7 @@ function _aeLoadMap(S, uni, url, format, load) {
       return false;
     }).then(function (ok) {
       S.mapFailed[url] = !ok;
+      if (typeof ZimiCap !== 'undefined') ZimiCap.hold();
       _ae.dirty = true;
       _aeKick();
       // Ready behind the page, a map that comes later is uploaded now too.
@@ -8204,7 +8206,6 @@ var _aePreparing = null;
 // ── Capability levels (capability.js) ──
 var AE_FPS_SLACK_MS = 3;   // a frame this early is still on time (the display's rate does not divide the cap evenly)
 function _aeCapGet(key, dflt) { return typeof ZimiCap !== 'undefined' ? ZimiCap.get(key) : dflt; }
-function _aeCapDpr(scene) { return typeof ZimiCap !== 'undefined' ? ZimiCap.dprCap(scene) : Infinity; }
 var AE_STATICGLOBE_JS = '/static/almanac-staticglobe.js';
 // The view set aside shows only its line, its one button and the way back, over the Earth drawn once (almanac-staticglobe.js).
 function _aeStaticGlobe() {

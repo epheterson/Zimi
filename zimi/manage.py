@@ -6042,17 +6042,17 @@ def handle_manage_get(handler, parsed, params):
 
         return handler._json(200, {"zims": ownzims.catalog()})
 
-    elif parsed.path == "/manage/addons":
-        # Add-ons (addons.py): what can be added, what is there, the install under way, the setting.
-        from zimi import addons as _addons
-
-        return handler._json(200, _addons.status())
-
     elif parsed.path == "/manage/tidy":
         # What the library keeps beside what it lists: the Almanac's data as one row, and the older copies no name serves.
         from zimi import almanachd
 
         return handler._json(200, {"almanac_hd": almanachd.library_row(), "older": _srv.older_copies()})
+
+    elif parsed.path == "/manage/addons":
+        # Add-ons (addons.py): what can be added, what is there, the install under way, the setting.
+        from zimi import addons as _addons
+
+        return handler._json(200, _addons.status())
 
     elif parsed.path == "/manage/outbound":
         # "What Zimi fetches from the internet": every destination, what sets
