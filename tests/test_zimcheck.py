@@ -45,11 +45,12 @@ def _linking_zim(tmp_path):
                 "home.html",
                 "Home",
                 b"<html><body><a href='here.html'>ok</a> <a href='gone.html#x'>broken</a> "
-                b"<a href='https://example.org/a'>out</a>"
+                b"<a href='https://example.org/a'>out</a> <a href='my%20page.html'>spaced</a>"
                 b"<script>a.href = 'in-code/'</script></body></html>",
             )
         )
         c.add_item(_Article("here.html", "Here", b"<html><body>hi</body></html>"))
+        c.add_item(_Article("my page.html", "Spaced", b"<html><body>hi</body></html>"))
         c.add_redirection("old.html", "Old", "nowhere.html", {})
     return path
 
@@ -63,6 +64,18 @@ def test_missing_metadata_and_a_dangling_link_are_named(tmp_path):
     assert "here.html" not in messages.replace("home.html", "")
     assert "https://example.org" not in messages
     assert "in-code" not in messages  # a script's string is not a link
+    assert "my%20page" not in messages and "my page" not in messages  # an encoded space is the entry's own name
+
+
+def test_a_truncated_illustration_is_an_icon_error_not_a_crash():
+    class Item:
+        content = zimcheck.PNG_MAGIC + b"\x00" * 4
+
+    class Reader:
+        def get_metadata_item(self, key):
+            return Item()
+
+    assert _checks(zimcheck._check_icon(Reader())) == {(zimcheck.ERROR, "icon")}
 
 
 def test_quick_skips_the_link_scan(tmp_path):
