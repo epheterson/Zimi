@@ -150,7 +150,7 @@ def final_approach(y_hg, m_hg, t_hg, verbose=True):
     ]
     t, y = descend(
         np.concatenate([r, v, [m_hg]]),
-        t_hg - EVENTS["pdi"],
+        t_hg,
         segs,
         MU_MOON,
         spin(),

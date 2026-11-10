@@ -97,6 +97,6 @@ def fall(y0, t0, t1, jd_zero, mass, cd, area_m2, lift=None, step=1.0):
     sea.direction = -1
     grid = np.arange(math.ceil(t0 / step) * step, t1, step)
     sol = solve_ivp(
-        f, (t0, t1), y0, method="DOP853", rtol=1e-9, atol=1e-9, t_eval=grid, events=sea
+        f, (t0, t1), y0, method="DOP853", rtol=1e-7, atol=1e-7, t_eval=grid, events=sea
     )
     return sol.t, sol.y.T
