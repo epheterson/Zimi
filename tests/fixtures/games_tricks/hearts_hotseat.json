@@ -20,9 +20,9 @@
   },
   {
    "chips": "Bo0Rani0Moss0Ava0",
-   "cover": "Pass toAvaPass the device. Your cards stay hidden until you tap.I'm Ava, show my cards",
+   "cover": "",
    "label": "pass picked",
-   "moves": 3,
+   "moves": 2,
    "phase": "play",
    "scores": [
     0,
@@ -31,8 +31,8 @@
     0
    ],
    "sheet": "",
-   "state": "45bf90fd",
-   "status": "Hearts not broken \u00b7 Ava, your turn",
+   "state": "1981e4dc",
+   "status": "Hearts not broken \u00b7 Moss is thinking",
    "watch": "",
    "watchCtl": ""
   },

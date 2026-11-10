@@ -15,8 +15,8 @@
   --shadow-popup: 0 8px 32px rgba(60, 50, 30, 0.16);
   --scrim: rgba(242, 239, 232, 0.55);
   /* Felt is the cards' table: one hue, deep and quiet, with a soft vignette. Dark is darker, never brighter. */
-  --felt: #285c43; --felt-deep: #1a4130; --felt-line: rgba(255, 255, 255, 0.12);
-  --card: #fdfcf8; --card-edge: #c9c4b8; --suit-red: #b3261e; --suit-black: #1b1b1b;
+  --felt: #2a5b46; --felt-deep: #183d2e; --felt-line: rgba(255, 255, 255, 0.16);
+  --card: #f9f6ee; --card-edge: rgba(52, 40, 18, 0.26); --suit-red: #bc3428; --suit-black: #22252c;
   --bevel-hi: #ffffff; --bevel-lo: #8a8478; --tile: #d9d3c4;
   /* Wood is a board frame: one pair for every board. */
   --wood: #b88a58; --wood-dark: #8f6538; --wood-grain: 70, 40, 14; --wood-veil: transparent;

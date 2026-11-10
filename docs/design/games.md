@@ -124,7 +124,14 @@ Space falls below the content, never above it. Boards span the width inside the 
 
 Card tables: opponents at the top, the trick or pile at about 40 percent of the height, then the status line and the tray directly above your hand, which sits at the bottom.
 
-Solitaire, Spider, Pyramid and TriPeaks scale their columns to the width and let the fan grow to fill the height. Stock and waste are at least 44px.
+Solitaire, Spider, Pyramid and TriPeaks scale their columns to the width and let the fan grow to fill the height. Stock and waste are at least 44px. In portrait the foundations sit top left and the stock top right, under the thumb; on a wide table (landscape, desktop) Klondike and FreeCell move their stock and cells to a column on the left and the foundations to a two by two block on the right, so the columns get the whole height.
+
+The French card face is made for a card about 50px wide:
+- One index: the rank at 0.26 of the card's width (Barlow outlines, optical sizes per glyph), its suit beside it in the top right for piles that fan down, under it for hands that fan sideways (the table games). No second corner.
+- One suit in the body, low on the card, and no pip grid. Courts are the Goodall figure framed in the same place.
+- A fanned face-up card shows its index and clean paper, at most 0.44 of its height; a face-down card shows 0.12, whatever the room.
+- Columns stand apart by 0.08 of a card's width.
+- A pressed card lifts at once (scale 1.06, a deeper shadow); a flight takes 120ms plus 0.35ms a pixel, at most 300ms; a refused drop goes home with a small overshoot and no words (a second refusal running rings where it could go); a card turned over waits for the card that uncovered it to land. Card sounds and the buzz only with Sound on.
 
 Your hand at 390px:
 - No card strip is narrower than 30px.

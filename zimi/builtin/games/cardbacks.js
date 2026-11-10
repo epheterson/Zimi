@@ -12,6 +12,7 @@
   'use strict';
 
   var W = 92, H = 132, CX = 46, CY = 66;
+  var ZIMI_NAVY = '#1e3460', ZIMI_NAVY_DEEP = '#15264a', ZIMI_RULE = '#c9d5ee', ZIMI_DISC_R = 10.5, ZIMI_Z_H = 10;
   var FX = 11, FY = 11, FW = 70, FH = 110; // the shared field: 7 x 11 cells of 10, or 5 x 5 of 14 x 22; an 11 unit band all round
   function f(v) { return String(+v.toFixed(2)); }
   function attrs(o) { return Object.keys(o).map(function (k) { return ' ' + k + '="' + o[k] + '"'; }).join(''); }
@@ -67,21 +68,14 @@
 
     // ── The twelve ──
     var ART = {
-      // Black and amber. Field 70 x 110 at (11,11): 45 degree lines every 10 make rhombi that meet the band in V's. The cartouche is
-      // the 5 x 9 block of cells (21..71 x 21..111) around the centre; the lattice stops on its frame. A diamond is inscribed in it and
-      // the Z sits at the centre, the one place the mark appears.
+      // Ink navy, quiet on the felt so face-down cards recede: a lattice of 45 degree lines every 10 in the shared field at a tenth
+      // of white, the band's two rules in pale blue, and the mark small at the exact centre (46, 66): the Z, ZIMI_Z_H tall, on a
+      // disc of the ground's darker step, ringed in the mark's gradient. The one place the mark appears.
       zimi: function () {
-        return rect(0, 0, W, H, { fill: '#0c0c0e' }) +
-          el('path', { d: diagonals(FX, FY, FW, FH, 10), fill: 'none', stroke: MARK_FROM, 'stroke-width': 0.5, opacity: 0.34 }) +
-          rect(3.5, 3.5, 85, 125, { fill: 'none', stroke: 'url(#zc-g-mark)', 'stroke-width': 1.2 }) +
-          rect(7.5, 7.5, 77, 117, { fill: 'none', stroke: MARK_FROM, 'stroke-width': 0.5, opacity: 0.45 }) +
-          rect(FX, FY, FW, FH, { fill: 'none', stroke: MARK_FROM, 'stroke-width': 0.5, opacity: 0.45 }) +
-          rect(21, 21, 50, 90, { fill: '#100d0c', stroke: 'url(#zc-g-mark)', 'stroke-width': 1.2 }) +
-          '<circle cx="46" cy="66" r="24" fill="url(#zc-g-glow)"/>' +
-          el('path', { d: diamond(46, 66, 25, 45), fill: '#17120f', stroke: 'url(#zc-g-mark)', 'stroke-width': 1.2 }) +
-          el('path', { d: diamond(46, 66, 21.5, 38.7), fill: 'none', stroke: MARK_FROM, 'stroke-width': 0.5, opacity: 0.5 }) +
-          env.markZ(46, 66, 28) +
-          '<g fill="' + MARK_FROM + '">' + [[30, 31], [62, 31], [30, 101], [62, 101]].map(function (p) { return '<path d="' + diamond(p[0], p[1], 2.5, 2.5) + '"/>'; }).join('') + '</g>';
+        return band(ZIMI_NAVY, ZIMI_RULE) +
+          el('path', { d: diagonals(FX, FY, FW, FH, 10), fill: 'none', stroke: '#ffffff', 'stroke-width': 0.5, opacity: 0.1 }) +
+          '<circle cx="' + CX + '" cy="' + CY + '" r="' + ZIMI_DISC_R + '" fill="' + ZIMI_NAVY_DEEP + '" stroke="url(#zc-g-mark)" stroke-width="1"/>' +
+          env.markZ(CX, CY, ZIMI_Z_H);
       },
       // Royal blue, ivory and red. Field 70 x 110: 7 x 11 cells of 10, a whole diamond in each (corners on the cell edges' midpoints).
       // The medallion is the 3 x 5 block at the centre (31..61 x 41..91) with a diamond inscribed in it and a red one inside that.

@@ -60,7 +60,23 @@
     return layers ? canvas(layers, (100 - THUMB_W) / 2, THUMB_Y, THUMB_W, Math.round(THUMB_W * THUMB_CANVAS_H / CANVAS_W * 10) / 10, THUMB_CANVAS_H) : '';
   }
 
-  var api = { markup: markup, thumb: thumb, KINDS: KINDS };
+  // The French face's court (cards.js): the upper figure alone, crown to waist, inside a frame. PANEL is the part of the canvas it
+  // shows (the figure's half, trimmed of the empty margin either side); its aspect is the frame's. One <symbol> per court in the
+  // page's sprite, drawn by <use>; the cascade's standalone bitmaps get the same as a nested svg.
+  var PANEL = { x: 100, y: 0, w: 1100, h: 1000 };
+  var PANEL_BOX = PANEL.x + ' ' + PANEL.y + ' ' + PANEL.w + ' ' + PANEL.h;
+  function panelId(kind, suit) { return 'zc-ct-' + KINDS[kind] + SUITS.charAt(suit); }
+  function symbols() {
+    return Object.keys(ART).map(function (k) { return '<symbol id="zc-ct-' + k + '" viewBox="' + PANEL_BOX + '">' + ART[k].map(layer).join('') + '</symbol>'; }).join('');
+  }
+  function panel(kind, suit, x, y, w, h, standalone) {
+    var layers = ART[KINDS[kind] + SUITS.charAt(suit)];
+    if (!layers) return '';
+    var at = ' x="' + x + '" y="' + y + '" width="' + w + '" height="' + h + '"';
+    return standalone ? '<svg' + at + ' viewBox="' + PANEL_BOX + '">' + layers.map(layer).join('') + '</svg>' : '<use href="#' + panelId(kind, suit) + '"' + at + '/>';
+  }
+
+  var api = { markup: markup, thumb: thumb, panel: panel, symbols: symbols, PANEL: PANEL, KINDS: KINDS };
   root.ZimiCourts = api;
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
 })(typeof window !== 'undefined' ? window : globalThis);
