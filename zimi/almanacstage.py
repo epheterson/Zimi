@@ -36,7 +36,7 @@ GOLDEN_CREDITS = os.path.join(GOLDEN_RECORD, "credits.json")
 #: zimi.txt's line about the pictures, and what it says in the community edition.
 GOLDEN_LINE_FULL = "all 49 shown, each with its credit"
 GOLDEN_LINE_COMMUNITY = (
-    "the 8 public-domain ones shown; the other 41 are not in this edition, each drawn as a card with its caption and credit"
+    "the 8 public-domain ones shown; the other 41 are named in the list (number, title, credit), not shown"
 )
 
 
@@ -397,7 +397,7 @@ def golden_record_images():
 def _community_golden_record(dest):
     """The community edition (openZIM/Kiwix take only free content): the copyrighted
     Golden Record pictures left out, each marked ``omitted`` in the staged table so the
-    gallery draws it as a card with its caption and credit, and zimi.txt says so."""
+    gallery names it in its list (number, title, credit) instead of showing it, and zimi.txt says so."""
     path = os.path.join(dest, GOLDEN_CREDITS)
     with open(path, encoding="utf-8") as f:
         table = json.load(f)

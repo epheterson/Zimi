@@ -3696,6 +3696,6 @@
   "clear_catalog_copies": "مسح نسخ الفهرس ({size})",
   "voices_set_up_mb": "إعداد ({mb} ميغابايت)",
   "alm_gr_pd": "ملكية عامة",
-  "alm_gr_omitted": "غير مضمّنة في هذه النسخة",
+  "alm_gr_omitted": "في هذه النسخة، تُذكر الصور التي ليست ملكية عامة بأسمائها ولا تُعرض.",
   "alm_gr_note": "ثماني صور من هذه الصور التقطتها ناسا وهي ملكية عامة. أما البقية فحقوقها لأصحابها المذكورين تحت كل صورة: Jon Lomberg وUN Photo وFrank Drake وNational Astronomy and Ionosphere Center وJay M. Pasachoff وPicturepoint في لندن. تُعرض هنا ليُرى التسجيل كما أُرسل، ولا تدّعي Zimi أي حق فيها. هذه مسوح ناسا للصور الأصلية، وليست مفكوكة من صوت التسجيل. المصدر: ناسا، science.nasa.gov."
 }

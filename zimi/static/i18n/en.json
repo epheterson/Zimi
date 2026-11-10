@@ -3696,6 +3696,6 @@
   "clear_catalog_copies": "Clear catalog copies ({size})",
   "voices_set_up_mb": "Set up ({mb} MB)",
   "alm_gr_pd": "public domain",
-  "alm_gr_omitted": "Not in this edition",
+  "alm_gr_omitted": "In this edition, the pictures that are not public domain are named, not shown.",
   "alm_gr_note": "Eight of these pictures are NASA photographs, in the public domain. The rest are copyright their owners, named under each picture: Jon Lomberg, UN Photo, Frank Drake, the National Astronomy and Ionosphere Center, Jay M. Pasachoff and Picturepoint, London. They appear here so the record can be seen as it was sent; Zimi claims no rights in them. These are NASA's scans of the original pictures, not decoded from the record's sound. Source: NASA, science.nasa.gov."
 }

@@ -3696,6 +3696,6 @@
   "clear_catalog_copies": "מחיקת עותקי הקטלוג ({size})",
   "voices_set_up_mb": "הגדרה ({mb} MB)",
   "alm_gr_pd": "נחלת הכלל",
-  "alm_gr_omitted": "לא כלולה במהדורה זו",
+  "alm_gr_omitted": "במהדורה זו, תמונות שאינן בנחלת הכלל מופיעות בשמן בלבד, ללא התמונה.",
   "alm_gr_note": "שמונה מהתמונות הן צילומים של נאס״א ונמצאות בנחלת הכלל. זכויות היוצרים על השאר שייכות לבעליהן, ששמם מופיע מתחת לכל תמונה: Jon Lomberg, UN Photo, Frank Drake, National Astronomy and Ionosphere Center, Jay M. Pasachoff ו-Picturepoint, לונדון. הן מוצגות כאן כדי שאפשר יהיה לראות את התקליט כפי שנשלח; Zimi אינה טוענת לזכויות בהן. אלה סריקות של נאס״א לתמונות המקוריות, לא פענוח של צליל התקליט. מקור: נאס״א, science.nasa.gov."
 }

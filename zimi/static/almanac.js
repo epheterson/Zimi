@@ -8409,7 +8409,7 @@ var _RTL_CODES = ['ar','he'];
 // The Golden Record's pictures, in the record's order: golden-record/credits.json says each one's
 // file, caption, who it is by and whether it is public domain. The Almanac built for Kiwix
 // (almanacstage, community) marks the copyrighted ones omitted and leaves their files out:
-// those draw as a card with their caption and credit, so the sequence stays whole.
+// those are named in the list as a line of text (number, title, credit), so the sequence stays whole.
 var _GR_CREDITS_URL = '/static/golden-record/credits.json';
 var _GR_DIR = '/static/golden-record/';
 var _grImages = null;
@@ -8427,12 +8427,6 @@ function _grCredit(idx) {
   var im = _grImages[idx];
   return im.pd ? im.by + ' \u00b7 ' + t('alm_gr_pd') : '\u00a9 ' + im.by;
 }
-// A copyrighted picture this edition does not carry: a drawn card in its place (its caption and
-// credit stand under it, as under every picture).
-function _grPlaceholderHtml(cls) {
-  return '<div class="' + cls + '"><span class="gr-ph-note">' + _almEsc(t('alm_gr_omitted')) + '</span></div>';
-}
-
 var _grLightboxIdx = -1;
 var _grTouchStartX = 0;
 
@@ -8563,21 +8557,23 @@ async function _updateRosettaLangs() {
   if (texts) texts.innerHTML = _rosettaTextsHtml(data);
 }
 
+// One scrolling list in the record's order: each picture beside its number, title and credit (a tap
+// enlarges it); a picture this edition leaves out is one line of text in its place.
 function _renderGoldenRecordGallery() {
+  var omitted = _grImages.some(function (im) { return im.omitted; });
   var html = '<div class="gr-gallery">';
   html += '<div class="gr-gallery-title">' + t('alm_gr_title') + '</div>';
   html += '<div class="gr-gallery-sub">' + t('alm_gr_subtitle') + '</div>';
-  html += '<div class="gr-grid">';
+  if (omitted) html += '<div class="gr-gallery-sub">' + _almEsc(t('alm_gr_omitted')) + '</div>';
+  html += '<ol class="gr-list">';
   for (var i = 0; i < _grImages.length; i++) {
-    var cap = _almEsc(_grCap(i));
-    html += '<figure class="gr-item" onclick="_openGrLightbox(' + i + ')">' +
-      (_grImages[i].omitted
-        ? _grPlaceholderHtml('gr-thumb gr-ph')
-        : '<div class="gr-thumb"><img src="' + _GR_DIR + _grImages[i].file + '" alt="' + cap + '" loading="lazy"></div>') +
-      '<figcaption><span class="gr-cap">' + cap + '</span><span class="gr-by">' + _almEsc(_grCredit(i)) + '</span></figcaption>' +
-      '</figure>';
+    var cap = _almEsc(_grCap(i)), im = _grImages[i];
+    html += '<li class="gr-row' + (im.omitted ? ' gr-row-text' : '') + '"><span class="gr-n">' + (i + 1) + '</span>' +
+      (im.omitted ? '' : '<button class="gr-pic" onclick="_openGrLightbox(' + i + ')" aria-label="' + cap + '">' +
+        '<img src="' + _GR_DIR + im.file + '" alt="" loading="lazy"></button>') +
+      '<span class="gr-txt"><span class="gr-cap">' + cap + '</span><span class="gr-by">' + _almEsc(_grCredit(i)) + '</span></span></li>';
   }
-  html += '</div>';
+  html += '</ol>';
   html += '<p class="gr-note">' + _almEsc(t('alm_gr_note')) + '</p>';
   html += '</div>';
   return html;
@@ -8604,8 +8600,10 @@ function _grKeyHandler(e) {
   else if (e.key === 'ArrowLeft') { e.preventDefault(); _grNav(-1); }
 }
 
+// The next picture this edition carries (an omitted one has nothing to enlarge).
 function _grNav(dir) {
-  _grLightboxIdx = (_grLightboxIdx + dir + _grImages.length) % _grImages.length;
+  var n = _grImages.length;
+  do { _grLightboxIdx = (_grLightboxIdx + dir + n) % n; } while (_grImages[_grLightboxIdx].omitted);
   _renderGrLightbox();
 }
 
@@ -8632,7 +8630,7 @@ function _renderGrLightbox() {
     '<button class="gr-lb-close" onclick="_closeGrLightbox()">&times;</button>' +
     '<button class="gr-lb-arrow gr-lb-prev" onclick="event.stopPropagation();_grNav(-1)"><svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="10,2 4,8 10,14"/></svg></button>' +
     '<div class="gr-lb-main" onclick="event.stopPropagation()">' +
-      (im.omitted ? _grPlaceholderHtml('gr-lb-ph gr-ph') : '<img src="' + _GR_DIR + im.file + '" alt="' + cap + '">') +
+      '<img src="' + _GR_DIR + im.file + '" alt="' + cap + '">' +
       '<div class="gr-lb-cap">' + cap + '</div>' +
       '<div class="gr-lb-by">' + _almEsc(_grCredit(_grLightboxIdx)) + '</div>' +
       '<div class="gr-lb-num">' + (_grLightboxIdx + 1) + ' / ' + _grImages.length + '</div>' +
