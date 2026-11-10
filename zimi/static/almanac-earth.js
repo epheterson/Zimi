@@ -2032,6 +2032,11 @@ function _aeLoadMap(S, uni, url, format, load) {
       if (format) tx.format = format;
       if (uni.value) uni.value.dispose();   // a map it replaces (the Moon's 1024 one)
       uni.value = tx;
+      if (typeof ZimiCap !== 'undefined' && tx.image && tx.image.width) {   // the capability level's memory budget (capability.js)
+        if (uni.__capKey) ZimiCap.gpuFree(uni.__capKey);
+        uni.__capKey = 'map:' + url;
+        ZimiCap.gpuTrack(uni.__capKey, tx.image.width * tx.image.height * 4 * 1.34);
+      }
       return true;
     }, function () {
       delete S.maps[url];
