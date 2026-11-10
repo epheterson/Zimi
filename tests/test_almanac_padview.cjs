@@ -17,6 +17,7 @@ if (mCut < 0 || pCut < 0) throw new Error('a pure section moved');
 const ctx = { Math, Object, Array, String, JSON };
 vm.createContext(ctx);
 vm.runInContext([
+  'function _almAsset(p) { return p; }',   // app.js: the address with its content hash; the path as it is is enough for the maths
   'var AE_EARTH_RADIUS_KM = 6378.137, AE_SITE_FACTS = { launchTowerM: 122 }; function _aeT(k) { return k; }',
   'function _aeDot(a, b) { return a[0] * b[0] + a[1] * b[1] + a[2] * b[2]; }',
   'function _aeLen(a) { return Math.sqrt(_aeDot(a, a)); }',

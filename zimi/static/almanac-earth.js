@@ -4654,7 +4654,7 @@ function _aeMissionStart(id) {
   document.head.appendChild(s);
 }
 // Stand at a launch pad (almanac-padview.js): fetched the first time it is asked for, never with the view. opts: { back: { where, go }, atS }.
-var AE_PADVIEW_JS = '/static/almanac-padview.js', _aePadLoading = null;
+var AE_PADVIEW_JS = _almAsset('/static/almanac-padview.js'), _aePadLoading = null;
 function _aePadOpen(id, opts) {
   if (typeof _aePadStart === 'function') return _aePadStart(id, opts);
   if (!_aePadLoading) {

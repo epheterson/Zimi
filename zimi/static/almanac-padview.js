@@ -11,7 +11,7 @@
 //
 // Shares the Almanac's global scope; every name here is _pv*, PV_* or _aePad*.
 
-var PV_MISSIONS_JS = '/static/almanac-missions.js', PV_LAUNCH_JS = '/static/almanac-sites-launch.js';
+var PV_MISSIONS_JS = _almAsset('/static/almanac-missions.js'), PV_LAUNCH_JS = _almAsset('/static/almanac-sites-launch.js');
 var PV_COUNT_S = 30;                       // the view opens this long before zero
 var PV_TOWER_CLEAR_M = 122;                // the umbilical tower's height at LC-39A: the vehicle clears it when its base passes this (published, in the Almanac's constants)
 var PV_VEHICLE_FRAME_SHARE = 0.13;         // the vehicle fills this share of the screen's height at the start
