@@ -14,7 +14,7 @@
 var PV_MISSIONS_JS = '/static/almanac-missions.js', PV_LAUNCH_JS = '/static/almanac-sites-launch.js';
 var PV_COUNT_S = 30;                       // the view opens this long before zero
 var PV_TOWER_CLEAR_M = 122;                // the umbilical tower's height at LC-39A: the vehicle clears it when its base passes this (published, in the Almanac's constants)
-var PV_VEHICLE_FRAME_SHARE = 0.14;         // the vehicle fills this share of the screen's height at the start
+var PV_VEHICLE_FRAME_SHARE = 0.17;         // the vehicle fills this share of the screen's height at the start
 var PV_FOV_MIN_DEG = 1.5, PV_FOV_MAX_DEG = 70, PV_FOV_REF_DIST = 100;   // the field's range; a pinch scales it (the site's own distance is the zoom)
 var PV_FOLLOW_EASE = 1.7, PV_FOLLOW_RETURN_S = 2.5;   // 1/s: how the view turns after the vehicle; seconds after a finger before it does again
 var PV_FOLLOW_LOW_SHARE = 0.16;            // the vehicle rides this share of the field below the middle, the sky ahead of it above
@@ -22,10 +22,12 @@ var PV_HORIZON_SHARE = 0.22;               // at the start the horizon stands th
 var PV_EARLY_AFTER_S = 15;                 // the climb is fitted up to the first table row this long after lift-off
 var PV_STILL_MS = [4, 60];                 // below the first speed the vehicle points up, above the second along its path (the mission player's rule, in m/s)
 var PV_FLAME_RAMP_S = 2.5;                 // the engines come up to full flame over this long after ignition
-var PV_SMOKE_MAX = 1800, PV_FLAME_MAX = 420;
-var PV_FLAME_RATE = 160, PV_PAD_CLOUD_RATE = 70;   // puffs a second at full flame
+var PV_SMOKE_MAX = 3000, PV_FLAME_MAX = 600;
+var PV_FLAME_RATE = 280, PV_PAD_CLOUD_RATE = 70;   // puffs a second at full flame
 var PV_CLOUD_ALT_M = [60, 700];            // the cloud at the pad gives way to a trail between these heights
-var PV_TRAIL_END_ALT_M = 30000, PV_TRAIL_SPACING_M = 22, PV_TRAIL_MAX_MS = 700;
+var PV_TRAIL_JUMP_M = 5000;                // a flame this far from where it was last frame was moved, not flown: no trail between
+var PV_TRAIL_END_ALT_M = 30000, PV_TRAIL_SPACING_M = 12, PV_TRAIL_MAX_MS = 700;
+var PV_SHAKE_S = 14, PV_SHAKE_SHARE = 0.006;   // seconds of tremor after lift-off, and its size as a share of the field
 var PV_HUD_ID = 'pv-hud', PV_CSS_ID = 'pv-css', PV_WATCH_MS = 500, PV_EVENT_SHOW_S = 4;
 var PV_PACES = [1, 0.25, 4];
 var PV_STEPS_M = [1, 0.5, 0.2];            // the viewing distance as a share of the pad's, each press of "closer"
@@ -39,8 +41,8 @@ var PV_PRELOAD_S = 400;                    // the models of what flies in the fi
 // base over the ground; cloud: the size of the cloud at the pad against a Saturn V's; heightM: the stack, for the field of view; midM: its middle along the nose from the vehicle's own origin (the
 // Atlas V's origin is its spacecraft, at the top); tower: which pad (the site models, or boxes).
 var PV_PADS = {
-  apollo11: { mission: 'apollo11', name: 'Apollo 11', pad: 'LC-39A', deckM: 5, heightM: 111, midM: 50, baseM: -3.5, towerM: AE_SITE_FACTS.launchTowerM, viewM: 5000, bearing: 200, tower: 'lc39a', cloud: 1 },
-  perseverance: { mission: 'perseverance', name: 'Perseverance', pad: 'SLC-41', deckM: 14.3, heightM: 58, midM: -24, baseM: -49, towerM: 68, viewM: 4000, bearing: 215, tower: 'slc41', cloud: 0.45 }
+  apollo11: { mission: 'apollo11', name: 'Apollo 11', pad: 'LC-39A', deckM: 5, heightM: 111, midM: 50, baseM: -3.5, towerM: AE_SITE_FACTS.launchTowerM, viewM: 5000, bearing: 200, tower: 'lc39a', cloud: 1, shake: 1 },
+  perseverance: { mission: 'perseverance', name: 'Perseverance', pad: 'SLC-41', deckM: 14.3, heightM: 58, midM: -24, baseM: -49, towerM: 68, viewM: 4000, bearing: 215, tower: 'slc41', cloud: 0.45, shake: 0.4 }
 };
 var PV_SITE_TOWERS = {   // the site models of a pad (almanac-sites.js): parts of the visit's own definition
   lc39a: [{ m: 'pad-slab', x: 0, y: 0, h: 0, noShadow: 1 }, { m: 'pad39a', x: 0, y: 0, h: 0 }],
@@ -135,6 +137,12 @@ function _pvBasis(P, v) {
 }
 function _pvLocal(b, v) {
   return [b.x[0] * v[0] + b.y[0] * v[1] + b.z[0] * v[2], b.x[1] * v[0] + b.y[1] * v[1] + b.z[1] * v[2], b.x[2] * v[0] + b.y[2] * v[1] + b.z[2] * v[2]];
+}
+
+// The count as the clock reads it: T-0:30 before zero, T+0:12 after (hours only when there are some).
+function _pvCountText(t) {
+  var s = Math.abs(Math.round(t)), h = Math.floor(s / 3600), m = Math.floor(s / 60) % 60, sec = s % 60, two = function (n) { return (n < 10 ? '0' : '') + n; };
+  return (t < 0 ? 'T−' : 'T+') + (h ? h + ':' + two(m) : m) + ':' + two(sec);
 }
 
 // The mission's pieces for the pad: the vehicles that begin in the Earth-fixed frame, the pad's own place, the lift-off.
@@ -315,7 +323,7 @@ var PV_FLAME_FRAG = [
   '  vec2 q = gl_PointCoord - 0.5; float r = dot(q, q) * 4.0;',
   '  if (r > 1.0) discard;',
   '  vec3 hot = mix(vec3(1.0, 0.36, 0.05), vec3(1.0, 0.92, 0.66), vLife * vLife);',
-  '  gl_FragColor = vec4(hot, fade * (1.0 - r) * min(1.0, vLife * 2.0) * 0.9);',
+  '  gl_FragColor = vec4(hot, fade * pow(1.0 - r, 1.6) * min(1.0, vLife * 2.0) * 0.9);',
   '}'
 ].join('\n');
 function _pvFx() {
@@ -348,7 +356,7 @@ function _pvExhaust(sd, t) {
     while (fx.acc.flame >= 1) {
       fx.acc.flame -= 1;
       var life = 0.25 + Math.random() * 0.3, sp = 120 + 300 * thin + Math.random() * 60, sd2 = 12 + 26 * thin, r = Math.random;
-      _asPuffEmit(fx.flame, pos.x + (r() - 0.5) * 8, pos.y + (r() - 0.5) * 8, pos.z + (r() - 0.5) * 3, -dir[0] * sp + (r() - 0.5) * sd2, -dir[1] * sp + (r() - 0.5) * sd2, -dir[2] * sp + (r() - 0.5) * sd2, 5 + 4 * r(), -8, life);
+      _asPuffEmit(fx.flame, pos.x + (r() - 0.5) * 8, pos.y + (r() - 0.5) * 8, pos.z + (r() - 0.5) * 3, -dir[0] * sp + (r() - 0.5) * sd2, -dir[1] * sp + (r() - 0.5) * sd2, -dir[2] * sp + (r() - 0.5) * sd2, 7 + 6 * r(), -12, life);
     }
     if (fx.smoke) {
       var ground = _asGroundAt(v.st, 0, 0, false);
@@ -357,12 +365,18 @@ function _pvExhaust(sd, t) {
         var a = Math.random() * 6.2832, k = v.cfg.cloud, sp2 = (16 + Math.random() * 34) * k, life2 = 20 + Math.random() * 22;
         _asPuffEmit(fx.smoke, (Math.random() - 0.5) * 30 * k, (Math.random() - 0.5) * 30 * k, ground + 3 + Math.random() * 10, Math.cos(a) * sp2, Math.sin(a) * sp2, (3 + Math.random() * 11) * k, (40 + Math.random() * 70) * k, (5 + Math.random() * 4) * k, life2);
       }
-      while (fx.acc.trail >= 1) {
-        fx.acc.trail -= 1;
-        _asPuffEmit(fx.smoke, pos.x + (Math.random() - 0.5) * 6, pos.y + (Math.random() - 0.5) * 6, pos.z - dir[2] * 8, (Math.random() - 0.5) * 8, (Math.random() - 0.5) * 8, (Math.random() - 0.5) * 3, 14 + 10 * Math.random(), 3.2 + 2 * Math.random(), 26 + 16 * Math.random());
+      // Spread along the way the flame came this frame, each as old as the time since the vehicle was there: a fast frame is not a clump.
+      var n = Math.floor(fx.acc.trail), from = fx.last && pos.distanceTo(fx.last) < PV_TRAIL_JUMP_M ? fx.last : pos;
+      for (var j = 1; j <= n; j++) {
+        var f = j / n, age = (1 - f) * sd, rr = Math.random;
+        _asPuffEmit(fx.smoke, from.x + (pos.x - from.x) * f + (rr() - 0.5) * 6, from.y + (pos.y - from.y) * f + (rr() - 0.5) * 6, from.z + (pos.z - from.z) * f - dir[2] * 8, (rr() - 0.5) * 8, (rr() - 0.5) * 8, (rr() - 0.5) * 3, 26 + 18 * rr(), 3.2 + 2 * rr(), 26 + 16 * rr());
+        var i = (fx.smoke.next - 1) % fx.smoke.max;
+        fx.smoke.age[i] = age; fx.smoke.life[i] = 1 - age / fx.smoke.maxLife[i]; fx.smoke.size[i] += fx.smoke.grow[i] * age;
       }
+      fx.acc.trail -= n;
     }
   }
+  fx.last = fa && fa.power > 0.02 ? fa.p : null;
   if (sd > 0) {
     _asPuffStep(fx.flame, sd, 0.8);
     if (fx.smoke) _asPuffStep(fx.smoke, sd, 0.12);
@@ -379,7 +393,7 @@ function _pvEyePlace(v) {
   var st = v.st, c = v.cfg, d = v.eye.dist, b = c.bearing * Math.PI / 180, x = Math.sin(b) * d, y = Math.cos(b) * d;
   return { x: x, y: y, z: _asGroundAt(st, x, y, false) + AE_STAND_EYE_M };
 }
-function _pvFieldDeg(v) { return 2 * Math.atan(v.cfg.heightM / (2 * PV_VEHICLE_FRAME_SHARE * v.eye.dist)) * 180 / Math.PI; }
+function _pvFieldDeg(v) { return 2 * Math.atan(v.cfg.heightM / (2 * PV_VEHICLE_FRAME_SHARE * v.cfg.viewM)) * 180 / Math.PI; }   // from the pad's own viewing distance: walking nearer makes the vehicle larger, not the field wider
 function _pvCamera(st, dt) {
   var v = _pv;
   if (!v || v.st !== st) return { pos: [0, 0, 20], focus: [0, 100, 20] };
@@ -395,14 +409,21 @@ function _pvCamera(st, dt) {
   if (!v.aimed) { e.yaw = wantYaw; e.pitch = Math.max(wantPitch, (fov * Math.PI / 180) * (0.5 - PV_HORIZON_SHARE)); v.aimed = true; v.lastYaw = e.yaw; v.lastPitch = e.pitch; }
   if (Math.abs(e.yaw - v.lastYaw) > 1e-6 || Math.abs(e.pitch - v.lastPitch) > 1e-6) v.userAt = now;   // a finger (or the phone) turned it
   if (now - v.userAt > PV_FOLLOW_RETURN_S * 1000 && !e.motion) {
-    var k = 1 - Math.exp(-PV_FOLLOW_EASE * dt), floor = (fov * Math.PI / 180) * (0.5 - PV_HORIZON_SHARE);
+    var k = 1 - Math.exp(-PV_FOLLOW_EASE * dt * Math.max(1, Math.abs(typeof _almRate === 'number' ? _almRate : 1))), floor = (fov * Math.PI / 180) * (0.5 - PV_HORIZON_SHARE);
     e.yaw += _aeAngleDeltaRad(e.yaw, wantYaw) * k;
     e.pitch += (Math.max(wantPitch, floor) - e.pitch) * k;
   }
   v.lastYaw = e.yaw; v.lastPitch = e.pitch;
   e.x = place.x; e.y = place.y;
-  var cp = Math.cos(e.pitch), f = 100;
-  return { pos: [e.x, e.y, place.z], focus: [e.x + Math.sin(e.yaw) * cp * f, e.y + Math.cos(e.yaw) * cp * f, place.z + Math.sin(e.pitch) * f], fov: fov };
+  var sh = _pvShake(v, t, fov * Math.PI / 180), yaw = e.yaw + sh[0], pitch = e.pitch + sh[1], cp = Math.cos(pitch), f = 100;
+  return { pos: [e.x, e.y, place.z], focus: [e.x + Math.sin(yaw) * cp * f, e.y + Math.cos(yaw) * cp * f, place.z + Math.sin(pitch) * f], fov: fov };
+}
+// The ground's tremor in the view for the first seconds of the climb, a share of the field so it reads the same at any zoom; none for a person who asked for less motion.
+function _pvShake(v, t, fovRad) {
+  var s = t - v.P.tLift;
+  if (s < 0 || s > PV_SHAKE_S || _aeReduceMotion()) return [0, 0];
+  var a = PV_SHAKE_SHARE * fovRad * v.cfg.shake * _amSmooth(0, 0.8, s) * (1 - _amSmooth(PV_SHAKE_S * 0.3, PV_SHAKE_S, s));
+  return [a * (Math.sin(s * 41) + 0.6 * Math.sin(s * 67.3)), a * (Math.sin(s * 47.7 + 1) + 0.6 * Math.sin(s * 59 + 2))];
 }
 // What the frame does besides the camera: the vehicle, the exhaust, the count, the clock's start.
 function _pvTick(st, t, dt, now) {
@@ -413,6 +434,7 @@ function _pvTick(st, t, dt, now) {
     _pvPlace(t);
     if (!v.waiting) {
       v.ready = true;
+      st.host.st.handoff = Object.assign(st.host.st.handoff || {}, { clouds: 'clear' });   // no weather is invented over a launch: the sky is the clear one
       if (!v.tower && !PV_SITE_TOWERS[v.cfg.tower].length) _pvTowerBuild(v);
       if (typeof _almClockSetRate === 'function') _almClockSetRate(PV_PACES[v.pace]);
       _ae.el.classList.add('ae-pad');
@@ -541,10 +563,6 @@ function _pvCloser() {
   _ae.dirty = true; _aeKick();
 }
 var PV_FOLLOW_AFTER_S = 15;
-function _pvCountText(t) {
-  var s = Math.abs(Math.round(t)), h = Math.floor(s / 3600), m = Math.floor(s / 60) % 60, sec = s % 60, two = function (n) { return (n < 10 ? '0' : '') + n; };
-  return (t < 0 ? 'T−' : 'T+') + (h ? h + ':' + two(m) : m) + ':' + two(sec);
-}
 function _pvEventText(e) { var s = _aeT(e.text); return s && s !== e.text ? s : e.en; }
 function _pvHudTick(t, now) {
   var v = _pv, c = _aeById('pv-clock');

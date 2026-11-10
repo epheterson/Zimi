@@ -30,6 +30,12 @@ var AL_UNLIT_ALPHA = 0.35;                   // what a satellite in the Earth's 
 var AL_BEFORE_S = 20;                        // the clock opens this long before lift-off in "From here", so the watcher is in place
 var AL_SKY_RESCUE_MS = 400;                  // after the view closes, the page is given this long to settle before the sky is scrolled to
 var AL_SRC = { recon: 'recon', exact: 'exact' };
+// The launches the ground view can stand at the pad of, with the vehicle on it (almanac-padview.js): a mission's own, found by its lift-off.
+var AL_PADVIEWS = [{ id: 'apollo11', ms: -14552880000 }, { id: 'perseverance', ms: 1596109800000 }], AL_PADVIEW_TOL_MS = 600000;
+function _alPadViewOf(L) {
+  var hit = L && AL_PADVIEWS.filter(function (p) { return Math.abs(L.ms - p.ms) < AL_PADVIEW_TOL_MS; })[0];
+  return hit ? hit.id : null;
+}
 var AL_SPACETRACK_URL = '/manage/spacetrack', AL_SPACETRACK_FETCH_URL = '/manage/spacetrack/fetch';
 var AL_SEL_NONE = -1;
 var AL_SETTLE_MS = 400;
@@ -388,7 +394,7 @@ function _alLaunchHtml() {
     '<p class="al-sight' + (sight.no ? ' no' : '') + '">' + _almEsc(sight.text) + '</p>' +
     '<div class="al-acts">' +
       _alAct('al-pad', 'pad', 'alm_launch_pad') + _alAct('al-here', 'eye', 'alm_launch_from_here') + _alAct('al-frompad', 'stand', 'alm_launch_from_pad') +
-      _alAct('al-ground', 'stand', 'alm_launch_on_ground') +
+      _alAct('al-ground', 'stand', 'alm_launch_on_ground') + (_alPadViewOf(L) ? _alAct('al-padview', 'veh', 'alm_pad_at') : '') +
     '</div>' + (_alHintSeen() ? '' : '<p class="al-note">' + _almEsc(_aeT('alm_launch_hint')) + '</p>');
   if (_al.dep) html += _alBatchHtml();
   return html;
@@ -436,6 +442,12 @@ function _alBindLaunch() {
     var L = _al.cur, at = _alPlace() || { lat: L.lat, lon: L.lon };
     _alHintDone(); _alHideSheet(); _aeGoTo(L.ms);
     Promise.resolve(_aeStandAt('earth', at.lat, at.lon)).then(_alStandRegister);
+  };
+  var pv = _aeById('al-padview');
+  if (pv) pv.onclick = function () {   // stand on the ground at the pad (almanac-padview.js); its Back arrow brings the sheet again
+    var id = _alPadViewOf(_al.cur);
+    _alHintDone(); _alHideSheet();
+    _aePadOpen(id, { back: { where: _aeT('alm_launches'), go: function () { _al.sheet = true; if (_al.sheetEl) _al.sheetEl.hidden = false; _alRender(); } } });
   };
   var r = _aeById('al-recon'), x = _aeById('al-exact');
   if (r) r.onclick = function () { _al.depSource = AL_SRC.recon; _alRender(); _alKick(); };
