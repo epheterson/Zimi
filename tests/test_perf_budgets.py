@@ -413,57 +413,34 @@ def test_the_3d_view_makes_its_first_frame_in_time_under_a_4x_throttle(phone, se
 GLOBE_BASELINE = os.path.join(ROOT, "tests", "data", "globe_cold_1154.json")
 GLOBE_SLACK = 1.05
 GLOBE_GROWN_BYTES = 2048  # a file that grew by more than this is named
-GLOBE_REQUESTS_CEILING = (
-    55  # see above; argued, not forced. Lower it as files move behind their triggers.
-)
+GLOBE_REQUESTS_CEILING = 55   # see above; argued, not forced. Lower it as files move behind their triggers.
 
 
 @pytest.fixture(scope="module")
-def globe_walk(served):
+def globe_walk(served, phone):
     """The cold walk once: {url path: transferred bytes} (data: URLs not counted), the baseline's numbers and a report."""
     import json
 
-    from playwright.sync_api import sync_playwright
-
     with open(GLOBE_BASELINE, encoding="utf-8") as fh:
         base = json.load(fh)
-    with sync_playwright() as pw:
-        br = pw.chromium.launch(
-            args=[
-                "--use-angle=swiftshader",
-                "--enable-unsafe-swiftshader",
-                "--ignore-gpu-blocklist",
-            ]
-        )
-        ctx = br.new_context(service_workers="block", **PHONE)
-        ctx.add_init_script(
-            "try { localStorage.setItem('zimi_almanac_hd_ask', 'never'); } catch (e) {}"
-        )
+    ctx = phone.context.browser.new_context(service_workers="block", **PHONE)   # a fresh context: nothing cached
+    try:
+        ctx.add_init_script("try { localStorage.setItem('zimi_almanac_hd_ask', 'never'); } catch (e) {}")
         pg = ctx.new_page()
         counter = Counter(ctx, pg, served)
         pg.goto(served + "/", wait_until="load")
         pg.wait_for_timeout(2000)
         pg.evaluate("() => openAlmanac()")
-        pg.wait_for_function(
-            "() => typeof _almanacLoaded !== 'undefined' && _almanacLoaded",
-            timeout=120_000,
-        )
+        pg.wait_for_function("() => typeof _almanacLoaded !== 'undefined' && _almanacLoaded", timeout=120_000)
         pg.wait_for_timeout(500)
-        pg.evaluate(
-            "() => (typeof _almLoadEarth === 'function' ? _almLoadEarth() : null)"
-        )
-        pg.wait_for_function(
-            "() => typeof openAlmanacEarth === 'function'", timeout=120_000
-        )
+        pg.evaluate("() => (typeof _almLoadEarth === 'function' ? _almLoadEarth() : null)")
+        pg.wait_for_function("() => typeof openAlmanacEarth === 'function'", timeout=120_000)
         pg.evaluate("() => openAlmanacEarth({ target: 'earth' })")
-        pg.wait_for_function(
-            "() => typeof _aeReady === 'function' && _aeReady() && _aeIsOpen",
-            timeout=240_000,
-            polling=100,
-        )
+        pg.wait_for_function("() => typeof _aeReady === 'function' && _aeReady() && _aeIsOpen", timeout=240_000, polling=100)
         pg.wait_for_timeout(4000)
         got = {u.split("?")[0]: b for u, b in counter.by.items()}
-        br.close()
+    finally:
+        ctx.close()
     files = base["files"]
     new = sorted(((b, u) for u, b in got.items() if u not in files), reverse=True)
     grown = sorted(
