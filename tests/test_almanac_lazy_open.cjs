@@ -3,6 +3,8 @@
 //
 //   Moon  _aeMoonHiWanted: not with the Earth; when the Moon is the target (Go to, a flight there) or its disc is wide enough that the
 //         1024 map's texel is bigger than a pixel.
+//   Tracks _aeTracked: the probes' table (space-tracks-v1.json) is not fetched because Pluto's place is asked for in every frame; it is
+//         fetched with the first thing that needs it (a planet, the Sun or a probe the view is on, a wide view, Go to, a mission).
 //   Sun   _aeSunFxWanted: not when the Sun is wide but behind the camera (a phone's first frame); when the view is on the Sun or the Sun
 //         is within the frame.
 //
@@ -98,5 +100,23 @@ const call = (name, S, ...a) => { loads.length = 0; scripts.length = 0; S0._ae.t
   const small = scene([0, -6, 0], [1, 0, 0], [60, 0, 0], [3000, 0, 0], 35);   // a wide fov: the disc is under the size that wants the close-up
   call('_aeSunFxWanted', small, 0);
   check(scripts.length === 0, 'in frame but a small disc: still not');
+}
+
+// ── The probes' table ──
+{
+  const T = { Math, Array, Object, tracksLoads: 0, AE_AST_WIDE_DIST: 60,
+    _ae: { target: 'earth', dist: 40 }, _aeTracks: null,
+    _aeIsPlanet: (k) => ['jupiter', 'pluto', 'io'].includes(k), _aeIsProbe: () => false, _aeTrackAt: () => [0, 0, 0] };
+  T._aeTracksLoad = () => { T.tracksLoads++; };
+  vm.createContext(T);
+  vm.runInContext([fn('_aeTracksNeeded'), fn('_aeTracked')].join('\n'), T);
+  const pluto = { track: 'planets', eph: 'Pluto' };
+  const ask = (target, dist) => { T.tracksLoads = 0; T._ae.target = target; T._ae.dist = dist; const r = T._aeTracked(pluto, 2459000); return [T.tracksLoads, r]; };
+  check(ask('earth', 40)[0] === 0 && ask('earth', 40)[1] === null, 'opening on the Earth, Pluto being asked for every frame does not fetch the table');
+  check(ask('moon', 30)[0] === 0, 'nor on the Moon');
+  check(ask('earth', 200)[0] === 1, 'a wide view (the belt in sight) does');
+  check(ask('jupiter', 5)[0] === 1 && ask('sun', 20)[0] === 1, 'a planet or the Sun as the target does');
+  T._aeIsProbe = (k) => k === 'voyager1';
+  check(ask('voyager1', 1)[0] === 1, 'and so does a probe');
 }
 process.exit(failures ? 1 : 0);

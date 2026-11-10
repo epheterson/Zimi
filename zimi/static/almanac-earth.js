@@ -2854,7 +2854,7 @@ function _aeUpdatePlanets(sc) {
     }
     return out;
   };
-  if (_aeIsPlanet(_ae.target) || _ae.target === 'sun' || _ae.dist > AE_AST_WIDE_DIST || _aeIsProbe(_ae.target)) _aeTracksLoad();
+  if (_aeTracksNeeded()) _aeTracksLoad();
 
   var cam = S.camera, eye = [cam.position.x, cam.position.y, cam.position.z];
   var pxPerRad = _ae.h / 2 / Math.tan(_aeRad(cam.fov) / 2);
@@ -3666,8 +3666,13 @@ function _aeTrackAt(track, jd) {
   while (hi - lo > 1) { var mid = (lo + hi) >> 1; if (s[mid][0] <= jd) lo = mid; else hi = mid; }
   return _aeHermite(s[lo], s[hi], jd);
 }
+// Whether the view is somewhere the table is needed: among the planets, on the Sun or a probe, or wide enough to see the belt. The Earth and
+// the Moon opened on do not need it (Pluto's place is asked for every frame, so a frame by itself does not count as a reason).
+function _aeTracksNeeded() {
+  return _aeIsPlanet(_ae.target) || _ae.target === 'sun' || _ae.dist > AE_AST_WIDE_DIST || _aeIsProbe(_ae.target);
+}
 function _aeTracked(b, jd) {
-  if (!_aeTracks) { _aeTracksLoad(); return null; }
+  if (!_aeTracks) { if (_aeTracksNeeded()) _aeTracksLoad(); return null; }
   return _aeTrackAt(b.track === 'planets' ? _aeTracks.planets[b.eph] : _aeTracks.tracks[b.trackKey], jd);
 }
 // Where a planet is (heliocentric AU) at any date: the ephemeris, or the table for Pluto.
