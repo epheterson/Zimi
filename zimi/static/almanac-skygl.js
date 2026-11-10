@@ -152,14 +152,26 @@ var SG_LM_DARK = 7.6, SG_LM_PER_DECADE = 1.5, SG_LM_MAX = 7.9, SG_LM_MIN = -4.5;
 var SG_ECL_RING_DEG = 10;   // the ring's height (degrees, e-folding): it is a band at the horizon, the sky overhead stays dark
 var SG_SUN_SHARE_MIN = 0.003;      // the sky in totality: light scattered in from beyond the Moon's shadow
 function _sgSunShare(obscuration) { return Math.max(SG_SUN_SHARE_MIN, 1 - Math.min(1, obscuration || 0)); }
-// The sky's own share of the Sun's light is that share to the last few per cent of the Moon's cover, and then falls steeply (a log curve, the
-// Moon's shadow arriving) to a deep twilight at totality: the zenith near 0.3 cd/m2, the faintest star about +2.7, so Venus and Jupiter show.
-var SG_SKY_STEEP_FROM = 0.97, SG_TOTALITY_SKY_LUM = 0.3;
+// In the last few per cent of the Moon's cover the sky is that of a Sun this far below the horizon (degrees), through the same luminance, exposure
+// and tone path a twilight uses: the cover and the equivalent depth, in log steps. Before it, the Sun's own share of light (above).
+var SG_ECL_DEPTH = [[0.97, -0.5], [0.99, -2], [0.999, -4], [1, -6.5]], SG_SKY_STEEP_FROM = 0.97, SG_LAG_FROM = 0.9;
+function _sgEclipseDepth(obscuration) {
+  var o = Math.min(1, obscuration || 0), t = SG_ECL_DEPTH;
+  if (o <= t[0][0]) return null;
+  for (var i = 1; i < t.length; i++) {
+    if (o <= t[i][0]) { var a = t[i - 1], b = t[i], f = (Math.log(1 - o) - Math.log(1 - a[0])) / (Math.log(Math.max(1 - b[0], 1e-6)) - Math.log(1 - a[0])); return a[1] + (b[1] - a[1]) * Math.max(0, Math.min(1, f)); }
+  }
+  return t[t.length - 1][1];
+}
+// The sky's share of the Sun's light (what the shaders scale the Sun by), and the share the eye is adapted to (it lags the dimming until the
+// last few per cent, where the twilight's own exposure takes over).
 function _sgSkyShare(obscuration, sunAlt) {
-  var o = Math.min(1, obscuration || 0), s = _sgSunShare(o);
-  if (o <= SG_SKY_STEEP_FROM) return s;
-  var from = 1 - SG_SKY_STEEP_FROM, to = Math.min(from, SG_TOTALITY_SKY_LUM / Math.max(_sgZenithLum(sunAlt), 1e-6)), t = Math.min(1, (o - SG_SKY_STEEP_FROM) / (1 - SG_SKY_STEEP_FROM));
-  return from * Math.pow(to / from, t);
+  var d = _sgEclipseDepth(obscuration), s = _sgSunShare(obscuration);
+  return d === null ? s : Math.min(1, _sgZenithLum(d) / Math.max(_sgZenithLum(sunAlt), 1e-6));
+}
+function _sgAdaptShare(skyShare, obscuration) {
+  var o = Math.min(1, obscuration || 0), w = Math.max(0, Math.min(1, (o - SG_LAG_FROM) / (SG_SKY_STEEP_FROM - SG_LAG_FROM)));
+  return Math.pow(Math.max(skyShare, 1e-9), 0.5 + 0.5 * w * w * (3 - 2 * w));
 }
 function _sgSkyLum(sunAlt, moonAlt, moonIllum, dial, sunShare, moonShare) {
   return Math.max(_sgZenithLum(sunAlt) * (sunShare == null ? 1 : sunShare), SG_DARK_SKY_LUM) + _sgMoonSkyLum(moonAlt, moonIllum, moonShare) + _sgSkyglow(dial);
@@ -979,7 +991,7 @@ function _sgLightValues(p) {
     sunLux: p.sunAltGeo > -26 ? SG_SUN_LUX * sky : 0,
     moonLux: p.moonAlt > -12 && p.moonIllum > 0.5 ? _sgMoonLux(p.moonIllum, p.moonDist) * SG_MOON_GAIN * moonShare : 0,
     // The eye has not time to adapt to an eclipse's dimming: it keeps most of the daylight's exposure (the square root of the share).
-    exposure: _sgExposure(p.sunAltGeo, p.moonAlt, p.moonIllum, p.dial, Math.sqrt(sky), Math.sqrt(moonShare)),
+    exposure: _sgExposure(p.sunAltGeo, p.moonAlt, p.moonIllum, p.dial, _sgAdaptShare(sky, p.obsc), Math.sqrt(moonShare)),
     glow: [glow * 1.0, glow * 0.82, glow * 0.6],
     moonVec: _sgEnu(p.moonAz, p.moonAlt),
     eclGlow: SG_ECL_GLOW_MAX * Math.max(0, Math.min(1, ((p.obsc || 0) - SG_ECL_GLOW_FROM) / (1 - SG_ECL_GLOW_FROM)))

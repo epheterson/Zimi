@@ -771,3 +771,54 @@ def test_in_totality_the_sky_is_deep_twilight_and_venus_and_jupiter_are_drawn(
         assert core > ring + 8, (planet, xy, core, ring)
     assert not errors, errors
     ctx.close()
+
+
+def test_totality_overhead_looks_like_a_sun_at_minus_6_5_twilight_and_a_minute_before_is_three_times_brighter(
+    browser, served
+):
+    """The sky at totality goes through the twilight's own path: the overhead sky within 20 percent of the same view with the real Sun 6.5 degrees
+    below the horizon, and a minute before totality at least three times brighter than totality."""
+    import numpy as np
+    from PIL import Image
+
+    ctx = _context(browser)
+    pg = ctx.new_page()
+    errors = []
+    pg.on("pageerror", lambda e: errors.append(str(e)))
+    pg.goto(served + "/#almanac", wait_until="load")
+    pg.wait_for_function(
+        "() => typeof _aeStandOpen === 'function' && typeof _skyEphemeris === 'function' && typeof _jdToJulianCentury === 'function'",
+        timeout=120_000,
+    )
+    twilight = pg.evaluate(
+        """() => { let lo = Date.parse('2024-04-09T01:00:00Z'), hi = Date.parse('2024-04-09T03:00:00Z');
+          for (let i = 0; i < 30; i++) { const mid = (lo + hi) / 2; if (_skyEphemeris(new Date(mid), 30.0474, -99.1403).sunGeoAlt > -6.5) lo = mid; else hi = mid; }
+          return Math.round(lo); }"""
+    )
+    pg.evaluate(
+        "(ms) => _aeStandOpen({ body: 'earth', lat: 30.0474, lon: -99.1403, ms: ms, heading: 0, pitch: 80, clouds: 'clear', direct: true })",
+        twilight,
+    )
+    pg.wait_for_function(
+        "() => _ae && _ae.stand && _ae.stand.live && _ae.stand.mode === 'ground' && _ae.stand.fr && _ae.stand.photo",
+        timeout=READY_MS,
+        polling=250,
+    )
+
+    def look_up(ms):
+        pg.evaluate(
+            """(ms) => { const st = _ae.stand; _aeGoTo(ms); st.userYaw = 0 - st.yaw; st.userPitch = (85 * Math.PI / 180) - _aeRad(AE_STAND_PITCH_DEG); st.dirty = true; st.fr = null; _ae.dirty = true; _aeKick(); }""",
+            ms,
+        )
+        pg.wait_for_timeout(4000)
+        img = np.asarray(Image.open(io.BytesIO(pg.screenshot())).convert("L")).astype(float)
+        h, w = img.shape
+        return float(np.median(img[h // 2 - 60 : h // 2 + 60, w // 2 - 60 : w // 2 + 60]))
+
+    ref = look_up(twilight)
+    total = look_up(_ms("2024-04-08T18:34:50Z"))
+    before = look_up(_ms("2024-04-08T18:31:20Z"))
+    assert abs(total - ref) <= 0.2 * ref + 1, (total, ref)
+    assert before >= 3 * total, (before, total)
+    assert not errors, errors
+    ctx.close()
