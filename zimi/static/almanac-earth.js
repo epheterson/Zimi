@@ -4595,7 +4595,7 @@ function _aeRenderLmCard(card) {
   var night = lm.morning ? '<p class="ae-lm-dark"><a href="#" id="ae-lm-morning">' +
     _almEsc(_aeT('alm_lm_night_until', { date: _aeFmtWhen(lm.morning) })) + '</a></p>' : '';
   var site = typeof _aeSiteCardHtml === 'function' ? _aeSiteCardHtml(lm) : '';   // a landing's date, and the way down to it (almanac-sites.js)
-  if (!site && row[3] === 'landing') _aeSitesLoad();
+  if (!site && (row[3] === 'landing' || row[3] === 'launch')) _aeSitesLoad();   // a launch pad has its way down too (Cape Canaveral)
   card.innerHTML = '<button type="button" class="ae-card-x" id="ae-card-x" aria-label="' + _almEsc(_aeT('alm_tm_close')) + '">×</button>' +
     '<h3>' + (lm.hit ? '<a href="#" id="ae-lm-read">' + name + '</a>' : name) + '</h3>' +
     '<p class="ae-lm-line"><span>' + _almEsc(line) + '</span></p>' + site + night + (_aeStandable(lm.body) && !site ? '<p>' + _aeStandButtonHtml() + '</p>' : '');

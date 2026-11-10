@@ -344,7 +344,7 @@ def test_other_lanes_put_objects_in_the_sky_and_a_tap_names_them(page):
     )
     assert page.evaluate("([x, y]) => _aeStandSkyTap(x, y)", spot) is True
     assert "Test one" in page.inner_text(".ae-stand-craft")
-    page.evaluate("() => { _ae.stand.photo.lim = -2; }")
+    page.evaluate("() => { _ae.stand.photo.lim = -6; }")
     assert (
         page.evaluate("([x, y]) => _aeStandSkyTap(x, y)", spot) is False
     ), "by day it is not there to tap"
