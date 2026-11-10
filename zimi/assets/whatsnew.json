@@ -28,5 +28,10 @@
   "zimi_games": [
    "ZimCity keeps your cities, plus about 40 fixes across the shelf."
   ]
+ },
+ "1.15.5": {
+  "zimi_almanac": [
+   "On a phone the solar system no longer makes the tables page scroll sideways."
+  ]
  }
 }

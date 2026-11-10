@@ -182,7 +182,12 @@ def test_plain_bullets_and_sentences_are_not_judged():
 
 def test_the_real_changelog_is_in_the_voice_from_1_15_4_on():
     text = (ROOT / "CHANGELOG.md").read_text(encoding="utf-8")
-    for version in ("Unreleased", "1.15.4"):
+    released = re.findall(r"^## \[(\d+\.\d+\.\d+)\]", text, flags=re.M)
+    versions = released[: released.index("1.15.4") + 1]
+    _, unreleased = release_notes._section(text, "Unreleased")
+    if any(line.strip() for line in unreleased):  # empty right after a release
+        versions.insert(0, "Unreleased")
+    for version in versions:
         assert release_notes.voice_problems(text, version) == [], version
         _, section = release_notes._section(text, version)
         assert "**Zimi**" in release_notes._highlights(section), version
