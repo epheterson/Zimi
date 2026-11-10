@@ -331,7 +331,7 @@ var AE_STAND_STATION_MIN_LIM = 3;           // the station is marked once the sk
 var AE_STAND_PROBE_MARKS = false;          // deep-space probes are pinpoints nobody could see: not marked (the station's pass is, near Earth)
 var AE_STAND_SKY_MATCH_SHARE = 0.55;      // and how far (in log) toward it: a view with sunlit ground in it cannot be exposed for the sky alone
 var AE_STAND_SKY_MATCH_DEG = [-20, 6];     // the Sun's height over which the Earth's exposure goes from this view's own to the 2D sky's
-var AE_STAND_NIGHT_GLOW = 3.5e-6;         // the least light the Earth's ground has (starlight and airglow, in this view's units: the Sun at the Earth is 1): a dark-adapted eye makes out the ground and its horizon
+var AE_STAND_NIGHT_GLOW = 9e-7;           // the least light the Earth's ground has (starlight and airglow, in this view's units: the Sun at the Earth is 1): a dark-adapted eye makes out the ground and its horizon
 var AE_STAND_SLICE_MS = 8;                 // a slice of building between breaths of the page
 var AE_STAND_SHADE_LOD = 1.5;              // the shadow grids hold wavelengths down to this many cells
 var AE_STAND_SHADE_MOVE = 0.0044, AE_STAND_SHADE_EVERY_MS = 300, AE_STAND_SHADE_SLICE_MS = 5;   // the Sun has moved a quarter degree; not again sooner than this; the work a frame
