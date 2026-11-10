@@ -87,8 +87,12 @@ check(heli.type === 'heli' && !heli.contrail, 'a helicopter is its own kind of t
 check(heli.h >= kit.km[0] && heli.h <= kit.km[1] && heli.h < 2, 'it flies a few hundred metres up (' + heli.h.toFixed(2) + ' km)');
 const plane = run('_skyPlane(__s, false)');
 check(plane.type === 'plane' && plane.h > 8, 'an airliner is unchanged: a plane, 9 km and up');
+// A draw whose nearest approach is farther than it ever climbs above the haze has no crossing at all (zero length, no speed):
+// the speed is judged over many draws, on those that cross.
 const speed = (a) => (a.L1 - a.L0) / (a.dur / 1000);
-check(speed(heli) < 0.1 && speed(plane) > 0.2, 'and slow: under 360 km/h against an airliner\'s 800');
+const crossing = (spawn) => Array.from({ length: 60 }, () => run(spawn)).filter((a) => a.dur > 0).map(speed);
+const heliKmS = crossing('_skyHeli(__s, false)'), planeKmS = crossing('_skyPlane(__s, false)');
+check(heliKmS.length > 0 && planeKmS.length > 0 && heliKmS.every((v) => v < 0.1) && planeKmS.every((v) => v > 0.2), 'and slow: under 360 km/h against an airliner\'s 800 (' + heliKmS.length + ' and ' + planeKmS.length + ' crossings)');
 check(run('SKY_HELI_BEACON_MS') < 1000 && run('SKY_HELI_STROBE_PULSES').length === 2, 'its beacon flashes about once a second and its strobe flashes twice');
 
 function lights(sunGeoAlt, msIntoCrossing) {
