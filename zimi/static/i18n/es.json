@@ -3463,6 +3463,7 @@
   "lib_folders_unreadable": "{n} no se puede abrir",
   "zim_unreadable_permission": "No se puede abrir: Zimi no tiene permiso para leerlo",
   "zim_unreadable_corrupt": "No se puede abrir: el archivo parece dañado o aún está llegando",
+  "zim_missing_chunk": "No se puede abrir: falta {file}",
   "zim_also_in": "También en {label}",
   "alm_sky_f_pole_unknown": "Se sabrá cuando fijes tu lugar",
   "fieldguide_as_of": "Recomendación vigente a {date}",

@@ -3463,6 +3463,7 @@
   "lib_folders_unreadable": "{n} खोला नहीं जा सका",
   "zim_unreadable_permission": "खुल नहीं रहा: Zimi के पास इसे पढ़ने की अनुमति नहीं है",
   "zim_unreadable_corrupt": "खुल नहीं रहा: फ़ाइल क्षतिग्रस्त लगती है या अभी आ रही है",
+  "zim_missing_chunk": "खुल नहीं रहा: {file} नहीं मिली",
   "zim_also_in": "{label} में भी",
   "alm_sky_f_pole_unknown": "तब तक पता नहीं जब तक आप अपनी जगह न चुनें",
   "fieldguide_as_of": "{date} तक का मार्गदर्शन",

@@ -3463,6 +3463,7 @@
   "lib_folders_unreadable": "{n} 个无法打开",
   "zim_unreadable_permission": "无法打开：Zimi 没有读取权限",
   "zim_unreadable_corrupt": "无法打开：文件似乎已损坏或仍在传输",
+  "zim_missing_chunk": "无法打开：缺少 {file}",
   "zim_also_in": "也在 {label} 中",
   "alm_sky_f_pole_unknown": "设定你的位置后才能知道",
   "fieldguide_as_of": "指引更新于 {date}",

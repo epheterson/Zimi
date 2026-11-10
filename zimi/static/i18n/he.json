@@ -3463,6 +3463,7 @@
   "lib_folders_unreadable": "לא ניתן לפתוח {n}",
   "zim_unreadable_permission": "לא ניתן לפתוח: ל-Zimi אין הרשאה לקרוא אותו",
   "zim_unreadable_corrupt": "לא ניתן לפתוח: הקובץ נראה פגום או שעדיין מגיע",
+  "zim_missing_chunk": "לא ניתן לפתוח: הקובץ {file} חסר",
   "zim_also_in": "גם ב-{label}",
   "alm_sky_f_pole_unknown": "לא ידוע עד שתגדיר את מיקומך",
   "fieldguide_as_of": "ההנחיות נכונות ל-{date}",

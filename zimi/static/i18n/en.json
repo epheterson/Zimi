@@ -3463,6 +3463,7 @@
   "lib_folders_unreadable": "{n} cannot be opened",
   "zim_unreadable_permission": "Can't open: Zimi has no permission to read it",
   "zim_unreadable_corrupt": "Can't open: the file looks damaged or is still arriving",
+  "zim_missing_chunk": "Can't open: {file} is missing",
   "zim_also_in": "Also in {label}",
   "alm_sky_f_pole_unknown": "Not known until you set your place",
   "fieldguide_as_of": "Guidance as of {date}",

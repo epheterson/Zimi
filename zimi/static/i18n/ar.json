@@ -3463,6 +3463,7 @@
   "lib_folders_unreadable": "تعذر فتح {n}",
   "zim_unreadable_permission": "تعذر الفتح: ليس لدى Zimi إذن بقراءته",
   "zim_unreadable_corrupt": "تعذر الفتح: يبدو الملف تالفًا أو ما زال قيد النقل",
+  "zim_missing_chunk": "تعذر الفتح: الملف {file} مفقود",
   "zim_also_in": "موجود أيضًا في {label}",
   "alm_sky_f_pole_unknown": "غير معروف حتى تحدد مكانك",
   "fieldguide_as_of": "الإرشادات حتى {date}",
