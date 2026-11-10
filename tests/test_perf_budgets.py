@@ -30,7 +30,7 @@ HOME_GZIP_KB = {"app.js": 450, "app.css": 85, "i18n/en.json": 65}
 # Any one picture in static/earth (the Moon's 4k map is the largest, 730 KB; the HD tiles live in the release ZIM).
 EARTH_FILE_MAX_BYTES = 800 * KB
 # The two ZIMs the wheel and the image carry (29.8 MB together today).
-OWN_ZIM_MAX_BYTES = {"zimi_games_": 20 * MB, "zimi_almanac_": 14 * MB}
+OWN_ZIM_MAX_BYTES = {"zimi_games_": 20 * MB, "zimi_almanac_": 18 * MB}   # the Almanac was 12.2 MB, 16.6 MB with the 1.16 models, missions and launches
 # One ZIM of each kind: a second copy under builtin/ would ship twice (the NAS image carried four old ones).
 OWN_ZIM_COPIES = 1
 
