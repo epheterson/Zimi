@@ -10013,7 +10013,11 @@ async function renderSource(name) {
   } else if (info.entries === 0 || info.entries === '?') {
     output.innerHTML = '<div class="empty"><p>' + tH('no_content') + '</p><p class="hint">' + tH('zim_corrupted') + '</p></div>';
   } else {
-    output.innerHTML = '';
+    // No main page to open: the two ways into any book, search inside it
+    // (the bar is scoped to it already) and a random page of it.
+    output.innerHTML = '<div class="empty nomain-ways">' +
+      '<button type="button" class="pill nomain-search" onclick="q.focus()">' + tH('search') + '</button> ' +
+      '<button type="button" class="pill nomain-random" onclick="randomArticle(event)"><span aria-hidden="true">&#x1F3B2;</span> ' + tH('random') + '</button></div>';
   }
 }
 
