@@ -243,6 +243,32 @@ def get_chunks(zim: str, path: str, size: int = 1200, overlap: int = 120) -> str
     return json.dumps(result, ensure_ascii=False)
 
 
+def list_entries(
+    zim: str, mime: str = "", prefix: str = "", limit: int = 100, cursor: str = ""
+) -> str:
+    """List a source's entries, filtered by MIME type or path prefix, paged.
+
+    Works on any source however well it is indexed: a PDF collection whose
+    documents search cannot find is listed with mime="application/pdf". Each
+    entry has path, title, mime and size; read() or get_chunks() take the path.
+    If the answer has "next", call again with it as cursor for the next page.
+
+    Args:
+        zim: Source name (e.g. "zimgit-water")
+        mime: Optional MIME type ("application/pdf"), or a family ending in "/" ("video/")
+        prefix: Optional path prefix (e.g. "files/")
+        limit: Entries per page (default 100, max 1000)
+        cursor: The "next" value of the previous page
+    """
+    with zimi._zim_lock:
+        result = zimi.list_entries(
+            zim, mime=mime or None, prefix=prefix or None, limit=limit, cursor=cursor or None
+        )
+    if result.get("error"):
+        return f"Error: {result['error']}"
+    return json.dumps(result, ensure_ascii=False)
+
+
 def suggest(query: str, zim: str = "", collection: str = "", limit: int = 10) -> str:
     """Title autocomplete — find articles by title prefix.
 
@@ -993,6 +1019,7 @@ FULL_TOOLS = tuple(
         search,
         read,
         get_chunks,
+        list_entries,
         suggest,
         list_sources,
         random,

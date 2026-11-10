@@ -23,6 +23,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 - The beach scene has clouds that glow after sunset where the Sun still reaches them, and a helicopter with blinking lights.
 - A magnifier on a planet's tip in the solar system opens the sky aimed at it.
+### Added
+
+- Search finds PDF collections' documents (nautilus and zimgit libraries) by their listed title, description and author and by the text inside the PDFs, from an index Zimi reads in the background beside the ZIM (#142).
+- `list_entries` (MCP tool and `/entries`): a source's entries by MIME type or path prefix, paged (#142).
 
 ## [1.15.4]
 
