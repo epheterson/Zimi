@@ -3516,6 +3516,7 @@ def _split_facts(path):
     gap = zimparts.missing_part(path)
     if gap:
         facts["missing_part"] = gap
+        log.warning("Split ZIM %s is missing chunk %s: not served until it is back", loggable(zimparts.book_filename(path)), loggable(gap))
     return facts
 
 
