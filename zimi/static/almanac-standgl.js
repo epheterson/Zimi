@@ -16,7 +16,7 @@ var AE_ST_FINE_SLOPE = 0.045;   // the ground's fine relief: its height over its
 var AE_ST_FILL = 0.12;   // a slope turned from the Sun keeps this share of the flat ground's light (backscatter off the regolith round it)
 var AE_ST_BACKSCATTER = 0.07, AE_ST_SURGE = 0.9, AE_ST_SURGE_WIDTH = 0.14;   // the share of the Sun a regolith shadow keeps; the opposition surge round the antisolar point (Apollo's heiligenschein)
 var AE_ST_ROCK_FADE_M = [8, 45];  // stones thin out with distance into plain ground (a pixel of them at range is noise, not stone)
-var AE_ST_STEPS_SKY = 22, AE_ST_STEPS_GROUND = 5, AE_ST_STEPS_SUN = 6;   // the air's march: the sky is drawn at half size, so it can afford many (fewer stripe the twilight where the shadow's edge crosses the air)
+var AE_ST_STEPS_SKY = 30, AE_ST_STEPS_GROUND = 5, AE_ST_STEPS_SUN = 6;   // the air's march: the sky is drawn at half size, so it can afford many (fewer stripe the twilight where the shadow's edge crosses the air)
 var AE_ST_GAMMA = '2.2';
 
 // The air of each body that has some. ray: Rayleigh scattering per km at the surface (red, green, blue) and its scale
@@ -121,7 +121,6 @@ var AE_ST_SKY_FRAG = [
   'uniform sampler2D uMilky; uniform float uMw; uniform mat3 uToGal;',      // the Milky Way: its panorama, its strength, local -> galactic
   'varying vec2 vNdc;',
   'void main() {',
-  '  gJit = fract(sin(dot(gl_FragCoord.xy, vec2(12.9898, 78.233))) * 43758.5453);',   // white noise: no pattern to see, and the stretch blurs it
   '  vec3 d = normalize(uFwd + uRight * vNdc.x * uTan.x + uUp * vNdc.y * uTan.y), L = vec3(0.0), T;',
   '  if (uDiffuse > 0.5) { L = uDiffSky * (0.7 + 0.3 * smoothstep(-0.1, 0.5, d.z)); }',
   '  else if (uAtmo > 0.5) {',
@@ -393,7 +392,7 @@ var AE_ST_GROUND_FRAG = [
   '    float across = dot(vP.xy, tt), along = dot(vP.xy, rr), bl = 0.0;',
   '    for (int i = 0; i < 4; i++) { float s = 0.03 * pow(3.0, float(i)), wb = 1.0 - smoothstep(0.5, 2.0, 2.5 * foot / s); if (wb > 0.0) bl += (vnoise(vec3(across / s, along / (s * (i < 2 ? 2.4 : 1.3)), 41.0 + float(i) * 5.0)) - 0.5) * wb * (0.9 - 0.15 * float(i)); }',
   '    float tuft = smoothstep(0.52, 0.72, vnoise(vP / 0.42 + 9.0)) * (1.0 - smoothstep(0.5, 2.0, 2.5 * foot / 0.42));',
-  '    alb *= clamp(1.0 + bl * 1.5 - tuft * 0.18 * grass, 0.35, 1.8);',
+  '    alb *= clamp(1.0 + bl * 1.4 - tuft * 0.18 * grass, 0.4, 1.45);',
   '  }',
   // Ground cover by height, slope and latitude (the Earth's): snow above the snow line, bare rock on steep ground and above the
   // trees, the Blue Marble's own tint elsewhere; the lines wander with a slow noise so no height is a ruled edge.
