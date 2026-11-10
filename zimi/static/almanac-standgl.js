@@ -351,11 +351,18 @@ var AE_ST_GROUND_FRAG = [
   '  alb *= (1.0 + mott);',
   // Living ground (the Earth's): grain at the scales a pixel shows, from blades to tufts to patches, its hue following the land's own class
   // (grass leans green, dry ground and sand lighter, rock and snow keep their tone).
+  '  vec2 rd = vP.xy - uCam.xy; float rl = max(length(rd), 1e-3); vec2 rr = rd / rl, tt = vec2(-rr.y, rr.x);',
   '  if (uDetail > 0.5 && vSea < 0.5) {',
   '    float gr = 0.0, grass = smoothstep(0.0, 0.07, map.g - max(map.r, map.b));',
   '    for (int i = 0; i < 3; i++) { float s = 0.2 * pow(5.0, float(i)), wg = 1.0 - smoothstep(0.3, 1.0, 2.5 * foot / s); if (wg > 0.0) gr += (vnoise(vP / s + 17.0 * float(i)) - 0.5) * wg * 0.5; }',
   '    alb *= clamp(1.0 + gr * 0.55, 0.7, 1.3);',
   '    alb.g *= 1.0 + 0.3 * gr * grass; alb.r *= 1.0 - 0.18 * gr * grass;',
+  // Underfoot: blades and tussocks as fine noise stretched along the line of sight (as grass is seen across a field), sharp at the
+  // feet and gone where a pixel would hold several of them, so it softens with distance as the Moon's stones do.
+  '    float across = dot(vP.xy, tt), along = dot(vP.xy, rr), bl = 0.0;',
+  '    for (int i = 0; i < 2; i++) { float s = 0.018 * pow(3.2, float(i)), wb = 1.0 - smoothstep(0.1, 0.4, 2.5 * foot / s); if (wb > 0.0) bl += (vnoise(vec3(across / s, along / (s * 3.5), 41.0 + float(i) * 5.0)) - 0.5) * wb; }',
+  '    float tuft = smoothstep(0.52, 0.72, vnoise(vP / 0.42 + 9.0)) * (1.0 - smoothstep(0.1, 0.5, 2.5 * foot / 0.42));',
+  '    alb *= clamp(1.0 + bl * 1.1 - tuft * 0.28 * grass, 0.45, 1.6);',
   '  }',
   // Ground cover by height, slope and latitude (the Earth's): snow above the snow line, bare rock on steep ground and above the
   // trees, the Blue Marble's own tint elsewhere; the lines wander with a slow noise so no height is a ruled edge.
@@ -366,7 +373,15 @@ var AE_ST_GROUND_FRAG = [
   '    float snow = smoothstep(sl - 120.0, sl + 120.0, hh) * (1.0 - smoothstep(0.55, 0.9, slope));',
   '    float rock = max(smoothstep(0.35, 0.65, slope), smoothstep(sl - ' + AE_ST_TREE_BELOW_M.toFixed(1) + ', sl, hh)) * (1.0 - snow);',
   '    alb = mix(alb, vec3(0.17, 0.155, 0.14), rock * 0.85);',
+  '    // Scree where rock lies: pebbles in a hash lattice; sand ripples where the tint is pale and not green; snow that sparkles.',
+  '    float sw = 1.0 - smoothstep(0.1, 0.4, 2.5 * foot / 0.07), pebble = hash31(floor(vP / 0.07)) * sw;',
+  '    alb *= 1.0 + rock * (pebble - 0.5) * 0.9;',
+  '    float dry = smoothstep(0.35, 0.6, (map.r + map.g) * 0.5) * (1.0 - smoothstep(0.0, 0.05, map.g - max(map.r, map.b))) * (1.0 - rock) * (1.0 - snow);',
+  '    float rip = sin(dot(vP.xy, tt) / 0.11 + vnoise(vP / 1.3) * 5.0) * (1.0 - smoothstep(0.1, 0.4, 2.5 * foot / 0.11));',
+  '    alb *= 1.0 + dry * rip * 0.12;',
   '    alb = mix(alb, vec3(0.78, 0.8, 0.84), snow);',
+  '    float sp = step(0.9985, hash31(floor(vP / 0.03))) * (1.0 - smoothstep(0.1, 0.5, 2.5 * foot / 0.03));',
+  '    alb += vec3(sp * snow * 1.6);',
   '  }',
   '  vec2 rk = (vSea > 0.5 || dist > ' + AE_ST_ROCK_FADE_M[1].toFixed(1) + ') ? vec2(0.0) : rocks(vP, foot) * (1.0 - smoothstep(' + AE_ST_ROCK_FADE_M[0].toFixed(1) + ', ' + AE_ST_ROCK_FADE_M[1].toFixed(1) + ', dist)); float hb = vSea > 0.5 ? 0.0 : fine(vP, foot) + rk.x; alb *= clamp(1.0 + 0.5 * rk.y, 0.5, 1.35);',
   '  vec3 dpx = dFdx(vP), dpy = dFdy(vP); float hx = dFdx(hb), hy = dFdy(hb);',
