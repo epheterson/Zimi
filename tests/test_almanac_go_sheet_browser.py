@@ -57,7 +57,7 @@ TWO_MAPS = """() => {
 }"""
 
 
-def _open(browser, base, view, scheme="light", maps=True, requests=None):
+def _open(browser, base, view, scheme="light", maps=True, requests=None, lang=None):
     ctx = browser.new_context(
         viewport=view,
         device_scale_factor=2,
@@ -69,6 +69,8 @@ def _open(browser, base, view, scheme="light", maps=True, requests=None):
     ctx.add_init_script(KEYBOARD_STAND_IN)
     if requests is not None:
         ctx.on("request", lambda r: requests.append(r.url))
+    if lang:
+        ctx.add_init_script('try { localStorage.setItem("zimi_ui_lang", %r); } catch (e) {}' % lang)
     ctx.add_init_script(
         "try { localStorage.setItem('zimi_almanac_place', %r); sessionStorage.setItem('zimi_almanac_location', %r); } catch (e) {}"
         % (PLACE, PLACE)
@@ -364,15 +366,20 @@ def test_the_sprite_order_in_the_view_is_the_scripts():
         m = re.search(r"var AE_GO_DISC_KEYS = \[(.*?)\];", fh.read(), re.S)
     assert re.findall(r"'([a-z0-9]+)'", m.group(1)) == [k.value for k in keys.elts]
 def test_in_a_right_to_left_language_the_controls_do_not_sit_on_the_minimap(library):
-    """Hebrew: the control column is on the left, where the minimap used to be (it was placed by `left`, not by the side)."""
+    """Hebrew: the control column is on the left, where the minimap used to be (it was placed by `left`, not by the side);
+    a landing's long name stays inside the screen."""
     from playwright.sync_api import sync_playwright
 
     with sync_playwright() as pw:
         br = pw.chromium.launch(args=GL_ARGS)
         try:
-            ctx, pg, errors = _open(br, library, PORTRAIT)
-            pg.evaluate("document.documentElement.dir = 'rtl'; _ae.dirty = true; _aeKick();")
-            pg.wait_for_timeout(800)
+            ctx, pg, errors = _open(br, library, PORTRAIT, lang="he")
+            assert pg.evaluate("document.documentElement.dir") == "rtl"
+            pg.evaluate("_aePreset('moon')")
+            pg.wait_for_function("() => !!_aeLm", timeout=60_000)
+            pg.wait_for_timeout(1500)
+            if os.environ.get("ALM_SHOTS"):
+                pg.screenshot(path=os.path.join(os.environ["ALM_SHOTS"], "hebrew_moon.png"))
             hit = pg.evaluate("""() => {
                 var m = document.querySelector('.ae-mini'), t = document.querySelector('.ae-tools');
                 if (!m || !t) return null;
@@ -380,6 +387,9 @@ def test_in_a_right_to_left_language_the_controls_do_not_sit_on_the_minimap(libr
                 return a.left < b.right && b.left < a.right && a.top < b.bottom && b.top < a.bottom;
             }""")
             assert hit is False, hit
+            outside = pg.evaluate("""() => Array.from(document.querySelectorAll('#ae-lms .ae-lm')).filter(b => !b.hidden).map(b => b.getBoundingClientRect())
+                .filter(r => r.left < -1 || r.right > innerWidth + 1).length""")
+            assert outside == 0, outside
             ctx.close()
         finally:
             br.close()

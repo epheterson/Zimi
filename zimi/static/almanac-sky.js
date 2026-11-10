@@ -785,7 +785,7 @@ function _skyPaintStars(ctx, s, gpu) {
 // scripts/build_constellations.py), drawn as faint lines once it is dark, and
 // named when asked. The deep-sky list is the dozen-odd objects the eye finds
 // without a telescope: positions J2000, magnitude, size in arcminutes.
-var SKY_CONST_URL = '/static/earth/constellations-v1.json';
+var SKY_CONST_URL = _almAsset('/static/earth/constellations-v1.json');
 var SKY_LINE_ALPHA = 0.18, SKY_LINE_MIN_ALT = -0.5, SKY_REVEAL_ALPHA = 0.55;
 var SKY_LINE_FADE_LM = [3, 5.5];         // the limiting magnitudes between which the figures fade in: no lines over a sky with no stars
 var SKY_LINE_BRIGHT_MAG = [2.5, 4.6];    // a figure whose brightest star is this bright draws full, this faint at SKY_LINE_FAINT of it

@@ -13,6 +13,7 @@ const cut = src.indexOf('// ── Where a vehicle is, in the scene ──');
 if (cut < 0) throw new Error('the pure section moved');
 const ctx = { Math, Object, Array, String, JSON };
 vm.createContext(ctx);
+ctx._almAsset = (p) => p;   // app.js: a /static address with its version; here, as it is
 vm.runInContext('var AE_EARTH_RADIUS_KM = 6378.137; function _aeT(k) { return k; }\n' + src.slice(0, cut), ctx);
 
 let failures = 0;

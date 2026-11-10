@@ -1222,9 +1222,42 @@ if os.path.isdir(_STATIC_DIR):
         if os.path.isdir(os.path.join(_STATIC_DIR, "i18n"))
         else "0"
     )
+    # The data files under /static that pages fetch at their own names (the 3D view's models, maps and tables, the stars, the world
+    # map). /static is sent immutable for a year, so a file whose content changed under the same name is only fetched afresh when its
+    # address changes: each carries its own content hash, which the page's _almAsset adds to the address as ?v=. A file that did not
+    # change keeps its cached copy across deploys.
+    _STATIC_DATA_DIRS = ("earth", "golden-record", "rosetta")
+    _STATIC_DATA_FILES = ("world-map.svg", "tz-borders.json")
+    _STATIC_DATA_EXT = ("bin", "json", "webp", "jpg", "jpeg", "png", "svg", "glb")
+
+    def _static_data_hashes():
+        out = {}
+        names = list(_STATIC_DATA_FILES)
+        for d in _STATIC_DATA_DIRS:
+            root = os.path.join(_STATIC_DIR, d)
+            for dirpath, _dirs, files in os.walk(root):
+                for f in files:
+                    if f.rsplit(".", 1)[-1] not in _STATIC_DATA_EXT:
+                        continue
+                    names.append(
+                        os.path.relpath(os.path.join(dirpath, f), _STATIC_DIR).replace(
+                            os.sep, "/"
+                        )
+                    )
+        for rel in sorted(names):
+            fp = os.path.join(_STATIC_DIR, rel)
+            if os.path.isfile(fp):
+                with open(fp, "rb") as fh:
+                    out[rel] = hashlib.md5(fh.read()).hexdigest()[:8]
+        return out
+
+    STATIC_DATA_HASHES = _static_data_hashes()
     SEARCH_UI_HTML = SEARCH_UI_HTML.replace(
         "discoverStamp:'disc6'", f"discoverStamp:'d{_build_stamp}'"
     ).replace("i18nHash:'0'", f"i18nHash:'{_i18n_hash}'")
+    SEARCH_UI_HTML = SEARCH_UI_HTML.replace(
+        "assets:{}", "assets:" + json.dumps(STATIC_DATA_HASHES, separators=(",", ":"))
+    )
     SEARCH_UI_HTML = SEARCH_UI_HTML.replace(
         "bestAnswer:0", f"bestAnswer:{int(_bestanswer.enabled())}"
     )
@@ -1311,6 +1344,7 @@ if os.path.isdir(_STATIC_DIR):
             + _static_hash("pdfreader.css")
             + _static_hash("pdfreader.js")
             + _i18n_hash
+            + hashlib.md5(json.dumps(STATIC_DATA_HASHES, sort_keys=True).encode()).hexdigest()[:8]  # a data file's change is a new build
         ).encode()
     ).hexdigest()[:8]
 
@@ -1366,6 +1400,13 @@ def _offline_urls():
     earth = os.path.join(_STATIC_DIR, "earth")
     if os.path.isdir(earth):
         found |= {"/static/earth/" + n for n in os.listdir(earth) if n.startswith("craft-site-") and n.endswith(".bin")}
+    # A data file is asked for as <path>?v=<its hash> (the page's _almAsset): kept at that address, so offline it is the exact one.
+    found = {
+        u + "?v=" + STATIC_DATA_HASHES[u[len("/static/"):]]
+        if "?" not in u and u[len("/static/"):] in STATIC_DATA_HASHES
+        else u
+        for u in found
+    }
     versioned = {u.split("?")[0] for u in found if "?" in u}
     found = {u for u in found if "?" in u or u not in versioned}
     if _srv.fieldguide_enabled():

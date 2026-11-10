@@ -19,6 +19,14 @@ var AlmanacMaps = (function () {
   var MAX_LOADS = 4;                  // tiles fetched at once
   var MAX_TILES = 28;                 // tiles kept on the GPU: the ring in view and the one just left
   var RING = 1;                       // tiles round the middle one (3 x 3), 2 on a wide screen
+  // The capability level (capability.js ZimiCap, when it is there): which names are drawn, and how much of the GPU the tiles may hold.
+  var LABEL_CLASSES = { none: [], major: ['country', 'state', 'city', 'island'] };   // 'all': every class
+  function labelLevel() { return typeof ZimiCap !== 'undefined' ? ZimiCap.get('mapLabels') : 'all'; }
+  function tileBudget() {   // tiles kept, canvas side, fetches at once, ring
+    if (typeof ZimiCap === 'undefined') return { tiles: MAX_TILES, px: TILE_CANVAS_PX, loads: MAX_LOADS, ring: RING };
+    var low = ZimiCap.get('gpuMB') <= 96, high = ZimiCap.get('gpuMB') >= 768;
+    return { tiles: low ? 10 : high ? 40 : MAX_TILES, px: low ? 384 : high ? 768 : TILE_CANVAS_PX, loads: low ? 2 : MAX_LOADS, ring: RING };
+  }
   var WIDE_SCREEN_PX = 1000;
   var Z_MIN = 2, Z_MAX_DEFAULT = 12;
   var MAX_COS_LAT = 0.2;
@@ -257,7 +265,7 @@ var AlmanacMaps = (function () {
     queue.push(t);
   }
   function pump() {
-    while (loads < MAX_LOADS && queue.length) {
+    while (loads < tileBudget().loads && queue.length) {
       var t = queue.shift(), m = t.map;
       if (m !== map || !t.live) { t.state = 'new'; continue; }
       t.state = 'loading';
@@ -281,10 +289,12 @@ var AlmanacMaps = (function () {
   }
   // The roads and names of one tile, on a canvas.
   function paint(t) {
+    var px = tileBudget().px;
+    if (typeof ZimiCap !== 'undefined' && !ZimiCap.gpuTrack('maps:' + t.key, px * px * 4 * 1.34)) { t.state = 'empty'; t.data = null; return; }   // over the memory budget: no patch
     var cv = document.createElement('canvas');
-    cv.width = cv.height = TILE_CANVAS_PX;
+    cv.width = cv.height = px;
     var ctx = cv.getContext('2d'), S2 = TILE_UNITS, d = t.data;
-    ctx.scale(TILE_CANVAS_PX / TILE_UNITS, TILE_CANVAS_PX / TILE_UNITS);
+    ctx.scale(px / TILE_UNITS, px / TILE_UNITS);
     ctx.lineCap = ctx.lineJoin = 'round';
     var byClass = [[], [], [], [], [], []];
     d.roads.forEach(function (r) { if (t.z >= CLASS_MIN_Z[r[0]]) byClass[r[0]].push(r[1]); });
@@ -320,6 +330,7 @@ var AlmanacMaps = (function () {
   }
   function free(t) {
     t.places = null;
+    if (typeof ZimiCap !== 'undefined') ZimiCap.gpuFree('maps:' + t.key);
     if (t.mesh) { group.remove(t.mesh); t.mesh.geometry.dispose(); t.mat.dispose(); t.tex.dispose(); }
     t.mesh = t.mat = t.tex = null;
     t.live = false;
@@ -327,9 +338,10 @@ var AlmanacMaps = (function () {
   }
   function trim() {
     var ready = Object.keys(tiles).map(function (k) { return tiles[k]; }).filter(function (t) { return t.mesh; });
-    if (ready.length <= MAX_TILES) return;
+    var keep = tileBudget().tiles;
+    if (ready.length <= keep) return;
     ready.sort(function (a, b) { return a.used - b.used; });
-    for (var i = 0; i < ready.length - MAX_TILES; i++) if (ready[i].used !== _ae.drawFrame) free(ready[i]);
+    for (var i = 0; i < ready.length - keep; i++) if (ready[i].used !== _ae.drawFrame) free(ready[i]);
   }
   function getTile(z, x, y) {
     var k = keyOf(z, x, y), t = tiles[k];
@@ -412,6 +424,8 @@ var AlmanacMaps = (function () {
     if (!el) return;
     el.style.opacity = on ? String(Math.max(0, opacity)) : '0';
     if (!on || opacity <= 0) { for (var k0 in spans) spans[k0].hidden = true; return; }
+    var lv = labelLevel();
+    if (lv === 'none') { for (var k1 in spans) spans[k1].hidden = true; return; }   // roads only
     var cand = [], n, W = _ae.w, H = _ae.h, cx = W / 2, cy = H / 2;
     for (var key in tiles) {
       var t = tiles[key];
@@ -419,7 +433,7 @@ var AlmanacMaps = (function () {
       n = Math.pow(2, t.z);
       t.places.forEach(function (p) {
         var st = PLACE_STYLE[p[1]];
-        if (!st || t.z < st.z0 || t.z > st.z1 || p[3] < 0 || p[3] >= 1 || p[4] < 0 || p[4] >= 1) return;
+        if (!st || (LABEL_CLASSES[lv] && LABEL_CLASSES[lv].indexOf(p[1]) < 0) || t.z < st.z0 || t.z > st.z1 || p[3] < 0 || p[3] >= 1 || p[4] < 0 || p[4] >= 1) return;
         var v = _aeLatLonVec(latOfY((t.y + p[4]) / n), -WORLD_DEG / 2 + (t.x + p[3]) / n * WORLD_DEG, AE_EARTH_FLATTENING);
         var w = new THREE.Vector3(v[0], v[1], v[2]).applyMatrix4(S.earth.matrixWorld), a = [w.x, w.y, w.z];
         if (!_aeFacing(a)) return;
@@ -573,5 +587,5 @@ var AlmanacMaps = (function () {
     if (group) { setOpacity(0); }
     if (chip) chip.hidden = true;
   }
-  return { frame: frame, release: release, covers: function () { return !!map && opacity > 0; }, _tiles: function () { return tiles; }, _map: function () { return map; }, _state: function () { return { map: map && map.name, opacity: opacity, centre: centre, none: none }; } };
+  return { frame: frame, release: release, _paint: paint, _free: free, _tileBudget: tileBudget, _labelLevel: labelLevel, _labelClasses: LABEL_CLASSES, covers: function () { return !!map && opacity > 0; }, _tiles: function () { return tiles; }, _map: function () { return map; }, _state: function () { return { map: map && map.name, opacity: opacity, centre: centre, none: none }; } };
 })();
