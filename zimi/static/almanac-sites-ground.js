@@ -394,6 +394,19 @@ function _asRoverPlace(st, R, x, y, hdg, z, pitch, roll, spin, gnd, airborne) {
     _asPartPlace(st, R.wheels[i], wx, wy, base + at[i][2], hdg, 0, 0, spin, gnd.mean);
   }
 }
+// A part stands only between its `from` and `until` instants (sites-v1.json, ms): nothing before a landing, the Lunar Module's
+// ascent stage until its liftoff (after it only the descent stage stays), a flag or a rover from the landing on.
+function _asPartsByTime(st) {
+  var defs = st.def ? st.def.parts : [];
+  if (!st.placed || !defs.some(function (pd) { return pd.from !== undefined || pd.until !== undefined; })) return;
+  var ms = _aeDisplayMs();
+  defs.forEach(function (pd, n) {
+    var got = st.siteParts[n];
+    if (!got) return;
+    var on = (pd.from === undefined || ms >= pd.from) && (pd.until === undefined || ms < pd.until);
+    (got.hubs ? [got.body].concat(got.wheels) : [got]).forEach(function (p) { p.holder.visible = on; p.shadow.visible = on; });
+  });
+}
 // The parts the site stands: each where sites-v1.json says, on the ground there.
 function _asPlaceSiteParts(st) {
   if (st.placed) return;
