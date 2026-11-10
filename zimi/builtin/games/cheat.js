@@ -120,7 +120,7 @@
   // ── Layout ──────────────────────────────────────────────────────────────
   var SHOW_PILE = 3, PILE_FAN = 4, REVEAL_STEP = 0.5, BADGE_GAP = 6;
   function geo(m, st) { return T.geometry(m, T.rowsFor(m, st.hands[0].length)); }
-  function pileSpot(g) { return { x: Math.round(g.cx - g.cw / 2), y: Math.round(g.cy - g.ch / 2) }; }
+  function pileSpot(g) { return { x: Math.round(g.midX - g.cw / 2), y: Math.round(g.cy - g.ch / 2) }; }
   function place(st, m, view) {
     var g = geo(m, st), p = pileSpot(g), slots = [], cards = [], picked = (view && view.picked) || [], r;
     slots.push({ id: 'pile', x: p.x, y: p.y, w: g.cw, h: g.ch, quiet: !st.pile.length, label: TX('cheat.pile', { cards: Z.plural(st.pile.length, 'card') }) });
