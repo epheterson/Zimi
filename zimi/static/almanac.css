@@ -679,7 +679,7 @@
    color: var(--amber); font-size: 13px; font-weight: 600; line-height: 1; }
 .alm-ck-r:empty { display: none; }
 .alm-ck-r:not(:empty) + .alm-ck-now { margin-inline-start: 0; }
-.alm-ck-now { flex: none; margin: 0; margin-inline-start: 6px; padding: 4px 10px; border: 1px solid var(--amber-border); border-radius: 999px; background: var(--amber-glow); color: var(--amber); font: inherit; font-size: 12px; line-height: 1; cursor: pointer; transition: background .15s, border-color .15s; }
+.alm-ck-now { flex: none; margin: 0; margin-inline-start: 8px; padding: 4px 10px; border: 1px solid var(--amber-border); border-radius: 999px; background: var(--amber-glow); color: var(--amber); font: inherit; font-size: 12px; line-height: 1; cursor: pointer; transition: background .15s, border-color .15s; }
 .alm-ck-now[hidden] { display: none; }
 @media (hover: hover) { .alm-ck-now:hover { background: var(--amber-border); } }
 .alm-ck-now:focus-visible, .alm-spd-play:focus-visible { outline: 2px solid var(--amber); outline-offset: 2px; }
@@ -711,7 +711,7 @@
 .alm-ck-pop button:focus-visible { outline: 2px solid var(--amber); outline-offset: -2px; }
 .alm-clock[data-v="foot"] .alm-ck-pop { top: auto; bottom: 100%; margin: 0 0 8px; }
 /* The 3D view's foot: the time in a pill beside the date, and no underlines until a part is touched. */
-.alm-ck-pill { display: flex; flex: 0 1 auto; min-width: 0; align-items: center; padding: 1px 10px; border: 1px solid var(--border); border-radius: 999px; color: var(--text2); }
+.alm-ck-pill { display: flex; flex: 0 1 auto; min-width: 0; overflow: hidden; align-items: center; padding: 1px 10px; border: 1px solid var(--border); border-radius: 999px; color: var(--text2); }
 /* At rest (now, 1x, not opened) the clock is the plain date and time: nothing underlined, no slider. */
 .alm-ck-rest .ep { text-decoration-color: transparent; }
 .alm-ck-rest .alm-spd { display: none; }
