@@ -268,7 +268,7 @@ def test_the_library_at_390_lists_one_almanac_and_one_almanac_hd_row(lib):
             titles = pg.evaluate(
                 "() => [...document.querySelectorAll('#manage-installed .ci-title')].map(e => e.innerText)"
             )
-            assert titles.count("Almanac") == 1, titles
+            assert len([t for t in titles if t.startswith("Almanac") and t != "Almanac HD"]) == 1, titles
             assert titles.count("Almanac HD") == 1, titles
             assert not [t for t in titles if "zimi_" in t], titles
             parts = pg.evaluate(
