@@ -106,3 +106,35 @@ def test_go_to_lists_missions_and_apollo_11_starts_the_player(served):
             assert errors == [], errors
         finally:
             br.close()
+
+
+@pytest.mark.parametrize("mission", ["apollo11", "perseverance"])
+def test_jumping_straight_into_the_touchdown_hands_over_without_an_error(served, mission):
+    """Jumping a mission to its hand-off phase (the Moon's surface, Jezero's touchdown) opens the site visit with the way back, and nothing in the page throws."""
+    from playwright.sync_api import sync_playwright
+
+    with sync_playwright() as pw:
+        br = pw.chromium.launch(args=GL_ARGS)
+        try:
+            ctx = br.new_context(viewport=VIEW, device_scale_factor=2, has_touch=True, is_mobile=True, service_workers="block")
+            ctx.add_init_script(
+                "try { localStorage.setItem('zimi_almanac_place', %r); sessionStorage.setItem('zimi_almanac_location', %r); } catch (e) {}" % (PLACE, PLACE)
+            )
+            pg = ctx.new_page()
+            errors = []
+            pg.on("pageerror", lambda e: errors.append(str(e)))
+            pg.goto(served + "/#almanac", wait_until="load")
+            pg.wait_for_function("() => typeof openAlmanacEarth === 'function' && typeof _aeLoadThree === 'function'", timeout=120_000)
+            pg.evaluate("openAlmanacEarth({ target: 'moon' })")
+            pg.wait_for_function("() => typeof _aeReady === 'function' && _aeReady() && _aeIsOpen", timeout=READY_MS, polling=200)
+            pg.evaluate("(id) => _aeMissionStart(id)", mission)
+            pg.wait_for_function("() => !!_ae.mission && !!document.getElementById('am-hud')", timeout=120_000, polling=200)
+            # with the site code and the landmarks already in, the hand-off can run inside the frame that found the phase: the case that threw
+            pg.evaluate("() => { _aeSitesLoad(); _aeLmLoad(); }")
+            pg.wait_for_function("() => typeof _asData !== 'undefined' && !!_asData && !!_aeLm", timeout=120_000, polling=200)
+            pg.evaluate("() => { const m = _amMission(), p = m.phases.filter(q => q.k === m.handoff.phase)[0]; _amJump(m, p.t + 5); }")
+            pg.wait_for_function("() => !!_ae.site && !!document.getElementById('am-back')", timeout=120_000, polling=200)
+            assert pg.evaluate("() => !_ae.mission")
+            assert errors == [], errors
+        finally:
+            br.close()

@@ -512,12 +512,14 @@ function _amLandingRow(name, body) {
   return rows.filter(function (r) { return r[3] === 'landing' && r[0] === name; })[0] || null;
 }
 function _amHandoff(m, pi) {
+  if (!_ae || !_ae.mission || _amMission() !== m) return;   // closed or changed in the meantime
   var id = _ae.mission.id, resume = m.phases[pi + 1] ? m.phases[pi + 1].t + AM_RESUME_PAST_S : m.end, landed = m.phases[pi].t, zero = _ae.mission.zeroMs;
   if (typeof _aeSitesLoad !== 'function') return;
   _aeSitesLoad();
   if (typeof _aeLmLoad === 'function') _aeLmLoad();
   var waited = 0;
   var go = function () {
+    if (!_ae || !_ae.mission || _amMission() !== m) return;
     var row = _amLandingRow(m.handoff.site, m.handoff.body);
     if (!row || typeof _aeSiteVisit !== 'function' || typeof _asData === 'undefined' || !_asData) {
       if ((waited += AM_POLL_MS) < AM_SITE_WAIT_MS) setTimeout(go, AM_POLL_MS);
@@ -550,7 +552,7 @@ function _amPhaseChanged(m, pi) {
   _amPaintPhase(m, pi);
   var s = _ae.mission, there = m.handoff && m.phases[pi].k === m.handoff.phase;
   if (!there && s) s.noHandoff = false;   // come back to it later (by replay or a jump) and it hands over again
-  if (there && s && !s.noHandoff) _amHandoff(m, pi);
+  if (there && s && !s.noHandoff) setTimeout(function () { _amHandoff(m, pi); }, 0);   // after this frame's work: the hand-off takes the mission away
 }
 
 var AM_OVERVIEW_MARGIN = 1.35;               // the overview holds the whole arc (as the view draws it) with this much room round it
@@ -704,6 +706,7 @@ function _amHud(on) {
 }
 function _amSyncPlay() {
   var s = _ae.mission, b = _aeById('am-play'), r = _aeById('am-speedbtn');
+  if (!s) return;
   if (b) b.innerHTML = s.paused ? AM_ICONS.play : AM_ICONS.pause;
   if (r) r.textContent = '×' + AM_SPEEDS[s.speedIdx];
 }
