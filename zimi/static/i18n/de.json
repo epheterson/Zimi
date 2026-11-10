@@ -3892,5 +3892,17 @@
   "tb_kn_ms_tli_v": "Etwa zwei Minuten gegenüber dem Bericht verschoben, auf den Zeitpunkt, an dem die angepasste Parkbahn die Breite des Berichts (8,03 S) erreicht",
   "tb_kn_ms_rdv": "Apollo 11: Rendezvous",
   "tb_kn_ms_rdv_v": "Ein geglättetes Schließen des Abstands der Fähre zu Columbia bis zur Kopplung; nicht die koelliptische Abfolge des Berichts",
-  "alm_hd_ultra": "Ultra"
+  "alm_hd_ultra": "Ultra",
+  "alm_ms_ph_separation": "Trennung der Reisestufe",
+  "alm_ms_ph_touchdown": "Aufsetzen",
+  "alm_ms_ev_cruise_sep": "Trennung der Reisestufe",
+  "alm_ms_ev_m20_entry": "Atmosphäreneintritt",
+  "alm_ms_ev_peak_heat": "Maximale Erhitzung",
+  "alm_ms_ev_chute": "Fallschirm geöffnet",
+  "alm_ms_ev_hs_sep": "Hitzeschild abgeworfen",
+  "alm_ms_ev_bs_sep": "Rückschale abgetrennt",
+  "alm_ms_ev_skycrane": "Sky-Crane",
+  "alm_ms_ev_m20_touchdown": "Aufsetzen",
+  "tb_kn_ms_m20": "Perseverance: Eintritt und Landung",
+  "tb_kn_ms_m20_v": "Folgt den veröffentlichten Ereignissen der Landung und endet am Perseverance-Punkt; Eintrittsrichtung sowie Höhe und Geschwindigkeit zwischen den Ereignissen sind angenommen, nicht simuliert"
 }

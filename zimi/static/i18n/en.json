@@ -3892,5 +3892,17 @@
   "tb_kn_ms_tli_v": "Moved about two minutes from the report's, to the time the fitted parking orbit reaches the report's latitude (8.03 S)",
   "tb_kn_ms_rdv": "Apollo 11 rendezvous",
   "tb_kn_ms_rdv_v": "A smoothed closure of the lander's offset from Columbia to the docking time; not the report's coelliptic sequence",
-  "alm_hd_ultra": "Ultra"
+  "alm_hd_ultra": "Ultra",
+  "alm_ms_ph_separation": "Cruise stage separation",
+  "alm_ms_ph_touchdown": "Touchdown",
+  "alm_ms_ev_cruise_sep": "Cruise stage separation",
+  "alm_ms_ev_m20_entry": "Entry interface",
+  "alm_ms_ev_peak_heat": "Peak heating",
+  "alm_ms_ev_chute": "Parachute deployed",
+  "alm_ms_ev_hs_sep": "Heat shield separation",
+  "alm_ms_ev_bs_sep": "Backshell separation",
+  "alm_ms_ev_skycrane": "Sky crane",
+  "alm_ms_ev_m20_touchdown": "Touchdown",
+  "tb_kn_ms_m20": "Perseverance entry and landing",
+  "tb_kn_ms_m20_v": "Follows the landing's published events and ends at the Perseverance pin; the entry heading and the altitude and speed between events are assumed, not simulated"
 }
