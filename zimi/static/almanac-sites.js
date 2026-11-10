@@ -110,6 +110,11 @@ function _asFrame(st, b, sc) {
   east = _aeLen(east) < 1e-6 ? [1, 0, 0] : _aeNorm(east);
   var north = _aeCross(up, east);
   var origin = _aeAdd(b.center, _aeScale(up, b.r + AS_PATCH_LIFT_M * AS_MRE));   // a little over the body's own sphere, whose facets are never above the true radius
+  if (st.body === 'earth') {   // the Earth's globe is flattened: the origin is the map's point on it, the up its true vertical
+    var sv = _aeStPlaceVec('earth', st.lat, st.lon);
+    var on = [ax[0][0] * sv[0] + ax[1][0] * sv[1] + ax[2][0] * sv[2], ax[0][1] * sv[0] + ax[1][1] * sv[1] + ax[2][1] * sv[2], ax[0][2] * sv[0] + ax[1][2] * sv[1] + ax[2][2] * sv[2]];
+    origin = _aeAdd(_aeAdd(b.center, _aeScale(on, b.r)), _aeScale(up, AS_PATCH_LIFT_M * AS_MRE));
+  }
   var sun = _asSunWorld(b, sc);
   return { origin: origin, e: east, n: north, u: up, sun: sun, sunLocal: [_aeDot(sun, east), _aeDot(sun, north), _aeDot(sun, up)], center: b.center, r: b.r };
 }
@@ -126,6 +131,7 @@ function _asWorldToLocal(fr, w) {
 function _asLatLon(st, b, local) {
   var w = _asToWorld(st.fr, local), v = _aeNorm(_aeSub(w, b.center)), ax = _asAxes(b);
   var n = [_aeDot(ax[0], v), _aeDot(ax[1], v), _aeDot(ax[2], v)];
+  if (st.body === 'earth') { var g = _aeSphereLatLon(n[0], n[1], n[2] / (1 - AE_EARTH_FLATTENING), AE_EARTH_FLATTENING); return { lat: g.lat, lon: g.lon }; }   // the flattened globe's own latitude
   return { lat: _aeDeg(Math.asin(_aeClamp(n[2], -1, 1))), lon: _aeDeg(Math.atan2(n[1], n[0])) };
 }
 

@@ -148,6 +148,25 @@ var AE_ST_STARS_VERT = [
   '  gl_Position = vis <= 0.0 ? vec4(2.0, 2.0, 2.0, 1.0) : projectionMatrix * vec4(mat3(viewMatrix) * l * 10.0, 1.0);',   // a star too faint to show is clipped, not drawn and discarded
   '}'
 ].join('\n');
+// Objects other lanes put in the sky (satellites, trains, rockets, plumes: _aeStandSkySource in almanac-stand.js): the stars' own
+// brightness rule (extinction by the air mass, hidden once the sky is brighter than they are), at a local direction, with a size.
+var AE_ST_SKYOBJ_VERT = [
+  'attribute float aMag, aScale; attribute vec3 aColor;',
+  'uniform float uLim, uExtinct, uDpr, uStarScale;',
+  'varying vec3 vCol; varying float vA;',
+  'void main() {',
+  '  vec3 l = position; float s = max(l.z, 0.0), X = 1.0 / (s + 0.025 * exp(-11.0 * s));',
+  '  float m = aMag + uExtinct * X, d = uLim - m, f = clamp(d / 0.6, 0.0, 1.0);',
+  '  float vis = d <= 0.0 || l.z < -0.02 ? 0.0 : f * f * (3.0 - 2.0 * f) * min(1.0, 0.12 * pow(10.0, 0.2 * d));',
+  '  vCol = aColor; vA = vis;',
+  '  gl_PointSize = max(1.0, (1.1 + 0.35 * clamp(d, 0.0, 6.0)) * uDpr * uStarScale * aScale);',
+  '  gl_Position = vis <= 0.0 ? vec4(2.0, 2.0, 2.0, 1.0) : projectionMatrix * vec4(mat3(viewMatrix) * l * 10.0, 1.0);',
+  '}'
+].join('\n');
+var AE_ST_SKYLINE_FRAG = [
+  'precision highp float; varying vec3 vCol; varying float vA;',
+  'void main() { gl_FragColor = vec4(vCol, vA * 0.7); }'
+].join('\n');
 var AE_ST_STARS_FRAG = [
   'precision highp float; varying vec3 vCol; varying float vA;',
   'void main() { vec2 c = gl_PointCoord - 0.5; float a = vA * (1.0 - smoothstep(0.15, 0.5, length(c))); if (a < 0.003) discard; gl_FragColor = vec4(vCol, a); }'

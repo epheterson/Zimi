@@ -7075,6 +7075,7 @@ function _aeSatShortName(s) {
 
 // ── Taps ──
 function _aeTap(x, y) {
+  if (_ae.stand && _ae.stand.live && typeof _aeStandSkyTap === 'function' && _aeStandSkyTap(x, y)) return;   // an object other lanes put in the sky
   if (_aeRecordTap(x, y)) return;
   var best = null, bestD = AE_TAP_RADIUS_PX;
   // Satellites are picked at the Earth; from the Moon or the Sun they are a
