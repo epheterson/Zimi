@@ -920,7 +920,7 @@
   .create-where { font-size: 12px; color: var(--text2); }
   .create-where[hidden] { display: none; }
   .create-where summary { cursor: pointer; width: max-content; }
-  .create-where .create-caption { margin-top: 4px; overflow-wrap: anywhere; }
+  .create-where .create-caption { margin-top: 4px; }
   .create-ftree-more { padding: 6px 0; font: inherit; font-size: 13px; color: var(--amber); background: none; border: 0; cursor: pointer; }
   .create-ftree-summary { padding: 8px 12px 4px; }
   .create-left-out { margin: 6px 0 0; padding-inline-start: 18px; font-size: 13px; color: var(--text2); }
@@ -1018,7 +1018,8 @@
   @media (max-width: 720px) { .create-field { font-size: 16px; } }
   .create-pick { width: auto; flex: 0 0 auto; padding-right: 6px; }
   .create-field:disabled { opacity: 0.5; cursor: not-allowed; }
-  .create-caption { font-size: 12px; color: var(--text2); }
+  /* anywhere: a caption can carry a command with the data folder in it, one unbroken word as wide as the path. */
+  .create-caption { font-size: 12px; color: var(--text2); overflow-wrap: anywhere; }
   /* "Advanced" is a sentence you can open, not a control: the default marker is
      replaced by a caret and there is deliberately no box, border or button
      around it — the simple form has to stay the thing you see. The run pane's
