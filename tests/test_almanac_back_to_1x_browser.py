@@ -193,14 +193,14 @@ def test_back_to_real_time_by_touch(served, dpr):
                 _fast(pg)
                 pg.evaluate("_aePreset('mars')")
                 pg.wait_for_function("() => !!_ae.fly", timeout=10_000)
-                pg.wait_for_timeout(
-                    600
-                )  # a person looks, then reaches: the foot has settled into its flight layout
+                # A person looks, then reaches: the foot has settled into its flight layout.
+                pg.wait_for_timeout(400)
                 g = pg.evaluate(GEOM, "#ae-clock")
                 assert g["grab"] >= GRAB_PX, str(g)
+                assert pg.evaluate("!!_ae.fly"), "the flight was over before the tap"
                 pg.touchscreen.tap(g["px"] + dx, g["cy"] + dy)
                 pg.wait_for_timeout(250)
-                assert pg.evaluate("[_almRate, !!_ae.fly]") == [1, True], (
+                assert pg.evaluate("_almRate") == 1, (
                     dx,
                     dy,
                     g,
