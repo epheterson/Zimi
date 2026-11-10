@@ -281,7 +281,7 @@
       undoOff: cfg.seats ? function () { return cfg.seats.hotseat(); } : null,
       statText: function (sec, st) { paint(); return cfg.stat(sec, st); },
       cascadeOrder: cfg.cascadeOrder || function () { return []; },
-      winLines: cfg.winLines, finished: cfg.finished, finishNow: cfg.finishNow,
+      winLines: cfg.winLines, listWin: cfg.listWin, finished: cfg.finished, finishNow: cfg.finishNow,
       openMenu: function () {
         Z.sheet({
           title: root.ZimiText && root.ZimiText.has('game.' + cfg.id + '.title') ? T('game.' + cfg.id + '.title') : cfg.name,   // the game's name in the player's language
@@ -485,7 +485,7 @@
         canPick: function (st, pile) { return st.phase === 'play' && pile.charAt(0) === 'h' && o.legal(st, seats.view(), idOf(pile)); },
         move: function (pile, idx, to) { return (to === 'trick' || to === 'deck') && pile.charAt(0) === 'h' ? tg.play(idOf(pile)) : false; },
         stat: function (sec, st) { return tg.teamStat(sec, st.scores); },
-        finished: function (st) { return st.phase === 'over' && !!o.gameOver; }, finishNow: function () { o.gameOver(); }
+        listWin: true, finished: function (st) { return st.phase === 'over' && !!o.gameOver; }, finishNow: function () { o.gameOver(); }
       }, cfg, { place: function (st, m, v) { tg.syncView(st); return place(st, m, v); } }));
       tg.attach(t);
       return t;

@@ -416,7 +416,7 @@
       id: 'hearts', saveOff: function () { return !!watch; }, lowScore: true, undoOff: function () { return !!watch || seats.hotseat(); }, board: board, newGame: newGame, els: el,
       statText: function (sec, st) { paintHud(); return TX('cards.fact.hand', { n: st.handNo + 1 }); },
       cascadeOrder: function (st) { return [].concat.apply([], st.taken).map(function (id) { return { id: id }; }); },
-      winLines: function (sec, st) { return [TX('hearts.winAfter', { n: st.scores[0], hands: Z.plural(st.handNo + 1, 'hand') })].concat(handLines(st)); },
+      listWin: true, winLines: function (sec, st) { return [TX('hearts.winAfter', { n: st.scores[0], hands: Z.plural(st.handNo + 1, 'hand') })].concat(handLines(st)); },
       openMenu: function () {
         Z.sheet({
           title: TX('game.hearts.title'),

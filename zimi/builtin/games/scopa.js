@@ -338,7 +338,7 @@
     }
     function gameOver() {
       var st = session.state, w = gameWinner(st.scores), won = seats.isYou(w), lines = resultLines(st);
-      lines.unshift(won ? TX('scopa.youWin') : TX('scopa.wins', { name: who(w) }));
+      lines.unshift(won ? TX('scopa.youWin') : seats.hotseat() ? TX('scopa.wins', { name: who(w) }) : TX('cards.result.them', { a: st.scores[w], b: st.scores[1 - w] }));
       if (won) session.win(st.scores[0]); else session.lose(seats.hotseat() ? { name: who(w) } : '', lines, seats.hotseat() ? undefined : st.scores[0], true);
     }
     function startNextHand() {
@@ -386,7 +386,7 @@
     function deal() { seats.begin(function () { refresh(); drive(); }, session.state.turn); }
     var cards40 = function (st) { return [].concat(st.captured[0], st.captured[1]); };
     t = T.create({
-      id: 'scopa', name: 'Scopa', finished: function (st) { return st.phase === 'over'; }, finishNow: gameOver, seats: seats, view: view, geo: geo, place: function (st, m, v) { syncView(st); return place(st, m, v); }, hud: hud, newGame: startGame, tap: tap, heightShare: 0.13, face: scopaFace,
+      id: 'scopa', name: 'Scopa', listWin: true, finished: function (st) { return st.phase === 'over'; }, finishNow: gameOver, seats: seats, view: view, geo: geo, place: function (st, m, v) { syncView(st); return place(st, m, v); }, hud: hud, newGame: startGame, tap: tap, heightShare: 0.13, face: scopaFace,
       canPick: function () { return false; },
       // The scores are on the table; a clock that only counts a match has no place in the bar.
       stat: function () { return ''; },

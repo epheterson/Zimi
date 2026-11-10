@@ -1313,7 +1313,7 @@
   // ── The session: undo, clock, stats, keys, the win ────────────────────
   // cfg: { id, els: {undo, newBtn, menu, stat}, board, newGame(), openMenu(),
   //        statText(sec, state), cascadeOrder(state), winLines(sec, state),
-  //        finished(state), finishNow() }   finished: a kept state that is over though its end never ran; finishNow() runs the game's own end
+  //        listWin, finished(state), finishNow() }   listWin: the sheet lists every line of winLines under the first (a table of scores), not the first alone   finished: a kept state that is over though its end never ran; finishNow() runs the game's own end
   // Where a status line of height h goes: where the game's layout put it, or higher if your hand (raised cards
   // included, from board.handTop()) would reach into it.
   var STATUS_GAP = 6;
@@ -1422,7 +1422,7 @@
       var sec = seconds(), best = s.stats.won(sec, score);
       paint();
       var won = cfg.winLines(sec, s.state);
-      if (root.ZimiShell && root.ZimiShell.endSheet) s.ending = { result: 'win', text: won[0], more: won.slice(1), stats: [[T('cards.stats.time'), fmtTime(sec)], [T('cards.stats.won'), T('cards.stats.wonOf', { won: best.won, played: best.played })]] };
+      if (root.ZimiShell && root.ZimiShell.endSheet) s.ending = { result: 'win', text: won[0], more: cfg.listWin ? won.slice(1) : [], stats: [[T('cards.stats.time'), fmtTime(sec)], [T('cards.stats.won'), T('cards.stats.wonOf', { won: best.won, played: best.played })]] };
       board.cascade(cfg.cascadeOrder(s.state), function () {
         var lines = cfg.winLines(sec, s.state);
         if (s.ending) { session_showEnd(s.ending); return; }
