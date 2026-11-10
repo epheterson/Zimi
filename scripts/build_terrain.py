@@ -46,8 +46,8 @@ COARSE_W, COARSE_H = 1024, 512   # the shipped map: about 20 km a cell (it was 2
 TILE = 256
 TERRAIN_MAX = 3  # the deepest HD level unless TERRAIN_LEVELS says more: the master holds 256 * 2^3 = 2048 rows
 #: Each body's deepest HD level where its source holds more than that: a level's tile rows are 256 * 2^level, so the Earth's
-#: ETOPO 2022 (10800 rows, 60 arc-seconds, about 1.8 km) is held at 6 (16384 rows, every source pixel) and Mars's MOLA (463 m, 23040 rows) at 5.
-TERRAIN_LEVELS = {"earth": 6, "mars": 5}
+#: ETOPO 2022 (10800 rows, 60 arc-seconds, about 1.8 km) is held at 6 (16384 rows, every source pixel) and Mars's MOLA (463 m, 23040 rows) at 6 (16384 rows).
+TERRAIN_LEVELS = {"earth": 6, "mars": 6}
 
 
 def levels_for(key):
