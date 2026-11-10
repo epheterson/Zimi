@@ -2607,6 +2607,16 @@ def _is_map_zim(name):
     )
 
 
+def _read_has_icon(path):
+    """Whether the book at ``path`` carries any illustration, for a cache
+    record written when only a 48x48 counted. One metadata listing."""
+    try:
+        return any(k.startswith(ILLUSTRATION_PREFIX) for k in open_archive(path).metadata_keys)
+    except Exception as e:
+        log.debug("could not read illustrations for %s: %s", path, e)
+        return False
+
+
 def _read_zim_kind(path):
     """``_zim_kind`` for a cache record written before ``kind`` existed.
 
@@ -3358,6 +3368,41 @@ def entry_bytes(archive, path, limit, *, head=False):
     return bytes(item.content)
 
 
+#: openZIM's icon size; Illustration_48x48@1 is the mandatory key.
+ICON_SIZE = 48
+ILLUSTRATION_PREFIX = "Illustration_"
+# Cache records carry it: has_icon counted any illustration size from 2.
+ICON_VERSION = 2
+
+
+def illustration_png(archive):
+    """The PNG a book's icon is drawn from, or None. The 48x48 (@1, then
+    @2) when the book has it; else the nearest size it carries: the
+    smallest at or above 48, then the largest below. Caller holds the
+    archive's lock."""
+    for key in ("Illustration_48x48@1", "Illustration_48x48@2"):
+        try:
+            data = bytes(archive.get_metadata(key))
+        except Exception:
+            data = b""
+        if data:
+            return data
+    try:
+        sizes = sorted(archive.get_illustration_sizes())
+    except Exception:
+        return None
+    above = [s for s in sizes if s >= ICON_SIZE]
+    below = [s for s in reversed(sizes) if s < ICON_SIZE]
+    for size in above + below:
+        try:
+            data = bytes(archive.get_illustration_item(size).content)
+        except Exception:
+            continue
+        if data:
+            return data
+    return None
+
+
 # A bounded walk of every entry stops here: enough for a folder of files,
 # under the archive's lock (health.py's full-scan bound). A wiki's page
 # tree is walked whole, in the background.
@@ -3608,7 +3653,7 @@ def _extract_zim_metadata(name, path):
                         meta_lang = ",".join(_ISO639_3_TO_1.get(p, p) for p in parts)
                     else:
                         meta_lang = _ISO639_3_TO_1.get(raw_lang, raw_lang)
-                elif key.startswith("Illustration_48x48"):
+                elif key.startswith(ILLUSTRATION_PREFIX):
                     has_icon = True
             except Exception as e:
                 log.debug(
@@ -4108,6 +4153,11 @@ def load_cache(force=False):
                     cached["feeds"] = feeds
                     cached["feeds_v"] = FEEDS_VERSION
                     kind_backfilled = True
+            if not cached.get("has_icon") and int(cached.get("icon_v") or 0) < ICON_VERSION:
+                # A record from before an icon could be any size the book carries.
+                cached["has_icon"] = _read_has_icon(path)
+                cached["icon_v"] = ICON_VERSION
+                kind_backfilled = True
             entry = {
                 "name": name,
                 "file": filename,
@@ -4243,6 +4293,7 @@ def load_cache(force=False):
             # Always, {} included: a ZIM that feeds no other app is decided.
             new_cached["feeds"] = entry.get("feeds") or {}
             new_cached["feeds_v"] = FEEDS_VERSION
+            new_cached["icon_v"] = ICON_VERSION
             if entry.get("map_search"):
                 new_cached["map_search"] = True
             # A map's ground and publisher, null included: a map whose config

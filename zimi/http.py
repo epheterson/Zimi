@@ -4239,7 +4239,7 @@ class ZimHandler(BaseHTTPRequestHandler):
         self.wfile.write(data)
 
     def _serve_zim_icon(self, zim_name, archive):
-        """Serve the ZIM's 48x48 illustration as a PNG.
+        """Serve the ZIM's icon as a PNG (server.illustration_png).
 
         A ZIM NAME is not a version. This used to tag the response
         ``"icon-<name>"`` and mark it ``immutable`` for a week — a promise that
@@ -4255,22 +4255,12 @@ class ZimHandler(BaseHTTPRequestHandler):
         digest costs a hash of a couple of kilobytes on a cache miss; the
         revalidation costs a 304 with no body. Neither is worth a week of
         showing the wrong picture."""
-        # @1 is the scale factor, and @1 is what openZIM's spec makes mandatory
-        # — but the library cache sets has_icon for ANY `Illustration_48x48*`
-        # key, so a ZIM carrying only @2 (a 2x asset, which some scrapers write)
-        # was advertised as having an icon and then 404'd when asked for it. The
-        # UI drew an <img> that could never load. Ask for the mandatory one,
-        # then for whatever else the file actually has.
-        icon_data = None
-        for key in ("Illustration_48x48@1", "Illustration_48x48@2"):
-            try:
-                icon_data = bytes(archive.get_metadata(key))
-                if icon_data:
-                    break
-            except Exception:
-                continue
+        # The 48x48, or the nearest size the book has: the library's has_icon
+        # is set for any illustration, so every book it promises an icon for
+        # gets one here.
+        icon_data = _srv.illustration_png(archive)
         if not icon_data:
-            log.debug("no 48x48 illustration in %s", loggable(zim_name))
+            log.debug("no illustration in %s", loggable(zim_name))
             # And a MISS is never remembered. A ZIM that gains an illustration
             # — rebuilt, replaced, re-captured — must not stay iconless in the
             # one browser that happened to ask a moment too early.
