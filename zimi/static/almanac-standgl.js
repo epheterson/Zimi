@@ -112,6 +112,11 @@ var AE_ST_SKY_VERT = [
   'varying vec2 vNdc;',
   'void main() { vNdc = position.xy; gl_Position = vec4(position.xy, 0.9999, 1.0); }'
 ].join('\n');
+// The same triangle at exactly the far plane: with depth testing on, the clouds show only where no ground or tree was drawn.
+var AE_ST_SKY_VERT_FAR = [
+  'varying vec2 vNdc;',
+  'void main() { vNdc = position.xy; gl_Position = vec4(position.xy, 1.0, 1.0); }'
+].join('\n');
 var AE_ST_SKY_FRAG = [
   'precision highp float;',
   AE_ST_GLSL_ATMO, AE_ST_GLSL_TONE,
@@ -219,6 +224,51 @@ var AE_ST_TREE_FRAG = [
   '  gl_FragColor = vec4(tone(L, uK), 1.0);',
   '}'
 ].join('\n');
+// Clouds: one deck over the Earth, from a field of (place, day): a plane `base` metres over the ground, fbm density thresholded by the
+// coverage, lit by the Sun through the air up to the deck, thin edges bright and thick bodies dark. `osClouds(d, o)` (d: unit view
+// direction, o: the camera in metres, local frame) gives premultiplied radiance and alpha, in the sky's own units; a provider may bring its own.
+var AE_ST_CLOUDS_GLSL = [
+  'uniform vec4 uCloudA, uCloudB;',   // (coverage, base m, thickness m, seconds), (wind x, wind y m/s, seed a, seed b)
+  'float cloudFbm(vec2 p, vec2 seed) {',
+  '  float a = 0.5, s = 0.0;',
+  '  for (int i = 0; i < 5; i++) { s += a * vnoise(vec3(p + seed, float(i) * 3.1)); p = p * 2.03 + 17.0; a *= 0.5; }',
+  '  return s / 0.97;',
+  '}',
+  'vec4 osClouds(vec3 d, vec3 o) {',
+  '  if (uCloudA.x < 0.02 || d.z < 0.012) return vec4(0.0);',
+  '  float H = uCloudA.y - o.z;',
+  '  if (H <= 0.0) return vec4(0.0);',
+  '  float t = H / d.z;',
+  '  vec2 p = (o.xy + d.xy * t + uCloudB.xy * uCloudA.w) / 2600.0;',
+  '  float n = 0.5 + 0.5 * (cloudFbm(p, uCloudB.zw) * 0.5 + 0.5 * cloudFbm(p * 0.23 + 5.0, uCloudB.wz));',   // vnoise runs -1..1
+  '  n = (n - 0.5) * 1.7 + 0.5;',   // the fbm piles up round its middle: stretched, a coverage of half is half the sky
+  '  float cut = 1.0 - uCloudA.x;',
+  '  float dens = smoothstep(cut - 0.06, cut + 0.2, n);',
+  '  float far = 1.0 - smoothstep(30000.0, 160000.0, t);',
+  '  if (dens <= 0.001 || far <= 0.0) return vec4(0.0);',
+  '  vec3 sun = sunTrans(vec3(0.0, 0.0, uCloudA.y * 0.001)) * uSunE;',
+  '  float thin = 1.0 - smoothstep(0.25, 0.95, dens);',
+  '  float lit = mix(0.3, 1.0, thin) * (0.5 + 0.5 * clamp(uSunDir.z * 2.0 + 0.4, 0.0, 1.0));',
+  '  vec3 L = sun * 0.85 * lit / PI + vec3(0.6, 0.75, 1.0) * (0.012 * max(uSunDir.z + 0.12, 0.0) + 2e-8) * (1.0 - thin * 0.5);',   // the sky's own light on it by day, almost none at night
+  '  float a = dens * far * 0.94;',
+  '  return vec4(L, a);',
+  '}'
+].join('\n');
+function _aeStCloudFrag(chunk) {
+  return [
+    'precision highp float;',
+    AE_ST_GLSL_ATMO, AE_ST_GLSL_TONE, AE_ST_GLSL_NOISE,
+    'uniform vec3 uCam, uFwd, uRight, uUp; uniform vec2 uTan; uniform float uK;',
+    'varying vec2 vNdc;',
+    chunk,
+    'void main() {',
+    '  vec3 d = normalize(uFwd + uRight * vNdc.x * uTan.x + uUp * vNdc.y * uTan.y);',
+    '  vec4 c = osClouds(d, uCam * 1000.0);',
+    '  if (c.a <= 0.002) discard;',
+    '  gl_FragColor = vec4(tone(c.rgb, uK), c.a);',
+    '}'
+  ].join('\n');
+}
 var AE_ST_STARS_FRAG = [
   'precision highp float; varying vec3 vCol; varying float vA;',
   'void main() { vec2 c = gl_PointCoord - 0.5; float a = vA * (1.0 - smoothstep(0.15, 0.5, length(c))); if (a < 0.003) discard; gl_FragColor = vec4(vCol, a); }'
