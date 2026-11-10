@@ -4115,5 +4115,9 @@
   "pdf_failed_file": "The file you asked for",
   "pdf_failed_back": "Back to the collection",
   "alm_craft_loading": "Loading the spacecraft",
-  "alm_craft_failed": "No model of it here: shown as a dot"
+  "alm_craft_failed": "No model of it here: shown as a dot",
+  "lib_hd_where": "Chosen in the Almanac's settings",
+  "lib_hd_meta": "{n} files · {size}",
+  "older_copies_title": "Older copies kept",
+  "older_copies_row": "Replaced by {file}"
 }

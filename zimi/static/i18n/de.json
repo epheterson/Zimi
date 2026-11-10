@@ -4115,5 +4115,9 @@
   "pdf_failed_file": "Die angeforderte Datei",
   "pdf_failed_back": "Zurück zur Sammlung",
   "alm_craft_loading": "Raumsonde wird geladen",
-  "alm_craft_failed": "Kein Modell hier: als Punkt gezeigt"
+  "alm_craft_failed": "Kein Modell hier: als Punkt gezeigt",
+  "lib_hd_where": "Wird in den Einstellungen des Almanach gewählt",
+  "lib_hd_meta": "{n} Dateien · {size}",
+  "older_copies_title": "Ältere Kopien",
+  "older_copies_row": "Ersetzt durch {file}"
 }

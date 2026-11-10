@@ -3196,7 +3196,9 @@ def _scan_zim_files():
     for name, cands in groups.items():
         if len(cands) > 1:
             _split_languages(name, cands, zims, groups)
+    own_wins = _fold_own_copies(zims)
     served = set(zims.values())
+    _set_older_copies(groups, served, own_wins)
     libfolders.set_shadowed(
         {
             path: zims[name]
@@ -3206,6 +3208,69 @@ def _scan_zim_files():
         }
     )
     return zims
+
+
+def _fold_own_copies(zims):
+    """One Almanac, one Games: a ZIM whose Name metadata is an own ZIM's (a copy of it under another file name, such as
+    zimi_eng_zimi_almanac_2026-11.zim beside the package's zimi_almanac) is that ZIM, not another one. The package's
+    file is served under the name unless the copy is strictly newer by its Date metadata, in which case the copy is
+    (and the package's file stands down, like a same-name copy in _own_copy_first). Edits ``zims`` in place; returns
+    ``{loser path: winner path}``. A ZIM that only looks alike (another Name) is left alone, and so is a data pack:
+    Almanac HD carries the Almanac's Name by design (almanachd) and is served under its own."""
+    from zimi import ownzims
+
+    lost = {}
+    for name in sorted(zims):
+        if name in DATA_PACKS:
+            continue
+        path = zims.get(name)
+        fam = ownzims.family_of(path) if path else None
+        if not fam:
+            continue
+        own_name, newer = fam
+        own_path = zims.get(own_name)
+        if name == own_name or not own_path or not ownzims.is_own_path(own_path):
+            continue
+        if newer:
+            lost[own_path] = path
+            zims[own_name] = path
+        else:
+            lost[path] = own_path
+        del zims[name]
+    return lost
+
+
+#: Files in the library that no name serves because a newer build of the same thing does (a superseded edition, or a
+#: copy of an own ZIM): {path: path of what serves instead}. Only the root and one folder down: another program's
+#: folder is not Zimi's to tidy, and the package's own file is never listed.
+_older_copies = {}
+
+
+def _set_older_copies(groups, served, own_wins):
+    global _older_copies
+    found = {}
+    for cands in groups.values():
+        for tier, path in cands:
+            if tier in (0, 1, -1) and path not in served and not _is_own_zim_path(path):
+                winner = next((p for _t, p in cands if p in served), None)
+                if winner:
+                    found[path] = winner
+    for loser, winner in own_wins.items():
+        if not _is_own_zim_path(loser):
+            found[loser] = winner
+    _older_copies = found
+
+
+def older_copies():
+    """The superseded files, for Manage > Storage: ``[{file, size_bytes, replaced_by}]``, biggest first."""
+    out = []
+    for path, winner in _older_copies.items():
+        try:
+            size = os.path.getsize(path)
+        except OSError:
+            continue
+        out.append({"file": os.path.basename(path), "size_bytes": size, "replaced_by": os.path.basename(winner)})
+    return sorted(out, key=lambda r: (-r["size_bytes"], r["file"]))
 
 
 def _rel_or_abs(path, start):
@@ -3276,6 +3341,14 @@ DATA_PACKS = frozenset(("zimi_almanac_maxi", "zimi_almanac_hd", "zimi_almanac_hd
 def content_zims():
     """get_zim_files() less the data packs: what search and the indexes walk."""
     return {k: v for k, v in get_zim_files().items() if k not in DATA_PACKS}
+
+
+def server_zim_files():
+    """The library's name -> path map as the SERVER has it, ignoring who is asking (see server_zim_count)."""
+    global _zim_files_cache
+    if _zim_files_cache is None:
+        _zim_files_cache = _scan_zim_files()
+    return dict(_zim_files_cache)
 
 
 def server_zim_count():
@@ -3443,6 +3516,52 @@ def _load_disk_cache():
         return None
 
 
+_ident_disk = (None, {})  # (cache file's stamp, its records)
+
+
+def cached_identity(path, st):
+    """``(Name, Date)`` of the file ``path`` (stat ``st``) from the metadata cache on disk, or None when the cache has no
+    record of this version of it with a Name (a record from before the Name was kept, or a new file)."""
+    global _ident_disk
+    try:
+        stamp = os.stat(_cache_file_path()).st_mtime_ns
+    except OSError:
+        return None
+    if _ident_disk[0] != stamp:
+        _ident_disk = (stamp, _load_disk_cache() or {})
+    rec = _ident_disk[1].get(os.path.basename(path))
+    if isinstance(rec, dict) and "mname" in rec and rec.get("size") == st.st_size and rec.get("mtime") == st.st_mtime:
+        return (rec["mname"], rec.get("date") or "")
+    return None
+
+
+def _keep_identity_stubs(disk_cache, file_cache):
+    """Keep what the library read of each superseded file (its Name and Date, so the next scan opens nothing for it) in
+    the metadata cache, as a stub record: a file no name serves has no full record. True when one was added or changed."""
+    from zimi import ownzims
+
+    changed = False
+    for path in list(_older_copies):
+        fn = os.path.basename(path)
+        if fn in file_cache:
+            continue
+        try:
+            st = os.stat(path)
+        except OSError:
+            continue
+        old = disk_cache.get(fn)
+        if isinstance(old, dict) and old.get("size") == st.st_size and old.get("mtime") == st.st_mtime and "mname" in old:
+            file_cache[fn] = old
+            continue
+        hit = ownzims._ident_cache.get(path)  # only what the scan already read
+        ident = hit[1] if hit else None
+        if ident is None:
+            continue
+        file_cache[fn] = {"stub": True, "mtime": st.st_mtime, "size": st.st_size, "mname": ident[0], "date": ident[1]}
+        changed = True
+    return changed
+
+
 def _save_disk_cache(file_cache):
     """Save metadata cache to disk (atomic write via rename)."""
     data = {
@@ -3605,6 +3724,7 @@ def _extract_zim_metadata(name, path):
         "has_icon": has_icon,
         "category": _effective_category(name, path, kind),
         "main_path": main_path,
+        "meta_name": meta_name,
     }
     # Additive: what the ZIM says it is, kept so a cache hit can re-derive the
     # category without reopening the archive.
@@ -3915,6 +4035,8 @@ def load_cache(force=False):
             continue
 
         cached = disk_cache.get(filename) if disk_cache else None
+        if cached and cached.get("stub"):
+            cached = None  # only what a superseded copy said of itself (_keep_identity_stubs): scanned in full if it is served
         # When Zimi first sees a ZIM, stamp it so the UI can flag it "New" for
         # a few days (#34 — a fresh install is otherwise lost in a big
         # library). A ZIM already known (even if its file changed on an update)
@@ -4101,6 +4223,13 @@ def load_cache(force=False):
                 entry["own_h"] = own["h"]
             info.append(entry)
             cached_out = dict(cached)
+            if "mname" not in cached_out:
+                # A record from before the Name was kept: read it once (the scan has, to place copies of own ZIMs).
+                from zimi import ownzims as _own_ids
+
+                ident = _own_ids.identity(path)
+                if ident is not None:
+                    cached_out["mname"] = ident[0]
             if first_seen is not None:
                 cached_out["first_seen"] = first_seen
             if updated_at is not None:
@@ -4133,6 +4262,9 @@ def load_cache(force=False):
                 "language": entry.get("language", ""),
                 "has_icon": entry["has_icon"],
                 "main_path": entry["main_path"],
+                # The ZIM's own Name, so a copy of one of Zimi's own ZIMs under another file name is known without
+                # opening it (ownzims.family_of).
+                "mname": entry.pop("meta_name", ""),
             }
             if entry.get("article_count") is not None:
                 new_cached["article_count"] = entry["article_count"]
@@ -4182,8 +4314,10 @@ def load_cache(force=False):
 
     # Persist cache if we scanned anything new, backfilled a legacy first_seen
     # (so the mtime stamp is computed once), or repaired mass-stamped entries.
+    stubs_changed = _keep_identity_stubs(disk_cache or {}, file_cache)
     if (
         scanned > 0
+        or stubs_changed
         or backfilled > 0
         or kind_backfilled
         or disk_cache is None

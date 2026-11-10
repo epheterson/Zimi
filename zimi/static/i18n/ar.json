@@ -4115,5 +4115,9 @@
   "pdf_failed_file": "الملف الذي طلبته",
   "pdf_failed_back": "العودة إلى المجموعة",
   "alm_craft_loading": "جارٍ تحميل المركبة",
-  "alm_craft_failed": "لا نموذج لها هنا: تظهر نقطة"
+  "alm_craft_failed": "لا نموذج لها هنا: تظهر نقطة",
+  "lib_hd_where": "يُختار من إعدادات التقويم",
+  "lib_hd_meta": "{n} ملفات · {size}",
+  "older_copies_title": "نسخ أقدم محفوظة",
+  "older_copies_row": "استُبدلت بـ {file}"
 }

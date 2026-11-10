@@ -4115,5 +4115,9 @@
   "pdf_failed_file": "הקובץ שביקשת",
   "pdf_failed_back": "חזרה לאוסף",
   "alm_craft_loading": "טוען את החללית",
-  "alm_craft_failed": "אין כאן דגם: מוצגת נקודה"
+  "alm_craft_failed": "אין כאן דגם: מוצגת נקודה",
+  "lib_hd_where": "נבחר בהגדרות האלמנך",
+  "lib_hd_meta": "{n} קבצים · {size}",
+  "older_copies_title": "עותקים ישנים שנשמרו",
+  "older_copies_row": "הוחלף ב־{file}"
 }

@@ -4841,13 +4841,13 @@ function _msServerHtml() {
         '<button class="manage-btn-action" onclick="settingsSaveInline()" style="margin-inline-start:auto">' + tH('save') + '</button></div>' +
       '<div class="ms-hint">' + tH('restart_hint') + '</div>' +
       // Painted by _renderDesktopLan from the app's own config, not /manage.
-      '<div id="ms-lan"></div>' + _libFoldersSlot;
+      '<div id="ms-lan"></div>' + _libFoldersSlot + '<div id="ms-older"></div>';
     setTimeout(_renderDesktopLan, 0);
   } else {
     storageSec +=
       '<div class="ms-field"><label>' + tH('zim_folder') + '</label><input type="text" id="ms-zim-dir" dir="ltr" readonly value="' + escAttr(t('loading')) + '"></div>' +
       '<div class="ms-field"><label>' + tH('data_folder') + '</label><input type="text" id="ms-data-dir" dir="ltr" readonly value="' + escAttr(t('loading')) + '"></div>' +
-      '<div class="ms-hint">' + tH('configured_via_env') + '</div>' + _libFoldersSlot;
+      '<div class="ms-hint">' + tH('configured_via_env') + '</div>' + _libFoldersSlot + '<div id="ms-older"></div>';
   }
 
   // The server's backup; My data, this browser's, is under Preferences.
@@ -4893,6 +4893,7 @@ function _msServerHtml() {
     _renderDownloadSchedule();
     _renderLibFolders();
     _renderAppUpdate();
+    _tidyLoad(true);
   }, 0);
   _msFetch('/manage/cache-info').then(function(d) {
     var el = document.getElementById('ms-cache-info');
@@ -6660,9 +6661,45 @@ function _zimCardHtml(z, opts) {
   '</div>';
 }
 
+// What the library keeps beside what it lists (/manage/tidy): the Almanac's data as one row, and the older copies no name
+// serves. Read once per open of Manage, then drawn again where it is shown.
+var _tidy = null, _tidyAsked = false;
+function _tidyLoad(force) {
+  if (_tidyAsked && !force) return;
+  _tidyAsked = true;
+  _msFetch('/manage/tidy').then(function(d) {
+    _tidy = d;
+    if (manageTab === 'installed') renderInstalled();
+    _renderOlderCopies();
+  }).catch(function() { _tidyAsked = false; });
+}
+// The Almanac HD row: every pack and part of its data under one title, with sizes; chosen in the Almanac's settings.
+function _almanacHdRowHtml(row) {
+  var parts = row.packs.map(function(p) {
+    return '<div class="ci-hd-part"><span dir="ltr">' + esc(p.file) + '</span><span>' + esc(fmtSize(p.size_bytes / 1073741824)) + '</span></div>';
+  }).join('');
+  return '<div class="manage-installed-group ci-hd-group">' + _zimCardHtml({ title: t('net_almanac_hd'), name: '' }, {
+    metaHtml: '<span>' + esc(t('lib_hd_meta', { n: fmtNum(row.packs.length), size: fmtSize(row.size_bytes / 1073741824) })) + '</span> &middot; <span>' + esc(t('lib_hd_where')) + '</span>'
+  }) + '<div class="ci-hd-parts">' + parts + '</div></div>';
+}
+// Manage > Storage: the files no name serves any more, each with what replaced it and the usual remove.
+function _renderOlderCopies() {
+  var el = document.getElementById('ms-older');
+  if (!el) return;
+  var older = (_tidy && _tidy.older) || [];
+  if (!older.length) { el.innerHTML = ''; return; }
+  el.innerHTML = '<div class="ms-section-label">' + tH('older_copies_title') + '</div>' + older.map(function(o) {
+    return _zimCardHtml({ title: o.file, name: '' }, {
+      metaHtml: '<span>' + esc(fmtSize(o.size_bytes / 1073741824)) + '</span> &middot; <span>' + esc(t('older_copies_row', { file: o.replaced_by })) + '</span>',
+      actionsHtml: _zimDeleteBtn(o.file, false)
+    });
+  }).join('');
+}
+
 function renderInstalled(filterText) {
   const el = document.getElementById('manage-installed');
   if (!el) return;
+  _tidyLoad();
   const zims = zimsCache || [];
   // Same rule as home: only claim "nothing installed" when the server said so.
   if (!_libraryKnown) { el.innerHTML = _libraryUnavailableHtml(); _renderOfflineHome(); return; }
@@ -6772,6 +6809,7 @@ function renderInstalled(filterText) {
     }
     items_h += '</div>';
   }
+  if (_tidy && _tidy.almanac_hd && !installedParsed && !manageCategoryFilter && !manageLangFilter) items_h += _almanacHdRowHtml(_tidy.almanac_hd);
   if (!items_h) items_h = '<div class="empty"><p>' + tH('no_matching_zims') + '</p></div>';
 
   el.innerHTML = getInstalledPillsHtml() + items_h;

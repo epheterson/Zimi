@@ -4115,5 +4115,9 @@
   "pdf_failed_file": "El archivo que pediste",
   "pdf_failed_back": "Volver a la colección",
   "alm_craft_loading": "Cargando la sonda",
-  "alm_craft_failed": "Sin modelo aquí: se muestra un punto"
+  "alm_craft_failed": "Sin modelo aquí: se muestra un punto",
+  "lib_hd_where": "Se elige en los ajustes del Almanaque",
+  "lib_hd_meta": "{n} archivos · {size}",
+  "older_copies_title": "Copias antiguas guardadas",
+  "older_copies_row": "Sustituida por {file}"
 }
