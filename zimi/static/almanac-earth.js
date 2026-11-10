@@ -2245,6 +2245,8 @@ function _aeHdManifest() {
     return man;
   });
 }
+// The set's list, read once per view: the tiles and the craft (hd.json "craft") both go by it.
+function _aeHdManifestOnce() { return _ae.hdManP || (_ae.hdManP = _aeHdManifest()); }
 var AE_HD_TILE_PX = 512;
 var AE_HD_SPLIT = 1.0;           // a tile gives way to its four once it covers more device pixels than it has
 // What the tiles may hold on the GPU, in bytes (a tile of 512 px: 1.4 MB with mipmaps, a one-channel one a quarter of
@@ -2300,7 +2302,7 @@ function _aeHdLoad(S) {
   if (S.hd) return;
   S.hd = null;
   if (typeof fetch !== 'function') return;
-  _aeHdManifest().then(function (man) {
+  _aeHdManifestOnce().then(function (man) {
     if (_ae.gl !== S || !man || !man.layers) return;
     var bodies = _aeHdBodies(S).filter(function (b) {
       b.maps = b.maps.filter(function (m) { return man.layers[m.layer] || !m.optional; });
@@ -6855,13 +6857,17 @@ function _aeCraftHdBuild(I, d2, textures) {
   if (turning) I.pivot = pivot;
   if (_ae) { _ae.dirty = true; _aeKick(); }
 }
-// craft/index.json once (null: the HD ZIM is not there, or has no craft).
+// craft/index.json once (null: the HD ZIM is not there, or has no craft). Asked only when the set's list says it carries
+// craft (hd.json "craft", scripts/build_almanac_maxi.py): a set without them, or none, asks nothing (it was a 404 on
+// every open). Callers wait for the server to say the set is installed (_ae.hdInstalled).
 function _aeCraftHdIndexLoad() {
   var H = _aeCraftHd;
   if (H.index !== undefined) return Promise.resolve();
   if (!H.promise) {
-    H.promise = fetch(_aeCraftHdUrl('index.json')).then(function (r) { if (!r.ok) throw new Error('hd'); return r.json(); })
-      .then(function (j) { H.index = j && j.models ? j.models : null; }, function () { H.index = null; });
+    H.promise = (_ae.hdInstalled ? _aeHdManifestOnce() : Promise.resolve(null)).then(function (man) {
+      if (!man || !man.craft) return null;
+      return fetch(_aeCraftHdUrl('index.json')).then(function (r) { if (!r.ok) throw new Error('hd'); return r.json(); });
+    }).then(function (j) { H.index = j && j.models ? j.models : null; }, function () { H.index = null; });
   }
   return H.promise;
 }
@@ -6872,7 +6878,7 @@ function _aeCraftSiteHd(I, root) {
   var c = I.siteHd = I.siteHd || { roots: [], group: null, state: 0 };
   c.roots.push(root);
   if (c.group) { _aeCraftSiteHdAttach(c, root); return; }
-  if (c.state || typeof fetch !== 'function') return;
+  if (c.state || typeof fetch !== 'function' || !_ae.hdInstalled) return;   // no set (yet): a clone made later asks again
   c.state = 1;
   var S = _ae.gl;
   _aeCraftHdIndexLoad().then(function () {
@@ -6894,7 +6900,7 @@ function _aeCraftSiteHdAttach(c, root) {
   root.add(c.group.clone());
 }
 function _aeCraftHdRequest(I, pos) {
-  if (I.hd !== undefined || I.hdLoading || typeof fetch !== 'function') return;
+  if (I.hd !== undefined || I.hdLoading || typeof fetch !== 'function' || !_ae.hdInstalled) return;
   if (_aeCraftPx(I.d.span * I.d.metres / 1000 / AE_EARTH_RADIUS_KM, pos) < AE_CRAFT_HD_PX) return;
   var H = _aeCraftHd;
   if (H.index === undefined) {

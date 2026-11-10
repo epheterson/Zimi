@@ -98,6 +98,26 @@ def test_the_tiles_are_inside_under_hd(built):
     assert hd.article_count < 400
 
 
+def test_the_layer_list_says_whether_the_hd_craft_are_inside(built, tmp_path):
+    # Without them hd.json says nothing of craft, so the 3D view never asks for craft/index.json (a 404 on every open).
+    assert "craft" not in json.loads(_read(Archive(built["flavour"]), "hd/hd.json"))
+    craft = tmp_path / "craft"
+    craft.mkdir()
+    (craft / "index.json").write_text('{"models":{"voyager":{"file":"voyager.zcr2"}}}')
+    (craft / "voyager.zcr2").write_bytes(b"ZCR2")
+    hd = Archive(
+        maxi.build(
+            built["tiles"], str(tmp_path / "out"), month="2026-11", craft_dir=str(craft)
+        )
+    )
+    man = json.loads(_read(hd, "hd/hd.json"))
+    assert man["craft"] is True and man["layers"]["earth/day"]["max"] == 2
+    assert (
+        json.loads(_read(hd, "hd/craft/index.json"))["models"]["voyager"]["file"]
+        == "voyager.zcr2"
+    )
+
+
 def test_the_standard_flavour_has_no_tiles(built):
     std = Archive(built["standard"])
     with pytest.raises(KeyError):
@@ -149,10 +169,17 @@ def test_the_tile_source_pin_names_the_immutable_input():
     )
 
 
-def test_a_cached_tile_source_that_matches_the_pin_is_used_without_the_network(tmp_path):
+def test_a_cached_tile_source_that_matches_the_pin_is_used_without_the_network(
+    tmp_path,
+):
     f = tmp_path / "tiles.zim"
     f.write_bytes(b"tiles")
-    pin = {"file": "tiles.zim", "size": 5, "sha256": hashlib.sha256(b"tiles").hexdigest(), "tag": "v0.0.0"}
+    pin = {
+        "file": "tiles.zim",
+        "size": 5,
+        "sha256": hashlib.sha256(b"tiles").hexdigest(),
+        "tag": "v0.0.0",
+    }
     assert maxi.fetch_tiles(str(tmp_path), pin) == str(f)
 
 

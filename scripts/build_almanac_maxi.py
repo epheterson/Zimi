@@ -34,7 +34,11 @@ FILE_FMT = "zimi_almanac_maxi_%s.zim"
 MANIFEST = "zimi_almanac_maxi.json"
 #: Where the tiles sit inside the flavour (beside index.html, so a relative URL from the page reaches them).
 TILE_ROOT = "hd/"
-MIMES = {".webp": "image/webp", ".json": "application/json", ".zcr2": "application/octet-stream"}
+MIMES = {
+    ".webp": "image/webp",
+    ".json": "application/json",
+    ".zcr2": "application/octet-stream",
+}
 #: Where the craft models sit inside the flavour (scripts/build_craft_hd.py writes the folder).
 CRAFT_ROOT = TILE_ROOT + "craft/"
 #: What of the tile source is not a tile: its own credits page.
@@ -118,17 +122,33 @@ def add_tiles(tiles_zim, craft_dir=None):
     folder, if there is one, beside them."""
     from zimi.zimwriter import make_asset_item
 
+    craft = list(craft_entries(craft_dir)) if craft_dir else []
+    has_craft = CRAFT_ROOT + "index.json" in [c[0] for c in craft]
+
     def add(creator):
         names = set()
         for path, mime, data in tile_entries(tiles_zim):
             names.add(path)
+            if path == TILE_ROOT + "hd.json":
+                data = with_craft(data, has_craft)
             creator.add_item(make_asset_item(path, mime, data))
         if TILE_ROOT + "hd.json" not in names:
             raise SystemExit("%s has no hd.json" % tiles_zim)
-        for path, mime, data in craft_entries(craft_dir) if craft_dir else ():
+        for path, mime, data in craft:
             creator.add_item(make_asset_item(path, mime, data))
 
     return add
+
+
+def with_craft(manifest_bytes, has_craft):
+    """The tile source's ``hd.json`` saying whether the flavour carries the HD craft (``"craft": true``): the 3D view
+    asks for ``craft/index.json`` only then, never a 404 on every open."""
+    manifest = json.loads(manifest_bytes)
+    if has_craft:
+        manifest["craft"] = True
+    else:
+        manifest.pop("craft", None)
+    return json.dumps(manifest, separators=(",", ":")).encode()
 
 
 def build(tiles_zim, out_dir, month=None, craft_dir=None):

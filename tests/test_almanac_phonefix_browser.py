@@ -323,3 +323,63 @@ def test_the_3d_view_asks_for_no_frames_while_nothing_moves(browser, served, red
         assert not errors, errors
     finally:
         ctx.close()
+
+
+HD_BASE = "/w/zimi_almanac_maxi/hd/"
+
+
+def _with_hd(pg, manifest):
+    """The server says the HD set is installed; its list of layers is `manifest` (tiles themselves 404, as on a bare set)."""
+    import json
+
+    def sats(route):
+        body = route.fetch().json()
+        body["hd"] = {"installed": True, "base": HD_BASE, "parts": {}, "mode": "ask"}
+        route.fulfill(
+            status=200, content_type="application/json", body=json.dumps(body)
+        )
+
+    pg.route("**/almanac-satellites*", sats)
+    pg.route(
+        "**" + HD_BASE + "hd.json",
+        lambda r: r.fulfill(
+            status=200, content_type="application/json", body=json.dumps(manifest)
+        ),
+    )
+    pg.route(
+        "**" + HD_BASE + "craft/index.json",
+        lambda r: r.fulfill(
+            status=200, content_type="application/json", body='{"models":{}}'
+        ),
+    )
+
+
+@pytest.mark.parametrize("craft", [False, True])
+def test_the_hd_craft_list_is_asked_for_only_when_the_set_says_it_has_craft(
+    browser, served, craft
+):
+    ctx, pg, errors = _page(browser, served)
+    try:
+        asked = []
+        pg.on(
+            "request",
+            lambda r: (
+                asked.append(r.url) if r.url.endswith("/craft/index.json") else None
+            ),
+        )
+        manifest = {"version": 1, "tile": 512, "ext": "webp", "layers": {}}
+        if craft:
+            manifest["craft"] = True
+        _with_hd(pg, manifest)
+        _open_3d(pg)
+        pg.wait_for_function("() => !!_ae.hdInstalled", timeout=60_000, polling=200)
+        # A craft close enough to want its full model asks for the list (a landing site's model does the same).
+        pg.evaluate("() => _aeCraftHdIndexLoad()")
+        pg.wait_for_function(
+            "() => _aeCraftHd.index !== undefined", timeout=20_000, polling=100
+        )
+        pg.wait_for_timeout(500)
+        assert len(asked) == (1 if craft else 0), asked
+        assert not errors, errors
+    finally:
+        ctx.close()
