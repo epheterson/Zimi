@@ -27,6 +27,8 @@ check(cls(48.2, 8.2) === 'conifer', 'the Black Forest is conifer');
 check(cls(38.5, -98) === 'grass' && cls(40, -105.3) === 'grass', 'Kansas and the High Plains are grass');
 check(cls(25, 10) === 'desert', 'the Sahara is desert');
 check(cls(72, -40) === 'snow' && cls(-80, 0) === 'snow', 'Greenland and Antarctica are snow');
+check(cls(71.3, -156.8) === 'tundra' && cls(63.7, -68.5) === 'tundra' && cls(64.5, -50.5) === 'tundra' && cls(71.6, 128.9) === 'tundra' && cls(78.2, 15.6) === 'tundra', 'Utqiagvik, Iqaluit, the coast by Nuuk, Tiksi and the coast of Svalbard are tundra (past the tree line)');
+check(cls(78.5, 17.0) === 'snow' && cls(62, 100) === 'conifer' && cls(55, 37) !== 'tundra', 'Svalbard\'s interior is snow, central Siberia and Moscow are not tundra');
 check(cls(-3, -60) === 'broadleaf', 'the Amazon is broadleaf forest');
 check(run('_olAt(__g, 40.7, -74.0).coast') === true && cls(40.7, -74.0) !== 'sea', 'New York is a land cell with a coast');
 check(run('_olAt(__g, 38.5, -98).coast') === false, 'Kansas is nowhere near a coast');
