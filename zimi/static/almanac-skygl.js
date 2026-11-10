@@ -950,7 +950,7 @@ function _sgZodiTable() {
   for (var i = SG_ZODI_S10.length - 1; i >= 0; i--) zt.push(SG_ZODI_S10[i][0] * DEG_TO_RAD, SG_ZODI_S10[i][1]);
   return zt;
 }
-var SG_ECL_GLOW_MAX = 0.02, SG_ECL_GLOW_FROM = 0.97;   // the sunset-coloured ring's share of a sunset sky's light at totality, and the cover from which it comes up
+var SG_ECL_GLOW_MAX = 0.06, SG_ECL_GLOW_FROM = 0.97;   // the sunset-coloured ring's share of a sunset sky's light at totality, and the cover from which it comes up
 var SG_NO_CLOUDS = { cloud: [0, 2500, 700, 0], wind: [0, 0, 0], sunE: 0 };   // a sky with no cloud field to ask (the clouds' own values: almanac-onesky.js _osCloudValues)
 // One frame. p: { W, H, dpr, view, sunAltGeo, sunAz, moonAlt, moonAz, moonIllum,
 // moonDist, horizon (the 9 numbers of _sgHorizonMatrix), eclPole, sunVec,

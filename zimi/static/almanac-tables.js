@@ -1997,11 +1997,23 @@ var TB_CONST_ROWS = {
       ['zero_c', TB_ZERO_C_K, 2, 'K', TB_SRC_EXACT]
     ];
   },
-  // The beach scene's things that cross it (almanac-skyscene.js, almanac-sky.js): drawn for illustration, to these sizes.
+  // The sky and its scene: the air the sky is computed from (almanac-skygl.js), the day's cloud deck (almanac-onesky.js), and the things that
+  // cross it (almanac-skyscene.js, almanac-sky.js), drawn for illustration to these sizes.
   k_scene: function () {
-    var SRC = 'Zimi';
+    var SRC = 'Zimi', AIR = 'Hillaire 2020';
+    var per = function (a, d) { return a.map(function (x) { return _arNum(x * 1000, d); }).join(' / '); };   // per km in the model, per Mm here
     var span = function (pair, k) { return _arNum(pair[0] * (k || 1), 1) + ' – ' + _arNum(pair[1] * (k || 1), 1); };
     return [
+      ['air_rayleigh', per(SG_RAYLEIGH, 2), 0, '/Mm', AIR],
+      ['air_rayleigh_h', SG_RAYLEIGH_H, 1, 'km', AIR],
+      ['air_mie', _arNum(SG_MIE_SCATTER * 1000, 2) + ' + ' + _arNum(SG_MIE_ABSORB * 1000, 2), 0, '/Mm', AIR],
+      ['air_mie_h', SG_MIE_H, 1, 'km', AIR],
+      ['air_ozone', per(SG_OZONE, 3), 0, '/Mm', AIR],
+      ['cloud_base', OS_CLOUD_BASE_M / 1000, 1, 'km', SRC],
+      ['cloud_thick', OS_CLOUD_THICK_M / 1000, 1, 'km', SRC],
+      ['cloud_cover', '0 – 100', 0, '%', SRC],
+      ['cloud_wind', span(OS_CLOUD_WIND_MS), 0, 'm/s', SRC],
+      ['cloud_scale', SG_CLOUD_SCALE_M / 1000, 1, 'km', SRC],
       ['airliner_h', span(SKY_PLANE_KM), 0, 'km', SRC],
       ['airliner_v', span(SKY_PLANE_KM_S, TB_S_PER_HOUR), 0, 'km/h', SRC],
       ['heli_h', span(SKY_HELI.km), 0, 'km', SRC],
@@ -2073,7 +2085,8 @@ function _tbRenderConst(body) {
       '<td class="tb-src">' + _tbSource(r[4] === TB_SRC_EXACT ? 'SI · ' + _tbT('k_exact') : r[4]) + '</td></tr>';
   }).join('');
   body.innerHTML = '<div id="tb-print-head"></div><div class="tb-out" id="tb-out">' +
-    _tbTable(_tbHead([_tbH('k_name'), _tbH('k_value') + ' (' + _tbH('k_unit') + ')', _tbH('k_source')]), rows, 'tb-consts') + '</div>';
+    _tbTable(_tbHead([_tbH('k_name'), _tbH('k_value') + ' (' + _tbH('k_unit') + ')', _tbH('k_source')]), rows, 'tb-consts') +
+    (_tb.id === 'k_scene' ? _tbNote(_tbH('scene_note')) : '') + '</div>';
   _tbEl('tb-print-head').innerHTML = _tbPrintHead([]);
 }
 
