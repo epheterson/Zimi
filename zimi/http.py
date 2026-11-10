@@ -4516,17 +4516,35 @@ class ZimHandler(BaseHTTPRequestHandler):
             return None, None, total_size > window, window
         return start, min(end, start + window - 1), False, window
 
-    def _send_entry_too_large(self, total_size):
-        """413 for an entry Zimi refuses to materialize: one stored in a
-        compressed cluster, which libzim can only load whole, over the cap.
-        Said in words, for a person opening it."""
+    def _run_or_refuse(self, zim_name, item, total_size):
+        """``(path, offset)`` of an entry over the cap that is one
+        uncompressed run in its book (zimblob), to send in pieces; else the
+        413 is sent, with its true reason, and the offset is None."""
+        path = _srv.get_zim_files().get(zim_name, "")
+        at, why = _zimblob.find(path, getattr(item, "_index", None), total_size)
+        if at is None:
+            self._send_entry_too_large(total_size, why)
+        return path, at
+
+    def _send_entry_too_large(self, total_size, why=_zimblob.COMPRESSED):
+        """413 for an entry over the cap Zimi will not load whole, said in
+        words for a person opening it: stored compressed (libzim can only
+        hand it over all at once), or not laid out as one run of bytes."""
         self.send_response(413)
         self.send_header("Content-Type", "text/plain; charset=utf-8")
-        msg = (
-            f"This file is too large to send: {total_size // (1024*1024)} MB, stored compressed "
-            f"inside its ZIM. Zimi would have to load all of it into memory first, so it sends "
-            f"compressed files up to {_srv.MAX_SERVE_BYTES // (1024*1024)} MB."
-        ).encode()
+        size, cap = total_size // (1024 * 1024), _srv.MAX_SERVE_BYTES // (1024 * 1024)
+        if why == _zimblob.COMPRESSED:
+            text = (
+                f"This file is too large to send: {size} MB, stored compressed inside its ZIM. "
+                f"Zimi would have to load all of it into memory first, so it sends compressed "
+                f"files up to {cap} MB."
+            )
+        else:
+            text = (
+                f"This file is too large to send: {size} MB, and Zimi could not find it as one "
+                f"run of bytes in its ZIM to send in pieces. It sends such files up to {cap} MB."
+            )
+        msg = text.encode()
         self.send_header("Content-Length", str(len(msg)))
         self.end_headers()
         self.wfile.write(msg)
@@ -4752,10 +4770,16 @@ class ZimHandler(BaseHTTPRequestHandler):
                 if not epub_filename.endswith(".epub"):
                     epub_filename += ".epub"
                 # Size check BEFORE materializing: reading first and refusing
-                # afterwards is the OOM this cap exists to prevent.
+                # afterwards is the OOM this cap exists to prevent. Over it,
+                # sent in pieces when it is one uncompressed run.
                 if total_size > _srv.MAX_SERVE_BYTES:
-                    return self._send_entry_too_large(total_size)
-                content = bytes(item.content)
+                    direct_path, direct_at = self._run_or_refuse(zim_name, item, total_size)
+                    if direct_at is None:
+                        return
+                    range_start, range_end, stream_whole, window = self._windows(total_size)
+                    content = b""
+                else:
+                    content = bytes(item.content)
             else:
                 # ETag check BEFORE reading content — avoids materializing large
                 # blobs when client already has a cached copy
@@ -4812,12 +4836,9 @@ class ZimHandler(BaseHTTPRequestHandler):
                     # bytes are one uncompressed run in the file. In a
                     # compressed cluster libzim can only hand over all of it
                     # at once, which is what the cap is there to prevent.
-                    direct_path = _srv.get_zim_files().get(zim_name, "")
-                    direct_at = _zimblob.locate(
-                        direct_path, getattr(item, "_index", None), total_size
-                    )
+                    direct_path, direct_at = self._run_or_refuse(zim_name, item, total_size)
                     if direct_at is None:
-                        return self._send_entry_too_large(total_size)
+                        return
                     range_start, range_end, stream_whole, window = self._windows(total_size)
                     content = b""
                 else:
@@ -4828,8 +4849,9 @@ class ZimHandler(BaseHTTPRequestHandler):
             end = range_end if range_end is not None else total_size - 1
             content = _zimblob.read(direct_path, direct_at, start, end)
 
-        # EPUB: write download response outside lock
-        if epub_filename:
+        # EPUB: write download response outside lock (one in pieces goes
+        # out by the windowed path below, still as a download)
+        if epub_filename and direct_at is None:
             self.send_response(200)
             self.send_header("Content-Type", mimetype)
             self.send_header("Content-Length", str(len(content)))
@@ -4886,6 +4908,8 @@ class ZimHandler(BaseHTTPRequestHandler):
             self.send_response(200)
 
         self.send_header("Content-Type", mimetype)
+        if epub_filename:
+            self.send_header("Content-Disposition", self._attachment(epub_filename))
         # A short window, not "ask every time" and not "immutable".
         #
         # `no-cache` means "store, but ASK before serving", and it was right
@@ -4915,7 +4939,8 @@ class ZimHandler(BaseHTTPRequestHandler):
             "Cache-Control", "private, no-cache" if own else f"private, max-age={ZIM_CONTENT_MAX_AGE}"
         )
         self.send_header("Vary", "Sec-Fetch-Dest")
-        self.send_header("ETag", etag)
+        if etag:
+            self.send_header("ETag", etag)
 
         if is_streamable or direct_at is not None:
             self.send_header("Accept-Ranges", "bytes")
