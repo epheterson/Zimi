@@ -470,11 +470,12 @@ var SG_CLOUD_DETAIL = { scale: 3.3, share: 0.38, offset: 9.7, stretch: 1.35 };  
 var SG_CLOUD_FAR_M = 200000;               // the deck is not followed past this distance
 var SG_CLOUD_HAZE_M = 60000;               // the air between thins a cloud this far to 1/e
 var SG_CLOUD_THRESHOLD = [0.72, 0.18];     // the noise's cut for a clear day and a full one
-var SG_CLOUD_EDGE = 0.09;                  // and how soft it is
+var SG_CLOUD_EDGE = 0.06;                  // how soft its outline is: the shape stays crisp (the cloud's opacity)
+var SG_CLOUD_THICK_WIDTH = 0.35;           // and how far into a cloud its light goes from thin to thick: a wide gradient, so there is no outline (the cloud's light)
 var SG_CLOUD_FOOTPRINT = 0.004;            // the angle a pixel covers (radians), about: features smaller than the deck's ground under it fade to their mean
 var SG_CLOUD_TAU = 3.2;                    // optical depth of the deck at full density: a thin edge passes light, a thick body does not
 var SG_CLOUD_ALBEDO = 0.8;
-var SG_CLOUD_THICK_FROM = 0.15, SG_CLOUD_THICK_TO = 0.9, SG_CLOUD_THICK_LIGHT = 0.08;   // a thick deck's underside gets this share of the Sun's light through it
+var SG_CLOUD_THICK_LIGHT = 0.08;   // a thick deck's underside gets this share of the Sun's light through it
 var SG_CLOUD_LIT_FROM = -0.25, SG_CLOUD_LIT_TO = 0.6;   // the Sun's height at the cloud over which it goes from in shade to in the light
 var SG_SUN_DEPTH_RGB = 'vec3(0.10, 0.14, 0.22)';          // optical depth per airmass of the sunlight's path (almanac-sky.js SKY_SUN_DEPTH)
 var SG_CLOUD_EARTH_KM = '6371.0';
@@ -499,20 +500,22 @@ var SG_GLSL_CLOUD_FIELD = [
   '  for (int i = 0; i < 4; i++) { s += a * mix(0.5, cloudNoise(p), 1.0 - smoothstep(0.25, 1.0, fp / size)); p = p * 2.03 + 17.1; a *= 0.5; size /= 2.03; }',
   '  return s / 0.9375;',
   '}',
-  'float cloudDensity(vec2 xy, float fp) {',
+  // How far past the cut the noise is: 0 at a cloud's edge, rising into its body (mottled by the finer octave inside it).
+  'float cloudMargin(vec2 xy, float fp) {',
   '  vec2 q = (xy - uCloudWind.xy * uCloudWind.z) / ' + SG_CLOUD_SCALE_M.toFixed(1) + ' + uCloud.w;',
   '  float n = ' + (1 - SG_CLOUD_DETAIL.share).toFixed(2) + ' * cloudFbm(q, ' + SG_CLOUD_SCALE_M.toFixed(1) + ', fp) + ' + SG_CLOUD_DETAIL.share.toFixed(2) + ' * cloudFbm(q * ' + SG_CLOUD_DETAIL.scale.toFixed(1) + ' + ' + SG_CLOUD_DETAIL.offset.toFixed(1) + ', ' + (SG_CLOUD_SCALE_M / SG_CLOUD_DETAIL.scale).toFixed(1) + ', fp);',
   '  n = (n - 0.47) * ' + SG_CLOUD_DETAIL.stretch.toFixed(2) + ' + 0.47;',
   '  float th = mix(' + SG_CLOUD_THRESHOLD[0].toFixed(2) + ', ' + SG_CLOUD_THRESHOLD[1].toFixed(2) + ', uCloud.x);',
-  '  return smoothstep(th, th + ' + SG_CLOUD_EDGE.toFixed(2) + ', n);',
+  '  return n - th;',
   '}',
+  'float cloudThick(vec2 xy, float fp) { return clamp(cloudMargin(xy, fp) / ' + SG_CLOUD_THICK_WIDTH.toFixed(2) + ', 0.0, 1.0); }',
   // The share of the sky the cloud covers along d from o (metres), and where the ray meets the deck.
   'float cloudHit(vec3 d, vec3 o, out float t, out vec2 xy, out float dens) {',
   '  t = 0.0; xy = vec2(0.0); dens = 0.0;',
   '  if (d.z <= 0.003 || o.z >= uCloud.y || uCloud.x <= 0.0) return 0.0;',
   '  t = min((uCloud.y - o.z) / d.z, ' + SG_CLOUD_FAR_M.toFixed(1) + ');',
   '  xy = o.xy + d.xy * t;',
-  '  dens = cloudDensity(xy, t * ' + SG_CLOUD_FOOTPRINT + ');',
+  '  dens = smoothstep(0.0, ' + SG_CLOUD_EDGE.toFixed(2) + ', cloudMargin(xy, t * ' + SG_CLOUD_FOOTPRINT + '));',
   '  return (1.0 - exp(-' + SG_CLOUD_TAU.toFixed(1) + ' * dens)) * 0.94 * smoothstep(0.003, 0.03, d.z);',
   '}'
 ].join('\n');
@@ -531,16 +534,17 @@ var SG_GLSL_CLOUDS = [
   '  vec3 sunE = uCloudSunE * exp(-' + SG_SUN_DEPTH_RGB + ' * airmassDeg(max(sunAlt, -0.5))) * lit;',
   // Shadowed where the deck toward the Sun is denser; darker underneath where it is thick; bright where thin and near the Sun.
   '  vec2 toSun = uSunVec.xy / max(uSunVec.z, 0.15) * uCloud.z;',
-  '  float shade = 1.0 - clamp(cloudDensity(xy + toSun, t * ' + SG_CLOUD_FOOTPRINT + ') - dens * 0.5, 0.0, 1.0) * 0.6;',
-  '  float thick = smoothstep(' + SG_CLOUD_THICK_FROM.toFixed(2) + ', ' + SG_CLOUD_THICK_TO.toFixed(2) + ', dens * (0.5 + 0.5 * uCloud.x));',
-  '  float under = mix(1.0, ' + SG_CLOUD_THICK_LIGHT.toFixed(2) + ', thick);',
-  '  float silver = 1.0 + 1.5 * pow(max(dot(d, uSunVec), 0.0), 12.0) * (1.0 - dens);',
+  '  float thick = cloudThick(xy, t * ' + SG_CLOUD_FOOTPRINT + ');',
+  '  float shade = 1.0 - clamp(cloudThick(xy + toSun, t * ' + SG_CLOUD_FOOTPRINT + ') - thick * 0.5, 0.0, 1.0) * 0.6;',
+  '  float core = pow(thick, 0.8);',   // the dark of the body grows smoothly from the thin edge: silver through the thin third, a grey core
+  '  float under = mix(1.0, ' + SG_CLOUD_THICK_LIGHT.toFixed(2) + ', core);',
+  '  float silver = 1.0 + 1.5 * pow(max(dot(d, uSunVec), 0.0), 12.0) * (1.0 - thick);',
   '  vec3 amb = ambientSky(), ground = ' + SG_GROUND_ALBEDO + ' * (amb + vec3(uSunLux * max(uSunVec.z, 0.0) / PI));',
   // The Moon lights the deck too: bright edges and thin parts near it, the thick body dark.
   '  float moonUp = smoothstep(-0.02, 0.1, uMoonVec.z);',
-  '  float silverM = 1.0 + 1.5 * pow(max(dot(d, uMoonVec), 0.0), 12.0) * (1.0 - dens);',
-  '  vec3 moonE = vec3(uMoonLux * moonUp * mix(1.0, ' + SG_CLOUD_THICK_LIGHT.toFixed(2) + ', thick));',
-  '  vec3 Lc = ' + SG_CLOUD_ALBEDO.toFixed(2) + ' * (sunE / PI * shade * under * silver * 0.8 + moonE / PI * silverM * 0.8 + amb * (0.95 - 0.3 * dens) + 0.5 * ground * dens);',
+  '  float silverM = 1.0 + 1.5 * pow(max(dot(d, uMoonVec), 0.0), 12.0) * (1.0 - thick);',
+  '  vec3 moonE = vec3(uMoonLux * moonUp * mix(1.0, ' + SG_CLOUD_THICK_LIGHT.toFixed(2) + ', core));',
+  '  vec3 Lc = ' + SG_CLOUD_ALBEDO.toFixed(2) + ' * (sunE / PI * shade * under * silver * 0.8 + moonE / PI * silverM * 0.8 + amb * (0.95 - 0.3 * thick) + 0.5 * ground * thick);',
   '  float T = exp(-t / ' + SG_CLOUD_HAZE_M.toFixed(1) + ');',
   '  vec3 Ls = skyLight(az, max(asin(clamp(d.z, 0.0, 1.0)), 0.02));',
   '  return vec4((Lc * T + Ls * (1.0 - T)) * a, a);',

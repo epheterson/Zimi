@@ -110,24 +110,30 @@ function _osCloudFbm(px, py, size, fp) {   // each octave fades to its mean once
   for (var i = 0; i < 4; i++) { s += a * (0.5 + (_osCloudNoise(px, py) - 0.5) * (1 - _osSmoothstep(0.25, 1, fp / size))); px = px * 2.03 + 17.1; py = py * 2.03 + 17.1; a *= 0.5; size /= 2.03; }
   return s / 0.9375;
 }
-function _osCloudDensity(v, x, y, t) {
+function _osCloudMargin(v, x, y, t) {
   var D = SG_CLOUD_DETAIL, qx = (x - v.wind[0] * v.wind[2]) / SG_CLOUD_SCALE_M + v.cloud[3], qy = (y - v.wind[1] * v.wind[2]) / SG_CLOUD_SCALE_M + v.cloud[3];
   var n = (1 - D.share) * _osCloudFbm(qx, qy, SG_CLOUD_SCALE_M, t * SG_CLOUD_FOOTPRINT) + D.share * _osCloudFbm(qx * D.scale + D.offset, qy * D.scale + D.offset, SG_CLOUD_SCALE_M / D.scale, t * SG_CLOUD_FOOTPRINT);
   n = (n - 0.47) * D.stretch + 0.47;
   var th = SG_CLOUD_THRESHOLD[0] + (SG_CLOUD_THRESHOLD[1] - SG_CLOUD_THRESHOLD[0]) * v.cloud[0];
-  return _osSmoothstep(th, th + SG_CLOUD_EDGE, n);
+  return n - th;
 }
 function _osCloudAlphaAt(v, azDeg, altDeg) {
   var az = azDeg * Math.PI / 180, alt = altDeg * Math.PI / 180, dz = Math.sin(alt);
   if (dz <= 0.003 || v.cloud[0] <= 0) return 0;
   var t = Math.min(v.cloud[1] / dz, SG_CLOUD_FAR_M), c = Math.cos(alt);
-  return (1 - Math.exp(-SG_CLOUD_TAU * _osCloudDensity(v, Math.sin(az) * c * t, Math.cos(az) * c * t, t))) * 0.94 * _osSmoothstep(0.003, 0.03, dz);
+  return (1 - Math.exp(-SG_CLOUD_TAU * _osSmoothstep(0, SG_CLOUD_EDGE, _osCloudMargin(v, Math.sin(az) * c * t, Math.cos(az) * c * t, t)))) * 0.94 * _osSmoothstep(0.003, 0.03, dz);
 }
 
 // How much of the Moon the day's deck hides (0 clear to about 1 solid), at its place in the sky.
-function _osMoonVeil(s) {
-  var m = s.eph.moon;
-  return m.altitude > 0 ? _osCloudAlphaAt(_osCloudValues(_osDef({ lat: s.lat, lon: s.lon, tMs: s.nowTime }), s.sunShare), m.azimuth, m.altitude) : 0;
+function _osMoonVeil(s) { return _osMoonVeilAt(_osDef({ lat: s.lat, lon: s.lon, tMs: s.nowTime })); }
+// The same for any definition; mode 'clear' (a hand-off's) has no deck. The ground view's Moon takes this (almanac-oneair.js moonVeil).
+function _osMoonVeilAt(def, mode) {
+  var S = _osSkyState(def), m = S.eph.moon;
+  return m.altitude > 0 ? _osCloudAlphaAt(_osCloudValues(def, S.sunShare, mode), m.azimuth, m.altitude) : 0;
+}
+function _osSunVeilAt(def, mode) {
+  var S = _osSkyState(def), q = S.eph.sun;
+  return q.alt > 0 ? _osCloudAlphaAt(_osCloudValues(def, S.sunShare, mode), q.az, q.alt) : 0;
 }
 
 // ── The sky's objects ──
@@ -205,9 +211,13 @@ function _osCardDef() {
 // page as it was (the scroll, the card painting again).
 function _osStandHere() {
   var def = _osCardDef();
-  if (!def || typeof _aeStandOpen !== 'function' && typeof _almLoadEarth !== 'function') return Promise.resolve(false);
+  if (!def) return Promise.resolve(false);
   var y = window.pageYOffset || 0;
-  var back = function () { window.scrollTo(0, y); if (typeof _skyResume === 'function' && typeof _skyState !== 'undefined' && _skyState) _skyResume(); };
+  return _osStandOpen(def, function () { window.scrollTo(0, y); if (typeof _skyResume === 'function' && typeof _skyState !== 'undefined' && _skyState) _skyResume(); });
+}
+// Stand here at a definition (the 3D view's files load on the first ask), then `back` when its own way back is taken.
+function _osStandOpen(def, back) {
+  if (typeof _aeStandOpen !== 'function' && typeof _almLoadEarth !== 'function') return Promise.resolve(false);
   var ready = typeof _aeStandOpen === 'function' ? Promise.resolve() : _almLoadEarth().then(function () { return _aeStandReady(); });
   return ready.then(function () { return _aeStandOpen(_osHandoffFrom(def, back)); }).catch(function () { return false; });
 }
@@ -218,6 +228,19 @@ function _osStandClouds(mode) {
   if (!st) return;
   st.handoff = Object.assign(st.handoff || {}, { clouds: mode });
   st.dirty = true; _ae.dirty = true;
+}
+
+// Look's way down to the ground: the same place, instant and facing, and the phone still turning the view if it was (Stand here reads the
+// phone through the same sensors, and the person's choice is the one Look kept); its way back opens Look again where it was.
+var OS_MOTION_KEY = 'zimi_ae_stand_motion';   // almanac-standlook.js AE_MOTION_KEY: whether the phone turns the ground view
+function _osStandFromLook() {
+  var S = typeof _look !== 'undefined' ? _look : null;
+  if (!S) return Promise.resolve(false);
+  var place = S.place, view = S.view, sensing = S.mode === 'sensor', ms = typeof _almFocusInstant === 'function' ? _almFocusInstant().getTime() : Date.now();
+  _lookClose();
+  if (sensing) { try { localStorage.setItem(OS_MOTION_KEY, '1'); } catch (e) { /* private window */ } }
+  var def = _osDef({ lat: place.lat, lon: place.lon, tMs: ms, heading: view.az, pitch: Math.max(0, view.alt) });
+  return _osStandOpen(def, function () { if (typeof _lookOpen === 'function') _lookOpen({ lat: place.lat, lon: place.lon, name: place.name }); });
 }
 
 // ── What the card stands on ──

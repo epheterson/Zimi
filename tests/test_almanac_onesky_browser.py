@@ -560,3 +560,41 @@ def test_the_card_and_the_ground_view_draw_the_same_cloud_field(browser, served)
     )
     agree = sum(1 for a, b in both if a == b)
     assert agree >= len(both) - 1, (card_mask, stand_mask)
+
+
+def test_look_goes_down_to_the_ground_facing_the_same_way_and_comes_back(
+    browser, served
+):
+    """Look's ground button opens Stand here at its place, at the page's instant, facing where Look faced; Stand's way back opens Look again."""
+    ctx = _context(browser)
+    pg = ctx.new_page()
+    errors = []
+    pg.on("pageerror", lambda e: errors.append(str(e)))
+    pg.goto(served + "/#almanac", wait_until="load")
+    pg.wait_for_function(
+        "() => typeof openAlmanacLook === 'function' && _skyState && _skyState.eph && typeof _jdToJulianCentury === 'function'",
+        timeout=120_000,
+    )
+    pg.evaluate("() => openAlmanacLook()")
+    pg.wait_for_function(
+        "() => !!document.getElementById('look-stand') && !!_look && _look.skyMounted",
+        timeout=60_000,
+    )
+    pg.evaluate(
+        "() => { _look.target = { az: 130, alt: 25, roll: 0 }; _look.view = { az: 130, alt: 25, roll: 0 }; }"
+    )
+    pg.click("#look-stand")
+    pg.wait_for_function(
+        "() => typeof _ae !== 'undefined' && _ae && _ae.stand && _ae.stand.live && _ae.stand.mode === 'ground'",
+        timeout=READY_MS,
+        polling=250,
+    )
+    assert pg.evaluate("() => !_look"), "Look is closed while the ground is open"
+    head = pg.evaluate(
+        "() => (((_ae.stand.yaw + _ae.stand.userYaw) * 180 / Math.PI) % 360 + 360) % 360"
+    )
+    assert abs(((head - 130) + 540) % 360 - 180) < 2, head
+    pg.evaluate("() => _aeStandClose()")
+    pg.wait_for_function("() => !!_look", timeout=60_000, polling=250)
+    assert not errors, errors
+    ctx.close()

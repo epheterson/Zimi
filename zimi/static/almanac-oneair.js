@@ -177,6 +177,10 @@ var _oaAir = {
   sunShare: function (st, fr) { return _osSkyState(_oaDef(st, fr)).sunShare; },
   limitMag: function (st, fr) { return _osSkyState(_oaDef(st, fr)).lm; },
   eclipse: function (st, fr) { return _osEclipse(_oaDef(st, fr)); },
+  // How much of the Moon (or the Sun) the day's deck hides, 0 clear to about 1 solid, from the same field the sky draws; 0 for a visit that
+  // asked for a clear sky. The ground view dims its sprite by 1 minus this.
+  moonVeil: function (st, fr) { return _osMoonVeilAt(_oaDef(st, fr), st.handoff && st.handoff.clouds); },
+  sunVeil: function (st, fr) { return _osSunVeilAt(_oaDef(st, fr), st.handoff && st.handoff.clouds); },
   // The card's exposure, in Stand here's units (the same eye for the sky, the ground and everything on it).
   exposureK: function (st, fr) {
     var lv = _osSkyState(_oaDef(st, fr)).lv;

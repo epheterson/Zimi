@@ -371,6 +371,7 @@ var _lookStopgapSky = {
 // ── The overlay ────────────────────────────────────────────────────────────
 
 var LOOK_CLOSE_SVG = '<svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M6 6l12 12M18 6L6 18"/></svg>';
+var LOOK_STAND_SVG = '<svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="5.5" r="2.3"/><path d="M12 8.5v6M8.5 11.5l3.5-1 3.5 1M12 14.5l-2.5 5.5M12 14.5l2.5 5.5"/></svg>';
 var LOOK_FIND_SVG = '<svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="10.5" cy="10.5" r="6"/><path d="M15 15l5.5 5.5"/></svg>';
 
 function _lookPlaceLabel(place) {
@@ -398,7 +399,8 @@ function _lookOpen(opts) {
     '<div class="look-layers"><div class="look-sky" id="look-sky"></div></div>' +
     '<div class="look-top"><button type="button" class="look-btn" id="look-close"></button>' +
     '<div class="look-info"><div class="look-read" id="look-read"></div><div class="look-place" id="look-place"></div></div>' +
-    '<button type="button" class="look-btn look-find" id="look-find"></button></div>' +
+    '<button type="button" class="look-btn look-find" id="look-find"></button>' +
+    '<button type="button" class="look-btn look-stand" id="look-stand"></button></div>' +
     '<div class="look-note" id="look-note" role="status" hidden></div>' +
     '<div class="look-bottom"><button type="button" class="look-main" id="look-ask"></button></div>';
   document.body.appendChild(root);
@@ -407,6 +409,9 @@ function _lookOpen(opts) {
   _lookEl('look-find').innerHTML = LOOK_FIND_SVG;
   _lookEl('look-find').setAttribute('aria-label', _lookT('sky_find_btn'));
   _lookEl('look-find').onclick = function () { if (typeof openAlmanacFind === 'function') openAlmanacFind('look'); };
+  _lookEl('look-stand').innerHTML = LOOK_STAND_SVG;
+  _lookEl('look-stand').setAttribute('aria-label', t('alm_launch_on_ground'));
+  _lookEl('look-stand').onclick = function () { if (typeof _osStandFromLook === 'function') _osStandFromLook(); };   // the ground at this place, instant and facing (almanac-onesky.js)
   _lookEl('look-ask').textContent = _lookT('look_enable');
   _lookEl('look-place').textContent = _lookPlaceLabel(place);
   document.body.classList.add('look-open');
