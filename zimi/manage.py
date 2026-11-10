@@ -2170,7 +2170,7 @@ def _activity_health_finish(actor):
         record_activity(
             "health",
             "",  # the whole library — the client names it in the reader's language
-            outcome="ok" if state.get("phase") == "done" else "failed",
+            outcome={"done": "ok", "cancelled": "interrupted"}.get(state.get("phase"), "failed"),
             detail=f"{healthy}/{total}" if total else "",
             actor=actor,
         )
@@ -7102,6 +7102,8 @@ def handle_manage_post(handler, parsed, data):
         # Kick off the library health report on a worker thread.
         from zimi import health as _health
 
+        if data.get("cancel") is True:
+            return handler._json(200, {"cancelled": _health.cancel_check()})
         # {"deep": true} reads every file for its checksum (minutes a
         # hundred GB); the Check button sends nothing and stays quick.
         started, msg = _health.start_check(deep=data.get("deep") is True)

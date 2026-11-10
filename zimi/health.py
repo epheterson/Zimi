@@ -25,9 +25,14 @@ log = logging.getLogger("zimi.health")
 
 _lock = threading.Lock()
 _state = {
-    "phase": None,  # None | "running" | "done" | "error"
+    "phase": None,  # None | "running" | "done" | "cancelled" | "error"
     "done": 0,
     "total": 0,
+    # The deep check reads every byte: how far, of how much, in which book.
+    "deep": False,
+    "bytes_done": 0,
+    "bytes_total": 0,
+    "current": None,
     "report": None,  # list[dict] once finished
     "summary": None,  # {"total","healthy","warnings"}
     "started_at": None,
@@ -39,9 +44,31 @@ def _set(**kw):
     _state.update(kw)
 
 
+# Set to stop a running check after the block it is reading.
+_stop = threading.Event()
+
+
 def get_state():
-    """Copied snapshot for the poll endpoint (never the live dict)."""
-    return dict(_state)
+    """Copied snapshot for the poll endpoint (never the live dict). A
+    running deep check carries ``eta_seconds`` from its own pace so far."""
+    st = dict(_state)
+    if st["phase"] == "running" and st["deep"] and st["bytes_done"] and st["started_at"]:
+        pace = st["bytes_done"] / max(time.time() - st["started_at"], 1e-3)
+        st["eta_seconds"] = round((st["bytes_total"] - st["bytes_done"]) / pace)
+    return st
+
+
+def cancel_check():
+    """Stop the running check; True when one was running. It ends as
+    ``cancelled`` with the books it finished in its report."""
+    if _state["phase"] != "running":
+        return False
+    _stop.set()
+    return True
+
+
+def _count_bytes(n):
+    _state["bytes_done"] += n
 
 
 def _catalog_sizes():
@@ -215,7 +242,7 @@ def _sample_text(archive):
     return {"sampled": sampled, "empty": empty}
 
 
-def _check_one(entry, path, catalog_sizes, deep=False):
+def _check_one(entry, path, catalog_sizes, deep=False, on_bytes=None):
     """Build a single ZIM's health row. ``deep`` also reads the whole file
     for its checksum (zimcheck.checksum_problem: off the libzim lock, and
     off the GIL, at disk speed)."""
@@ -271,7 +298,7 @@ def _check_one(entry, path, catalog_sizes, deep=False):
         row["issues"].append("does not open")
 
     if deep and row["opens"]:
-        problem = zimcheck.checksum_problem(path)
+        problem = zimcheck.checksum_problem(path, on_bytes, _stop)
         if problem:
             row["issues"].append(problem)
     if row["opens"] and not row["has_main"]:
@@ -333,6 +360,13 @@ def _check_one(entry, path, catalog_sizes, deep=False):
     return row
 
 
+def _book_size(path):
+    try:
+        return zimparts.size(path)
+    except OSError:
+        return 0
+
+
 def _run(deep=False):
     try:
         zim_files = _srv.get_zim_files()
@@ -340,12 +374,21 @@ def _run(deep=False):
         catalog_sizes = _catalog_sizes()
         names = sorted(zim_files.keys())
         total = len(names)
-        _set(phase="running", done=0, total=total, report=None, summary=None)
+        sizes = {n: _book_size(zim_files[n]) for n in names} if deep else {}
+        _set(phase="running", done=0, total=total, report=None, summary=None,
+             bytes_total=sum(sizes.values()))
         report = []
         for i, name in enumerate(names):
             entry = by_name.get(name) or {"name": name}
-            report.append(_check_one(entry, zim_files[name], catalog_sizes, deep))
-            _set(done=i + 1, total=total)
+            _set(current=entry.get("title") or name)
+            try:
+                report.append(_check_one(entry, zim_files[name], catalog_sizes, deep, _count_bytes))
+            except zimcheck.CheckStopped:
+                _set(phase="cancelled", report=report, current=None, finished_at=time.time())
+                return
+            # Exact after each book, whatever the blocks added up to.
+            _set(done=i + 1, total=total, bytes_done=sum(sizes[n] for n in names[: i + 1]) if deep else 0)
+        _set(current=None)
         healthy = sum(1 for r in report if r["status"] == "ok")
         warnings = total - healthy
         # Stray .torrent metadata companions (aria2-era leftovers) — flagged
@@ -383,6 +426,7 @@ def _run(deep=False):
         log.error("health check failed: %s", e)
         _set(phase="error", report=None)
     finally:
+        _stop.clear()
         _lock.release()
 
 
@@ -392,6 +436,7 @@ def start_check(deep=False):
     ``deep`` verifies every checksum too: the whole library read from disk."""
     if not _lock.acquire(blocking=False):
         return False, "a health check is already running"
+    _stop.clear()
     _set(
         phase="running",
         done=0,
@@ -400,6 +445,10 @@ def start_check(deep=False):
         summary=None,
         started_at=time.time(),
         finished_at=None,
+        deep=deep,
+        bytes_done=0,
+        bytes_total=0,
+        current=None,
     )
     threading.Thread(target=_run, args=(deep,), daemon=True, name="library-health").start()
     return True, "started"

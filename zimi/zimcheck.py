@@ -62,9 +62,14 @@ _READ_BYTES = 4 << 20
 CHECKSUM_MISMATCH = "the file does not match its own checksum"
 
 
-def checksum_problem(path):
+class CheckStopped(Exception):
+    """A checksum read stopped on request, before it reached an answer."""
+
+
+def checksum_problem(path, on_bytes=None, stop=None):
     """None when the book at ``path`` matches its own checksum (or carries
-    none), else what is wrong, in words.
+    none), else what is wrong, in words. ``on_bytes(n)`` hears each block
+    read; ``stop`` (an Event) set raises CheckStopped after the block.
 
     What libzim's Archive.check() does, done here instead: check() holds
     Python's GIL for the whole read, and every other thread of a server
@@ -92,9 +97,13 @@ def checksum_problem(path):
                     block = f.read(_READ_BYTES)
                     if not block:
                         break
+                    if stop is not None and stop.is_set():
+                        raise CheckStopped()
                     take = block[:left]
                     md5.update(take)
                     left -= len(take)
+                    if on_bytes:
+                        on_bytes(len(block))
                     if not left:
                         stored += block[len(take) :][: _MD5_LEN - len(stored)]
     except OSError as e:
