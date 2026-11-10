@@ -204,18 +204,18 @@ var AE_ST_TREE_VERT = [
   'varying vec3 vP, vN, vTree;',
   'void main() { vP = position; vN = aNrm; vTree = aTree; gl_Position = projectionMatrix * viewMatrix * vec4(position, 1.0); }'
 ].join('\n');
-var AE_ST_TREE_FRAG = [
+function _aeStTreeFrag(albLines, uniforms) {
+  return [
   'precision highp float;',
   AE_ST_GLSL_ATMO, AE_ST_GLSL_TONE,
   _aeStInscatterGlsl('inscatterGround', AE_ST_STEPS_GROUND),
-  'uniform vec3 uCam, uAmbient; uniform float uK;',
+  'uniform vec3 uCam, uAmbient; uniform float uK, uCloudDim;' + uniforms,
   'varying vec3 vP, vN, vTree;',
   'void main() {',
   '  gJit = fract(52.9829189 * fract(dot(gl_FragCoord.xy, vec2(0.06711056, 0.00583715))));',
   '  float dist = length(vP - uCam); vec3 V = (uCam - vP) / dist, N = normalize(vN);',
-  '  vec3 alb = vTree.z < 0.5 ? vec3(0.026, 0.05, 0.03) : vTree.z < 1.5 ? vec3(0.06, 0.09, 0.03) : vTree.z < 2.5 ? vec3(0.05, 0.09, 0.035) : vec3(0.04, 0.028, 0.02);',
-  '  alb *= (0.8 + 0.4 * vTree.y) * (0.6 + 0.4 * min(vTree.x, 1.0));',   // each tree its own shade, darker below, paler at the tips
-  '  vec3 sT = sunTrans(vP * 0.001) * uSunE;',
+  albLines,
+  '  vec3 sT = sunTrans(vP * 0.001) * uSunE * uCloudDim;',
   '  vec3 L = alb * (sT * max(dot(N, uSunDir), 0.0) / PI + uAmbient * (0.55 + 0.45 * N.z));',
   '  if (uAtmo > 0.5) {',
   '    vec3 o = uCam * 0.001, d = -V, Tt, ins; float t0, t1;',
@@ -223,7 +223,25 @@ var AE_ST_TREE_FRAG = [
   '  }',
   '  gl_FragColor = vec4(tone(L, uK), 1.0);',
   '}'
+  ].join('\n');
+}
+var AE_ST_TREE_FRAG = _aeStTreeFrag([
+  '  vec3 alb = vTree.z < 0.5 ? vec3(0.026, 0.05, 0.03) : vTree.z < 1.5 ? vec3(0.036, 0.068, 0.03) : vTree.z < 2.5 ? vec3(0.05, 0.09, 0.035) : vec3(0.04, 0.028, 0.02);',
+  '  alb *= (0.8 + 0.4 * vTree.y) * (0.6 + 0.4 * min(vTree.x, 1.0));'   // each tree its own shade, darker below, paler at the tips
+].join('\n'), '');
+// Grass: blades in tufts, the ground's own colour (uGrassAlb) darker at the root and paler dry at the tip, swaying a little (uSway: 0 under reduced motion).
+var AE_ST_GRASS_VERT = [
+  'attribute vec3 aNrm, aTree; uniform float uTime, uSway;',
+  'varying vec3 vP, vN, vTree;',
+  'void main() {',
+  '  vec3 p = position; float s = uSway * aTree.x * aTree.x * 0.16, ph = uTime * 1.9 + position.x * 0.41 + position.y * 0.33 + aTree.y * 6.28;',
+  '  p.x += s * sin(ph); p.y += s * 0.6 * sin(ph * 0.8 + 1.3);',
+  '  vP = p; vN = aNrm; vTree = aTree; gl_Position = projectionMatrix * viewMatrix * vec4(p, 1.0);',
+  '}'
 ].join('\n');
+var AE_ST_GRASS_FRAG = _aeStTreeFrag([
+  '  vec3 alb = uGrassAlb * (0.65 + 0.7 * vTree.y) * (0.5 + 0.5 * min(vTree.x, 1.0)); alb = mix(alb, alb * vec3(1.5, 1.35, 0.7), smoothstep(0.55, 1.0, vTree.x) * vTree.y);'
+].join('\n'), ' uniform vec3 uGrassAlb;');
 // Clouds: one deck over the Earth, from a field of (place, day): a plane `base` metres over the ground, fbm density thresholded by the
 // coverage, lit by the Sun through the air up to the deck, thin edges bright and thick bodies dark. `osClouds(d, o)` (d: unit view
 // direction, o: the camera in metres, local frame) gives premultiplied radiance and alpha, in the sky's own units; a provider may bring its own.
@@ -240,15 +258,20 @@ var AE_ST_CLOUDS_GLSL = [
   '  if (H <= 0.0) return vec4(0.0);',
   '  float t = H / d.z;',
   '  vec2 p = (o.xy + d.xy * t + uCloudB.xy * uCloudA.w) / 2600.0;',
-  '  float n = 0.5 + 0.5 * (cloudFbm(p, uCloudB.zw) * 0.5 + 0.5 * cloudFbm(p * 0.23 + 5.0, uCloudB.wz));',   // vnoise runs -1..1
-  '  n = (n - 0.5) * 1.7 + 0.5;',   // the fbm piles up round its middle: stretched, a coverage of half is half the sky
+  '  float n = 0.5 + 0.5 * (cloudFbm(p, uCloudB.zw) * 0.7 + 0.3 * cloudFbm(p * 0.23 + 5.0, uCloudB.wz));',   // vnoise runs -1..1
+  '  n = (n - 0.5) * 1.8 + 0.5;',   // the fbm piles up round its middle: stretched, a coverage of half is half the sky
   '  float cut = 1.0 - uCloudA.x;',
-  '  float dens = smoothstep(cut - 0.06, cut + 0.2, n);',
+  '  float lump = 0.82 + 0.18 * cloudFbm(p * 5.1 + 3.0, uCloudB.zw);',   // lumps inside the bodies: tops and gaps, not a slab
+  '  float dens = smoothstep(cut - 0.04, cut + 0.14, n) * lump;',
   '  float far = 1.0 - smoothstep(30000.0, 160000.0, t);',
   '  if (dens <= 0.001 || far <= 0.0) return vec4(0.0);',
   '  vec3 sun = sunTrans(vec3(0.0, 0.0, uCloudA.y * 0.001)) * uSunE;',
+  '  vec2 toSun = uSunDir.xy / max(uSunDir.z, 0.25) * 0.09;',
+  '  float n2 = 0.5 + 0.5 * (cloudFbm(p + toSun, uCloudB.zw) * 0.7 + 0.3 * cloudFbm((p + toSun) * 0.23 + 5.0, uCloudB.wz));',
+  '  float dens2 = smoothstep(cut - 0.04, cut + 0.14, (n2 - 0.5) * 1.8 + 0.5) * lump;',
+  '  float face = clamp((dens - dens2) * 3.0, -1.0, 1.0);',   // less cloud toward the Sun: this side faces it (a bright top and edge); more: it is in its own shade
   '  float thin = 1.0 - smoothstep(0.25, 0.95, dens);',
-  '  float lit = mix(0.3, 1.0, thin) * (0.5 + 0.5 * clamp(uSunDir.z * 2.0 + 0.4, 0.0, 1.0));',
+  '  float lit = clamp(mix(0.22, 0.95, thin) + 0.5 * face, 0.12, 1.35) * (0.5 + 0.5 * clamp(uSunDir.z * 2.0 + 0.4, 0.0, 1.0));',
   '  vec3 L = sun * 0.85 * lit / PI + vec3(0.6, 0.75, 1.0) * (0.012 * max(uSunDir.z + 0.12, 0.0) + 2e-8) * (1.0 - thin * 0.5);',   // the sky's own light on it by day, almost none at night
   '  float a = dens * far * 0.94;',
   '  return vec4(L, a);',
@@ -289,7 +312,7 @@ var AE_ST_BODY_VERT = [
 var AE_ST_BODY_FRAG = [
   'precision highp float;', AE_ST_GLSL_TONE,
   'uniform vec3 uDir, uRight, uUp, uSunFrom, uTint, uTrans; uniform float uHalf, uRho, uPix, uE, uK, uEmit, uVis, uGlow, uSkyLit;',
-  'uniform sampler2D uMap; uniform float uMapped, uGrey, uMapGain; uniform mat3 uBody;',                    // the body's own map, and local -> body-fixed
+  'uniform sampler2D uMap; uniform float uMapped, uGrey, uMapGain, uCorona, uSeed; uniform vec3 uOcc; uniform mat3 uBody;',                    // the body's own map, and local -> body-fixed
   'uniform sampler2D uRingMap; uniform float uRings, uRp; uniform vec3 uRingN, uCen; uniform vec2 uRing;',    // Saturn's rings: plane, centre and size (km)
   'varying vec2 vUv;',
   'const float PI = ' + AE_ST_PI + ';',
@@ -316,6 +339,7 @@ var AE_ST_BODY_FRAG = [
   '      if (uEmit > 0.5) {',
   '        float limb = 1.0 - 0.45 * (1.0 - sqrt(1.0 - r2)), kept = (uRho * uRho) / (R * R);',
   '        col = tone(uTrans * (' + AE_ST_SUN_DISC_GAIN.toExponential(2) + ' * uE * limb * kept), uK);',
+  '        if (uOcc.z > 0.0) col *= smoothstep(uOcc.z - edge, uOcc.z + edge, length(o - uOcc.xy));',   // the Moon in front: its disc takes the Sun's, a crescent is what is left
   '      } else {',
   '        float lam = smoothstep(-0.02, 0.1, dot(n, uSunFrom)) * max(dot(n, uSunFrom), 0.0);',
   '        col = tone(discAlbedo(n) * uE * lam / PI * uTrans, uK);',
@@ -347,6 +371,23 @@ var AE_ST_BODY_FRAG = [
   '          }',
   '        }',
   '      }',
+  '    }',
+  '  }',
+  // The corona: a ring round the Moon's black disc, pearly white at the edge, thinning to nothing at 3.4 radii (almanac-sky.js _skyPaintCorona).
+  '  if (uCorona > 0.0 && uRho > 0.0) {',
+  '    float x = a / uRho, t = (x - 0.98) / (3.4 - 0.98);',
+  '    if (t > 0.0 && t < 1.0) {',
+  // Bright and close in, thin and far out: a fast falloff and a slow one, and a few streamers (the day's own, seeded) that reach farther than the rest.
+  '      float phi = atan(o.y, o.x), streak = 0.0;',
+  '      for (int i = 0; i < 8; i++) {',
+  '        float fi = float(i), h1 = fract(sin((uSeed * 91.7 + fi) * 12.9898) * 43758.5453), h2 = fract(sin((uSeed * 53.1 + fi) * 78.233) * 24634.6345), h3 = fract(sin((uSeed * 17.3 + fi) * 39.425) * 51375.2154);',
+  '        float dp = abs(mod(phi - h1 * 6.2832 + 3.1416, 6.2832) - 3.1416), sg = 0.12 + 0.2 * h2;',
+  '        streak += (0.4 + 0.6 * h3) * exp(-dp * dp / (2.0 * sg * sg)) * exp(-(x - 1.0) / (0.7 + 2.0 * h3));',
+  '      }',
+  '      float w = 0.85 * (0.6 * exp(-(x - 0.98) * 1.5) + 0.4 * pow(0.98 / x, 2.2)) + 0.45 * streak * smoothstep(1.0, 1.35, x);',
+  '      w *= 1.0 - smoothstep(2.5, 3.4, x);',
+  '      vec3 cc = mix(vec3(250.0, 246.0, 236.0), vec3(235.0, 236.0, 244.0), clamp(t * 1.6, 0.0, 1.0)) / 255.0;',
+  '      col += cc * w * uCorona; alpha = max(alpha, w * uCorona);',
   '    }',
   '  }',
   '  if (uGlow > 0.0) {',
@@ -386,7 +427,7 @@ var AE_ST_GROUND_FRAG = [
   'uniform vec3 uCam; uniform float uK, uPixAng, uTime;',
   'uniform sampler2D uMap; uniform float uMapped, uGrey; uniform vec3 uBase, uGain;',
   'uniform vec3 uAmbient, uSkyHor, uSkyZen, uE2, uDir2;',
-  'uniform vec2 uHead; uniform float uLommel, uRough, uRock, uDetail, uCover, uDiffuse, uVis, uDirect; uniform vec3 uDiffSky;',
+  'uniform vec2 uHead; uniform float uCloudDim; uniform float uGrass, uCanopy; uniform float uLommel, uRough, uRock, uDetail, uCover, uDiffuse, uVis, uDirect; uniform vec3 uDiffSky;',
   'varying vec3 vP, vN, vDir; varying float vH, vSea, vShade;',
   // Rock, fractal bumps and mottling at the scales a pixel can show, all fixed to the ground (the camera never moves on it).
   'float fine(vec3 p, float foot) {',
@@ -434,15 +475,20 @@ var AE_ST_GROUND_FRAG = [
   '  vec2 rr = uHead, tt = vec2(-uHead.y, uHead.x);',   // the way the view faces on the ground: grain is stretched along it, one direction for the whole picture
   '  if (uDetail > 0.5 && vSea < 0.5) {',
   '    float gr = 0.0, grass = smoothstep(0.0, 0.07, map.g - max(map.r, map.b));',
-  '    for (int i = 0; i < 3; i++) { float s = 0.2 * pow(5.0, float(i)), wg = 1.0 - smoothstep(0.3, 1.0, 2.5 * foot / s); if (wg > 0.0) gr += (vnoise(vP / s + 17.0 * float(i)) - 0.5) * wg * 0.5; }',
+  '    for (int i = 0; i < 3; i++) { float s = 0.2 * pow(5.0, float(i)), wg = 1.0 - smoothstep(0.3, 1.0, 2.5 * foot / s); if (wg > 0.0) gr += vnoise(vP / s + 17.0 * float(i)) * wg * 0.5; }',
   '    alb *= clamp(1.0 + gr * 0.55, 0.7, 1.3);',
   '    alb.g *= 1.0 + 0.3 * gr * grass; alb.r *= 1.0 - 0.18 * gr * grass;',
   // Underfoot: blades and tussocks as fine noise stretched along the line of sight (as grass is seen across a field), sharp at the
   // feet and gone where a pixel would hold several of them, so it softens with distance as the Moon's stones do.
   '    float across = dot(vP.xy, tt), along = dot(vP.xy, rr), bl = 0.0;',
-  '    for (int i = 0; i < 4; i++) { float s = 0.03 * pow(3.0, float(i)), wb = 1.0 - smoothstep(0.5, 2.0, 2.5 * foot / s); if (wb > 0.0) bl += (vnoise(vec3(across / s, along / (s * (i < 2 ? 2.4 : 1.3)), 41.0 + float(i) * 5.0)) - 0.5) * wb * (0.9 - 0.15 * float(i)); }',
-  '    float tuft = smoothstep(0.52, 0.72, vnoise(vP / 0.42 + 9.0)) * (1.0 - smoothstep(0.5, 2.0, 2.5 * foot / 0.42));',
-  '    alb *= clamp(1.0 + bl * 1.4 - tuft * 0.18 * grass, 0.4, 1.45);',
+  '    for (int i = 0; i < 4; i++) { float s = 0.03 * pow(3.0, float(i)), wb = 1.0 - smoothstep(0.5, 2.0, 2.5 * foot / s); if (wb > 0.0) bl += (vnoise(vec3(across / s, along / (s * (i < 2 ? 1.5 : 1.1)), 41.0 + float(i) * 5.0)) ) * wb * (0.9 - 0.15 * float(i)); }',
+  '    float tuft = smoothstep(0.1, 0.6, vnoise(vP / 0.42 + 9.0)) * (1.0 - smoothstep(0.5, 2.0, 2.5 * foot / 0.42));',
+  '    alb *= clamp(1.0 + bl * 0.5 - tuft * 0.12 * grass, 0.6, 1.25);',
+  '  }',
+  // Grass cells (the land-cover grid's): a dry season's Blue Marble is tan, but the ground is still grass: its brightness kept, its hue pulled green where the map is not.
+  '  if (uDetail > 0.5 && vSea < 0.5 && uGrass > 0.0) {',
+  '    float lg = min(dot(alb, vec3(0.3, 0.59, 0.11)), 0.2), dull = 1.0 - smoothstep(0.0, 0.06, alb.g - max(alb.r, alb.b));',
+  '    alb = mix(alb, vec3(0.72, 1.0, 0.42) * lg * 0.7, uGrass * (0.3 + 0.5 * dull));',
   '  }',
   // Ground cover by height, slope and latitude (the Earth's): snow above the snow line, bare rock on steep ground and above the
   // trees, the Blue Marble's own tint elsewhere; the lines wander with a slow noise so no height is a ruled edge.
@@ -463,6 +509,12 @@ var AE_ST_GROUND_FRAG = [
   '    float sp = step(0.9985, hash31(floor(vP / 0.03))) * (1.0 - smoothstep(0.1, 0.5, 2.5 * foot / 0.03));',
   '    alb += vec3(sp * snow * 1.6);',
   '  }',
+  // Far off, woods and tree lines as a darker green in patches, the horizon's own texture (uCanopy: how wooded the class is).
+  '  if (uCanopy > 0.0 && vSea < 0.5 && uDetail > 0.5) {',
+  '    float dd = smoothstep(150.0, 500.0, dist) * (1.0 - smoothstep(12000.0, 40000.0, dist)), c1 = vnoise(vP / 70.0 + 5.0), c2 = vnoise(vP / 480.0 + 9.0), c3 = abs(vnoise(vP / 900.0 + 21.0));',
+  '    float tree = smoothstep(0.0, 0.45, c1 * 0.55 + c2 * 0.5 + (uCanopy - 0.5) * 0.9 - (uCanopy < 0.5 ? c3 * 0.0 : 0.0)) * (uCanopy < 0.5 ? smoothstep(0.1, 0.0, c3 - 0.05) + 0.25 * smoothstep(0.2, 0.7, c2) : 1.0);',
+  '    alb = mix(alb, vec3(0.03, 0.06, 0.026) * (0.7 + 0.6 * dot(alb, vec3(0.33))), clamp(dd * tree * min(1.0, uCanopy * 1.3 + 0.35), 0.0, 0.8));',
+  '  }',
   '  vec2 rk = (vSea > 0.5 || dist > ' + AE_ST_ROCK_FADE_M[1].toFixed(1) + ') ? vec2(0.0) : rocks(vP, foot) * (1.0 - smoothstep(' + AE_ST_ROCK_FADE_M[0].toFixed(1) + ', ' + AE_ST_ROCK_FADE_M[1].toFixed(1) + ', dist)); float hb = vSea > 0.5 ? 0.0 : fine(vP, foot) + rk.x; alb *= clamp(1.0 + 0.5 * rk.y, 0.5, 1.35);',
   '  vec3 dpx = dFdx(vP), dpy = dFdy(vP); float hx = dFdx(hb), hy = dFdy(hb);',
   '  vec3 r1 = cross(dpy, N), r2 = cross(N, dpx); float det = dot(dpx, r1);',
@@ -478,7 +530,7 @@ var AE_ST_GROUND_FRAG = [
   '    L = mix(deep, sky, F) + sT * pow(max(dot(R, uSunDir), 0.0), 1400.0) * 10.0;',
   '  } else {',
   '    float vis = uLommel > 0.5 ? max(vShade, ' + AE_ST_BACKSCATTER.toFixed(2) + ') : vShade;',   // a shadow on regolith is lit by the ground around it
-  '    vec3 sT = sunTrans(pk) * uSunE * vis * smoothstep(-0.03, 0.02, dot(upF, uSunDir));',   // a Sun under the horizon lights no slope, however it leans
+  '    vec3 sT = sunTrans(pk) * uSunE * uCloudDim * vis * smoothstep(-0.03, 0.02, dot(upF, uSunDir));',   // a Sun under the horizon lights no slope, however it leans
   '    float ndl = dot(N, uSunDir), mu0 = max(ndl, 0.0), mu = max(dot(N, V), 0.03);',
   '    float lam = uLommel > 0.5 ? 2.0 * mu0 / (mu0 + mu) : mu0;',
   '    float surge = uLommel > 0.5 ? 1.0 + ' + AE_ST_SURGE.toFixed(2) + ' * exp(-acos(clamp(dot(uSunDir, V), -1.0, 1.0)) / ' + AE_ST_SURGE_WIDTH.toFixed(2) + ') : 1.0;',

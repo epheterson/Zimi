@@ -237,9 +237,9 @@ const flight = S._lfAscent(SLC40);
   check(m && m.id === 'launch:2022-141:34.05,-118.24' && m.family === 'launch' && m.place.name === 'Los Angeles' && m.instant > L.ms && m.look.az > 200 && m.look.az < 240 && m.see === 'jellyfish' && m.source.licence === 'CC BY 4.0',
     'a launch seen from Los Angeles is a moment: ' + (m ? m.id + ' at +' + (m.instant - L.ms) / 1000 + ' s, face ' + m.look.az.toFixed(0) : 'none'));
   check(S._lfThen(L, { lat: 28, lon: -80 }, { seen: false }) === null, 'and one that could not be seen is not');
-  // The shipped entry for it (earth/thens-v1.json) is what the code computes, and carries its sources.
+  // The shipped entry for it (earth/thens-v1.json; its id is the slug the then_<slug> strings are keyed by, not the computed one) is what the code computes, and carries its sources.
   const shipped = JSON.parse(fs.readFileSync(path.join(STATIC, 'earth', 'thens-v1.json'), 'utf8')).moments[0];
-  check(shipped.id === m.id && Math.abs(shipped.instant - m.instant) <= 10000 && Math.abs(shipped.look.az - m.look.az) < 3 && shipped.see === m.see && shipped.refs.length === 2 && /^https:/.test(shipped.refs[0]),
+  check(shipped.id === 'launch-starlink-4-31-la' && Math.abs(shipped.instant - m.instant) <= 10000 && Math.abs(shipped.look.az - m.look.az) < 3 && shipped.see === m.see && shipped.refs.length === 2 && /^https:/.test(shipped.refs[0]),
     'the shipped there-and-then for Los Angeles is the computed one: ' + new Date(shipped.instant).toISOString() + ', face ' + shipped.look.az.toFixed(0) + ' at ' + shipped.look.el.toFixed(0) + ' deg');
 }
 

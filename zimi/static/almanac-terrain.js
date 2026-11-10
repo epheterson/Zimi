@@ -146,7 +146,9 @@ function _aeTerrainHdTile(url) {
     });
 }
 // base: the HD ZIM's folder; z: the layer's deepest level. Resolves when the tiles that exist are in.
-function _aeTerrainHdLoad(key, lat, lon, base, z) {
+// m: the layer as the HD manifest merged it ({ max, base, deep: { from, base } }), or a plain folder; the tile urls are _aeHdTileUrl's.
+function _aeTerrainHdLoad(key, lat, lon, m, z) {
+  var meta = Object.assign({}, typeof m === 'string' ? { base: m } : m, { layer: AE_TERRAIN_HD_LAYER + key });
   var t = _aeTerr[key];
   if (!t || t.state !== 'ready' || typeof createImageBitmap !== 'function') return Promise.resolve(false);
   var n = Math.pow(2, z), tx = Math.floor((lon + 180) / 360 * 2 * n), ty = Math.floor((90 - lat) / 180 * n), jobs = [];
@@ -154,7 +156,7 @@ function _aeTerrainHdLoad(key, lat, lon, base, z) {
   for (var dy = -1; dy <= 1; dy++) for (var dx = -1; dx <= 1; dx++) {
     var x = ((tx + dx) % (2 * n) + 2 * n) % (2 * n), y = ty + dy, id = x + '/' + y;
     if (y < 0 || y >= n || hd.tiles[id]) continue;
-    jobs.push(_aeTerrainHdTile(base + AE_TERRAIN_HD_LAYER + key + '/' + z + '/' + x + '/' + y + '.webp').then(function (arr) { hd.tiles[this] = arr; }.bind(id)).catch(function () {}));
+    jobs.push(_aeTerrainHdTile(typeof _aeHdTileUrl === 'function' ? _aeHdTileUrl(meta, { z: z, x: x, y: y }) : (meta.base || '') + meta.layer + '/' + z + '/' + x + '/' + y + '.webp').then(function (arr) { hd.tiles[this] = arr; }.bind(id)).catch(function () {}));
   }
   return Promise.all(jobs).then(function () { return Object.keys(hd.tiles).length > 0; });
 }
@@ -207,10 +209,13 @@ function _aeCraterHeight(u, km, c, lodKm) {
 }
 // How rough the real map is round a place: its distance from the mean of the four cells a step away (metres).
 var AE_TERRAIN_RELIEF_STEP_DEG = 0.7, AE_TERRAIN_RELIEF_SCALE = 400, AE_TERRAIN_RELIEF_MIN = 0.012, AE_TERRAIN_RELIEF_MAX = 3;
+var AE_TERRAIN_HIGHLAND_M = 1500, AE_TERRAIN_HIGHLAND_GAIN = 1.5;   // the Earth's relief grows by up to this much more as the coarse height rises to this many metres
 function _aeTerrainRelief(t, lat, lon) {
   var s = AE_TERRAIN_RELIEF_STEP_DEG, c = _aeTerrainCoarse(t, lat, lon);
   var m = (_aeTerrainCoarse(t, lat + s, lon) + _aeTerrainCoarse(t, lat - s, lon) + _aeTerrainCoarse(t, lat, lon + s) + _aeTerrainCoarse(t, lat, lon - s)) / 4;
-  return Math.min(AE_TERRAIN_RELIEF_MAX, Math.max(AE_TERRAIN_RELIEF_MIN, Math.abs(c - m) / AE_TERRAIN_RELIEF_SCALE));
+  // A plateau's edge is mountains the coarse map has averaged away (Boulder's cell is 1.7 km up with the Front Range beside it): the Earth's high ground is rougher.
+  var up = t.sea ? 1 + Math.min(AE_TERRAIN_HIGHLAND_GAIN, Math.max(0, c) / AE_TERRAIN_HIGHLAND_M) : 1;
+  return Math.min(AE_TERRAIN_RELIEF_MAX * up, Math.max(AE_TERRAIN_RELIEF_MIN, up * Math.abs(c - m) / AE_TERRAIN_RELIEF_SCALE));
 }
 function _aeUnitVec(lat, lon) {
   var la = lat * Math.PI / 180, lo = lon * Math.PI / 180, c = Math.cos(la);

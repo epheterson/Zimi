@@ -41,15 +41,17 @@ MAX_PALETTE = 8
 
 # key: (path in the repo's 3D Models folder, the model page's credit line).
 VIKING_M_PER_UNIT = 0.245  # the file's feet-ish units: the lander's 2.2 m height is its 9 units
-LM_SPLIT_Y, LM_TRIS = 2.05, (5000, 3200)  # the NASA file's y where the ascent stage's parts begin; triangles of each stage
+LM_SCALE = 1.4519  # metres a file unit: the leg span 9.312 m the site keeps rocks clear of (almanac-sites-ground.js)
+LM_CREASE_DEG = 28.0  # the descent stage is an octagonal prism: its 45 degree corners stay corners
+LM_SPLIT_Y, LM_TRIS = 2.05, (4200, 4000)  # the NASA file's y where the ascent stage's parts begin; triangles of each stage
 # The file's materials are Maya's blinn names: what each is (colour, roughness, metalness, kind), from where it is on the vehicle.
 LM_LOOK = {
     "blinn1SG": ((0.77, 0.53, 0.06), 0.3, 1.0, cm.KIND_FOIL),  # the descent stage's gold Kapton
     "blinn6SG": ((0.06, 0.06, 0.07), 0.4, 0.4, cm.KIND_FOIL),  # black foil
     "blinn9SG": ((0.62, 0.34, 0.06), 0.35, 0.9, cm.KIND_FOIL),  # bronze foil
     "blinn10SG": ((0.9, 0.85, 0.5), 0.35, 0.8, cm.KIND_FOIL),  # light gold insulation
-    "blinn4SG": ((0.62, 0.62, 0.6), 0.45, 0.55, cm.KIND_METAL),  # aluminium skin
-    "blinn3SG": ((0.66, 0.66, 0.64), 0.45, 0.55, cm.KIND_METAL),  # ascent stage panels
+    "blinn4SG": ((0.5, 0.5, 0.49), 0.5, 0.55, cm.KIND_METAL),  # aluminium skin, darker
+    "blinn3SG": ((0.82, 0.82, 0.8), 0.45, 0.5, cm.KIND_METAL),  # ascent stage panels, the lightest
     "blinn2SG": ((0.22, 0.22, 0.22), 0.6, 0.2, cm.KIND_NONE),  # dark structure
 }
 NASA = {
@@ -145,7 +147,7 @@ def _flat_look(rgb, spec, sharp):
     return (rgb, rough, float(np.clip((spec - FLAT_METAL_FROM) / FLAT_METAL_SPAN, 0, 1)), cm.MAT_DOUBLE_SIDED, -1, -1, -1)
 
 
-def write_zcrf(name, v, f, cls, entries, origin=None):
+def write_zcrf(name, v, f, cls, entries, origin=None, crease=None):
     """v: float vertices (metres, z up, y forward), f: triangles, cls: palette entry per vertex, entries: (rgb, spec,
     sharpness) or ZCR2 entries as bcm.palette makes them. `origin`: the point taken as (0, 0, 0): "auto" is the middle of the footprint on the lowest point (what
     a model standing on the ground wants); None leaves the coordinates as they are (a part of a rover, placed by the
@@ -156,7 +158,7 @@ def write_zcrf(name, v, f, cls, entries, origin=None):
     if origin is not None:
         v = v - origin
     f = np.asarray(f)
-    v, f, n, src = cm.creased(v, f, SITE_CREASE_DEG, return_index=True)
+    v, f, n, src = cm.creased(v, f, crease or SITE_CREASE_DEG, return_index=True)
     cls = np.asarray(cls)[src]
     lo, hi = v.min(0), v.max(0)
     looks = [e if len(e) >= 7 else _flat_look(*e) for e in entries]
@@ -322,11 +324,11 @@ def build_nasa(key, src, only):
         # Two models in one frame (the descent stage's footprint on the ground is their origin): the descent stage, what
         # stayed, and the ascent stage on top of it, which the site shows from the landing until the liftoff. The parts of
         # each are those whose middle is under, or over, the ascent stage's floor.
-        v, f, c, e = nasa_model(glb, LM_TRIS[0], "+z", keep=lambda p, v: v[:, 1].mean() < LM_SPLIT_Y, scale=1.45, recolour=LM_LOOK)
+        v, f, c, e = nasa_model(glb, LM_TRIS[0], "+z", keep=lambda p, v: v[:, 1].mean() < LM_SPLIT_Y, scale=LM_SCALE, recolour=LM_LOOK)
         origin = footprint_origin(v)
-        meta["lm"] = write_zcrf("lm", v, f, c, e, origin)
-        v, f, c, e = nasa_model(glb, LM_TRIS[1], "+z", keep=lambda p, v: v[:, 1].mean() >= LM_SPLIT_Y, scale=1.45, recolour=LM_LOOK)
-        meta["lm-ascent"] = write_zcrf("lm-ascent", v, f, c, e, origin)
+        meta["lm"] = write_zcrf("lm", v, f, c, e, origin, LM_CREASE_DEG)
+        v, f, c, e = nasa_model(glb, LM_TRIS[1], "+z", keep=lambda p, v: v[:, 1].mean() >= LM_SPLIT_Y, scale=LM_SCALE, recolour=LM_LOOK)
+        meta["lm-ascent"] = write_zcrf("lm-ascent", v, f, c, e, origin, LM_CREASE_DEG)
     elif key == "perseverance":
         meta.update(_perseverance(glb))
     elif key == "curiosity":
@@ -551,7 +553,7 @@ def m_lrv_body():
 def m_lrv_wheel():
     """The woven-wire wheel: two rims, crossing wires between them (the mesh), chevron treads, the hub and its spokes."""
     m = Mesh([GREY, ALU])
-    r, half, n = 0.41, 0.115, 28
+    r, half, n = 0.39, 0.138, 28
     for k in range(n):
         a0, a1 = 2 * math.pi * k / n, 2 * math.pi * (k + 1) / n
         for x in (-half, half):  # the rims
@@ -559,7 +561,7 @@ def m_lrv_wheel():
         a2 = a0 + 2 * math.pi * 3 / n  # a wire crosses the wheel's width, three wires round
         m.tube((-half, r * math.cos(a0), r * math.sin(a0)), (half, r * math.cos(a2), r * math.sin(a2)), 0.006, 0)
         m.tube((half, r * math.cos(a0), r * math.sin(a0)), (-half, r * math.cos(a2), r * math.sin(a2)), 0.006, 0)
-        if k % 2 == 0:  # a chevron tread
+        if True:  # a chevron tread (every segment: the wheel is as round across as it is up)
             m.box((0, (r + 0.01) * math.cos(a0), (r + 0.01) * math.sin(a0)), (0.2, 0.02, 0.02), 1, rotz=0.0)
     m.cyl((0, 0, 0), 0.07, 0.26, 1, n=10, axis="x")
     for k in range(6):  # the spokes

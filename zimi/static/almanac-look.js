@@ -410,7 +410,7 @@ function _lookOpen(opts) {
   _lookEl('look-ask').textContent = _lookT('look_enable');
   _lookEl('look-place').textContent = _lookPlaceLabel(place);
   document.body.classList.add('look-open');
-  var startAz = place.lat >= 0 ? 180 : 0;
+  var startAz = _osDefaultHeading(place.lat);
   var S = _look = {
     root: root, skyHost: _lookEl('look-sky'), place: place, mode: 'idle', fov: LOOK_FOV_DEFAULT_DEG,
     target: { az: startAz, alt: LOOK_START_ALT_DEG, roll: 0 }, view: { az: startAz, alt: LOOK_START_ALT_DEG, roll: 0 },
@@ -445,6 +445,7 @@ function _lookOpen(opts) {
   }
   _lookButtons();
   _lookApply(S.view);
+  if (opts.find && typeof openAlmanacFind === 'function') openAlmanacFind('look', opts.find);   // from the solar system's tip (almanac-orrery.js)
 }
 
 // The stars turn: the sky is worked out for now again, once a minute.

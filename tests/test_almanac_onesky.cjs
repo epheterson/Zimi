@@ -30,6 +30,11 @@ check(Math.abs(tot.sunSemiDeg - 0.2666) < 0.01 && tot.moonSemiDeg > 0.24 && tot.
 const sep = Math.hypot((tot.sunAz - tot.moonAz) * Math.cos(tot.sunAlt * Math.PI / 180), tot.sunAlt - tot.moonAlt);
 check(sep < 0.15, 'and the Moon is on the Sun (' + sep.toFixed(3) + ' deg)');
 
+// ── Where a view faces, and the clouds a visit asks for ──
+check(run('_osDefaultHeading(40)') === 180 && run('_osDefaultHeading(-33)') === 0 && run('_osDefaultHeading(0)') === 180, 'a view faces south in the north and north in the south, from one function');
+check(run('_osHandoffFrom(_osDef({}), null).clouds') === 'auto' && run('_osHandoffFrom(_osDef({}), null, { clouds: "clear" }).clouds') === 'clear', 'a hand-off asks for the day\'s clouds unless it asks for a clear sky');
+check(run('_osCloudValues(_osDef({ lat: 40, lon: -74, tMs: Date.now() }), 1, "clear").cloud[0]') === 0, 'a clear sky has no cover');
+
 // ── The day's clouds ──
 const field = (lat, lon, t) => run('_osCloudField(_osDef({ lat: ' + lat + ', lon: ' + lon + ', tMs: ' + t + ' }))');
 const a = field(40.71, -74, Date.parse('2026-09-11T14:00:00Z')), b = field(40.71, -74, Date.parse('2026-09-11T20:00:00Z'));
@@ -48,6 +53,15 @@ check(Math.abs(sum / n - 0.5) < 0.03 && Math.abs(thin / n - 0.25) < 0.04 && Math
 check(fast === n, 'the wind is always between 4 and 16 m/s');
 const cv = run('_osCloudValues(_osDef({ lat: 40.71, lon: -74, tMs: __nowMs }), 1)');
 check(cv.cloud.length === 4 && cv.cloud[1] === 2500 && cv.wind.length === 3 && cv.wind[2] >= 0 && cv.wind[2] < 86400 && cv.sunE === 130000, 'the shaders take cover, base, thickness, offset, wind, the day\'s seconds and the Sun\'s lux');
+
+// The field on the CPU (the Sun's veil): an integer hash, the same lattice on every machine; clear days veil nothing, heavy ones nearly everything.
+const hashes = run('Array.from({ length: 2000 }, (_, i) => _osCloudHash(i - 1000, (i * 7) % 311 - 150))');
+check(hashes.every((h) => h >= 0 && h <= 1) && new Set(hashes.map((h) => h.toFixed(6))).size > 1900, 'the lattice hash is in 0..1 and does not repeat');
+check(run('_osCloudHash(3, -4)') === run('_osCloudHash(3, -4)') && run('_osCloudHash(3, -4)') !== run('_osCloudHash(-4, 3)'), 'and is the same for a point every time, and not symmetric');
+const meanAlpha = (cover) => run('(function () { var v = { cloud: [' + cover + ', 2500, 700, 123], wind: [3, 4, 1000], sunE: 1 }, s = 0, n = 0; for (var az = 0; az < 360; az += 7) for (var alt = 15; alt < 90; alt += 5) { s += _osCloudAlphaAt(v, az, alt); n++; } return s / n; })()');
+const a0 = meanAlpha(0), a5 = meanAlpha(0.5), a10 = meanAlpha(1);
+check(a0 === 0 && a5 > 0.15 && a5 < 0.85 && a10 > 0.8 && a5 < a10, 'a clear day veils nothing (' + a0 + '), half cover about half (' + a5.toFixed(2) + '), a full one nearly all (' + a10.toFixed(2) + ')');
+check(run('_osCloudAlphaAt({ cloud: [1, 2500, 700, 5], wind: [0, 0, 0], sunE: 1 }, 90, -5)') === 0, 'a Sun under the horizon is not behind a deck');
 
 // ── What is in the sky: one registry ──
 run(`var __log = [], __seen = 0;

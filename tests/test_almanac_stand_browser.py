@@ -344,7 +344,8 @@ def test_other_lanes_put_objects_in_the_sky_and_a_tap_names_them(page):
           var p = new V(d[0] * 10, d[1] * 10, d[2] * 10).project(st.camera); return [(p.x + 1) / 2 * _ae.w, (1 - p.y) / 2 * _ae.h]; }"""
     )
     assert page.evaluate("([x, y]) => _aeStandSkyTap(x, y)", spot) is True
-    assert "Test one" in page.inner_text(".ae-stand-craft")
+    # (The tag of the tapped thing is the sky tag's own: the station's label, when it is up, is another element of the same class.)
+    assert "Test one" in page.evaluate("() => _ae.stand.skyTag.firstChild.textContent")
     page.evaluate("() => { _ae.stand.photo.lim = -6; }")
     assert (
         page.evaluate("([x, y]) => _aeStandSkyTap(x, y)", spot) is False
@@ -385,6 +386,51 @@ def test_a_provider_atmosphere_takes_over_the_sky_and_the_exposure(page):
         polling=250,
     )
     assert abs(page.evaluate("() => _ae.stand.photo.k") / own_k - 1) < 0.5
+    _leave(page)
+    assert not page.errors, page.errors
+
+
+def test_a_provider_eclipse_dims_the_sun_shows_stars_and_draws_the_moon_over_the_sun(
+    page,
+):
+    """sunShare / limitMag / eclipse(): the Sun's light and the faintest star follow the provider; the Moon's disc covers the Sun's and wears a corona."""
+    _stand_anywhere(
+        page, "earth", 30.05, -99.14
+    )  # Kerrville, 2024-04-08: the Moon on the Sun at 18:32 UTC
+    page.evaluate(
+        """() => { _aeStandAir = { wants: function (st) { return st.key === 'earth'; },
+          glsl: 'uniform vec3 uTest; vec3 oaSky(vec3 d) { return uTest; }', uniforms: { uTest: [0.0005, 0.0007, 0.0012] },
+          update: function () {}, sunShare: function () { return 0.003; }, limitMag: function () { return 4.5; },
+          eclipse: function () { return { obsc: 1, sunShare: 0.003, sunSemiDeg: 0.2666, moonSemiDeg: 0.2745, corona: 1 }; } };
+          _aeGoTo(Date.UTC(2024, 3, 8, 18, 32, 20)); _ae.stand.fr = null; _ae.stand.dirty = true; _ae.dirty = true; _aeKick(); }"""
+    )
+    page.wait_for_function(
+        "() => _ae.stand.photo && _ae.stand.photo.lim === 4.5 && _ae.stand.photo.sunShare === 0.003",
+        timeout=30_000,
+        polling=250,
+    )
+    got = page.evaluate(
+        """() => _ae.stand.sprites.filter(function (s) { return s.mesh.visible; }).map(function (s) {
+          return { occ: s.uni.uOcc.value[2], cor: s.uni.uCorona.value, rho: s.uni.uRho.value }; })"""
+    )
+    assert any(
+        abs(g["rho"] - 0.2666 * 3.14159265 / 180) < 1e-4 for g in got
+    ), got  # the Sun at its true semi-diameter
+    assert any(g["occ"] > 0 for g in got), got  # with the Moon's disc over it
+    assert any(g["cor"] == 1 for g in got), got  # and the corona on the Moon
+    # Without the provider's ambient the ground's sky light is this view's own, dimmed by the share; with it, the provider's, as given.
+    dim = page.evaluate("() => _ae.stand.photo.amb.map(function (x) { return x; })")
+    page.evaluate(
+        """() => { _aeStandAir.ambient = function () { return { amb: [0.0123, 0.0123, 0.0123], horizon: [0.02, 0.02, 0.02], zenith: [0.03, 0.03, 0.03] }; };
+          _ae.stand.fr = null; _ae.stand.dirty = true; _ae.dirty = true; _aeKick(); }"""
+    )
+    page.wait_for_function(
+        "() => _ae.stand.photo && _ae.stand.photo.amb[0] === 0.0123 && _ae.stand.photo.zen[0] === 0.03 && _ae.stand.photo.hor[0] === 0.02",
+        timeout=30_000,
+        polling=250,
+    )
+    assert max(dim) < 0.01, dim  # the own march under a 0.003 share is dim, not a day's
+    page.evaluate("() => { _aeStandAir = null; }")
     _leave(page)
     assert not page.errors, page.errors
 

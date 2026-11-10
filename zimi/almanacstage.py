@@ -39,6 +39,7 @@ SCRIPTS = (
     "almanac-onesky.js",
     "zone-places.js",
     "almanac-skyfacts.js",
+    "almanac-skyscene.js",
     "almanac.js",
     "almanac-ephem.js",
     "almanac-earth.js",
@@ -47,6 +48,8 @@ SCRIPTS = (
 LAZY = (
     "almanac-sun.js",
     "almanac-look.js",
+    "almanac-oneland.js",
+    "almanac-skyland.js",
     "almanac-skyfind.js",
     "almanac-terrain.js",
     "almanac-terrainshade.js",

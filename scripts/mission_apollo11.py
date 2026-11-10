@@ -171,8 +171,27 @@ def alt_oeco(t, y):
     return float(np.linalg.norm(y[i, :3]) - R_EARTH)
 
 
+OECO_ALT_KM = 67.0  # the launch view's Apollo 11 fit (almanac-sites-launch.js); Saturn V AS-506 flight evaluation
+OECO_REL_KMS = 2.40  # Earth-fixed speed at the outboard cut-off
+EARTH_RATE = 7.2921159e-5
+
+
+def ignition_point(t, y):
+    """Latitude (degrees) the parking orbit reaches at the TLI ignition time, the orbit from the cut-off state turned at its mean motion about its normal."""
+    from mission_apollo11_path import geodetic_of
+
+    r, v = y[-1, 0:3], y[-1, 3:6]
+    h = np.cross(r, v)
+    el = elements(r, v, MU_EARTH)
+    n = math.sqrt(MU_EARTH / el["a"] ** 3)
+    th = n * (EVENTS["tli_ign"] - t[-1])
+    ri = r * math.cos(th) + np.cross(h / np.linalg.norm(h), r) * math.sin(th)
+    return geodetic_of(EVENTS["tli_ign"], ri)[:2]
+
+
 def fit_ascent(verbose=True):
-    """Fit the upper stages' tangent, their thrust (a few per cent) and the heading to the report's parking orbit."""
+    """Fit the upper stages' tangent, their thrust (a few per cent), the heading and the first stage's pitch to the report's parking orbit, the launch view's
+    outboard cut-off (67 km, 2.4 km/s Earth-fixed) and the latitude the parking orbit reaches at the TLI ignition."""
     pole = earth_pole_ecl(ZERO_JD)
 
     def resid(x):
@@ -180,12 +199,25 @@ def fit_ascent(verbose=True):
         r, v = y[-1, 0:3], y[-1, 3:6]
         el = elements(r, v, MU_EARTH)
         inc = math.degrees(math.acos(np.dot(el["h"], pole) / np.linalg.norm(el["h"])))
-        return [(el["rp"] - R_EARTH - PARKING["perigee_km"]) / 2, (el["ra"] - R_EARTH - PARKING["apogee_km"]) / 2,
-                (inc - PARKING["inc_deg"]) * 30, (x[2] - 1.0) * 0.2]
+        i = int(np.argmin(abs(t - EVENTS["oeco"])))
+        rel = float(np.linalg.norm(y[i, 3:6] - np.cross(EARTH_RATE * pole, y[i, 0:3])))
+        ign = ignition_point(t, y)
+        return [
+            (el["rp"] - R_EARTH - PARKING["perigee_km"]) / 2,
+            (el["ra"] - R_EARTH - PARKING["apogee_km"]) / 2,
+            (inc - PARKING["inc_deg"]) * 30,
+            (x[2] - 1.0) * 0.2,
+            (alt_oeco(t, y) - OECO_ALT_KM) / 5,
+            (rel - OECO_REL_KMS) * 8,
+            (ign[0] - TLI_IGNITION["lat"]) / 1.0,
+            (((ign[1] - TLI_IGNITION["lon"] + 180) % 360) - 180) * math.cos(math.radians(TLI_IGNITION["lat"])) / 1.0,
+        ]
 
-    x0 = np.array([0.6, 0.0015, 1.0, 74.0, FIRST_TILT["per"]])
-    sol = least_squares(resid, x0, bounds=([0.0, 0.0, 0.9, 65.0, 0.8], [3.0, 0.02, 1.1, 82.0, 1.8]), diff_step=1e-4,
-                        x_scale=[0.1, 0.001, 0.02, 1.0, 0.05], max_nfev=60, verbose=2 if verbose else 0)
+    x0 = np.array([0.5459, 0.000897, 0.983, 74.7, 1.3323, 1.0562])
+    sol = least_squares(resid, x0, bounds=([0.0, 0.0, 0.9, 60.0, 0.8, 0.9], [3.0, 0.02, 1.1, 85.0, 1.8, 1.12]), diff_step=1e-4,
+                        x_scale=[0.1, 0.001, 0.02, 1.0, 0.05, 0.01], max_nfev=80, verbose=2 if verbose else 0)
+    if verbose:
+        print("ascent residuals", [round(float(v), 3) for v in sol.fun])
     return sol.x, climb(sol.x)
 
 

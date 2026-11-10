@@ -2311,6 +2311,7 @@ async function setLanguage(lang) {
     } catch (e) {}
   }
   if (_isDictPage()) _dictFollowLanguage(lang);
+  else _appFollowLanguage();
   // Sync almanac: re-render all content with new translations
   if (typeof _onGlobalLanguageChanged === 'function') _onGlobalLanguageChanged(lang);
   if (_almanacOpen && typeof _renderAlmanacContent === 'function') _renderAlmanacContent();
@@ -8316,6 +8317,7 @@ var _ALMANAC_MODULES = [
   '/static/almanac-onesky.js?v=45',
   '/static/zone-places.js?v=45',
   '/static/almanac-skyfacts.js?v=45',
+  '/static/almanac-skyscene.js?v=45',
   '/static/almanac.js?v=45'
 ];
 // Its stylesheet comes with them, not on the home page's first paint; the
@@ -15014,6 +15016,31 @@ function _dictFollowLanguage(lang) {
     // the strings and the word ride there.
     try { win.location.reload(); } catch (e) {}
   }, function() {});
+}
+
+// An open app page (not the Dictionary, which follows by translating its word) takes the new language: the strings and
+// the direction ride in its hash, so the hash is written again from the shell's words (what it was opened with beyond
+// the words stays) and the page loaded afresh; a change after the '#' alone is only a scroll until it is reloaded.
+function _openAppStrings() {
+  if (!readerOpen || _almanacOpen || _createOpen) return null;
+  if (_tubeOpen) return _tubeStrings('');
+  if (_exchangeOpen) return _exchangeStrings('');
+  if (_reddotOpen) return _reddotStrings('');
+  if (_wikiOpen) return _wikiStrings();
+  if (_booksOpen) return _booksStrings();
+  if (_fieldguideOpen) return _fieldguideStrings('');
+  return null;
+}
+function _appFollowLanguage() {
+  var fresh = _openAppStrings();
+  if (!fresh) return;
+  try {
+    var win = document.getElementById('reader-frame').contentWindow;
+    var now = JSON.parse(decodeURIComponent(win.location.hash.slice(1) || '{}')), next = JSON.parse(decodeURIComponent(fresh));
+    for (var k in next) if (next[k] !== '' && k !== '__proto__') now[k] = next[k];
+    win.location.hash = encodeURIComponent(JSON.stringify(now));
+    win.location.reload();
+  } catch (e) {}
 }
 
 // ── Reading settings: the book reader's and Zimipedia's ──

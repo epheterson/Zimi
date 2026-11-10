@@ -13,6 +13,10 @@ var OS_ASK_EVERY_MS = 1000;     // a source with an `ask` is asked about this of
 var OS_ASK_JUMP_MS = 4000;      // ... and at once when the displayed instant moved this far from the one it was asked about
 var OS_STATE_CACHE_MS = 1000;   // the photometry is worked out again when the instant has moved this much (or the place has)
 
+// The way a view faces when nothing has said: toward the Sun's side of the sky, south in the northern hemisphere and north in the southern.
+// The card, Look and Stand here all start here (almanac-stand.js takes it when it is opened with no heading).
+function _osDefaultHeading(lat) { return lat >= 0 ? 180 : 0; }
+
 // The one definition: whatever a caller leaves out takes the plainest value (Earth, the ground, now, facing north and level).
 function _osDef(o) {
   o = o || {};
@@ -67,9 +71,10 @@ function _osCloudField(def) {
   return { coverage: coverage, wind: [Math.sin(dir) * speed, Math.cos(dir) * speed], base: OS_CLOUD_BASE_M, thickness: OS_CLOUD_THICK_M, seed: [seed % OS_CLOUD_NOISE_SPAN, (seed >>> 10) % OS_CLOUD_NOISE_SPAN] };
 }
 // The field as the shaders take it (almanac-skygl.js SG_GLSL_CLOUDS' uniforms); sunShare is the Sun's light that reaches the place (an eclipse).
-function _osCloudValues(def, sunShare) {
+// mode 'clear' draws none (a visit to see something in the sky is not left to the day's deck); 'auto' (or nothing) is the day's own.
+function _osCloudValues(def, sunShare, mode) {
   var f = _osCloudField(def), day = _osSolarDay(def.tMs, def.lon);
-  return { cloud: [f.coverage, f.base, f.thickness, f.seed[0]], wind: [f.wind[0], f.wind[1], (day - Math.floor(day)) * OS_DAY_S], sunE: SG_SUN_LUX * (sunShare == null ? 1 : sunShare) };
+  return { cloud: [mode === 'clear' ? 0 : f.coverage, f.base, f.thickness, f.seed[0]], wind: [f.wind[0], f.wind[1], (day - Math.floor(day)) * OS_DAY_S], sunE: SG_SUN_LUX * (sunShare == null ? 1 : sunShare) };
 }
 
 // ── An eclipse of the Sun ──
@@ -82,6 +87,35 @@ function _osEclipse(def) {
   return { obsc: S.obsc, sunShare: S.sunShare, sunAz: e.sun.az, sunAlt: e.sun.alt, moonAz: e.moon.azimuth, moonAlt: e.moon.altitude,
     sunSemiDeg: SKY_SUN_SEMI_DEG, moonSemiDeg: _skyMoonSemi(S.now, e.moon.altitude),
     corona: S.obsc > OS_CORONA_FROM ? Math.pow((S.obsc - OS_CORONA_FROM) / (1 - OS_CORONA_FROM), 3) : 0 };
+}
+
+// The same field on the CPU, for what is drawn over the sky by the canvas (the Sun's disc): the sum of almanac-skygl.js SG_GLSL_CLOUD_FIELD,
+// integer hash included, so a lattice point has the same value on the GPU and here. How much of the sky the deck covers at a bearing and height
+// (degrees), from _osCloudValues' numbers: 0 clear to about 1 solid.
+function _osCloudHash(ix, iy) {
+  var h = (Math.imul(ix | 0, 1597334673) ^ Math.imul(iy | 0, 3812015801)) >>> 0;
+  h = Math.imul(h ^ (h >>> 16), 2246822519) >>> 0;
+  h = Math.imul(h ^ (h >>> 13), 3266489917) >>> 0;
+  return ((h ^ (h >>> 16)) >>> 0) / 4294967295;
+}
+function _osCloudNoise(x, y) {
+  var ix = Math.floor(x), iy = Math.floor(y), fx = x - ix, fy = y - iy;
+  fx = fx * fx * (3 - 2 * fx); fy = fy * fy * (3 - 2 * fy);
+  var a = _osCloudHash(ix, iy), b = _osCloudHash(ix + 1, iy), c = _osCloudHash(ix, iy + 1), d = _osCloudHash(ix + 1, iy + 1);
+  return (a + (b - a) * fx) * (1 - fy) + (c + (d - c) * fx) * fy;
+}
+function _osSmoothstep(a, b, x) { var t = Math.max(0, Math.min(1, (x - a) / (b - a))); return t * t * (3 - 2 * t); }
+function _osCloudDensity(v, x, y) {
+  var px = (x - v.wind[0] * v.wind[2]) / SG_CLOUD_SCALE_M + v.cloud[3], py = (y - v.wind[1] * v.wind[2]) / SG_CLOUD_SCALE_M + v.cloud[3], s = 0, a = 0.5;
+  for (var i = 0; i < 4; i++) { s += a * _osCloudNoise(px, py); px = px * 2.03 + 17.1; py = py * 2.03 + 17.1; a *= 0.5; }
+  var th = SG_CLOUD_THRESHOLD[0] + (SG_CLOUD_THRESHOLD[1] - SG_CLOUD_THRESHOLD[0]) * v.cloud[0];
+  return _osSmoothstep(th, th + SG_CLOUD_EDGE, s / 0.9375);
+}
+function _osCloudAlphaAt(v, azDeg, altDeg) {
+  var az = azDeg * Math.PI / 180, alt = altDeg * Math.PI / 180, dz = Math.sin(alt);
+  if (dz <= 0.003 || v.cloud[0] <= 0) return 0;
+  var t = Math.min(v.cloud[1] / dz, SG_CLOUD_FAR_M), c = Math.cos(alt);
+  return _osSmoothstep(0, 0.6, _osCloudDensity(v, Math.sin(az) * c * t, Math.cos(az) * c * t)) * 0.94 * _osSmoothstep(0.003, 0.03, dz);
 }
 
 // ── The sky's objects ──
@@ -143,8 +177,9 @@ function _osHasSources() { return _osSources.length > 0; }
 
 // ── The card to Stand here, and back ──
 // The card's place, instant and facing, as the hand-off Stand here takes (almanac-stand.js _aeStandOpen).
-function _osHandoffFrom(def, back) {
-  return { body: def.body, lat: def.lat, lon: def.lon, ms: def.tMs, heading: def.heading, pitch: def.pitch, back: back };
+// opts.clouds: 'auto' (the day's own deck: the default) or 'clear' (a visit to see something in the sky: an eclipse, a there-and-then, is not left to a coin flip).
+function _osHandoffFrom(def, back, opts) {
+  return { body: def.body, lat: def.lat, lon: def.lon, ms: def.tMs, heading: def.heading, pitch: def.pitch, back: back, clouds: opts && opts.clouds === 'clear' ? 'clear' : 'auto' };
 }
 
 // The card's definition: the Almanac's place, the instant it shows (the time machine's, or now) and the way the panorama faces.
@@ -163,6 +198,57 @@ function _osStandHere() {
   var back = function () { window.scrollTo(0, y); if (typeof _skyResume === 'function' && typeof _skyState !== 'undefined' && _skyState) _skyResume(); };
   var ready = typeof _aeStandOpen === 'function' ? Promise.resolve() : _almLoadEarth().then(function () { return _aeStandReady(); });
   return ready.then(function () { return _aeStandOpen(_osHandoffFrom(def, back)); }).catch(function () { return false; });
+}
+
+// Stand here is open without a hand-off (a there-and-then arrives by place): say how its sky is to be clouded.
+function _osStandClouds(mode) {
+  var st = typeof _ae !== 'undefined' && _ae && _ae.stand;
+  if (!st) return;
+  st.handoff = Object.assign(st.handoff || {}, { clouds: mode });
+  st.dirty = true; _ae.dirty = true;
+}
+
+// ── What the card stands on ──
+// The foreground of the live sky is the place's own land (almanac-skyland.js, from the one grid: almanac-oneland.js). Until the grid is in
+// it is a plain horizon, never the palms; the grid and the painter load after the card's first picture, and the answer for a place is
+// kept (a place is the same land next time) so a return visit paints it at once.
+var OS_LAND_KEY = 'zimi_sky_land', OS_LAND_SRCS = ['/static/almanac-oneland.js', '/static/almanac-skyland.js'];
+var _osLandLoading = false, _osLandFailed = false;
+function _osLandKey(s) { return Math.floor(s.lat) + ',' + Math.floor(s.lon); }
+function _osLandRemembered(key) {
+  try { var r = JSON.parse(localStorage.getItem(OS_LAND_KEY)); return r && r.k === key ? r : null; } catch (e) { return null; }
+}
+function _osLandRemember(key, land) {
+  try { localStorage.setItem(OS_LAND_KEY, JSON.stringify({ k: key, cls: land.cls, coast: land.coast, rgb: land.rgb })); } catch (e) { /* private window */ }
+}
+// The scene to draw: 'plain' | 'beach' | a land class ('broadleaf', 'conifer', 'grass', 'desert', 'snow', 'tundra').
+function _osCardScene(s) {
+  if (s.hosted) return 'beach';   // Look's own sphere keeps what it had
+  var key = _osLandKey(s);
+  if (s.landKey !== key) { s.landKey = key; s.land = _osLandRemembered(key); }
+  if (!s.land) { _osLandKick(s, key); return 'plain'; }
+  return s.land.coast || s.land.cls === 'sea' ? 'beach' : s.land.cls;
+}
+function _osLandKick(s, key) {
+  if (_osLandLoading || _osLandFailed || typeof _loadScript !== 'function') return;
+  _osLandLoading = true;
+  var go = function () {
+    Promise.all(OS_LAND_SRCS.map(function (src) { return _loadScript(src); })).then(function (ok) {
+      if (!ok.every(Boolean) || typeof _osLandCoverLoad !== 'function') return false;
+      return _osLandCoverLoad();
+    }).then(function (ok) {
+      _osLandLoading = false;
+      if (!ok) _osLandFailed = true;   // the plain horizon stays; not retried every picture
+      var st = typeof _skyState !== 'undefined' ? _skyState : null;
+      if (!ok || !st || _osLandKey(st) !== key) return;
+      st.land = _osLandCover(st.lat, st.lon);
+      if (st.land) _osLandRemember(key, st.land);
+      st.baseDirty = true;
+      if (typeof _skyKick === 'function') _skyKick();
+    });
+  };
+  // After the card's first picture and the page's own work, when the person is not touching the screen.
+  if (typeof requestIdleCallback === 'function') requestIdleCallback(go, { timeout: 2500 }); else setTimeout(go, 400);
 }
 
 // ── The objects on the card ──

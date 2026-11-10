@@ -16,11 +16,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 - Your installed map's roads and place names appear on the 3D Earth as you come down, and a quiet hint offers a map where none covers what you are looking at.
 ### Almanac
 
+- **Missions:** Go to > Missions replays Apollo 11 from the pad, through staging, orbit and the translunar coast, and Voyager 1 and 2 past every planet they met, on the 3D view's own clock: a timeline of named phases to scrub or jump between, the vehicle with its stages and burns, a camera that tells each phase until you drag it. Plan a flight draws a porkchop plot to any planet and flies the transfer you pick.
 - **Stand here:** tap a spot on the Earth, Moon, Mars, Venus, Mercury, Titan, Pluto or a big moon and choose Stand here: the camera flies down to the ground at eye height with the real terrain, that body's own sky (Mars's butterscotch day and blue sunset, Venus and Titan's haze, black skies with stars on the airless ones) and the Sun and planets where they truly are; drag or turn the phone to look around, Back returns to orbit. Craters and mountains cast shadows at a low Sun, Charon hangs over Pluto, Saturn shows its rings, spacecraft are marked where they are, and the Earth's coasts follow Natural Earth. The landing sites stand on the same ground, with eye level as a camera of the site.
 ### Highlights
 
 - **Stand where they landed:** in the Almanac's 3D view the Apollo, Luna, Chang'e, Viking, Mars rover, Venera and Huygens sites are models on their real ground with the Sun's real shadows; drive the Moon buggy or a Mars rover, watch a Saturn V leave its pad, and replay Curiosity's and Perseverance's whole journeys on the timeline.
 - **Spacecraft that look real:** the station and the probes are shaded as foil, cells and aluminium, lit by the Sun and the nearest world, and shadow themselves; with Almanac HD they are NASA's full models with their textures.
+### Highlights
+
 - **Stand where they landed:** in the Almanac's 3D view the Apollo, Luna, Chang'e, Viking, Mars rover, Venera and Huygens sites are models on their real ground with the Sun's real shadows; drive the Moon buggy (with a speed readout and a bounce on landing) or a Mars rover, watch a Saturn V leave its pad, and replay Curiosity's and Perseverance's whole journeys on the timeline.
 ### Almanac
 
@@ -30,10 +33,45 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 - **The sky you remember:** a Launches button in the 3D Earth lists every orbital launch since 1957 by year, site and rocket (Jonathan McDowell's GCAT), opens one at its pad at lift-off, draws its ascent and the satellites it left (reconstructed from the launch's orbit, or exact with your own Space-Track login), and says whether you could have seen it from your place, in the live sky too.
 - **One solar system:** tap a planet or the Sun in the orrery and it lifts into the 3D view as one motion (the camera starts on the flat drawing, the same scale, then tilts and flies in); pull the Planets view out, or go back, and it settles onto the orrery. Both draw every body at the same place, and the orrery's orbits now show their true ellipses.
+### Highlights
+
+**Zimi**
+
+- `zimi check` checks a ZIM the way openZIM's zimcheck does: its checksum, metadata, icon, redirects and internal links.
+- An app that is open when you change the language is drawn again in the new one.
+- Manage can clear the catalog copies Zimi keeps: the cached catalog and the `.torrent` files of ZIMs you have not installed.
+
+**Games**
+
+- Tri Peaks and Blast open the right encyclopedia article from their About link, and Net no longer links to a page that does not exist.
+
+**Almanac**
+
+- The beach scene has clouds that glow after sunset where the Sun still reaches them, and a helicopter with blinking lights.
+- A magnifier on a planet's tip in the solar system opens the sky aimed at it.
 
 ## [1.15.4]
 
 ### Highlights
+
+**Zimi**
+
+- Signed in, your settings follow you to every browser.
+- Portable Linux: a headless x64 and arm64 build that runs from a USB stick (#137).
+- A lighter Docker image: 884 MB, down from 1.11 GB.
+- `near:` suggests places as you type.
+- A file already downloading isn't downloaded twice (#143).
+
+**Games**
+
+- ZimCity keeps your cities, plus about 40 fixes across the shelf.
+
+**Almanac**
+
+- One clock, a cleaner 3D view, names on every world, and links that bring you back to the same moment.
+- Almanac HD is its own ZIM that works in Kiwix.
+
+### Added
 
 - **Settings follow you:** signed in, your Almanac, app and puzzle choices follow you to every browser, live.
 - **Portable Linux:** a headless build for x64 and arm64 that runs off a USB stick and keeps its settings beside it (#137).

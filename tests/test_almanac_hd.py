@@ -436,32 +436,51 @@ def _part(name, size=900_000_000):
     }
 
 
-def test_a_split_set_is_offered_whole_and_every_missing_file_is_queued(hd, monkeypatch):
-    rel = dict(REL, parts=[_part("moon"), _part("mars")])
+def _set(monkeypatch, rel, core=False, have=()):
     monkeypatch.setattr(almanachd, "release", lambda read=False: rel)
-    monkeypatch.setattr(almanachd, "present", lambda: None)
-    monkeypatch.setattr(almanachd, "parts_present", lambda: {})
+    monkeypatch.setattr(almanachd, "present", lambda: "zimi_almanac_maxi" if core else None)
+    monkeypatch.setattr(almanachd, "installed", lambda: core)
+    monkeypatch.setattr(almanachd, "parts_present", lambda: {p: "zimi_almanac_hd_%s" % p for p in have})
     monkeypatch.setattr(almanachd, "_downloading_all", lambda: [])
-    assert almanachd.status()["offer"]["size"] == REL["size"] + 2 * 900_000_000
-    almanachd.start(None)
-    assert [q["filename"] for q in hd] == [
-        REL["file"],
-        "zimi_almanac_hd_moon_2026-11.zim",
-        "zimi_almanac_hd_mars_2026-11.zim",
-    ]
+    monkeypatch.setattr(almanachd, "_installed_path", lambda name: "/lib/%s_2026-11.zim" % name)
 
 
-def test_only_the_missing_parts_of_a_set_are_fetched(hd, monkeypatch):
+def test_the_core_is_offered_alone_and_fetched_alone(hd, monkeypatch):
     rel = dict(REL, parts=[_part("moon"), _part("mars")])
-    monkeypatch.setattr(almanachd, "release", lambda read=False: rel)
-    monkeypatch.setattr(almanachd, "installed", lambda: False)
-    monkeypatch.setattr(almanachd, "present", lambda: "zimi_almanac_maxi")
-    monkeypatch.setattr(
-        almanachd, "parts_present", lambda: {"moon": "zimi_almanac_hd_moon"}
-    )
-    monkeypatch.setattr(almanachd, "_downloading_all", lambda: [])
+    _set(monkeypatch, rel)
+    st = almanachd.status()
+    assert st["offer"]["size"] == REL["size"] and st["ultra"] == []  # a part reads beside the core: not offered before it
     almanachd.start(None)
-    assert [q["filename"] for q in hd] == ["zimi_almanac_hd_mars_2026-11.zim"]
+    assert [q["filename"] for q in hd] == [REL["file"]]
+
+
+def test_each_ultra_part_is_its_own_choice_with_its_own_size(hd, monkeypatch):
+    rel = dict(REL, parts=[_part("moon", 1_033_000_000), _part("mars", 821_000_000)])
+    _set(monkeypatch, rel, core=True, have=("mars",))
+    ultra = {u["part"]: u for u in almanachd.status()["ultra"]}
+    assert ultra["moon"]["size"] == 1_033_000_000 and not ultra["moon"]["installed"]
+    assert ultra["mars"]["installed"] and ultra["mars"]["file"] == "zimi_almanac_hd_mars_2026-11.zim"
+    almanachd.start(None, part="moon")
+    assert [q["filename"] for q in hd] == ["zimi_almanac_hd_moon_2026-11.zim"]
+    assert hd[0]["extra"]["_sha256"] == _part("moon")["sha256"]  # each checksum-pinned
+
+
+def test_a_part_waits_for_the_core_and_is_not_fetched_twice(hd, monkeypatch):
+    rel = dict(REL, parts=[_part("moon")])
+    _set(monkeypatch, rel)
+    assert almanachd.start(None, part="moon") == (None, "needs_core")
+    _set(monkeypatch, rel, core=True, have=("moon",))
+    assert almanachd.start(None, part="moon") == (None, "installed")
+    assert almanachd.start(None, part="venus") == (None, "unavailable")
+    assert hd == []
+
+
+def test_never_lists_only_what_is_installed_so_it_can_be_removed(hd, monkeypatch):
+    rel = dict(REL, parts=[_part("moon"), _part("mars")])
+    _set(monkeypatch, rel, core=True, have=("mars",))
+    monkeypatch.setattr(almanachd.POLICY, "mode", lambda: (outbound.NEVER, None))
+    assert [u["part"] for u in almanachd.status()["ultra"]] == ["mars"]
+    assert almanachd.start(None, part="moon") == (None, "never")
 
 
 def test_a_part_must_be_a_known_one_named_for_it():
@@ -476,3 +495,8 @@ def test_a_part_must_be_a_known_one_named_for_it():
         dict(REL, parts="moon"),
     ):
         assert almanachd.parse_manifest(json.dumps(bad), "1.15.4") is None, bad
+def test_every_part_is_a_data_pack_so_it_is_never_on_home_or_searched():
+    from zimi import server
+
+    for part in almanachd.PARTS:
+        assert almanachd.part_name(part) in server.DATA_PACKS, part

@@ -1046,6 +1046,7 @@ var SKY_SUN_DEPTH = [0.10, 0.14, 0.22];   // optical depth per airmass, red/gree
 var SKY_SUN_EXPOSURE = [3.5, 9];          // the face's exposure on the horizon and from 4 degrees up: through the air it is still the brightest thing in the sky
 var SKY_SUN_FULL_EXPOSURE_ALT = 4;        // degrees
 var SKY_SUN_FEATHER = 0.85, SKY_SUN_FEATHER_FROM = 0.9;   // a high Sun's face fades out over its last tenth
+var SKY_SUN_VEIL_GLARE = 0.9, SKY_SUN_VEIL_FACE = 0.92, SKY_SUN_PATCH_RADII = 4, SKY_SUN_PATCH_ALPHA = 0.3;   // how much a cloud in front takes of the Sun's glare and face, and the soft patch it leaves
 var SKY_SUN_STOPS = [0, 0.35, 0.6, 0.8, 0.92, 0.98, 1];   // radii where the face's gradient is sampled
 
 // Airmass at an apparent altitude (degrees), Kasten & Young (1989): the
@@ -1076,13 +1077,14 @@ function _skyPaintSun(ctx, s) {
   var pt = _skyScreen(s, sun.az, sun.alt), R = _skyBodyRadius(s, SKY_SUN_SEMI_DEG), x = pt.x, y = pt.y;
   if (!(x >= -R * 8 && x <= s.W + R * 8 && y >= -R * 8 && y <= s.H + R * 8)) return;
   var tint = _skySunTint(sun.alt), flat = _skySunFlattening(s.eph.sunGeoAlt);
+  var veil = _osCloudAlphaAt(_osCloudValues(_osDef({ lat: s.lat, lon: s.lon, tMs: s.nowTime }), s.sunShare), sun.az, sun.alt);   // the day's deck in front of the Sun
   var expo = _skyLerp(SKY_SUN_EXPOSURE[0], SKY_SUN_EXPOSURE[1], _skyClamp(sun.alt / SKY_SUN_FULL_EXPOSURE_ALT, 0, 1));
   var c255 = tint.map(function (v) { return 255 * v; }), high = _skyClamp(sun.alt / SKY_SUN_FULL_EXPOSURE_ALT, 0, 1);
   // The bloom: a wide soft light and a bright close halo, added to the sky.
   ctx.save();
   ctx.globalCompositeOperation = 'lighter';
   var wide = ctx.createRadialGradient(x, y, R, x, y, R * 8);
-  var glare = _skyClamp(1 - s.obsc, 0.02, 1);   // the Moon in front of it takes the glare, and leaves the corona
+  var glare = _skyClamp(1 - s.obsc, 0.02, 1) * (1 - SKY_SUN_VEIL_GLARE * veil);   // the Moon in front of it takes the glare, and leaves the corona; a cloud in front of it too
   wide.addColorStop(0, _skyRgb(c255, 0.32 * glare));
   wide.addColorStop(0.3, _skyRgb(c255, 0.08 * glare));
   wide.addColorStop(1, _skyRgb(c255, 0));
@@ -1094,8 +1096,14 @@ function _skyPaintSun(ctx, s) {
   ctx.fillStyle = halo;
   ctx.beginPath(); ctx.arc(x, y, R * 2.2, 0, Math.PI * 2); ctx.fill();
   ctx.restore();
+  if (veil > 0.05) {   // behind cloud it is a soft bright patch
+    var patch = ctx.createRadialGradient(x, y, 0, x, y, R * SKY_SUN_PATCH_RADII);
+    patch.addColorStop(0, _skyRgb(c255, SKY_SUN_PATCH_ALPHA * veil)); patch.addColorStop(1, _skyRgb(c255, 0));
+    ctx.fillStyle = patch; ctx.beginPath(); ctx.arc(x, y, R * SKY_SUN_PATCH_RADII, 0, Math.PI * 2); ctx.fill();
+  }
   // The face: limb-darkened in each colour, through the air's tint, flattened.
   ctx.save();
+  ctx.globalAlpha = 1 - SKY_SUN_VEIL_FACE * veil;
   ctx.translate(x, y);
   ctx.scale(1, flat);
   var face = ctx.createRadialGradient(0, 0, 0, 0, 0, R);
@@ -1858,8 +1866,20 @@ function _skyPaintWhale(ctx, s, a, ts) {
 // in the sand, out of the view (Eric: "Move the compass under or something
 // it's ugly"; it sat on the sea).
 var SKY_COMPASS_FOOT_PX = 4;   // css px from the bottom edge to the letters' baseline
+// The foreground: the sea where the grid says there is a coast, the place's own land (almanac-skyland.js) elsewhere, a plain horizon
+// until the grid is in (almanac-onesky.js _osCardScene).
+var SKY_PLAIN_GROUND = [0.3, 0.29, 0.24];
+var SKY_COMPASS_LUMA = 0.42;   // ground brighter than this takes dark compass letters, darker takes light ones
+var SKY_PALM_MAX_LAT = 40;   // a coast poleward of this has its sea, its boats and its whales, but no palms
 function _skyPaintGround(ctx, s) {
-  _skyPaintSea(ctx, s, s.sea ? s.sea.frac : SKY_CALM_FRAC);
+  var scene = _osCardScene(s);
+  if (scene === 'beach') _skyPaintSea(ctx, s, s.sea ? s.sea.frac : SKY_CALM_FRAC);
+  else if (scene !== 'plain' && typeof _skyPaintLand === 'function') _skyPaintLand(ctx, s, scene);
+  else {
+    var yh = s.H * SKY_HORIZON_Y, lit = s.lit = _skyGroundLight(s);
+    ctx.fillStyle = _skyRgb(_skyLitColour(SKY_PLAIN_GROUND, lit).map(function (v) { return v * 255; }));
+    ctx.fillRect(0, yh, s.W, s.H - yh);
+  }
 }
 // The points of the compass along the foot of the beach: drawn after the palms, which would stand over them.
 function _skyPaintCompassFoot(ctx, s) {
@@ -1867,10 +1887,15 @@ function _skyPaintCompassFoot(ctx, s) {
   ctx.font = '600 ' + Math.round(9 * dpr) + 'px ' + SKY_FONT;
   ctx.textAlign = 'center';
   ctx.textBaseline = 'alphabetic';
-  ctx.fillStyle = light > 0.5 ? 'rgba(60,45,25,0.42)' : 'rgba(210,215,230,0.32)';
+  // On the land's ground the letters take the side of the ground's own brightness that reads, with a thin halo of the other; on the beach, as ever.
+  var onLand = s.footLuma != null && _osCardScene(s) !== 'beach', dark = onLand && s.footLuma > SKY_COMPASS_LUMA;
+  ctx.fillStyle = onLand ? (dark ? 'rgba(35,28,18,0.78)' : 'rgba(240,243,250,0.82)') : light > 0.5 ? 'rgba(60,45,25,0.42)' : 'rgba(210,215,230,0.32)';
+  ctx.strokeStyle = dark ? 'rgba(255,255,255,0.28)' : 'rgba(0,0,0,0.32)';
+  ctx.lineWidth = 2.2 * dpr; ctx.lineJoin = 'round';
   for (var az = 0; az < 360; az += 45) {
     var cx = _skyX(s, az);
     if (!_skyInView(s, cx, -6 * dpr)) continue;
+    if (onLand) ctx.strokeText(_azCompass(az), cx, y);
     ctx.fillText(_azCompass(az), cx, y);
   }
 }
@@ -2043,11 +2068,14 @@ function _skyWind() {
   var sp = _skyRandIn(_skyRand, SKY_CONTRAIL_WIND_KM_S), dir = _skyRand() * 2 * Math.PI;
   return [sp * Math.sin(dir), sp * Math.cos(dir)];
 }
-function _skyPlane(s, flying) {
-  var h = _skyRandIn(_skyRand, SKY_PLANE_KM), b = _skyRandIn(_skyRand, SKY_PLANE_PASS_KM), v = _skyRandIn(_skyRand, SKY_PLANE_KM_S);
+// kit: the height, nearest approach and speed ranges of what crosses (an airliner's by default; the helicopter's in almanac-skyscene.js).
+var SKY_AIRLINER = { km: SKY_PLANE_KM, pass: SKY_PLANE_PASS_KM, kms: SKY_PLANE_KM_S };
+function _skyPlane(s, flying, kit, type) {
+  kit = kit || SKY_AIRLINER;
+  var h = _skyRandIn(_skyRand, kit.km), b = _skyRandIn(_skyRand, kit.pass), v = _skyRandIn(_skyRand, kit.kms);
   var half = Math.sqrt(Math.max(0, Math.pow(_skyPlaneReach(h), 2) - b * b)), from = -half + (flying ? 2 * half * SKY_PLANE_SEEN_FROM * _skyRand() : 0);
-  return { type: 'plane', start: performance.now(), dur: (half - from) / v * 1000, dir: _skyRand() < 0.5 ? 1 : -1, h: h, b: b,
-    theta: s.center + (_skyRand() - 0.5) * s.span, L0: from, L1: half, contrail: _skyRand() < SKY_PLANE_CONTRAIL_SHARE,
+  return { type: type || 'plane', start: performance.now(), dur: (half - from) / v * 1000, dir: _skyRand() < 0.5 ? 1 : -1, h: h, b: b,
+    theta: s.center + (_skyRand() - 0.5) * s.span, L0: from, L1: half, contrail: !type && _skyRand() < SKY_PLANE_CONTRAIL_SHARE,
     wind: _skyWind(), phase: _skyRand() * SKY_PLANE_STROBE_MS };
 }
 // Which of its lights this side of it shows (each 0 to 1): a wingtip light
@@ -2125,6 +2153,7 @@ function _skyPaintPlane(ctx, s, a, ts) {
 }
 function _skyPaintActor(ctx, s, a, ts) {
   if (a.type === 'plane') { _skyPaintPlane(ctx, s, a, ts); return; }
+  if (a.type === 'heli') { _skyPaintHeli(ctx, s, a, ts); return; }   // almanac-skyscene.js
   var p = _skyActorAt(a, ts), dpr = s.dpr;
   var az = a.az0 + (a.az1 - a.az0) * p, alt = a.alt0 + (a.alt1 - a.alt0) * p;
   var x = _skyX(s, az), y = _skyY(s, alt), u = s.scale * dpr, light = _skyDaylight(s.eph.sunGeoAlt);
@@ -2204,7 +2233,8 @@ function _skySpawnMeteor() {
   _skyKick();
   _skyScheduleMeteor(s);
 }
-var SKY_SPAWNERS = { plane: _skySpawnPlane, birds: _skySpawnBirds, meteor: _skySpawnMeteor, whale: _skySpawnWhale };
+function _skySpawnHeli() { _skySpawn('heli'); }
+var SKY_SPAWNERS = { plane: _skySpawnPlane, birds: _skySpawnBirds, meteor: _skySpawnMeteor, whale: _skySpawnWhale, heli: _skySpawnHeli };
 function _skySpawn(kind) {
   var s = _skyState;
   _skyTimers[kind] = 0;
@@ -2214,6 +2244,10 @@ function _skySpawn(kind) {
     s.actors.push(_skyPlane(s, !s.planeSpawned));
     s.planeSpawned = true;
     gap = _skyRandIn(_skyRand, SKY_PLANE_GAP_S) * 1000;
+  } else if (kind === 'heli') {
+    if (typeof _skyHeli === 'function' && (g < 2 || _skyRand() < SKY_HELI_DAY_SHARE)) s.actors.push(_skyHeli(s, !s.heliSpawned));   // almanac-skyscene.js
+    s.heliSpawned = true;
+    gap = _skyRandIn(_skyRand, SKY_HELI_GAP_S) * 1000;
   } else if (kind === 'birds') {
     if (g > 2) { var b = _skyCrossing(s, 'birds', SKY_BIRD_S, SKY_BIRD_ALT); b.n = 3 + Math.floor(_skyRand() * 5); s.actors.push(b); }
     gap = _skyRandIn(_skyRand, SKY_BIRD_GAP_S) * 1000;
@@ -2243,7 +2277,7 @@ function _skyLightParams(s) {
   return { sunAltGeo: e.sunGeoAlt, sunAz: e.sun.az,
     moonAlt: e.moon.altitude, moonAz: e.moon.azimuth, moonIllum: md.phase.illumination, moonDist: _moonDistance(s.now),
     horizon: M, eclPole: up, sunVec: _skyEnu(e.sun.az, e.sunGeoAlt), dial: _skySetting('dial'),
-    lm: s.lm, sunShare: s.sunShare, moonShare: s.moonShare };
+    lm: s.lm, sunShare: s.sunShare, moonShare: s.moonShare, obsc: s.obsc };
 }
 function _skyGLParams(s) {
   return Object.assign(_skyLightParams(s), { W: s.W, H: s.H, dpr: s.dpr, view: _skyGLView(s), seed: s.twinkle, scint: !_skyReduceMotion(), moonDisc: s.moonDisc,
@@ -2518,7 +2552,7 @@ function _skyPaintBase(s, ts) {
   _skyPaintSun(ctx, s);
   _skyPaintMoon(ctx, s, _skyMoonAt(s, ts));
   if (s.hosted) _skyPaintBelowLens(ctx, s);   // the phone's Look: what is under the ground, under glass
-  if (beach) _skyPaintGround(ctx, s); else _skyPaintHorizon(ctx, s, !!gl);
+  if (beach) _skyPaintGround(ctx, s); else _skyPaintHorizon(ctx, s, !!gl);   // clouds: almanac-skyscene.js
   s.baseBodies = s.bodies;
   s.baseDirty = !!s.moonAnim;
   s.paintedTime = s.nowTime;
@@ -2542,8 +2576,10 @@ function _skyPaint(ts) {
     _skyPaintActors(ctx, s, ts);
     ctx.restore();
     if (beach) {
-      for (var i = 0; i < s.actors.length; i++) if (s.actors[i].type === 'whale') _skyPaintWhale(ctx, s, s.actors[i], ts);
-      _skyPaintPalms(ctx, s, ts);
+      if (_osCardScene(s) === 'beach') {
+        for (var i = 0; i < s.actors.length; i++) if (s.actors[i].type === 'whale') _skyPaintWhale(ctx, s, s.actors[i], ts);
+        if (Math.abs(s.lat) < SKY_PALM_MAX_LAT) _skyPaintPalms(ctx, s, ts);   // palms grow in the warm latitudes only
+      }
       _skyPaintCompassFoot(ctx, s);
     }
   }
@@ -2567,7 +2603,7 @@ var _skyViewReq = null, _skyAspectReq = null;
 function _skyApplyView(s) {
   if (s.hosted) return;   // the look-around view keeps its own lens
   var r = _skyViewReq;
-  s.lens = null; s.span = SKY_SPAN_DEG; s.center = s.lat >= 0 ? 180 : 0;
+  s.lens = null; s.span = SKY_SPAN_DEG; s.center = _osDefaultHeading(s.lat);
   if (!r) return;
   if (_sgReady()) s.lens = _skyMakeLens({ az: r.az, alt: r.alt, fov: _skyClamp(r.fov, SKY_LENS_FOV[0], SKY_LENS_FOV[1]) }, s.W);
   else { s.center = r.az; s.span = _skyClamp(r.fov, SKY_PANO_SPAN[0], SKY_PANO_SPAN[1]); }
@@ -2705,9 +2741,9 @@ var AlmanacSkyView = {
     canvas.setAttribute('role', 'img');
     canvas.style.cssText = 'display:block;width:100%;height:100%;touch-action:none';
     host.appendChild(canvas);
-    var s = { hosted: true, lat: place.lat, lon: place.lon, center: place.lat >= 0 ? 180 : 0, span: SKY_SPAN_DEG, lens: null, stored: true, known: true,
+    var s = { hosted: true, lat: place.lat, lon: place.lon, center: _osDefaultHeading(place.lat), span: SKY_SPAN_DEG, lens: null, stored: true, known: true,
       moonAnim: null, twinkle: 0, bodies: [], baseBodies: [], actors: [], sea: null, aurora: null, base: null, baseDirty: true };
-    _skyHost = { host: host, canvas: canvas, s: s, look: { az: place.lat >= 0 ? 180 : 0, alt: 30, fov: 90 } };
+    _skyHost = { host: host, canvas: canvas, s: s, look: { az: _osDefaultHeading(place.lat), alt: 30, fov: 90 } };
     _skyHostSize(_skyHost);
     _skyWatchNight();
     document.addEventListener('zimisky:red', _skyHostRedraw);
@@ -2841,11 +2877,11 @@ function _skyKick() {
   if (!_almanacSkyRAF && _skyState) _almanacSkyRAF = requestAnimationFrame(_skyLoop);
 }
 
-var _skyTimers = { live: 0, iss: 0, sway: 0, sats: 0, actor: 0, plane: 0, birds: 0, meteor: 0, whale: 0 };
+var _skyTimers = { live: 0, iss: 0, sway: 0, sats: 0, actor: 0, plane: 0, birds: 0, meteor: 0, whale: 0, heli: 0 };
 var SKY_ISS_MS = 500;               // the ISS crosses the sky in minutes: a frame twice a second keeps it moving
 // The first of each after the sky is seen again (opening, coming back to the app).
 // A plane is likely already crossing (it is seen part-way along its track); a meteor's wait is its rate's.
-var SKY_FIRST_SPAWN_MS = { plane: 25000, birds: 30000, whale: 60000 };
+var SKY_FIRST_SPAWN_MS = { plane: 25000, birds: 30000, whale: 60000, heli: 40000 };
 function _skyDisarm() {
   for (var k in _skyTimers) { clearTimeout(_skyTimers[k]); _skyTimers[k] = 0; }
 }
@@ -3060,7 +3096,7 @@ function _initSkyScene(now, lat, lon, animateMoon) {
   var loc = _getLocation();
   var s = {
     canvas: canvas, dpr: dpr, W: canvas.width, H: canvas.height, cssW: w, scale: _skyClamp(w / 600, 0.85, 1.15),
-    lat: lat, lon: lon, center: lat >= 0 ? 180 : 0,
+    lat: lat, lon: lon, center: _osDefaultHeading(lat),
     stored: loc.stored && loc.lat === lat && loc.lon === lon, name: loc.name || '',
     known: loc.known && loc.lat === lat && loc.lon === lon,
     moonAnim: null, twinkle: 0, bodies: [], baseBodies: [],
@@ -3190,7 +3226,7 @@ function _skySegDist(px, py, x0, y0, x1, y1) {
 }
 // What a tap at (x, y) CSS px lands on: the nearest body within reach of its
 // edge, the Sun, Moon and planets before the stars.
-var SKY_TAP_RANK = { sun: 0, moon: 0, planet: 0, iss: 0, sat: 0, plane: 1, birds: 1, meteor: 1, boat: 1, whale: 1, star: 2, dso: 2, aurora: 3, sea: 4 };
+var SKY_TAP_RANK = { sun: 0, moon: 0, planet: 0, iss: 0, sat: 0, plane: 1, heli: 1, birds: 1, meteor: 1, boat: 1, whale: 1, star: 2, dso: 2, aurora: 3, sea: 4 };
 function _skyHitTest(x, y) {
   var s = _skyState;
   if (!s) return null;
@@ -3216,10 +3252,10 @@ function _skyBodyKey(b) {
   return SKY_LIFE_KEYS[b.type] || null;
 }
 // What lives on the horizon and in the air, and its article (almanac-links.js SKY).
-var SKY_LIFE_KEYS = { sea: 'sky:sea', boat: 'sky:ship', whale: 'sky:whale', plane: 'sky:airliner', birds: 'sky:birds',
+var SKY_LIFE_KEYS = { sea: 'sky:sea', boat: 'sky:ship', whale: 'sky:whale', plane: 'sky:airliner', heli: 'sky:helicopter', birds: 'sky:birds',
   meteor: 'sky:meteor', aurora: 'sky:aurora' };
 var SKY_NAME_KEYS = { sun: 'alm_sun', moon: 'alm_moon', iss: 'alm_earth_iss_name', sea: 'alm_sky_sea',
-  boat: 'alm_sky_boat', whale: 'alm_sky_whale', plane: 'alm_sky_plane', birds: 'alm_sky_birds', meteor: 'alm_sky_meteor', aurora: 'alm_sky_aurora' };
+  boat: 'alm_sky_boat', whale: 'alm_sky_whale', plane: 'alm_sky_plane', heli: 'alm_sky_heli', birds: 'alm_sky_birds', meteor: 'alm_sky_meteor', aurora: 'alm_sky_aurora' };
 function _skyBodyName(b) {
   if (b.type === 'planet') return _tp(b.name);
   if (b.type === 'star') {
@@ -3240,6 +3276,7 @@ function _skyLifeLines(b) {
     return [t('alm_sky_boat_line', { d: _orrNum(km, 'kilometer', 0) }), t('alm_sky_boat_lights'), t('alm_sky_illustration')];
   }
   if (b.type === 'plane') return [t('alm_sky_plane_line'), t('alm_sky_plane_note')];
+  if (b.type === 'heli') return [t('alm_sky_heli_line'), t('alm_sky_plane_note')];
   if (b.type === 'whale') return [t('alm_sky_whale_line'), t('alm_sky_illustration')];
   if (b.type === 'birds') return [t('alm_sky_birds_line'), t('alm_sky_illustration')];
   if (b.type === 'meteor') {

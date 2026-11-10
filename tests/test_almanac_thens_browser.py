@@ -84,7 +84,7 @@ def test_the_list_opens_from_the_sky_searches_and_stands_there_then(browser, ser
         try:
             pg.wait_for_function("() => document.querySelectorAll('.at-row').length === 4", timeout=8000)
         except Exception:
-            raise AssertionError(pg.evaluate("JSON.stringify({rows: document.querySelectorAll('.at-row').length, q: _at.query, v: document.getElementById('at-q') && document.getElementById('at-q').value, view: _al.view})"))
+            raise AssertionError(pg.evaluate("JSON.stringify({rows: document.querySelectorAll('.at-row').length, q: _alThenAt.query, v: document.getElementById('at-q') && document.getElementById('at-q').value, view: _al.view})"))
         pg.fill("#at-q", "zzzz")
         pg.wait_for_selector(".al-sheet p")
         assert pg.eval_on_selector_all(".at-row", "els => els.length") == 0

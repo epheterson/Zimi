@@ -407,8 +407,8 @@ var SG_GLSL_VIEW = [
 // make it (everything but the Milky Way): one function for the card's shader and for Stand here's Earth, so they cannot differ.
 // Needs SG_GLSL_LUT_UTIL and PI; the uniforms are set by _sgDraw here and by almanac-oneair.js there.
 var SG_GLSL_RADIANCE = [
-  'uniform sampler2D uSkyS, uSkyM;',
-  'uniform float uSunAz, uSunLux, uMoonAz, uMoonLux;',
+  'uniform sampler2D uSkyS, uSkyM, uSkyE;',
+  'uniform float uSunAz, uSunLux, uMoonAz, uMoonLux, uEclGlow;',
   'uniform vec3 uGlow;',                     // the place's own light, cd/m2
   'uniform vec3 uEclPole, uSunVec;',         // the ecliptic's pole and the Sun, in (east, north, up)
   'uniform float uZodiScale, uAirglow;',
@@ -445,6 +445,8 @@ var SG_GLSL_RADIANCE = [
   '  L += vec3(1.0, 0.93, 0.8) * zodiS10(clamp(elong, radians(15.0), PI)) * ' + SG_S10_LUM.toExponential(2) + ' * exp(-0.5 * pow(beta / w, 2.0)) * uZodiScale * ext;',
   '  L += vec3(0.55, 1.0, 0.7) * uAirglow * (1.0 / sqrt(1.0 - pow(' + (SG_EARTH_R / (SG_EARTH_R + SG_AIRGLOW_H)).toFixed(5) + ' * cos(alt), 2.0))) * exp(-' + SG_AIRGLOW_EXTINCTION + ' * (airmassDeg(degrees(alt)) - 1.0));',
   '  L += uGlow * (1.0 + 2.0 * exp(-degrees(alt) / 14.0));',
+  // Totality: the light from beyond the Moon's shadow rings the whole horizon, as a sunset does, the same at every bearing.
+  '  if (uEclGlow > 0.0) L += uEclGlow * ' + SG_SUN_LUX.toFixed(1) + ' * lutLight(texture(uSkyE, unitToTex(vec2(0.5, sqrt(clamp(alt, 0.0, PI * 0.5) / (PI * 0.5))), vec2(' + SG_VIEW_W + '.0, ' + SG_VIEW_H + '.0))).rgb);',
   '  return L;',
   '}',
   // The eye in the dark: its blue shift, applied to the light before the exposure.
@@ -469,6 +471,7 @@ var SG_CLOUD_HAZE_M = 60000;               // the air between thins a cloud this
 var SG_CLOUD_THRESHOLD = [0.72, 0.18];     // the noise's cut for a clear day and a full one
 var SG_CLOUD_EDGE = 0.16;                  // and how soft it is
 var SG_CLOUD_ALBEDO = 0.8;
+var SG_CLOUD_THICK_FROM = 0.15, SG_CLOUD_THICK_TO = 0.9, SG_CLOUD_THICK_LIGHT = 0.08;   // a thick deck's underside gets this share of the Sun's light through it
 var SG_CLOUD_LIT_FROM = -0.25, SG_CLOUD_LIT_TO = 0.6;   // the Sun's height at the cloud over which it goes from in shade to in the light
 var SG_SUN_DEPTH_RGB = 'vec3(0.10, 0.14, 0.22)';          // optical depth per airmass of the sunlight's path (almanac-sky.js SKY_SUN_DEPTH)
 var SG_CLOUD_EARTH_KM = '6371.0';
@@ -476,7 +479,13 @@ var SG_CLOUD_EARTH_KM = '6371.0';
 var SG_GLSL_CLOUD_FIELD = [
   'uniform vec4 uCloud;',          // cover 0..1, base height (m), thickness (m), the day's offset in the noise
   'uniform vec3 uCloudWind;',      // wind east and north (m/s), seconds since the day's start
-  'float cloudHash(vec2 p) { p = fract(p * vec2(123.34, 456.21)); p += dot(p, p + 45.32); return fract(p.x * p.y); }',
+  // An integer hash of the lattice point (almanac-onesky.js _osCloudHash is the same sum): a float one differs between a GPU and a CPU.
+  'float cloudHash(vec2 p) {',
+  '  uvec2 q = uvec2(ivec2(p));',
+  '  uint h = q.x * 1597334673u ^ q.y * 3812015801u;',
+  '  h = (h ^ (h >> 16u)) * 2246822519u; h = (h ^ (h >> 13u)) * 3266489917u; h ^= h >> 16u;',
+  '  return float(h) / 4294967295.0;',
+  '}',
   'float cloudNoise(vec2 p) {',
   '  vec2 i = floor(p), f = fract(p); f = f * f * (3.0 - 2.0 * f);',
   '  return mix(mix(cloudHash(i), cloudHash(i + vec2(1.0, 0.0)), f.x), mix(cloudHash(i + vec2(0.0, 1.0)), cloudHash(i + vec2(1.0, 1.0)), f.x), f.y);',
@@ -512,7 +521,8 @@ var SG_GLSL_CLOUDS = [
   // Shadowed where the deck toward the Sun is denser; darker underneath where it is thick; bright where thin and near the Sun.
   '  vec2 toSun = uSunVec.xy / max(uSunVec.z, 0.15) * uCloud.z;',
   '  float shade = 1.0 - clamp(cloudDensity(xy + toSun) - dens * 0.5, 0.0, 1.0) * 0.6;',
-  '  float under = 1.0 - 0.45 * dens;',
+  '  float thick = smoothstep(' + SG_CLOUD_THICK_FROM.toFixed(2) + ', ' + SG_CLOUD_THICK_TO.toFixed(2) + ', dens * (0.5 + 0.5 * uCloud.x));',
+  '  float under = mix(1.0, ' + SG_CLOUD_THICK_LIGHT.toFixed(2) + ', thick);',
   '  float silver = 1.0 + 1.5 * pow(max(dot(d, uSunVec), 0.0), 12.0) * (1.0 - dens);',
   '  vec3 amb = ambientSky(), ground = ' + SG_GROUND_ALBEDO + ' * (amb + vec3(uSunLux * max(uSunVec.z, 0.0) / PI));',
   '  vec3 Lc = ' + SG_CLOUD_ALBEDO.toFixed(2) + ' * (sunE / PI * shade * under * silver * 0.8 + amb * (0.95 - 0.3 * dens) + 0.5 * ground * dens);',
@@ -764,7 +774,7 @@ function _sgDispose(sg) {
   if (!sg) return;
   clearTimeout(sg.pollTimer);
   try {
-    var gl = sg.gl, t = [sg.trans, sg.multi, sg.viewS, sg.viewM], i;
+    var gl = sg.gl, t = [sg.trans, sg.multi, sg.viewS, sg.viewM, sg.viewE], i;
     for (i = 0; i < t.length; i++) if (t[i]) { gl.deleteTexture(t[i].tex); gl.deleteFramebuffer(t[i].fb); }
     if (sg.mwTex) gl.deleteTexture(sg.mwTex);
     [sg.readMid, sg.readGrid].forEach(function (t) { if (t) { gl.deleteRenderbuffer(t.rb); gl.deleteFramebuffer(t.fb); } });
@@ -914,7 +924,9 @@ var SG_STAR_SATURATION = 1.2;    // a catalogue's blackbody colours are pale; th
 
 // The sky-view table of a light, drawn only when the light has moved enough to matter.
 function _sgBakeLight(sg, which, altDeg) {
-  var gl = sg.gl, key = Math.round(altDeg / SG_LIGHT_ALT_STEP), k = which + 'Key', t = which === 'sun' ? sg.viewS : sg.viewM;
+  var gl = sg.gl, key = Math.round(altDeg / SG_LIGHT_ALT_STEP), k = which + 'Key';
+  if (which === 'ecl' && !sg.viewE) sg.viewE = _sgTarget(gl, SG_VIEW_W, SG_VIEW_H);   // the totality ring's table, made the first time one is wanted
+  var t = which === 'sun' ? sg.viewS : which === 'moon' ? sg.viewM : sg.viewE;
   if (sg[k] === key) return;
   sg[k] = key;
   gl.useProgram(sg.pView);
@@ -936,7 +948,8 @@ function _sgLightValues(p) {
     moonLux: p.moonAlt > -12 && p.moonIllum > 0.5 ? _sgMoonLux(p.moonIllum, p.moonDist) * SG_MOON_GAIN * moonShare : 0,
     // The eye has not time to adapt to an eclipse's dimming: it keeps most of the daylight's exposure (the square root of the share).
     exposure: _sgExposure(p.sunAltGeo, p.moonAlt, p.moonIllum, p.dial, p.sunShare == null ? 1 : Math.sqrt(p.sunShare), Math.sqrt(moonShare)),
-    glow: [glow * 1.0, glow * 0.82, glow * 0.6]
+    glow: [glow * 1.0, glow * 0.82, glow * 0.6],
+    eclGlow: SG_ECL_GLOW_MAX * Math.max(0, Math.min(1, ((p.obsc || 0) - SG_ECL_GLOW_FROM) / (1 - SG_ECL_GLOW_FROM)))
   };
 }
 // The zodiacal light's table as the shader reads it: elongation (rad) and S10 brightness, the far rows first.
@@ -945,6 +958,7 @@ function _sgZodiTable() {
   for (var i = SG_ZODI_S10.length - 1; i >= 0; i--) zt.push(SG_ZODI_S10[i][0] * DEG_TO_RAD, SG_ZODI_S10[i][1]);
   return zt;
 }
+var SG_ECL_GLOW_MAX = 0.06, SG_ECL_GLOW_FROM = 0.97;   // the sunset-coloured ring's share of a sunset sky's light at totality, and the cover from which it comes up
 var SG_NO_CLOUDS = { cloud: [0, 2500, 700, 0], wind: [0, 0, 0], sunE: 0 };   // a sky with no cloud field to ask (the clouds' own values: almanac-onesky.js _osCloudValues)
 // One frame. p: { W, H, dpr, view, sunAltGeo, sunAz, moonAlt, moonAz, moonIllum,
 // moonDist, horizon (the 9 numbers of _sgHorizonMatrix), eclPole, sunVec,
@@ -961,12 +975,14 @@ function _sgDraw(p) {
   var lv = _sgLightValues(p), sunLux = lv.sunLux, moonLux = lv.moonLux;
   if (sunLux) _sgBakeLight(sg, 'sun', p.sunAltGeo);
   if (moonLux) _sgBakeLight(sg, 'moon', p.moonAlt);
+  if (lv.eclGlow) _sgBakeLight(sg, 'ecl', 0);
   // The sky itself.
   gl.bindFramebuffer(gl.FRAMEBUFFER, null);
   gl.viewport(0, 0, p.W, p.H);
   gl.useProgram(sg.pSky);
   var u = sg.pSky.u;
   _sgBind(gl, 0, sg.viewS.tex, u.uSkyS); _sgBind(gl, 1, sg.viewM.tex, u.uSkyM); _sgBind(gl, 2, sg.mwTex, u.uMilky);
+  _sgBind(gl, 3, sg.viewE ? sg.viewE.tex : sg.viewS.tex, u.uSkyE); gl.uniform1f(u.uEclGlow, sg.viewE ? lv.eclGlow : 0);
   _sgViewUniforms(gl, sg.pSky, p);
   gl.uniform1f(u.uSunAz, p.sunAz * DEG_TO_RAD); gl.uniform1f(u.uSunLux, sunLux);
   gl.uniform1f(u.uMoonAz, p.moonAz * DEG_TO_RAD); gl.uniform1f(u.uMoonLux, moonLux);
