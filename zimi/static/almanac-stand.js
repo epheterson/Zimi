@@ -158,10 +158,19 @@ function _aeStandNew(pend) {
   try { _aeStandGl(st, pend); } catch (e) { _aeStandDispose(st); return null; }
   return st;
 }
+// The Almanac's clock chip tells the time where one stands, the same zone as the header's (almanac.js _almClockParts asks _almClockZone).
+function _aeStandClockZone(st) {
+  if (typeof window === 'undefined') return;
+  var tz = null;
+  if (st && st.key === 'earth' && typeof _almTzForLocation === 'function') { try { tz = _almTzForLocation(st.lat, st.lon); } catch (e) {} }
+  window._almClockZone = tz ? function () { return { tz: tz }; } : null;
+  if (typeof _almClockPaint === 'function') { try { _almClockPaint(); } catch (e) {} }
+}
 function _aeStandEnter(st) {
   var S = _ae.gl, el = _ae.el;
   st.live = true;
   el.classList.add('ae-standing');
+  _aeStandClockZone(st);
   _aeStandHud(st);
   _aeFullStepIn();
   S.renderer.setClearColor(0x000000, 1);
@@ -205,6 +214,7 @@ function _aeStandFinishLeave(st) {
 }
 function _aeStandDrop(closing) {
   var st = _ae && _ae.stand;
+  _aeStandClockZone(null);
   if (_ae) _ae.standPending = null;
   if (!closing) setTimeout(_aeStandAfterClose, 0);   // the way back, when _aeStandClose asked for it
   if (!st) return;
