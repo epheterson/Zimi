@@ -40,7 +40,7 @@ var AM_IDENTITY = [1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0];
 var AM_CSS_ID = 'am-css';
 
 // Missions in the order of the list. Names are in the interface's languages (alm_ms_<id>).
-var AM_LIST = ['apollo11', 'voyager1', 'voyager2'];   // and 'plan', the planner
+var AM_LIST = ['apollo11', 'perseverance', 'voyager1', 'voyager2'];   // and 'plan', the planner
 
 var _amData = null, _amLoading = null;
 
@@ -130,8 +130,17 @@ function _amLegFrame(leg, sc) {
   else if (fr === 'mfix' || fr === 'rel') {
     var p = _ae.gl.planets && _ae.gl.planets[leg.body];
     if (!p || !p.pos) { leg.centre = null; return; }
-    leg.centre = p.pos; leg.basis = fr === 'mfix' ? p.mesh.matrix.elements : AM_IDENTITY;
+    leg.centre = p.pos; leg.basis = fr === 'mfix' ? _amTurnOnly(p.mesh.matrix.elements) : AM_IDENTITY;
   }
+}
+// A body mesh's turn without its size or flattening: its three columns as unit axes, the way a site stands on the body (almanac-sites.js _asAxes).
+function _amTurnOnly(e) {
+  var out = e.slice(), c;
+  for (c = 0; c < 3; c++) {
+    var n = Math.hypot(e[c * 4], e[c * 4 + 1], e[c * 4 + 2]) || 1;
+    out[c * 4] = e[c * 4] / n; out[c * 4 + 1] = e[c * 4 + 1] / n; out[c * 4 + 2] = e[c * 4 + 2] / n;
+  }
+  return out;
 }
 // A frame's vector (km) into the scene's axes (Earth radii).
 function _amAxes(leg, v, sc) {
@@ -473,28 +482,28 @@ function _amDawn(s, st, sc) {
 
 // ── The hand-off at touchdown ──
 // On the Moon the mission gives way to the ground's site visit (almanac-sites.js), at the landing instant, with a chip that comes back to the mission at lift-off.
-var AM_SITE_WAIT_MS = 6000, AM_BACK_ID = 'am-back', AM_BACK_WATCH_MS = 600, AM_POLL_MS = 100, AM_RESUME_PAST_S = 25;   // the ascent phase begins 20 s before lift-off: the way back lands just after it
-function _amLandingRow(name) {
-  var rows = (typeof _aeLm !== 'undefined' && _aeLm && _aeLm.moon) || [];
+var AM_SITE_WAIT_MS = 6000, AM_BACK_ID = 'am-back', AM_BACK_WATCH_MS = 600, AM_POLL_MS = 100, AM_RESUME_PAST_S = 25, AM_REPLAY_S = 60;   // the ascent phase begins 20 s before lift-off: the way back lands just after it
+function _amLandingRow(name, body) {
+  var rows = (typeof _aeLm !== 'undefined' && _aeLm && _aeLm[body || 'moon']) || [];
   return rows.filter(function (r) { return r[3] === 'landing' && r[0] === name; })[0] || null;
 }
 function _amHandoff(m, pi) {
-  var id = _ae.mission.id, resume = (m.phases[pi + 1] || m.phases[pi]).t + AM_RESUME_PAST_S, landed = m.phases[pi].t, zero = _ae.mission.zeroMs;
+  var id = _ae.mission.id, resume = m.phases[pi + 1] ? m.phases[pi + 1].t + AM_RESUME_PAST_S : m.phases[pi].t - AM_REPLAY_S, landed = m.phases[pi].t, zero = _ae.mission.zeroMs;
   if (typeof _aeSitesLoad !== 'function') return;
   _aeSitesLoad();
   if (typeof _aeLmLoad === 'function') _aeLmLoad();
   var waited = 0;
   var go = function () {
-    var row = _amLandingRow(m.handoff.site);
+    var row = _amLandingRow(m.handoff.site, m.handoff.body);
     if (!row || typeof _aeSiteVisit !== 'function' || typeof _asData === 'undefined' || !_asData) {
       if ((waited += AM_POLL_MS) < AM_SITE_WAIT_MS) setTimeout(go, AM_POLL_MS);
       return;
     }
-    var def = _asDefFor('moon', row), at = def && def.ms ? def.ms : zero + landed * 1000;
+    var body = m.handoff.body || 'moon', def = _asDefFor(body, row), at = def && def.ms ? def.ms : zero + landed * 1000;
     _amStop(true);
     if (typeof _almClockSetRate === 'function') _almClockSetRate(1);
     if (typeof _aeGoTo === 'function' && at) _aeGoTo(at);
-    _aeSiteVisit('moon', row, false);
+    _aeSiteVisit(body, row, false);
     _amBackChip(true, id, resume);
   };
   go();
