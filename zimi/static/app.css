@@ -1989,7 +1989,7 @@
   .ci-hd-parts { margin: -4px 12px 8px; padding: 6px 12px; border: 1px solid var(--border); border-top: 0; border-radius: 0 0 10px 10px; font-size: 12px; color: var(--text2); }
   .ci-hd-part { display: flex; justify-content: space-between; gap: 12px; padding: 2px 0; }
   #ms-older .ci-info { min-width: 0; }
-  #ms-older .ci-title, #ms-older .ci-meta { overflow-wrap: anywhere; white-space: normal; }
+  #ms-older .ci-title, #ms-older .ci-meta, #ms-older .ci-meta > span { overflow-wrap: anywhere; white-space: normal; }
   .ci-hd-part > span:first-child { min-width: 0; overflow-wrap: anywhere; }
   .empty { text-align: center; padding: 48px 20px; color: var(--text2); }
   .empty p { font-size: 14px; margin-bottom: 8px; }
