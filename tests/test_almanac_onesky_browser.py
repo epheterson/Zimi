@@ -416,7 +416,7 @@ CLOUD_DIRS = [(180 + da, al) for da in (-25, 0, 25) for al in (25, 40, 55)]
 CLOUD_DIFF_LEVELS = 12.0
 
 
-def _cloudy(png_with, png_without, points):
+def _cloudy(png_with, png_without, points, levels):
     """Per point, whether the picture with the deck differs from the one without it by more than the threshold."""
     import numpy as np
     from PIL import Image
@@ -435,15 +435,40 @@ def _cloudy(png_with, png_without, points):
                     a[y - 3 : y + 4, x - 3 : x + 4] - b[y - 3 : y + 4, x - 3 : x + 4]
                 ).mean()
             )
-            > CLOUD_DIFF_LEVELS
+            > levels
         )
     return out
 
 
-def test_the_card_and_the_ground_view_draw_the_same_cloud_field(browser, served):
+CLOUD_SCENES = [
+    # (id, place, instant, the difference with and without the deck that counts as cloud (levels), whether the day shows both cloud and clear sky)
+    ("boulder_3pm", CLOUD_PLACE, CLOUD_MS, 12.0, True),
+    (
+        "black_forest_noon_heavy",
+        {"lat": 47.8, "lon": 8.2, "name": "Black Forest"},
+        1790076432000,
+        12.0,
+        False,
+    ),
+    (
+        "black_forest_night_heavy",
+        {"lat": 47.8, "lon": 8.2, "name": "Black Forest"},
+        1790104570890,
+        3.0,
+        False,
+    ),
+]
+
+
+@pytest.mark.parametrize(
+    "scene,cplace,cms,levels,mixed", CLOUD_SCENES, ids=[c[0] for c in CLOUD_SCENES]
+)
+def test_the_card_and_the_ground_view_draw_the_same_cloud_field(
+    browser, served, scene, cplace, cms, levels, mixed
+):
     """One field, one shader: at one place, instant and facing, the directions where the deck is (the picture with it differs from the
     picture without it) are the directions in both views."""
-    place = json.dumps(CLOUD_PLACE)
+    place = json.dumps(cplace)
     clear = "() => { const f = window.__realField || (window.__realField = _osCloudField); window._osCloudField = (d) => Object.assign(f(d), { coverage: 0 }); }"
     real = (
         "() => { if (window.__realField) window._osCloudField = window.__realField; }"
@@ -474,15 +499,13 @@ def test_the_card_and_the_ground_view_draw_the_same_cloud_field(browser, served)
     pg.evaluate(
         "() => { const h = document.createElement('div'); h.style.cssText = 'position:fixed;inset:0;z-index:99999;background:#000'; document.body.appendChild(h); window._osh = h; }"
     )
-    pg.evaluate(
-        "(ms) => { _almClockSetRate(0); _almScrubSettle(new Date(ms)); }", CLOUD_MS
-    )
+    pg.evaluate("(ms) => { _almClockSetRate(0); _almScrubSettle(new Date(ms)); }", cms)
     pg.wait_for_timeout(500)
 
     def card_shot():
         pg.evaluate(
             "([la, lo, az, alt]) => { AlmanacSkyView.unmount(_osh); AlmanacSkyView.mount(_osh, { lat: la, lon: lo, name: '' }); AlmanacSkyView.setView(_osh, az, alt, 70); }",
-            [CLOUD_PLACE["lat"], CLOUD_PLACE["lon"], 180, 40],
+            [cplace["lat"], cplace["lon"], 180, 40],
         )
         pg.wait_for_function(
             "() => _sgReady() && _sg.starCount === 9096 && _sg.mwReady",
@@ -499,7 +522,7 @@ def test_the_card_and_the_ground_view_draw_the_same_cloud_field(browser, served)
     )
     pg.evaluate(clear)
     without = card_shot()
-    card_mask = _cloudy(with_clouds, without, pts)
+    card_mask = _cloudy(with_clouds, without, pts, levels)
     ctx.close()
 
     # The ground view.
@@ -518,7 +541,7 @@ def test_the_card_and_the_ground_view_draw_the_same_cloud_field(browser, served)
     )
     pg.evaluate(
         "([la, lo]) => _aeStandAt('earth', la, lo)",
-        [CLOUD_PLACE["lat"], CLOUD_PLACE["lon"]],
+        [cplace["lat"], cplace["lon"]],
     )
     pg.wait_for_function(
         "() => _ae.stand && _ae.stand.live && _ae.stand.mode === 'ground' && _ae.stand.fr",
@@ -530,7 +553,7 @@ def test_the_card_and_the_ground_view_draw_the_same_cloud_field(browser, served)
         pg.evaluate(
             """([ms, head, pitch]) => { _aeGoTo(ms); const st = _ae.stand; st.userYaw = head * Math.PI / 180 - st.yaw;
               st.userPitch = pitch * Math.PI / 180 - _aeRad(AE_STAND_PITCH_DEG); st.dirty = true; st.fr = null; _ae.dirty = true; _aeKick(); }""",
-            [CLOUD_MS, 180, 40],
+            [cms, 180, 40],
         )
         pg.wait_for_timeout(3000)
         data = pg.evaluate(
@@ -546,18 +569,22 @@ def test_the_card_and_the_ground_view_draw_the_same_cloud_field(browser, served)
     )
     pg.evaluate(clear)
     without = stand_shot()
-    stand_mask = _cloudy(with_clouds, without, pts)
+    stand_mask = _cloudy(with_clouds, without, pts, levels)
     ctx.close()
 
     both = [
         (a, b) for a, b in zip(card_mask, stand_mask) if a is not None and b is not None
     ]
     assert len(both) >= 7, (card_mask, stand_mask)
-    assert any(a for a, _ in both) and not all(a for a, _ in both), (
-        "the day shows both cloud and clear sky",
-        card_mask,
-        stand_mask,
-    )
+    if mixed:
+        assert any(a for a, _ in both) and not all(a for a, _ in both), (
+            "the day shows both cloud and clear sky",
+            card_mask,
+            stand_mask,
+        )
+    else:  # a heavy day: the field says cloud nearly everywhere, and both views must draw it
+        assert sum(1 for a, _ in both if a) >= len(both) - 2, ("card", card_mask)
+        assert sum(1 for _, b in both if b) >= len(both) - 2, ("stand", stand_mask)
     agree = sum(1 for a, b in both if a == b)
     assert agree >= len(both) - 1, (card_mask, stand_mask)
 
