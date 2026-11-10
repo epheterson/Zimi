@@ -23,7 +23,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 ### Added
 
 - Games: Courtier, a small deduction card game for two to four, and Odd One Out, a party game for three to eight on one phone that plays from pictures in any language.
-- Games: a New row under the table on the shelf lists what arrived with this release.
+- Games: the shelf opens on a World favorites row (the best-known games), then a New row of what arrived with this release; the games that use your library moved to the end.
 
 ### Fixed
 

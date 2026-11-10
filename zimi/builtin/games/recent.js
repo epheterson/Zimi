@@ -316,6 +316,18 @@
     }
     return false;
   }
+  // World favorites: the best-known games of the world that ours play best, the shelf's lead after the table (Eric: the games
+  // that use your library are not the ones to open on). A game the shelf has no tile of is left out.
+  var WORLD = CLASSICS.concat(['sudoku.html', 'minesweeper.html', 'backgammon.html', 'go.html', 'hearts.html', 'mahjong.html', '2048.html', 'fourinarow.html', 'dominoes.html', 'blackjack.html']);
+  function worldSection() {
+    var tiles = [];
+    var onTable = doc.querySelector('.ar-table-idle') ? CLASSICS : [];   // an idle table already shows the three classics
+    WORLD.forEach(function (p) { var t = onTable.indexOf(p) < 0 ? tileFor({ path: p }) : null; if (t) tiles.push(ownIds(t)); });
+    if (!tiles.length) return null;
+    var s = section('ar-world', T('shelf.world'), tiles);
+    if (root.ZimiShell && root.ZimiShell.localizeTiles) root.ZimiShell.localizeTiles(s);
+    return s;
+  }
   // New: the games that arrived with the release this shelf shipped in, one row under the table. Absent when no row has an `added`.
   function newSection(rows) {
     var latest = '';
@@ -363,6 +375,11 @@
       if (t) first.parentNode.insertBefore(t, first);
       // shelf.js lays the sections out per view; it is told when they are in.
       doc.dispatchEvent(new Event('zimi-shelf-today'));
+      var world = worldSection();
+      if (world) {
+        first.parentNode.insertBefore(world, first);
+        doc.dispatchEvent(new Event('zimi-shelf-today'));
+      }
       var fresh = newSection(rows);
       if (fresh) {
         first.parentNode.insertBefore(fresh, first);
