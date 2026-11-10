@@ -797,6 +797,9 @@ var AE_CSS = [
   '[dir="rtl"] .ae-card-x{right:auto;left:4px}',
   '.ae-msg{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;text-align:center;padding:24px;color:var(--text2);font-size:14px;pointer-events:none}',
   '.ae-msg[hidden]{display:none}',
+  '.ae-static .ae-top,.ae-static .ae-bottom,.ae-static .ae-labels,.ae-static .ae-fullbar{display:none}',
+  '.ae-static .ae-msg{justify-content:flex-end;padding-bottom:16vh}',
+  '.ae-static-globe{position:absolute;left:50%;top:36%;transform:translate(-50%,-50%);width:min(66vw,46vh,440px);height:auto;aspect-ratio:1;pointer-events:none}',
   '.ae-msg{flex-direction:column;gap:14px}',
   '.ae-msg-line{margin:0;max-width:30em}',
   '.ae-msg-try{pointer-events:auto;font-size:13px;padding:9px 16px;min-height:36px}',
@@ -8118,7 +8121,7 @@ function _aeMessage(text) {
   if (!m) return;
   m.textContent = text || '';
   m.hidden = !text;
-  if (text && _ae && _ae.capStatic && typeof ZimiCap !== 'undefined') ZimiCap.staticLine(m);   // the reason and the one tap (Full), in place of the bare line
+  if (text && _ae && _ae.capStatic && typeof ZimiCap !== 'undefined') { ZimiCap.staticLine(m); _aeStaticGlobe(); }   // the reason and the one tap (Full), over the Earth lit as it is now
   if (_ae && _ae.el) _ae.el.classList.toggle('ae-blank', !!text);
 }
 
@@ -8132,6 +8135,20 @@ var _aePreparing = null;
 var AE_FPS_SLACK_MS = 3;   // a frame this early is still on time (the display's rate does not divide the cap evenly)
 function _aeCapGet(key, dflt) { return typeof ZimiCap !== 'undefined' ? ZimiCap.get(key) : dflt; }
 function _aeCapDpr(scene) { return typeof ZimiCap !== 'undefined' ? ZimiCap.dprCap(scene) : Infinity; }
+var AE_STATICGLOBE_JS = '/static/almanac-staticglobe.js';
+// The view set aside shows only its line, its one button and the way back, over the Earth drawn once (almanac-staticglobe.js).
+function _aeStaticGlobe() {
+  if (!_ae || !_ae.el) return;
+  _ae.el.classList.add('ae-static');
+  if (typeof _asgDraw === 'function') { _asgDraw(_ae.el); return; }
+  if (_ae.staticLoading) return;
+  _ae.staticLoading = true;
+  var s = document.createElement('script');
+  s.src = AE_STATICGLOBE_JS;
+  s.onload = function () { _ae.staticLoading = false; if (_ae.capStatic && typeof _asgDraw === 'function') _asgDraw(_ae.el); };
+  s.onerror = function () { _ae.staticLoading = false; s.remove(); };
+  document.head.appendChild(s);
+}
 function _aeNoGlText() { return _aeT(_ae && _ae.capStatic ? 'cap_static' : 'alm_earth_nogl'); }
 // What the 3D scenes on the canvas give up before the GL behind them goes.
 function _aeDropScenes() {
@@ -8181,6 +8198,9 @@ function _aeCapEvent(evt) {
   if (evt === 'fallback') { _aeCapAside(); return; }
   if (evt === 'setting' && _ae.capStatic && ZimiCap.view3d() === 'open') {   // Full or Light on a device Auto set the view aside on: it tries
     _ae.failed = _ae.capStatic = false;
+    _ae.el.classList.remove('ae-static');
+    var pic = document.getElementById('ae-static-globe');
+    if (pic) pic.remove();
     if (_aeIsOpen) _aeOpenWhenReady();
     return;
   }

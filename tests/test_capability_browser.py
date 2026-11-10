@@ -139,3 +139,39 @@ def test_the_page_holds_the_3d_files_back_on_what_capability_calls_low(page, ser
         page, served, mem1 + "try { localStorage.setItem('zimi_cap', 'full'); } catch (e) {}"
     )
     assert low is False and came is True, (low, came)
+def test_the_plain_line_stands_over_the_earth_drawn_once_and_the_tools_are_gone(page):
+    page.evaluate("() => ZimiCap.set('auto')")
+    page.wait_for_function("() => _ae.capStatic && _ae.failed", timeout=20_000)
+    page.evaluate("() => { if (!_aeIsOpen) openAlmanacEarth({ target: 'earth' }); }")
+    page.wait_for_function(
+        "() => document.getElementById('ae-static-globe') && typeof _asg !== 'undefined' && _asg.ms !== null",
+        timeout=30_000,
+    )
+    # Drawn: lit and dark pixels (a day side and a night side) and round (the corner is empty).
+    stats = page.evaluate(
+        """() => { var c = document.getElementById('ae-static-globe'), x = c.getContext('2d'), n = c.width,
+      d = x.getImageData(0, 0, n, n).data, lit = 0, dark = 0, corner = d[3];
+      for (var i = 0; i < d.length; i += 4) { if (d[i + 3] > 200) { var l = d[i] + d[i + 1] + d[i + 2]; if (l > 150) lit++; else dark++; } }
+      return { lit: lit, dark: dark, corner: corner }; }"""
+    )
+    assert stats["lit"] > 5000 and stats["dark"] > 5000 and stats["corner"] == 0, stats
+    # Nothing is left held or looping: the GL context was lost on purpose, and a draw schedules no frame callback.
+    assert page.evaluate("() => _asg.lost") is True
+    page.evaluate(
+        """() => { window.__asgRaf = 0; var o = window.requestAnimationFrame; window.requestAnimationFrame = function (cb) {
+      if ((new Error()).stack.indexOf('almanac-staticglobe') >= 0) window.__asgRaf++; return o.call(window, cb); };
+      document.getElementById('ae-static-globe').remove(); _asg.ms = null; _asgDraw(_ae.el); }"""
+    )
+    page.wait_for_function("() => _asg.ms !== null", timeout=30_000)
+    page.wait_for_timeout(1500)
+    assert page.evaluate("() => window.__asgRaf") == 0
+    # Redrawn only when the page's clock has moved by more than ten minutes.
+    ms0 = page.evaluate("() => _asg.ms")
+    page.evaluate("() => _asgDraw(_ae.el)")
+    page.wait_for_timeout(300)
+    assert page.evaluate("() => _asg.ms") == ms0
+    # Only the line, its button and the way back: the round tools, labels and the bottom row are not shown.
+    assert page.evaluate(
+        "() => ['.ae-top', '.ae-bottom', '.ae-labels'].every(s => getComputedStyle(document.querySelector(s)).display === 'none')"
+    )
+    assert page.evaluate("() => !!document.querySelector('.ae-msg-try')")
