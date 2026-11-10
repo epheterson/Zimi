@@ -484,6 +484,12 @@ def stop() -> None:
     _advert_fixed = {}
 
 
+def pullable(rows):
+    """A peer's /list less what /dl/ will not hand over: a split book
+    (``parts``) is several files, and peers pull one."""
+    return [r for r in rows if not (isinstance(r, dict) and r.get("parts"))]
+
+
 def fetch_peer_list(peer_name: str):
     """Proxy a peer's /list endpoint, cached for PEER_LIST_TTL_SECONDS.
     Returns the parsed JSON list or None if the peer is unknown / the
@@ -518,6 +524,7 @@ def fetch_peer_list(peer_name: str):
         parsed = json.loads(data)
         if not isinstance(parsed, list):
             return None
+        parsed = pullable(parsed)
     except (OSError, ValueError):
         return None
 

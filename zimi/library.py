@@ -26,6 +26,7 @@ from urllib.parse import urlparse, urlencode, quote
 
 import zimi.server as _srv
 from zimi import renames as _renames
+from zimi import zimparts
 from zimi.safety import join_inside, loggable
 
 log = logging.getLogger("zimi")
@@ -2031,6 +2032,19 @@ def _offline_catalog_matching(query):
     return _offline_catalog_matching_stamped(query)[0]
 
 
+def _installed_bases():
+    """The date-stripped file names of every book on disk, lower-cased, for
+    the catalog's installed mark. A book in another program's folder is
+    installed too (the catalog does not offer a second copy), and a split
+    book counts under its whole name."""
+    from zimi import libfolders
+
+    return {
+        _srv._extract_zim_date(zimparts.book_filename(path))[0].lower()
+        for path in zimparts.in_folder(_srv.ZIM_DIR) + libfolders.zim_paths()
+    }
+
+
 def _fetch_kiwix_catalog(
     query="", lang="eng", count=20, start=0, _background=False, _internal=False
 ):
@@ -2195,15 +2209,7 @@ def _fetch_kiwix_catalog(
     except (ValueError, TypeError):
         total = 0
 
-    # Build set of installed filename bases (date-stripped) for accurate matching
-    local_bases = set()
-    from zimi import libfolders
-
-    # A ZIM in another program's folder is installed too: the catalog says so
-    # instead of offering a second copy of it.
-    for path in glob.glob(os.path.join(_srv.ZIM_DIR, "*.zim")) + libfolders.zim_paths():
-        base, _ = _srv._extract_zim_date(os.path.basename(path))
-        local_bases.add(base.lower())
+    local_bases = _installed_bases()
     items = []
     for entry in root.findall("atom:entry", ns):
         name = ""
@@ -3587,6 +3593,11 @@ def _check_updates():
     # Match by checking if installed filename starts with catalog name + '_'
     installed_files = []
     for name, path in zims.items():
+        if zimparts.is_split(path):
+            # Split by hand to fit its disk (FAT32's 4 GB cap); an update
+            # would download one whole file the disk may not hold, and the
+            # old chunks would outlive it. The operator updates it by hand.
+            continue
         filename = os.path.basename(path)
         prefix, date = _srv._extract_zim_date(filename)
         if date:
