@@ -9,6 +9,8 @@ Run: pytest tests/test_almanac_phonefix_browser.py -v
 import os
 import sys
 
+import pytest
+
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 from test_almanac_phone_defects_browser import (
@@ -64,13 +66,19 @@ def test_pinching_out_of_the_planets_view_closes_it_without_an_error(browser, se
         ctx.close()
 
 
-CHOSEN_MS = 1717243200000  # 2024-06-01T12:00:00Z, a date the reader picked before the mission
+CHOSEN_MS = (
+    1717243200000  # 2024-06-01T12:00:00Z, a date the reader picked before the mission
+)
 FOCUS = "() => ({ set: !!_almFocus, ms: _almFocusInstant().getTime(), rate: _almRate, now: Date.now() })"
 
 
 def _fly_apollo_and_go_back(pg):
     pg.evaluate("_aeMissionStart('apollo11')")
-    pg.wait_for_function("() => !!(_ae.mission && _almFocusInstant().getFullYear() === 1969)", timeout=60_000, polling=200)
+    pg.wait_for_function(
+        "() => !!(_ae.mission && _almFocusInstant().getFullYear() === 1969)",
+        timeout=60_000,
+        polling=200,
+    )
     pg.click("#back-btn")
     pg.wait_for_function("() => !_aeIsOpen", timeout=20_000, polling=100)
     pg.wait_for_timeout(500)
@@ -94,7 +102,9 @@ def test_leaving_a_mission_puts_the_almanac_back_at_now(browser, served):
 def test_leaving_a_mission_puts_back_the_date_the_reader_chose(browser, served):
     ctx, pg, errors = _page(browser, served)
     try:
-        pg.wait_for_function("() => typeof _almScrubSettle === 'function'", timeout=60_000)
+        pg.wait_for_function(
+            "() => typeof _almScrubSettle === 'function'", timeout=60_000
+        )
         pg.evaluate("(ms) => _almScrubSettle(new Date(ms))", CHOSEN_MS)
         _open_3d(pg)
         got = _fly_apollo_and_go_back(pg)
@@ -116,9 +126,13 @@ def test_back_from_stand_here_returns_to_the_globe_it_was_entered_from(browser, 
             pg.evaluate("(a) => _aeStandAt(a[0], a[1], a[2])", [body, lat, lon])
             pg.wait_for_function(STANDING, timeout=READY_MS, polling=250)
             pg.click("#back-btn")
-            pg.wait_for_function("() => !_ae.stand && !_ae.standPending", timeout=60_000, polling=200)
+            pg.wait_for_function(
+                "() => !_ae.stand && !_ae.standPending", timeout=60_000, polling=200
+            )
             pg.wait_for_timeout(400)
-            assert pg.evaluate("_aeIsOpen") is True, body  # one level out: the globe, not the Almanac page
+            assert (
+                pg.evaluate("_aeIsOpen") is True
+            ), body  # one level out: the globe, not the Almanac page
             assert pg.evaluate("_ae.target") == body
             pg.click("#back-btn")  # and the next one leaves the view
             pg.wait_for_function("() => !_aeIsOpen", timeout=20_000, polling=100)
@@ -129,7 +143,9 @@ def test_back_from_stand_here_returns_to_the_globe_it_was_entered_from(browser, 
         ctx.close()
 
 
-def test_back_from_stand_here_entered_from_the_sky_card_returns_to_the_card(browser, served):
+def test_back_from_stand_here_entered_from_the_sky_card_returns_to_the_card(
+    browser, served
+):
     ctx, pg, errors = _page(browser, served)
     try:
         pg.wait_for_function("() => typeof _aeStandOpen === 'function'", timeout=60_000)
@@ -138,8 +154,47 @@ def test_back_from_stand_here_entered_from_the_sky_card_returns_to_the_card(brow
         )
         pg.wait_for_function(STANDING, timeout=READY_MS, polling=250)
         pg.click("#back-btn")
-        pg.wait_for_function("() => !_aeIsOpen && window.__back === 1", timeout=60_000, polling=200)
+        pg.wait_for_function(
+            "() => !_aeIsOpen && window.__back === 1", timeout=60_000, polling=200
+        )
         assert pg.evaluate("_almanacOpen") is True
+        assert not errors, errors
+    finally:
+        ctx.close()
+
+
+def _go_search(pg, typed):
+    pg.fill("#ae-go-q", typed)
+    pg.wait_for_timeout(
+        1500
+    )  # the landmarks at once, the towns after the server's answer
+    return pg.evaluate(
+        """() => { const found = document.getElementById('ae-go-found'), none = document.getElementById('ae-go-none');
+          return { rows: found && !found.hidden ? [...found.querySelectorAll('.ae-go-row')].map(r => r.innerText) : [],
+                   none: none && !none.hidden ? none.innerText : '' }; }"""
+    )
+
+
+def test_go_to_finds_a_big_city_with_no_map_and_says_when_nothing_is_found(
+    browser, served
+):
+    ctx, pg, errors = _page(browser, served)
+    try:
+        _open_3d(pg)
+        pg.click("#ae-go-btn")
+        pg.wait_for_selector("#ae-go-q", state="visible", timeout=20_000)
+        got = _go_search(pg, "Los Angeles")
+        assert got["rows"] and got["rows"][0].startswith("Los Angeles"), got
+        assert got["none"] == "", got
+        got = _go_search(pg, "Qzxqzxq")
+        assert got["rows"] == [], got
+        assert got["none"] == pg.evaluate("t('no_results')"), got
+        _go_search(pg, "Tokyo")
+        pg.click("#ae-go-found .ae-go-row")
+        pg.wait_for_function(
+            "() => !!(_ae.place && _ae.place.name.indexOf('Tokyo') === 0)",
+            timeout=20_000,
+        )
         assert not errors, errors
     finally:
         ctx.close()

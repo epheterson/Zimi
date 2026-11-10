@@ -948,6 +948,18 @@ function _aePlaceLandmarks(typed) {
   });
   return out;
 }
+// The world's big cities the Almanac carries for its place picker (almanac.js _MAP_CITIES), as places: found with no map
+// installed ("Los Angeles, California, United States" answers "Los Angeles").
+function _aePlaceCities(typed) {
+  var out = [];
+  (typeof _MAP_CITIES !== 'undefined' ? _MAP_CITIES : []).forEach(function (c, i) {
+    var name = c.name.split(',')[0], m = _aePlaceMatch(typed, name);
+    if (m >= 0) out.push({ name: name, label: c.name, lat: c.lat, lon: c.lon, kind: 'town', match: m, at: i });
+  });
+  return out;
+}
+// What answers `typed` without asking the server: the Earth's landmarks, then the big cities.
+function _aePlaceLocal(typed) { return _aePlaceLandmarks(typed).concat(_aePlaceCities(typed)); }
 // A town the server offered, as a place. A name the typed words reach through where it is ("Springfield, IL") has no
 // match of its own: the server's answer stands for it as a prefix.
 function _aePlaceTown(typed, p, i) {
@@ -979,26 +991,33 @@ function _aePlaceSearch(typed) {
   if (_ae.placeAbort) _ae.placeAbort.abort();
   typed = typed.replace(/\s+/g, ' ').trim();
   if (!typed) { _aePlaceShow([]); return; }
-  _aePlaceShow(_aePlaceMerge(typed, _aePlaceLandmarks(typed), []));
+  _aePlaceShow(_aePlaceMerge(typed, _aePlaceLocal(typed), []));
   _ae.placeAbort = typeof AbortController === 'function' ? new AbortController() : null;
   _aeFetch(AE_PLACE_SUGGEST_URL + '?q=' + encodeURIComponent(typed) + '&limit=' + AE_PLACE_MAX, _ae.placeAbort ? { signal: _ae.placeAbort.signal } : undefined)
     .then(_aeJson).then(function (d) {
       if (seq !== _ae.placeSeq) return;
       _ae.placeTowns = (d.places || []).filter(function (p) { return _almValidLatLon(p.lat, p.lng); });
       _aePlaceRefresh();
-    }).catch(function () {});
+    }).catch(function (e) {
+      if (seq !== _ae.placeSeq || (e && e.name === 'AbortError')) return;
+      _ae.placeTowns = [];   // no answer (offline, no maps): what was found here is all there is
+      _aePlaceRefresh();
+    });
 }
 // What is found for what is in the field now, from the landmarks and the towns last offered (the landmarks' file may
 // arrive after the first keys).
 function _aePlaceRefresh() {
   var q = _aeById('ae-go-q'), typed = q ? q.value.trim() : '';
-  if (typed) _aePlaceShow(_aePlaceMerge(typed, _aePlaceLandmarks(typed), _ae.placeTowns || []));
+  if (typed) _aePlaceShow(_aePlaceMerge(typed, _aePlaceLocal(typed), _ae.placeTowns || []));
 }
 function _aePlaceShow(list) {
   _ae.placeFound = list;
   var box = _aeById('ae-go-found'), groups = _aeById('ae-go-groups'), q = _aeById('ae-go-q');
   if (!box) return;
   box.hidden = !list.length;
+  // Nothing by that name once the towns have answered too: said, not a blank sheet.
+  var none = _aeById('ae-go-none');
+  if (none) none.hidden = !!list.length || !(q && q.value.trim()) || !_ae.placeTowns;
   box.innerHTML = list.map(function (p, i) {
     var dot = '<i class="ae-go-dot ae-go-probe' + (p.kind === 'landmark' ? '' : ' ae-go-town') + '"></i>';
     return '<span class="ae-go-item"><button type="button" class="ae-go-row" data-ae-place="' + i + '">' + dot + '<span>' + _almEsc(p.label) + '</span></button>' + _aeGoMapBtn(i) + '</span>';
@@ -1025,7 +1044,8 @@ function _aeCardMapBtn(card, p) {
 // afresh by _aeGoRender without taking the field's focus.
 function _aeGoShell(sheet) {
   if (_aeById('ae-go-q')) return;
-  sheet.innerHTML = '<div class="ae-go-list ae-go-found" id="ae-go-found" hidden></div><div id="ae-go-groups"></div>' +
+  sheet.innerHTML = '<div class="ae-go-list ae-go-found" id="ae-go-found" hidden></div>' +
+    '<div class="ae-go-wait" id="ae-go-none" role="status" hidden>' + _almEsc(_aeT('no_results')) + '</div><div id="ae-go-groups"></div>' +
     '<div class="ae-go-find">' + AE_SEARCH_SVG + '<input type="search" id="ae-go-q" autocomplete="off" autocapitalize="off" ' +
     'spellcheck="false" enterkeyhint="go" placeholder="' + _almEsc(_aeT('search')) + '" aria-label="' + _almEsc(_aeT('search')) + '"></div>';
   var q = _aeById('ae-go-q'), timer = 0;
@@ -1037,7 +1057,7 @@ function _aeGoShell(sheet) {
     _ae.placeTowns = null;
     _ae.placeSeq = (_ae.placeSeq || 0) + 1;
     if (_ae.placeAbort) _ae.placeAbort.abort();
-    _aePlaceShow(_aePlaceMerge(typed, _aePlaceLandmarks(typed), []));
+    _aePlaceShow(_aePlaceMerge(typed, _aePlaceLocal(typed), []));
     timer = setTimeout(function () { _aePlaceSearch(typed); }, AE_PLACE_DELAY_MS);
   };
   q.onkeydown = function (e) {

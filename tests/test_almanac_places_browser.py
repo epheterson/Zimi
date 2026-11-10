@@ -271,7 +271,9 @@ def test_a_landmark_is_offered_with_the_towns_and_its_card_links_its_article(lib
             br.close()
 
 
-def test_with_no_map_installed_the_landmarks_answer_and_nothing_else_is_said(no_map):
+def test_with_no_map_installed_the_landmarks_and_big_cities_answer_and_nothing_found_is_said(
+    no_map,
+):
     from playwright.sync_api import sync_playwright
 
     with sync_playwright() as pw:
@@ -283,15 +285,21 @@ def test_with_no_map_installed_the_landmarks_answer_and_nothing_else_is_said(no_
                 "() => document.querySelectorAll('#ae-go-found .ae-go-row').length > 0",
                 timeout=30_000,
             )
-            assert _rows(pg) == ["Mont Blanc"], _rows(pg)
-            # A town of a map: no answer, and no word about it (the sheet is the field and its rows).
+            # The landmark first, then the big cities the Almanac carries (its place picker's).
+            assert _rows(pg)[0] == "Mont Blanc" and "Montreal, Quebec, Canada" in _rows(
+                pg
+            ), _rows(pg)
             pg.fill("#ae-go-q", "Paris")
+            pg.wait_for_timeout(800)
+            assert _rows(pg) == ["Paris, France"], _rows(pg)
+            # Nothing by that name: one line says so.
+            pg.fill("#ae-go-q", "Qzxqzxq")
             pg.wait_for_timeout(800)
             assert _rows(pg) == []
             words = pg.evaluate(
                 "() => document.getElementById('ae-go').innerText.trim()"
             )
-            assert words == "", words
+            assert words == pg.evaluate("t('no_results')"), words
             pg.fill("#ae-go-q", "Mont Blanc")
             pg.click("#ae-go-found .ae-go-row")
             _landed(pg)
