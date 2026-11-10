@@ -2715,6 +2715,7 @@
   "pdf_dark_in_red": "Toujours activé en Rouge",
   "pdf_page": "Page",
   "pdf_failed": "Impossible d’ouvrir ce PDF.",
+  "pdf_too_large": "Ce PDF est trop gros pour s’ouvrir ici : il est stocké compressé dans son ZIM.",
   "pdf_prev_page": "Page précédente",
   "pdf_next_page": "Page suivante",
   "pdf_single_page": "Page unique",

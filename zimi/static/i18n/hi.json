@@ -2715,6 +2715,7 @@
   "pdf_dark_in_red": "लाल में हमेशा चालू",
   "pdf_page": "पेज",
   "pdf_failed": "यह PDF खोली नहीं जा सकी।",
+  "pdf_too_large": "यह PDF यहाँ खोलने के लिए बहुत बड़ी है: यह अपनी ZIM में संपीड़ित रखी है।",
   "pdf_prev_page": "पिछला पेज",
   "pdf_next_page": "अगला पेज",
   "pdf_single_page": "एक पेज",

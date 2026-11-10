@@ -59,7 +59,7 @@ def _read(fd, size, offset):
 def locate(zim_path, entry_index, size):
     """The absolute file offset of entry ``entry_index``'s bytes when they
     are one uncompressed run of ``size`` bytes in ``zim_path``; else None."""
-    if entry_index is None or not zim_path or not zim_path.endswith(".zim"):
+    if entry_index is None or not zim_path or not zim_path.lower().endswith(".zim"):
         return None
     try:
         fd = os.open(zim_path, _OPEN_FLAGS)

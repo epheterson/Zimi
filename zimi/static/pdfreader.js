@@ -63,7 +63,8 @@
     pdf_zoom_out: 'Zoom out', pdf_dark_pages: 'Dark pages', pdf_dark_in_red: 'Always on in Red', pdf_single_page: 'Single page', pdf_two_pages: 'Two pages', pdf_rotate: 'Rotate',
     pdf_about: 'About this PDF', pdf_keywords: 'Keywords', pdf_created: 'Created', pdf_modified: 'Modified',
     pdf_application: 'Application', pdf_producer: 'PDF producer', pdf_version: 'PDF version', pdf_page_size: 'Page size',
-    pdf_library: 'Library', books_author: 'Author', books_subject: 'Subject', zi_size: 'Size', zi_file: 'File', pdf_page: 'Page', pdf_failed: 'This PDF could not be opened.'
+    pdf_library: 'Library', books_author: 'Author', books_subject: 'Subject', zi_size: 'Size', zi_file: 'File', pdf_page: 'Page', pdf_failed: 'This PDF could not be opened.',
+    pdf_too_large: 'This PDF is too large to open here: it is stored compressed in its ZIM.'
   };
   function t(k, vars) {
     var s = '';
@@ -365,10 +366,11 @@
   function watchLoad(n) {
     var task = app.pdfLoadingTask;
     if (!task) { if (n < LOAD_WAIT_TRIES) setTimeout(function () { watchLoad(n + 1); }, LOAD_WAIT_MS); return; }
-    task.promise.catch(function () {
+    task.promise.catch(function (reason) {
       var m = document.createElement('div');
       m.className = 'zp-msg';
-      m.textContent = t('pdf_failed');
+      // 413: over the size Zimi sends from a compressed cluster (http._send_entry_too_large).
+      m.textContent = t(reason && reason.status === 413 ? 'pdf_too_large' : 'pdf_failed');
       ui.appendChild(m);
       showBars(true);
     });

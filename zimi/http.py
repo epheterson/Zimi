@@ -2386,9 +2386,31 @@ def _almanac_pdf_get(handler, path):
     handler.end_headers()
     handler.wfile.write(data)
 
+class _NoBody:
+    """The response stream of a HEAD answered by do_GET: the headers went
+    out, the body is dropped, and the connection itself is left alone."""
+
+    def __init__(self, real):
+        self._real = real
+
+    def write(self, data):
+        return len(data)
+
+    def __getattr__(self, name):
+        return getattr(self._real, name)
+
+
 class ZimHandler(BaseHTTPRequestHandler):
     protocol_version = "HTTP/1.1"
     timeout = 30  # seconds — prevents slow-client DoS on POST bodies
+    # A HEAD of a /w/ entry: do_GET answers it, the body dropped after the
+    # headers, so the status, length and Accept-Ranges are the GET's own.
+    _head_only = False
+
+    def end_headers(self):
+        super().end_headers()
+        if self._head_only and not isinstance(self.wfile, _NoBody):
+            self.wfile = _NoBody(self.wfile)
 
     def send_header(self, keyword, value):
         """Every header Zimi sends, refused when its name or value carries a
@@ -2444,6 +2466,14 @@ class ZimHandler(BaseHTTPRequestHandler):
     def do_HEAD(self):
         """Handle HEAD requests (Traefik health checks, uptime monitors)."""
         parsed = urlparse(self.path)
+        if parsed.path.startswith("/w/"):
+            self._head_only = True
+            try:
+                return self.do_GET()
+            finally:
+                self._head_only = False
+                if isinstance(self.wfile, _NoBody):
+                    self.wfile = self.wfile._real
         if parsed.path == "/health":
             self.send_response(200)
             self.send_header("Content-Type", "application/json")
@@ -4466,12 +4496,37 @@ class ZimHandler(BaseHTTPRequestHandler):
             200, body.encode("utf-8"), "text/html; charset=utf-8", cache="no-store"
         )
 
+    def _windows(self, total_size):
+        """``(range_start, range_end, stream_whole, window)`` for an entry
+        sent in pieces (a video, or a big uncompressed file).
+
+        Every served window is capped at MAX_SERVE_BYTES, whether or not the
+        client asked for one. An entry fetched without a Range (curl, <a
+        download>, a chat app's link fetcher) used to be copied WHOLE into a
+        bytes object under _zim_lock: an OOM kill on a small box. A
+        satisfiable range is clamped to one window (bytes=0- is a request for
+        the whole item through the ranged door). No Range, or one too
+        malformed to honour, gets the whole item, written window by window
+        (stream_whole): answering the first window as a 206 was right for a
+        player and a silent truncation for curl -O, wget or <a download>,
+        which saved 8 MB of a 30 MB video with no error anywhere."""
+        window = min(_srv.STREAM_WINDOW_BYTES, _srv.MAX_SERVE_BYTES)
+        start, end = self._parse_range(self.headers.get("Range"), total_size)
+        if start is None or end is None:
+            return None, None, total_size > window, window
+        return start, min(end, start + window - 1), False, window
+
     def _send_entry_too_large(self, total_size):
-        """413 for an entry Zimi refuses to materialize. Used by every /w/
-        branch that can't be answered with a bounded window."""
+        """413 for an entry Zimi refuses to materialize: one stored in a
+        compressed cluster, which libzim can only load whole, over the cap.
+        Said in words, for a person opening it."""
         self.send_response(413)
-        self.send_header("Content-Type", "text/plain")
-        msg = f"Entry too large ({total_size // (1024*1024)} MB). Max: {_srv.MAX_SERVE_BYTES // (1024*1024)} MB.".encode()
+        self.send_header("Content-Type", "text/plain; charset=utf-8")
+        msg = (
+            f"This file is too large to send: {total_size // (1024*1024)} MB, stored compressed "
+            f"inside its ZIM. Zimi would have to load all of it into memory first, so it sends "
+            f"compressed files up to {_srv.MAX_SERVE_BYTES // (1024*1024)} MB."
+        ).encode()
         self.send_header("Content-Length", str(len(msg)))
         self.end_headers()
         self.wfile.write(msg)
@@ -4735,38 +4790,8 @@ class ZimHandler(BaseHTTPRequestHandler):
                     return
 
                 if is_streamable:
-                    # Every served window is capped at MAX_SERVE_BYTES, whether
-                    # or not the client asked for one. A media entry fetched
-                    # without a Range — curl, <a download>, a chat app's link
-                    # fetcher — used to copy the WHOLE item into a bytes object
-                    # while holding _zim_lock; on a ZIM carrying a few hundred
-                    # MB of video that is an OOM kill on a small box, with
-                    # every other libzim request blocked behind it. Answering
-                    # the first window as 206 + Accept-Ranges costs a real
-                    # player nothing: it range-requests onward immediately.
-                    range_header = self.headers.get("Range")
-                    if range_header:
-                        range_start, range_end = self._parse_range(
-                            range_header, total_size
-                        )
-                    window = min(_srv.STREAM_WINDOW_BYTES, _srv.MAX_SERVE_BYTES)
-                    if range_start is None or range_end is None:
-                        # No Range, or one too malformed to honour. This used to
-                        # answer the first window as a 206 — correct for a
-                        # player, which range-requests onward, and a silent
-                        # truncation for everything else: curl -O, wget, an
-                        # <a download>, a chat app fetching a link all took the
-                        # 206 as the file and saved 8 MB of a 30 MB video with
-                        # no error anywhere. A whole request gets the whole
-                        # item, written window by window below so the memory
-                        # ceiling that motivated the window still holds.
-                        range_start = range_end = None
-                        if total_size > window:
-                            stream_whole = True
-                    else:
-                        # A satisfiable range still gets clamped — bytes=0- is
-                        # a request for the whole item through the ranged door.
-                        range_end = min(range_end, range_start + window - 1)
+                    # Windows, never the whole item at once (_windows says why).
+                    range_start, range_end, stream_whole, window = self._windows(total_size)
                     # The bytes come straight from the file when they are one
                     # uncompressed run (zimblob): item.content maps the whole
                     # entry, every time, under this lock.
@@ -4782,9 +4807,20 @@ class ZimHandler(BaseHTTPRequestHandler):
                         content = b""
                     else:
                         content = bytes(item.content)
-                else:
-                    if total_size > _srv.MAX_SERVE_BYTES:
+                elif total_size > _srv.MAX_SERVE_BYTES:
+                    # A big PDF or zip: sent in pieces like a video when its
+                    # bytes are one uncompressed run in the file. In a
+                    # compressed cluster libzim can only hand over all of it
+                    # at once, which is what the cap is there to prevent.
+                    direct_path = _srv.get_zim_files().get(zim_name, "")
+                    direct_at = _zimblob.locate(
+                        direct_path, getattr(item, "_index", None), total_size
+                    )
+                    if direct_at is None:
                         return self._send_entry_too_large(total_size)
+                    range_start, range_end, stream_whole, window = self._windows(total_size)
+                    content = b""
+                else:
                     content = bytes(item.content)
         # Lock released — safe to do slow I/O
         if direct_at is not None and not stream_whole:
@@ -4802,8 +4838,8 @@ class ZimHandler(BaseHTTPRequestHandler):
             self.wfile.write(content)
             return
 
-        # Strip <base> tags from HTML
-        if mimetype.startswith("text/html"):
+        # Strip <base> tags from HTML (a page, never a piece of one)
+        if mimetype.startswith("text/html") and direct_at is None:
             text = content.decode("UTF-8", errors="replace")
             text = re.sub(r"<base\s[^>]*>", "", text, flags=re.IGNORECASE)
             if not self.headers.get("Sec-Fetch-Dest"):
@@ -4881,7 +4917,7 @@ class ZimHandler(BaseHTTPRequestHandler):
         self.send_header("Vary", "Sec-Fetch-Dest")
         self.send_header("ETag", etag)
 
-        if is_streamable:
+        if is_streamable or direct_at is not None:
             self.send_header("Accept-Ranges", "bytes")
 
         # Sandbox ZIM HTML (ZIM_HTML_CSP): inline styles and scripts run,
@@ -4889,12 +4925,15 @@ class ZimHandler(BaseHTTPRequestHandler):
         if mimetype.startswith("text/html"):
             self.send_header("Content-Security-Policy", ZIM_HTML_CSP)
 
-        if not stream_whole:
+        if not stream_whole and range_start is None:
+            # Never a piece: its Content-Range counts the bytes as they are.
             content = self._maybe_gzip(content, mimetype)
 
         if stream_whole:
             self.send_header("Content-Length", str(total_size))
             self.end_headers()
+            if self._head_only:
+                return
             # libzim is not thread-safe, so every window is read under the
             # lock — and the lock is released between windows, so a reader
             # of another article is never held behind a video download.

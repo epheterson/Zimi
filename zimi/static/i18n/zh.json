@@ -2715,6 +2715,7 @@
   "pdf_dark_in_red": "红色模式下始终开启",
   "pdf_page": "页",
   "pdf_failed": "无法打开此 PDF。",
+  "pdf_too_large": "此 PDF 太大，无法在此打开：它在 ZIM 中以压缩形式存储。",
   "pdf_prev_page": "上一页",
   "pdf_next_page": "下一页",
   "pdf_single_page": "单页",
