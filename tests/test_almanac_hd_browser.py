@@ -354,3 +354,79 @@ def test_a_flavour_opened_alone_is_the_almanac_and_the_hd_one_draws_its_own_tile
         ctx.close()
         httpd.shutdown()
         srv.ZIM_DIR, srv.ZIMI_DATA_DIR = old
+def test_the_earth_opens_cold_with_the_hd_set_installed_and_is_not_black(
+    browser, tmp_path
+):
+    """The first frames have the camera at the body's centre. HD's closest-approach guard once took a latitude from
+    that (0/0 = NaN), the view's distance became NaN, the opening flight never ended and the Earth stayed black, only
+    with HD in the library. Every other test here opens with reduced motion or after a preset, which hides it: this one
+    opens the Earth cold, with the view's own flight, and reads what a person sees."""
+    import io
+
+    from PIL import Image
+
+    import zimi.server as srv
+
+    old = (srv.ZIM_DIR, srv.ZIMI_DATA_DIR)
+    httpd = _serve(tmp_path, "flavour")
+    ctx = browser.new_context(
+        viewport=VIEW,
+        device_scale_factor=2,
+        has_touch=True,
+        is_mobile=True,
+        service_workers="block",
+    )
+    ctx.add_init_script(
+        "try { localStorage.setItem('zimi_almanac_place', %r); sessionStorage.setItem('zimi_almanac_location', %r); } catch (e) {}"
+        % (PLACE, PLACE)
+    )
+    pg = ctx.new_page()
+    errors = []
+    pg.on("pageerror", lambda e: errors.append(str(e)))
+    try:
+        pg.goto(
+            "http://127.0.0.1:%d/#almanac" % httpd.server_address[1], wait_until="load"
+        )
+        pg.wait_for_function(
+            "() => typeof openAlmanacEarth === 'function' && typeof _aeLoadThree === 'function'",
+            timeout=120_000,
+        )
+        pg.evaluate("openAlmanacEarth({ target: 'earth' })")
+        pg.wait_for_function(
+            "() => typeof _aeReady === 'function' && _aeReady() && _aeIsOpen",
+            timeout=READY_MS,
+            polling=200,
+        )
+        pg.wait_for_function(
+            "() => _ae.gl.hd && _ae.gl.hd.bodies[0].drawn.length > 0",
+            timeout=WAIT_MS,
+            polling=200,
+        )
+        # The opening flight ends by itself, whatever the frame rate: no wait is raised to hide a distance that is not a number.
+        pg.wait_for_function(
+            "() => { _ae.dirty = true; _aeKick(); return !_ae.fly; }",
+            timeout=READY_MS,
+            polling=200,
+        )
+        state = pg.evaluate(
+            "() => ({ dist: _ae.dist, min: AE_TARGETS.earth.min, max: AE_TARGETS.earth.max, drawn: _ae.gl.hd.bodies[0].drawn.length })"
+        )
+        assert (
+            state["dist"] is not None and state["min"] is not None
+        ), state  # JSON turns NaN into null
+        assert pg.evaluate(
+            "isFinite(_ae.dist) && isFinite(AE_TARGETS.earth.min)"
+        ), state
+        pg.wait_for_timeout(1500)
+        shot = Image.open(io.BytesIO(pg.screenshot())).convert("RGB")
+        w, h = shot.size
+        box = shot.crop((w // 4, h // 3, 3 * w // 4, 2 * h // 3)).resize((50, 50))
+        lit = sum(1 for p in box.getdata() if max(p) > 25) / 2500
+        assert lit > 0.3, "the globe is black: %.0f%% of the middle is lit" % (
+            100 * lit
+        )
+        assert errors == []
+    finally:
+        ctx.close()
+        httpd.shutdown()
+        srv.ZIM_DIR, srv.ZIMI_DATA_DIR = old

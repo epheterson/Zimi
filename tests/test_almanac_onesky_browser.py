@@ -293,11 +293,16 @@ def test_one_tap_from_the_card_stands_at_its_place_instant_and_facing_and_back_r
     y = pg.evaluate("() => Math.round(window.pageYOffset)")
     assert pg.query_selector(".alm-sky-bar .alm-sky-stand"), "the button is on the card"
     pg.click(".alm-sky-bar .alm-sky-stand")
+    assert pg.query_selector("canvas.os-still"), "the card's picture is held over the view while it opens"
     pg.wait_for_function(
         "() => typeof _ae !== 'undefined' && _ae && _ae.stand && _ae.stand.live && _ae.stand.mode === 'ground'",
         timeout=READY_MS,
         polling=250,
     )
+    pg.wait_for_function(
+        "() => !document.querySelector('canvas.os-still')", timeout=15_000, polling=250
+    )
+    assert pg.evaluate("() => _ae.stand.handoff.direct === true"), "no flight down from the globe"
     got = pg.evaluate(
         """() => { const st = _ae.stand, head = (((st.yaw + st.userYaw) * 180 / Math.PI) % 360 + 360) % 360; return { lat: st.lat, lon: st.lon, ms: _aeDisplayMs(), head: head, key: st.key }; }"""
     )
@@ -631,6 +636,7 @@ def test_look_goes_down_to_the_ground_facing_the_same_way_and_comes_back(
         "() => { _look.target = { az: 130, alt: 25, roll: 0 }; _look.view = { az: 130, alt: 25, roll: 0 }; }"
     )
     pg.click("#look-stand")
+    assert pg.query_selector("canvas.os-still"), "Look's picture is held over the view while it opens"
     pg.wait_for_function(
         "() => typeof _ae !== 'undefined' && _ae && _ae.stand && _ae.stand.live && _ae.stand.mode === 'ground'",
         timeout=READY_MS,
@@ -666,7 +672,7 @@ def test_without_webgl2_the_there_and_then_list_stands_and_the_ground_buttons_do
         timeout=120_000,
     )
     pg.wait_for_function(
-        "() => document.querySelector('.alm-sky-stand') && document.querySelector('.alm-sky-stand').hidden === true",
+        "() => document.querySelector('.alm-sky-stand') && document.querySelector('.alm-sky-stand').hidden === true && getComputedStyle(document.querySelector('.alm-sky-stand')).display === 'none'",
         timeout=30_000,
         polling=250,
     )
@@ -689,4 +695,170 @@ def test_without_webgl2_the_there_and_then_list_stands_and_the_ground_buttons_do
         "() => document.querySelector('.al-sheet .al-facts li') !== null"
     )
     assert not errors, errors
+    ctx.close()
+
+
+def test_in_totality_the_sky_is_deep_twilight_and_venus_and_jupiter_are_drawn(
+    browser, served
+):
+    """Kerrville, 8 April 2024, mid-totality: the faintest star shown is about +3, and Venus (west of the Sun) and Jupiter (east) are
+    each a visible point in the ground view against the sky round them."""
+    import numpy as np
+    from PIL import Image
+
+    ctx = _context(browser)
+    pg = ctx.new_page()
+    errors = []
+    pg.on("pageerror", lambda e: errors.append(str(e)))
+    pg.goto(served + "/#almanac", wait_until="load")
+    pg.wait_for_function(
+        "() => typeof _aeStandOpen === 'function' && typeof _osEclipse === 'function' && typeof _jdToJulianCentury === 'function'",
+        timeout=120_000,
+    )
+    ms = _ms("2024-04-08T18:33:15Z")  # the Stand clock runs on while the test works: start early in the four minutes
+    pg.evaluate(
+        "(ms) => _aeStandOpen({ body: 'earth', lat: 30.0474, lon: -99.1403, ms: ms, heading: 180, pitch: 20, clouds: 'clear', direct: true })",
+        ms,
+    )
+    pg.wait_for_function(
+        "() => _ae && _ae.stand && _ae.stand.live && _ae.stand.mode === 'ground' && _ae.stand.fr && _ae.stand.photo",
+        timeout=READY_MS,
+        polling=250,
+    )
+    pg.evaluate("(ms) => { _almClockSetRate(0); _aeGoTo(ms); }", ms)
+    try:
+        pg.wait_for_function(
+            "(ms) => _ae.stand.photo && _ae.stand.photo.lim > 1.0",
+            arg=ms,
+            timeout=60_000,
+            polling=250,
+        )
+    except Exception:
+        raise AssertionError(
+            pg.evaluate(
+                "(ms) => ({ d: _aeDisplayMs() - ms, lim: _ae.stand.photo && _ae.stand.photo.lim, air: _ae.stand.airOn, w: Array.from(window.__w || []) })",
+                ms,
+            )
+        )
+    lim = pg.evaluate("() => _ae.stand.photo.lim")
+    assert 1.0 < lim < 2.2, lim
+    for planet in ("venus", "jupiter"):
+        found = pg.evaluate(
+            """([name, ms]) => { const st = _ae.stand, e = _skyEphemeris(new Date(ms), 30.0474, -99.1403), o = e.planets.find(x => x.name.toLowerCase() === name);
+              if (!o) return null;
+              st.userYaw = o.az * Math.PI / 180 - st.yaw; st.userPitch = o.alt * Math.PI / 180 - _aeRad(AE_STAND_PITCH_DEG);
+              st.dirty = true; st.fr = null; _ae.dirty = true; _aeKick();
+              return { mag: o.mag, az: o.az, alt: o.alt, sunAz: e.sun.az, sunAlt: e.sunGeoAlt }; }""",
+            [planet, ms],
+        )
+        assert found and found["mag"] < lim and found["alt"] > 5, (planet, found)
+        pg.wait_for_function(
+            "() => _ae.stand.fr && _ae.stand.photo", timeout=60_000, polling=250
+        )
+        pg.wait_for_timeout(1500)
+        xy = pg.evaluate(
+            """([az, alt]) => { const V = _ae.gl.THREE.Vector3, st = _ae.stand, a = az * Math.PI / 180, h = alt * Math.PI / 180, p = new V(Math.sin(a) * Math.cos(h) * 10, Math.cos(a) * Math.cos(h) * 10, Math.sin(h) * 10).project(st.camera);
+              const r = _ae.gl.renderer.domElement.getBoundingClientRect();
+              return [r.left + (p.x + 1) / 2 * r.width, r.top + (1 - p.y) / 2 * r.height]; }""",
+            [found["az"], found["alt"]],
+        )
+        img = np.asarray(
+            Image.open(io.BytesIO(pg.screenshot())).convert("L")
+        ).astype(float)
+        x, y = int(round(xy[0])), int(round(xy[1]))
+        core = img[max(0, y - 70) : y + 71, max(0, x - 70) : x + 71].max()  # the projection is good to a few tens of pixels
+        ring = np.median(img[max(0, y - 90) : y + 91, max(0, x - 90) : x + 91])
+        assert core > ring + 8, (planet, xy, core, ring)
+    assert not errors, errors
+    ctx.close()
+
+
+def test_totality_overhead_looks_like_a_sun_at_minus_6_5_twilight_and_a_minute_before_is_three_times_brighter(
+    browser, served
+):
+    """The sky at totality goes through the twilight's own path: the overhead sky within 20 percent of the same view with the real Sun 6.5 degrees
+    below the horizon, and a minute before totality at least three times brighter than totality."""
+    import numpy as np
+    from PIL import Image
+
+    ctx = _context(browser)
+    pg = ctx.new_page()
+    errors = []
+    pg.on("pageerror", lambda e: errors.append(str(e)))
+    pg.goto(served + "/#almanac", wait_until="load")
+    pg.wait_for_function(
+        "() => typeof _aeStandOpen === 'function' && typeof _skyEphemeris === 'function' && typeof _jdToJulianCentury === 'function'",
+        timeout=120_000,
+    )
+    twilight = pg.evaluate(
+        """() => { let lo = Date.parse('2024-04-09T01:00:00Z'), hi = Date.parse('2024-04-09T03:00:00Z');
+          for (let i = 0; i < 30; i++) { const mid = (lo + hi) / 2; if (_skyEphemeris(new Date(mid), 30.0474, -99.1403).sunGeoAlt > -6.5) lo = mid; else hi = mid; }
+          return Math.round(lo); }"""
+    )
+    pg.evaluate(
+        "(ms) => _aeStandOpen({ body: 'earth', lat: 30.0474, lon: -99.1403, ms: ms, heading: 0, pitch: 80, clouds: 'clear', direct: true })",
+        twilight,
+    )
+    pg.wait_for_function(
+        "() => _ae && _ae.stand && _ae.stand.live && _ae.stand.mode === 'ground' && _ae.stand.fr && _ae.stand.photo",
+        timeout=READY_MS,
+        polling=250,
+    )
+
+    def look_up(ms):
+        pg.evaluate(
+            """(ms) => { const st = _ae.stand; _aeGoTo(ms); st.userYaw = 0 - st.yaw; st.userPitch = (85 * Math.PI / 180) - _aeRad(AE_STAND_PITCH_DEG); st.dirty = true; st.fr = null; _ae.dirty = true; _aeKick(); }""",
+            ms,
+        )
+        pg.wait_for_timeout(4000)
+        img = np.asarray(Image.open(io.BytesIO(pg.screenshot())).convert("L")).astype(float)
+        h, w = img.shape
+        return float(np.median(img[h // 2 - 60 : h // 2 + 60, w // 2 - 60 : w // 2 + 60]))
+
+    ref = look_up(twilight)
+    total = look_up(_ms("2024-04-08T18:34:50Z"))
+    before = look_up(_ms("2024-04-08T18:31:20Z"))
+    assert abs(total - ref) <= 0.2 * ref + 1, (total, ref)
+    assert before >= 3 * total, (before, total)
+    assert not errors, errors
+    ctx.close()
+
+
+LAZY_PARTS = ("almanac-oneland.js", "almanac-skyland.js", "landcover-v1.bin", "nightlights-v1.bin")
+
+
+def test_the_land_files_wait_for_the_sky_card_to_be_seen_not_for_the_almanac_or_the_earth(
+    browser, served
+):
+    """Opening the Almanac and then the Earth, without scrolling to the sky card, requests none of the four land files; scrolling the
+    card into view does."""
+    ctx = _context(browser)
+    pg = ctx.new_page()
+    pg.set_viewport_size({"width": 390, "height": 560})  # the sky card is below the first screen
+    seen = []
+    pg.on("request", lambda r: seen.append(r.url))
+    pg.goto(served + "/#almanac", wait_until="load")
+    pg.wait_for_function(
+        "() => typeof _skyState !== 'undefined' && _skyState && _skyState.eph && typeof openAlmanacEarth === 'function'",
+        timeout=120_000,
+    )
+    assert pg.evaluate(
+        "() => { const r = document.querySelector('.almanac-sky-wrap').getBoundingClientRect(); return r.top > innerHeight; }"
+    ), "the sky card is below the first screen"
+    pg.evaluate("() => openAlmanacEarth({ target: 'earth' })")
+    pg.wait_for_function(
+        "() => typeof _aeReady === 'function' && _aeReady() && _aeIsOpen",
+        timeout=READY_MS,
+        polling=250,
+    )
+    pg.wait_for_timeout(5000)
+    early = [u for u in seen if any(p in u for p in LAZY_PARTS)]
+    assert not early, early
+    pg.evaluate("() => { if (typeof _aeClose === 'function') _aeClose(); }")
+    pg.evaluate(
+        "() => document.querySelector('.almanac-sky-wrap').scrollIntoView({ behavior: 'instant', block: 'center' })"
+    )
+    pg.wait_for_function("() => typeof _osLandCover === 'function'", timeout=60_000)
+    pg.wait_for_timeout(3000)
+    assert any("landcover-v1.bin" in u for u in seen), seen[-5:]
     ctx.close()

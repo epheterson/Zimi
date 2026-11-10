@@ -2278,7 +2278,7 @@
   "alm_earth_sat_ask_hint": "Nichts wird abgerufen, bis jemand darum bittet",
   "alm_earth_sat_auto": "Automatisch",
   "alm_earth_sat_auto_hint": "Genaue Daten von {src}",
-  "alm_earth_sat_never": "Ungefähr, mit Offline-Daten",
+  "alm_earth_sat_never": "Nie",
   "alm_earth_sat_never_hint": "Positionen aus den Daten, die dieses Zimi schon hat, ungenauer mit der Zeit",
   "alm_earth_sat_admin_only": "Nur ein Admin kann das ändern",
   "alm_earth_sat_offline": "Zimi ist offline (ZIMI_OFFLINE) und ruft daher nie etwas ab",
@@ -4113,5 +4113,7 @@
   "dym_showing": "Zeige {s} · stattdessen nach {o} suchen",
   "pdf_failed_body": "Die Datei fehlt oder ist beschädigt. Der Rest der Sammlung ist in Ordnung.",
   "pdf_failed_file": "Die angeforderte Datei",
-  "pdf_failed_back": "Zurück zur Sammlung"
+  "pdf_failed_back": "Zurück zur Sammlung",
+  "alm_craft_loading": "Raumsonde wird geladen",
+  "alm_craft_failed": "Kein Modell hier: als Punkt gezeigt"
 }

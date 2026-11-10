@@ -110,8 +110,9 @@ def _almanac(browser, served, place=PLACE, init="", **ctx_args):
     )
     # These tests are about the physical sky: the day's random cloud deck (almanac-onesky.js _osCloudField) would hide a star or the Milky Way
     # on a heavy day, so the sky is clear here (tests/test_almanac_onesky_browser.py has the clouds).
+    # and a dark site: the place's own light pollution (almanac-onesky.js _osPlaceDial, from the night-lights grid) would dim the Milky Way.
     pg.evaluate(
-        "() => { const f = _osCloudField; window._osCloudField = (d) => Object.assign(f(d), { coverage: 0 }); _skyState.baseDirty = true; }"
+        "() => { const f = _osCloudField; window._osCloudField = (d) => Object.assign(f(d), { coverage: 0 }); window._osSetPlaceDial = function () {}; window._osNightLoad = function () {}; _osPlaceDial = null; _skyState.baseDirty = true; }"
     )
     # The sky stands under the Moon's numbers and its words, below the first screen: bring it into view, as a reader does.
     pg.evaluate(

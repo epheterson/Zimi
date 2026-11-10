@@ -2278,7 +2278,7 @@
   "alm_earth_sat_ask_hint": "لا يُجلب شيء حتى يُطلب",
   "alm_earth_sat_auto": "تلقائيًا",
   "alm_earth_sat_auto_hint": "بيانات دقيقة من {src}",
-  "alm_earth_sat_never": "تقريب بالبيانات دون اتصال",
+  "alm_earth_sat_never": "أبدًا",
   "alm_earth_sat_never_hint": "مواقع من البيانات الموجودة لدى Zimi هذا، وتقل دقتها مع الوقت",
   "alm_earth_sat_admin_only": "لا يمكن تغيير هذا إلا لمشرف",
   "alm_earth_sat_offline": "Zimi في وضع عدم الاتصال (ZIMI_OFFLINE)، لذا لا يجلب أي شيء",
@@ -4113,5 +4113,7 @@
   "dym_showing": "عرض نتائج {s} · ابحث عن {o} بدلاً من ذلك",
   "pdf_failed_body": "الملف مفقود أو تالف. باقي المجموعة سليم.",
   "pdf_failed_file": "الملف الذي طلبته",
-  "pdf_failed_back": "العودة إلى المجموعة"
+  "pdf_failed_back": "العودة إلى المجموعة",
+  "alm_craft_loading": "جارٍ تحميل المركبة",
+  "alm_craft_failed": "لا نموذج لها هنا: تظهر نقطة"
 }

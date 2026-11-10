@@ -369,6 +369,47 @@ function _lfSkyRocket(flight, L, ms, obsLat, obsLon) {
   return { kind: 'rocket', name: L.name + (L.mission ? ' · ' + L.mission : ''), az: head.az, el: head.el, mag: AE_LAUNCH_REF.sightMag[head.sight],
     rgb: LF_SIGHT_RGB[head.sight], trail: trail, sight: head.sight, km: head.h };
 }
+// The exhaust plume as the ground view's sky takes an extended thing (almanac-stand.js, "Sky objects with an angular size"): the lit
+// length of the powered track behind the rocket, as the watcher sees it. Its length is the last LF_PLUME_TRAIL_S of powered track above
+// LF_PLUME_FLOOR_KM (above plumeMinKm while the rocket itself is lower), measured as the angle between the rocket and the oldest of those
+// points, so the range and the foreshortening are the watcher's own; its width is a third of that; both are held to a sky's worth.
+var LF_PLUME_TRAIL_S = 75, LF_PLUME_FLOOR_KM = 100, LF_PLUME_ASPECT = 3;
+var LF_PLUME_MAX_ALONG_DEG = 60, LF_PLUME_MAX_ACROSS_DEG = 20, LF_PLUME_MIN_ALONG_DEG = 0.05;
+var LF_PLUME_SUN_FULL_DEG = [-12, -1], LF_PLUME_SUN_FADE_DEG = 3;   // fully lit with the watcher's Sun between these; fading to nothing this far outside
+var LF_PLUME_RGB = [0.86, 0.93, 1], LF_PLUME_BASE_RGB = [1, 0.72, 0.45];   // cool white, a warm base where the engine still burns
+function _lfSkyUnit(az, el) {
+  var a = az * LF_D2R, e = el * LF_D2R;
+  return [Math.cos(e) * Math.sin(a), Math.cos(e) * Math.cos(a), Math.sin(e)];
+}
+function _lfAngleDeg(u, v) { return Math.acos(Math.max(-1, Math.min(1, _lfDot(u, v)))) / LF_D2R; }
+// 1 with the watcher's Sun between the plume's bounds, falling smoothly to 0 over LF_PLUME_SUN_FADE_DEG outside them.
+function _lfPlumeSunFactor(sunAlt) {
+  var lo = LF_PLUME_SUN_FULL_DEG[0], hi = LF_PLUME_SUN_FULL_DEG[1], d = sunAlt < lo ? lo - sunAlt : sunAlt > hi ? sunAlt - hi : 0;
+  var u = Math.max(0, Math.min(1, 1 - d / LF_PLUME_SUN_FADE_DEG));
+  return u * u * (3 - 2 * u);
+}
+// flight, L, ms, the watcher's place and the sky rocket (_lfSkyRocket's) -> {az, el (the plume's middle), sizeDeg: [along, across],
+// axisAz, axisEl (the old end of it), rgb, rgbBase, lum} or null where there is no extent to give (the point is then all there is).
+function _lfPlume(flight, L, ms, obsLat, obsLon, r) {
+  var t = Math.round((ms - L.ms) / 1000), top = Math.min(flight.points.length - 1, t), head = flight.points[top];
+  if (!head || r.sight !== 'jellyfish') return null;
+  var floor = head.h >= LF_PLUME_FLOOR_KM ? LF_PLUME_FLOOR_KM : AE_LAUNCH_REF.plumeMinKm, tail = null;
+  for (var i = top; i >= Math.max(0, top - LF_PLUME_TRAIL_S); i--) {
+    var p = flight.points[i];
+    if (!(p.burn > 0 && p.h >= floor)) break;
+    tail = p;
+  }
+  if (!tail) return null;
+  var hl = _lfLook(obsLat, obsLon, head.lat, head.lon, head.h), tl = _lfLook(obsLat, obsLon, tail.lat, tail.lon, tail.h);
+  var hu = _lfSkyUnit(hl.az, hl.el), tu = _lfSkyUnit(tl.az, tl.el), along = Math.min(LF_PLUME_MAX_ALONG_DEG, _lfAngleDeg(hu, tu));
+  if (!(along >= LF_PLUME_MIN_ALONG_DEG)) return null;
+  var across = Math.min(LF_PLUME_MAX_ACROSS_DEG, along / LF_PLUME_ASPECT);
+  var mid = [hu[0] + tu[0], hu[1] + tu[1], hu[2] + tu[2]], ml = Math.hypot(mid[0], mid[1], mid[2]) || 1;
+  var midEl = Math.asin(Math.max(-1, Math.min(1, mid[2] / ml))) / LF_D2R, midAz = (Math.atan2(mid[0], mid[1]) / LF_D2R + 360) % 360;
+  var lit = _lfSunShare(_lfEci(head.lat, head.lon, head.h, _lfGmst(ms)), _lfSunUnit(ms));
+  return { az: midAz, el: midEl, sizeDeg: [along, across], axisAz: tl.az, axisEl: tl.el, rgb: LF_PLUME_RGB, rgbBase: LF_PLUME_BASE_RGB,
+    lum: lit * _lfPlumeSunFactor(_lfSunAlt(ms, obsLat, obsLon)) };
+}
 // A diffuse sphere's phase law (Lambert, Russell 1916), 1 at a quarter phase (90 degrees).
 function _lfPhaseLaw(phase) { return Math.max(1e-6, (Math.sin(phase) + (Math.PI - phase) * Math.cos(phase)) / 1); }
 // The magnitude of a freshly released Starlink: Mallama (2020) puts a v1.0 satellite on station at 550 km at about 4.6 (standard:
@@ -420,7 +461,11 @@ function _lfStandObjects(flight, L, dep, ms, lat, lon) {
   if (r) {
     var rgb = r.rgb.map(function (c) { return c / 255; });
     out.push({ kind: 'rocket', name: r.name, az: r.az, el: r.el, mag: r.mag, rgb: rgb, trail: r.trail });
-    if (r.sight === 'jellyfish') out.push({ kind: 'plume', name: r.name, az: r.az, el: r.el, mag: r.mag, rgb: rgb });
+    if (r.sight === 'jellyfish') {
+      var pl = { kind: 'plume', name: r.name, az: r.az, el: r.el, mag: r.mag, rgb: rgb }, ext = _lfPlume(flight, L, ms, lat, lon, r);
+      if (ext) for (var key in ext) pl[key] = ext[key];   // an extended plume where there is a length to give; else the point as before
+      out.push(pl);
+    }
   }
   _lfSkyBatch(dep, ms, lat, lon).forEach(function (v) { out.push({ kind: 'train', name: L.mission || L.name, az: v.az, el: v.el, mag: v.mag, rgb: [1, 0.94, 0.8], trail: v.trail }); });
   return out;

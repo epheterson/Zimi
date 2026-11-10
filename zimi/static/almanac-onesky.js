@@ -37,7 +37,7 @@ function _osSkyState(def) {
   var s = { eph: f.eph, moonData: f.moonData, now: now, lat: def.lat, lon: def.lon };
   _skyBrightness(s);
   var p = _skyLightParams(s);
-  var state = { eph: s.eph, moonData: s.moonData, now: now, p: p, lv: _sgLightValues(p), lm: s.lm, lum: s.lum, obsc: s.obsc, sunShare: s.sunShare, moonShare: s.moonShare };
+  var state = { eph: s.eph, moonData: s.moonData, now: now, p: p, lv: _sgLightValues(p), lm: s.lm, lum: s.lum, obsc: s.obsc, sunShare: s.sunShare, skyShare: s.skyShare, moonShare: s.moonShare };
   _osStateCache = { lat: def.lat, lon: def.lon, t: def.tMs, dial: p.dial, state: state };
   return state;
 }
@@ -72,9 +72,35 @@ function _osCloudField(def) {
 }
 // The field as the shaders take it (almanac-skygl.js SG_GLSL_CLOUDS' uniforms); sunShare is the Sun's light that reaches the place (an eclipse).
 // mode 'clear' draws none (a visit to see something in the sky is not left to the day's deck); 'auto' (or nothing) is the day's own.
+// The device's capability for the sky (ZimiCap, js/capability: skyQuality 0 none, 1 the cheap deck, 2 as designed). Without it, the full sky.
+var OS_QUALITY_MAX = 2, OS_CHEAP_OCTAVES = 1, OS_FULL_OCTAVES = 4;
+function _osSkyQuality() {
+  if (typeof ZimiCap === 'undefined' || !ZimiCap || typeof ZimiCap.get !== 'function') return OS_QUALITY_MAX;
+  var q = ZimiCap.get('skyQuality');
+  return typeof q === 'number' && q >= 0 && q <= OS_QUALITY_MAX ? q : OS_QUALITY_MAX;
+}
+// A canvas's pixel ratio under the device's cap (the card's and Look's).
+function _osDpr() {
+  var d = window.devicePixelRatio || 1;
+  if (typeof ZimiCap !== 'undefined' && ZimiCap && typeof ZimiCap.dprCap === 'function') { var c = ZimiCap.dprCap('earth'); if (c > 0) d = Math.min(d, c); }
+  return d;
+}
+// A drawn frame, for the governor that steps quality down when frames run long.
+function _osFrame(now) { if (typeof ZimiCap !== 'undefined' && ZimiCap && typeof ZimiCap.frame === 'function') ZimiCap.frame('sky', now); }
+// When the governor steps, or the person changes the setting, the card draws again with the new level (once; ZimiCap may arrive late or never).
+var _osCapListening = false;
+function _osCapListen() {
+  if (_osCapListening || typeof ZimiCap === 'undefined' || !ZimiCap || typeof ZimiCap.on !== 'function') return;
+  _osCapListening = true;
+  ZimiCap.on(function (evt) {
+    var st = typeof _skyState !== 'undefined' ? _skyState : null;
+    if (st) { st.baseDirty = true; if (typeof _skyKick === 'function') _skyKick(); }
+    if (typeof _ae !== 'undefined' && _ae && _ae.stand) { _ae.stand.dirty = true; _ae.dirty = true; }
+  });
+}
 function _osCloudValues(def, sunShare, mode) {
-  var f = _osCloudField(def), day = _osSolarDay(def.tMs, def.lon);
-  return { cloud: [mode === 'clear' ? 0 : f.coverage, f.base, f.thickness, f.seed[0]], wind: [f.wind[0], f.wind[1], (day - Math.floor(day)) * OS_DAY_S], sunE: SG_SUN_LUX * (sunShare == null ? 1 : sunShare) };
+  var f = _osCloudField(def), day = _osSolarDay(def.tMs, def.lon), q = _osSkyQuality();
+  return { oct: q === 1 ? OS_CHEAP_OCTAVES : OS_FULL_OCTAVES, cloud: [mode === 'clear' || q === 0 ? 0 : f.coverage, f.base, f.thickness, f.seed[0]], wind: [f.wind[0], f.wind[1], (day - Math.floor(day)) * OS_DAY_S], sunE: SG_SUN_LUX * (sunShare == null ? 1 : sunShare) };
 }
 
 // ── An eclipse of the Sun ──
@@ -105,14 +131,14 @@ function _osCloudNoise(x, y) {
   return (a + (b - a) * fx) * (1 - fy) + (c + (d - c) * fx) * fy;
 }
 function _osSmoothstep(a, b, x) { var t = Math.max(0, Math.min(1, (x - a) / (b - a))); return t * t * (3 - 2 * t); }
-function _osCloudFbm(px, py, size, fp) {   // each octave fades to its mean once its cells are smaller than the ground a pixel covers (the GLSL's sum)
-  var s = 0, a = 0.5;
-  for (var i = 0; i < 4; i++) { s += a * (0.5 + (_osCloudNoise(px, py) - 0.5) * (1 - _osSmoothstep(0.25, 1, fp / size))); px = px * 2.03 + 17.1; py = py * 2.03 + 17.1; a *= 0.5; size /= 2.03; }
-  return s / 0.9375;
+function _osCloudFbm(px, py, size, fp, oct) {   // each octave fades to its mean once its cells are smaller than the ground a pixel covers (the GLSL's sum)
+  var s = 0, a = 0.5, n = oct || OS_FULL_OCTAVES;
+  for (var i = 0; i < n; i++) { s += a * (0.5 + (_osCloudNoise(px, py) - 0.5) * (1 - _osSmoothstep(0.25, 1, fp / size))); px = px * 2.03 + 17.1; py = py * 2.03 + 17.1; a *= 0.5; size /= 2.03; }
+  return s / (1 - Math.pow(2, -n));
 }
 function _osCloudMargin(v, x, y, t) {
   var D = SG_CLOUD_DETAIL, qx = (x - v.wind[0] * v.wind[2]) / SG_CLOUD_SCALE_M + v.cloud[3], qy = (y - v.wind[1] * v.wind[2]) / SG_CLOUD_SCALE_M + v.cloud[3];
-  var n = (1 - D.share) * _osCloudFbm(qx, qy, SG_CLOUD_SCALE_M, t * SG_CLOUD_FOOTPRINT) + D.share * _osCloudFbm(qx * D.scale + D.offset, qy * D.scale + D.offset, SG_CLOUD_SCALE_M / D.scale, t * SG_CLOUD_FOOTPRINT);
+  var n = (1 - D.share) * _osCloudFbm(qx, qy, SG_CLOUD_SCALE_M, t * SG_CLOUD_FOOTPRINT, v.oct) + D.share * _osCloudFbm(qx * D.scale + D.offset, qy * D.scale + D.offset, SG_CLOUD_SCALE_M / D.scale, t * SG_CLOUD_FOOTPRINT, v.oct);
   n = (n - 0.47) * D.stretch + 0.47;
   var th = SG_CLOUD_THRESHOLD[0] + (SG_CLOUD_THRESHOLD[1] - SG_CLOUD_THRESHOLD[0]) * v.cloud[0];
   return n - th;
@@ -229,15 +255,44 @@ function _osCardDef() {
 function _osStandHere() {
   var def = _osCardDef();
   if (!def) return Promise.resolve(false);
-  var y = window.pageYOffset || 0;
-  return _osStandOpen(def, function () { window.scrollTo(0, y); if (typeof _skyResume === 'function' && typeof _skyState !== 'undefined' && _skyState) _skyResume(); });
+  var y = window.pageYOffset || 0, still = _osStill();
+  return _osStandOpen(def, function () { window.scrollTo(0, y); if (typeof _skyResume === 'function' && typeof _skyState !== 'undefined' && _skyState) _skyResume(); }, still ? { direct: true, still: still } : null)
+    .then(function (ok) { if (!ok && still) still.remove(); return ok; });
+}
+// The card's picture held as a still over the 3D view while it opens, so the page never shows a globe: it fades out when Stand's first live
+// ground picture is drawn (h.firstFrame), or after OS_STILL_MAX_MS if that never comes.
+var OS_STILL_MAX_MS = 6000, OS_STILL_FADE_MS = 450;
+function _osStill(canvas) {
+  var s = typeof _skyState !== 'undefined' ? _skyState : null, src = canvas || (s && s.canvas);
+  if (!src || !src.isConnected || !src.width || !src.height) return null;
+  try {
+    var el = document.createElement('canvas'), W = window.innerWidth, H = window.innerHeight, k = Math.max(W / src.width, H / src.height), w = src.width * k, h = src.height * k;
+    el.width = Math.round(W * (window.devicePixelRatio || 1) / 2); el.height = Math.round(H * (window.devicePixelRatio || 1) / 2);
+    el.getContext('2d').drawImage(src, (W - w) / 2 * el.width / W, (H - h) / 2 * el.height / H, w * el.width / W, h * el.height / H);
+    el.className = 'os-still'; el.setAttribute('aria-hidden', 'true');
+    el.style.cssText = 'position:fixed;inset:0;width:100%;height:100%;z-index:10040;pointer-events:none;transition:opacity ' + OS_STILL_FADE_MS + 'ms ease';
+    document.body.appendChild(el);
+    return el;
+  } catch (e) { return null; }
+}
+function _osStillRelease(el) {
+  if (!el) return;
+  el.style.opacity = '0';
+  setTimeout(function () { el.remove(); }, OS_STILL_FADE_MS + 100);
 }
 // Stand here at a definition (the 3D view's files load on the first ask), then `back` when its own way back is taken.
-function _osStandOpen(def, back) {
+function _osStandOpen(def, back, opts) {
   if (!_os3DAvailable()) return Promise.resolve(false);
   if (typeof _aeStandOpen !== 'function' && typeof _almLoadEarth !== 'function') return Promise.resolve(false);
   var ready = typeof _aeStandOpen === 'function' ? Promise.resolve() : _almLoadEarth().then(function () { return _aeStandReady(); });
-  return ready.then(function () { return _aeStandOpen(_osHandoffFrom(def, back)); }).catch(function () { return false; });
+  var h = _osHandoffFrom(def, back);
+  _osNightLoad();   // Stand's sky needs the place's dial too
+  if (opts && opts.direct) {
+    h.direct = true;
+    h.firstFrame = new Promise(function (res) { h._firstFrame = res; });
+    Promise.race([h.firstFrame, new Promise(function (res) { setTimeout(res, OS_STILL_MAX_MS); })]).then(function () { _osStillRelease(opts.still); });
+  }
+  return ready.then(function () { return _aeStandOpen(h); }).catch(function () { return false; });
 }
 
 // Stand here is open without a hand-off (a there-and-then arrives by place): say how its sky is to be clouded.
@@ -256,6 +311,7 @@ function _osStandFromLook() {
   var S = typeof _look !== 'undefined' ? _look : null;
   if (!S) return Promise.resolve(false);
   var place = S.place, view = S.view, sensing = S.mode === 'sensor', ms = typeof _almFocusInstant === 'function' ? _almFocusInstant().getTime() : Date.now();
+  var lookCv = document.querySelector('.look-wrap canvas'), still = _osStill(lookCv);   // Look's own picture, held over the view as the card's is
   _lookClose();
   if (sensing) { try { localStorage.setItem(OS_MOTION_KEY, '1'); } catch (e) { /* private window */ } }
   var def = _osDef({ lat: place.lat, lon: place.lon, tMs: ms, heading: view.az, pitch: Math.max(0, view.alt) });
@@ -268,7 +324,7 @@ function _osStandFromLook() {
     }, onPop = function () { window.removeEventListener('popstate', onPop); setTimeout(open, 0); };
     window.addEventListener('popstate', onPop);
     setTimeout(function () { window.removeEventListener('popstate', onPop); open(); }, OS_LOOK_BACK_MS);
-  });
+  }, still ? { direct: true, still: still } : null).then(function (ok) { if (!ok && still) still.remove(); return ok; });
 }
 
 // ── The place's own night ──
@@ -349,6 +405,7 @@ function _osLandKick(s, key) {
   var go = function () {
     _osSync3DButtons();
     _osNightLoad();
+    _osCapListen();
     Promise.all(OS_LAND_SRCS.map(function (src) { return _loadScript(src); })).then(function (ok) {
       if (!ok.every(Boolean) || typeof _osLandCoverLoad !== 'function') return false;
       return _osLandCoverLoad();
@@ -363,8 +420,17 @@ function _osLandKick(s, key) {
       if (typeof _skyKick === 'function') _skyKick();
     });
   };
-  // After the card's first picture and the page's own work, when the person is not touching the screen.
-  if (typeof requestIdleCallback === 'function') requestIdleCallback(go, { timeout: 2500 }); else setTimeout(go, 400);
+  // Only once the card has been scrolled into view (the page opening, or the 3D view opening from the Almanac, does not pay for it), then after
+  // the card's picture and the page's own work, when the person is not touching the screen.
+  var later = function () { if (typeof requestIdleCallback === 'function') requestIdleCallback(go, { timeout: 2500 }); else setTimeout(go, 400); };
+  var cv = s && s.canvas;
+  if (!cv || typeof IntersectionObserver !== 'function') { later(); return; }
+  var io = new IntersectionObserver(function (es) {
+    if (!es.some(function (e) { return e.isIntersecting; })) return;
+    io.disconnect();
+    later();
+  });
+  io.observe(cv);
 }
 
 // ── The objects on the card ──

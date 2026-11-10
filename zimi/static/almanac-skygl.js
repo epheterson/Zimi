@@ -149,8 +149,36 @@ function _sgMoonSkyLum(moonAlt, illum, moonShare) {
 // for every decade of sky brightness).
 var SG_LM_DARK = 7.6, SG_LM_PER_DECADE = 1.5, SG_LM_MAX = 7.9, SG_LM_MIN = -4.5;
 // sunShare is the part of the Sun's light that reaches the place (1, less in an eclipse).
+var SG_ECL_RING_DEG = 10;   // the ring's height (degrees, e-folding): it is a band at the horizon, the sky overhead stays dark
 var SG_SUN_SHARE_MIN = 0.003;      // the sky in totality: light scattered in from beyond the Moon's shadow
 function _sgSunShare(obscuration) { return Math.max(SG_SUN_SHARE_MIN, 1 - Math.min(1, obscuration || 0)); }
+// In the last few per cent of the Moon's cover the sky is that of a Sun this far below the horizon (degrees), through the same luminance, exposure
+// and tone path a twilight uses: the cover and the equivalent depth, in log steps. Before it, the Sun's own share of light (above).
+var SG_ECL_DEPTH = [[0.97, -0.5], [0.99, -2], [0.999, -4], [1, -6.5]], SG_SKY_STEEP_FROM = 0.97, SG_LAG_FROM = 0.9;
+function _sgEclipseDepth(obscuration) {
+  var o = Math.min(1, obscuration || 0), t = SG_ECL_DEPTH;
+  if (o <= t[0][0]) return null;
+  for (var i = 1; i < t.length; i++) {
+    if (o <= t[i][0]) { var a = t[i - 1], b = t[i], f = (Math.log(1 - o) - Math.log(1 - a[0])) / (Math.log(Math.max(1 - b[0], 1e-6)) - Math.log(1 - a[0])); return a[1] + (b[1] - a[1]) * Math.max(0, Math.min(1, f)); }
+  }
+  return t[t.length - 1][1];
+}
+// The sky's share of the Sun's light (what the shaders scale the Sun by), and the share the eye is adapted to (it lags the dimming until the
+// last few per cent, where the twilight's own exposure takes over).
+function _sgSkyShare(obscuration, sunAlt) {
+  var d = _sgEclipseDepth(obscuration), s = _sgSunShare(obscuration);
+  return d === null ? s : Math.min(1, _sgZenithLum(d) / Math.max(_sgZenithLum(sunAlt), 1e-6));
+}
+// The Sun's height the sky is lit as: its own, or in the last few per cent of an eclipse the equivalent depth (the LUTs are baked for it and the
+// light and the exposure are a twilight's: the sky is then the real twilight's colours, violet and a warm horizon).
+function _sgSkyAlt(p) {
+  var d = _sgEclipseDepth(p.obsc);
+  return d === null ? p.sunAltGeo : d;
+}
+function _sgAdaptShare(skyShare, obscuration) {
+  var o = Math.min(1, obscuration || 0), w = Math.max(0, Math.min(1, (o - SG_LAG_FROM) / (SG_SKY_STEEP_FROM - SG_LAG_FROM)));
+  return Math.pow(Math.max(skyShare, 1e-9), 0.5 + 0.5 * w * w * (3 - 2 * w));
+}
 function _sgSkyLum(sunAlt, moonAlt, moonIllum, dial, sunShare, moonShare) {
   return Math.max(_sgZenithLum(sunAlt) * (sunShare == null ? 1 : sunShare), SG_DARK_SKY_LUM) + _sgMoonSkyLum(moonAlt, moonIllum, moonShare) + _sgSkyglow(dial);
 }
@@ -446,7 +474,7 @@ var SG_GLSL_RADIANCE = [
   '  L += vec3(0.55, 1.0, 0.7) * uAirglow * (1.0 / sqrt(1.0 - pow(' + (SG_EARTH_R / (SG_EARTH_R + SG_AIRGLOW_H)).toFixed(5) + ' * cos(alt), 2.0))) * exp(-' + SG_AIRGLOW_EXTINCTION + ' * (airmassDeg(degrees(alt)) - 1.0));',
   '  L += uGlow * (1.0 + 2.0 * exp(-degrees(alt) / 14.0));',
   // Totality: the light from beyond the Moon's shadow rings the whole horizon, as a sunset does, the same at every bearing.
-  '  if (uEclGlow > 0.0) L += uEclGlow * ' + SG_SUN_LUX.toFixed(1) + ' * lutLight(texture(uSkyE, unitToTex(vec2(0.5, sqrt(clamp(alt, 0.0, PI * 0.5) / (PI * 0.5))), vec2(' + SG_VIEW_W + '.0, ' + SG_VIEW_H + '.0))).rgb);',
+  '  if (uEclGlow > 0.0) L += exp(-degrees(max(alt, 0.0)) / ' + SG_ECL_RING_DEG.toFixed(1) + ') * uEclGlow * ' + SG_SUN_LUX.toFixed(1) + ' * lutLight(texture(uSkyE, unitToTex(vec2(0.5, sqrt(clamp(alt, 0.0, PI * 0.5) / (PI * 0.5))), vec2(' + SG_VIEW_W + '.0, ' + SG_VIEW_H + '.0))).rgb);',
   '  return L;',
   '}',
   // The eye in the dark: its blue shift, applied to the light before the exposure.
@@ -483,6 +511,7 @@ var SG_CLOUD_EARTH_KM = '6371.0';
 var SG_GLSL_CLOUD_FIELD = [
   'uniform vec4 uCloud;',          // cover 0..1, base height (m), thickness (m), the day's offset in the noise
   'uniform vec3 uCloudWind;',      // wind east and north (m/s), seconds since the day's start
+  'uniform float uCloudOct;',      // octaves of the field's noise: 4, or 1 on the cheap deck (ZimiCap skyQuality 1)
   // An integer hash of the lattice point (almanac-onesky.js _osCloudHash is the same sum): a float one differs between a GPU and a CPU.
   'float cloudHash(vec2 p) {',
   '  uvec2 q = uvec2(ivec2(p));',
@@ -497,8 +526,8 @@ var SG_GLSL_CLOUD_FIELD = [
   // Each octave fades to its mean once its cells are smaller than the ground a pixel covers there (size, fp in metres).
   'float cloudFbm(vec2 p, float size, float fp) {',
   '  float s = 0.0, a = 0.5;',
-  '  for (int i = 0; i < 4; i++) { s += a * mix(0.5, cloudNoise(p), 1.0 - smoothstep(0.25, 1.0, fp / size)); p = p * 2.03 + 17.1; a *= 0.5; size /= 2.03; }',
-  '  return s / 0.9375;',
+  '  for (int i = 0; i < 4; i++) { if (float(i) >= uCloudOct) break; s += a * mix(0.5, cloudNoise(p), 1.0 - smoothstep(0.25, 1.0, fp / size)); p = p * 2.03 + 17.1; a *= 0.5; size /= 2.03; }',
+  '  return s / (1.0 - exp2(-uCloudOct));',
   '}',
   // How far past the cut the noise is: 0 at a cloud's edge, rising into its body (mottled by the finer octave inside it).
   'float cloudMargin(vec2 xy, float fp) {',
@@ -963,12 +992,13 @@ function _sgBakeLight(sg, which, altDeg) {
 // A bearing and height (degrees) as a unit vector in (east, north, up).
 function _sgEnu(azDeg, altDeg) { var a = azDeg * DEG_TO_RAD, e = altDeg * DEG_TO_RAD, c = Math.cos(e); return [Math.sin(a) * c, Math.cos(a) * c, Math.sin(e)]; }
 function _sgLightValues(p) {
-  var moonShare = p.moonShare == null ? 1 : p.moonShare, glow = _sgSkyglow(p.dial);
+  var moonShare = p.moonShare == null ? 1 : p.moonShare, glow = _sgSkyglow(p.dial), sky = p.skyShare == null ? (p.sunShare == null ? 1 : p.sunShare) : p.skyShare, sa = _sgSkyAlt(p), deep = sa !== p.sunAltGeo;
   return {
-    sunLux: p.sunAltGeo > -26 ? SG_SUN_LUX * (p.sunShare == null ? 1 : p.sunShare) : 0,
+    skyAlt: sa,
+    sunLux: sa > -26 ? SG_SUN_LUX * (deep ? 1 : sky) : 0,
     moonLux: p.moonAlt > -12 && p.moonIllum > 0.5 ? _sgMoonLux(p.moonIllum, p.moonDist) * SG_MOON_GAIN * moonShare : 0,
     // The eye has not time to adapt to an eclipse's dimming: it keeps most of the daylight's exposure (the square root of the share).
-    exposure: _sgExposure(p.sunAltGeo, p.moonAlt, p.moonIllum, p.dial, p.sunShare == null ? 1 : Math.sqrt(p.sunShare), Math.sqrt(moonShare)),
+    exposure: _sgExposure(sa, p.moonAlt, p.moonIllum, p.dial, deep ? 1 : _sgAdaptShare(sky, p.obsc), Math.sqrt(moonShare)),
     glow: [glow * 1.0, glow * 0.82, glow * 0.6],
     moonVec: _sgEnu(p.moonAz, p.moonAlt),
     eclGlow: SG_ECL_GLOW_MAX * Math.max(0, Math.min(1, ((p.obsc || 0) - SG_ECL_GLOW_FROM) / (1 - SG_ECL_GLOW_FROM)))
@@ -980,7 +1010,7 @@ function _sgZodiTable() {
   for (var i = SG_ZODI_S10.length - 1; i >= 0; i--) zt.push(SG_ZODI_S10[i][0] * DEG_TO_RAD, SG_ZODI_S10[i][1]);
   return zt;
 }
-var SG_ECL_GLOW_MAX = 0.06, SG_ECL_GLOW_FROM = 0.97;   // the sunset-coloured ring's share of a sunset sky's light at totality, and the cover from which it comes up
+var SG_ECL_GLOW_MAX = 0.02, SG_ECL_GLOW_FROM = 0.995;   // the sunset-coloured ring's share of a sunset sky's light at totality, and the cover from which it comes up (the last seconds: the sky keeps darkening to second contact), and the cover from which it comes up
 var SG_NO_CLOUDS = { cloud: [0, 2500, 700, 0], wind: [0, 0, 0], sunE: 0 };   // a sky with no cloud field to ask (the clouds' own values: almanac-onesky.js _osCloudValues)
 // One frame. p: { W, H, dpr, view, sunAltGeo, sunAz, moonAlt, moonAz, moonIllum,
 // moonDist, horizon (the 9 numbers of _sgHorizonMatrix), eclPole, sunVec,
@@ -995,7 +1025,7 @@ function _sgDraw(p) {
   gl.disable(gl.BLEND);
   // The two lights' sky-views (skipped when the light is far below the horizon).
   var lv = _sgLightValues(p), sunLux = lv.sunLux, moonLux = lv.moonLux;
-  if (sunLux) _sgBakeLight(sg, 'sun', p.sunAltGeo);
+  if (sunLux) _sgBakeLight(sg, 'sun', lv.skyAlt);
   if (moonLux) _sgBakeLight(sg, 'moon', p.moonAlt);
   if (lv.eclGlow) _sgBakeLight(sg, 'ecl', 0);
   // The sky itself.
@@ -1016,7 +1046,7 @@ function _sgDraw(p) {
   gl.uniform1f(u.uZodiScale, 1); gl.uniform1f(u.uAirglow, SG_AIRGLOW_LUM); gl.uniform1f(u.uSeed, p.seed || 0);
   gl.uniform1fv(u['uZodi'], _sgZodiTable());
   var cv = p.clouds || SG_NO_CLOUDS;
-  gl.uniform4fv(u.uCloud, cv.cloud); gl.uniform3fv(u.uCloudWind, cv.wind); gl.uniform3fv(u.uMoonVec, lv.moonVec); gl.uniform1f(u.uCloudSunE, cv.sunE); gl.uniform1f(u.uSunAltDeg, p.sunAltGeo);
+  gl.uniform4fv(u.uCloud, cv.cloud); gl.uniform3fv(u.uCloudWind, cv.wind); gl.uniform1f(u.uCloudOct, cv.oct); gl.uniform3fv(u.uMoonVec, lv.moonVec); gl.uniform1f(u.uCloudSunE, cv.sunE); gl.uniform1f(u.uSunAltDeg, lv.skyAlt);
   gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
   // The stars over it, added as light (but not through the Moon's disc: it is in front of them).
   if (sg.starCount) {
@@ -1030,7 +1060,7 @@ function _sgDraw(p) {
     gl.uniform1f(us.uLm, p.lm); gl.uniform1f(us.uDpr, p.dpr); gl.uniform1f(us.uScint, p.scint ? 1 : 0);
     gl.uniform1f(us.uSeed, p.seed || 0); gl.uniform1f(us.uSat, SG_STAR_SATURATION);
     gl.uniform3f(us.uMoon, md ? md.x : 0, md ? md.y : 0, md ? md.r : 0);
-    gl.uniform4fv(us.uCloud, cv.cloud); gl.uniform3fv(us.uCloudWind, cv.wind);
+    gl.uniform4fv(us.uCloud, cv.cloud); gl.uniform3fv(us.uCloudWind, cv.wind); gl.uniform1f(us.uCloudOct, cv.oct);
     gl.drawArraysInstanced(gl.TRIANGLE_STRIP, 0, 4, sg.starCount);
     gl.disable(gl.BLEND);
   }
