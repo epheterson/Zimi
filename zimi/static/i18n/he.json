@@ -3668,6 +3668,8 @@
   "alm_row_landings": "נחיתות",
   "alm_lm_night_until": "לילה שם עד {date} · להגיע בזריחה",
   "alm_hd_ultra": "אולטרה",
+  "alm_craft_loading": "טוען את החללית",
+  "alm_craft_failed": "אין כאן דגם: מוצגת נקודה",
   "alm_hd_installed": "מותקן",
   "alm_hd_ask_admin": "מי שמנהל את ה-Zimi הזה יכול להוסיף",
   "alm_blurb_sun": "כוכב כל כך גדול שבו כמעט כל המסה של מערכת השמש.",

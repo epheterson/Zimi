@@ -3668,6 +3668,8 @@
   "alm_row_landings": "مواقع الهبوط",
   "alm_lm_night_until": "ليل هناك حتى {date} · الوصول عند الشروق",
   "alm_hd_ultra": "ألترا",
+  "alm_craft_loading": "جارٍ تحميل المركبة",
+  "alm_craft_failed": "لا نموذج لها هنا: تظهر نقطة",
   "alm_hd_installed": "مثبّت",
   "alm_hd_ask_admin": "يمكن لمن يدير Zimi هذا إضافته",
   "alm_blurb_sun": "نجم ضخم يحتوي على معظم كتلة المجموعة الشمسية تقريبا.",

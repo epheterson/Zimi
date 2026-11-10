@@ -3668,6 +3668,8 @@
   "alm_row_landings": "Pousos",
   "alm_lm_night_until": "Noite lá até {date} · chegar ao nascer do Sol",
   "alm_hd_ultra": "Ultra",
+  "alm_craft_loading": "A carregar a sonda",
+  "alm_craft_failed": "Sem modelo aqui: mostrada como um ponto",
   "alm_hd_installed": "Instalado",
   "alm_hd_ask_admin": "quem gere este Zimi pode adicioná-lo",
   "alm_blurb_sun": "Uma estrela tão grande que tem quase toda a massa do Sistema Solar.",
