@@ -174,3 +174,66 @@ def test_bridge_win_cascade_skips_cards_the_table_is_not_showing(phone, site):
     phone.evaluate("() => window.ZimiBridge.session.win(3)")
     phone.wait_for_function("() => document.querySelector('.gs-sheet, .ar-sheet, .zc-sheet, .gs-end')", timeout=15000)
     assert not phone.errors, phone.errors
+
+
+def tray_clear_of(page, ids):
+    got = page.evaluate(TRAY_AND_HANDS, ids)
+    assert got and got["cards"], "nothing to compare with the tray"
+    for c in got["cards"]:
+        assert not boxes_touch(got["panel"], c), "the tray covers a card: %r" % got
+    assert not boxes_touch(got["panel"], got["status"]), got
+    return got
+
+
+def wait_for_tray(page):
+    page.wait_for_function("() => { const p = document.querySelector('.ct-panel'); return p && !p.hidden && p.children.length; }", timeout=15000)
+    page.wait_for_timeout(1200)
+
+
+def test_the_spades_bid_tray_is_clear_of_the_other_hands_on_a_phone_on_its_side(browser, site):
+    ctx, page = landscape(browser)
+    open_game(page, site, "spades", "() => window.ZimiSpades && window.ZimiSpades.session && window.ZimiSpades.session.state", 4)
+    wait_for_tray(page)
+    got = tray_clear_of(page, other_hands(page, "ZimiSpades"))
+    assert got["panel"][3] - got["panel"][1] < 110, "the bids are not one row: %r" % got
+    assert not page.errors
+    ctx.close()
+
+
+def test_the_cheat_pile_is_clear_of_the_call_tray_on_a_phone_on_its_side(browser, site):
+    ctx, page = landscape(browser)
+    open_game(page, site, "cheat", "() => window.ZimiCheat && window.ZimiCheat.session && window.ZimiCheat.session.state", 4)
+    for _ in range(80):
+        st = page.evaluate("() => window.ZimiCheat.session.state")
+        if st["phase"] == "call" and st["callers"] and st["callers"][0] == 0 and st["pile"]:
+            break
+        if st["phase"] == "call" and st["callers"] and st["callers"][0] != 0:
+            page.wait_for_timeout(300)
+        elif st["phase"] == "play" and st["turn"] == 0:
+            tap_card(page, st["hands"][0][0])
+            page.locator(".ct-choice.ct-primary").first.tap()
+        page.wait_for_timeout(400)
+    st = page.evaluate("() => window.ZimiCheat.session.state")
+    if not (st["phase"] == "call" and st["callers"] and st["callers"][0] == 0):
+        import pytest
+        pytest.skip("Zimi never played a card for you to call in time")
+    wait_for_tray(page)
+    tray_clear_of(page, st["pile"])
+    assert not page.errors
+    ctx.close()
+
+
+def test_the_euchre_upcard_is_clear_of_the_order_up_tray_on_a_phone_on_its_side(browser, site):
+    ctx, page = landscape(browser)
+    open_game(page, site, "euchre", "() => window.ZimiEuchre && window.ZimiEuchre.session && window.ZimiEuchre.session.state", 4)
+    for _ in range(60):
+        st = page.evaluate("() => window.ZimiEuchre.session.state")
+        if st["phase"] == "order1" and st["turn"] == 0:
+            break
+        page.wait_for_timeout(500)
+    st = page.evaluate("() => window.ZimiEuchre.session.state")
+    assert st["phase"] == "order1" and st["turn"] == 0, "the order-up round never came to you"
+    wait_for_tray(page)
+    tray_clear_of(page, [st["upcard"]])
+    assert not page.errors
+    ctx.close()

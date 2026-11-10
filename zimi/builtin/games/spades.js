@@ -250,7 +250,8 @@
           out.text = seats.hotseat() ? TX('spades.yourBid.name', { name: seats.name(V) }) : TX('spades.yourBid');
           out.choices = [{ label: TX('spades.nil'), onclick: function () { bid(0); }, aria: TX('spades.bidNil') }];
           for (var n = 1; n <= MAX_BID; n++) out.choices.push(bidChoice(n));
-          out.lines = [{ text: TX('spades.estimate', { n: Math.round(estimate(st.hands[V])) }) + (st.bids[partnerOf(V)] !== null ? ' ' + TX('spades.partnerBid', { name: seats.name(partnerOf(V)), bid: bidName(st.bids[partnerOf(V)]) }) : '') }];
+          var m = board && board.metrics();   // a phone on its side has no room for the hint line above one row of bids
+          if (!(m && m.H < T.SHORT_TABLE_H)) out.lines = [{ text: TX('spades.estimate', { n: Math.round(estimate(st.hands[V])) }) + (st.bids[partnerOf(V)] !== null ? ' ' + TX('spades.partnerBid', { name: seats.name(partnerOf(V)), bid: bidName(st.bids[partnerOf(V)]) }) : '') }];
         } else out.text = TX('cards.bidding', { name: seats.name(st.turn) });
       } else if (st.phase === 'handEnd') { out.text = TX('cards.handEnd'); out.label = TX('cards.nextHand'); out.action = tg.startNextHand; }
       else if (st.phase === 'over') { out.text = TX('shell.end.over'); out.label = TX('shell.menu.new'); out.action = newGame; }

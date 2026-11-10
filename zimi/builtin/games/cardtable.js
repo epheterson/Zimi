@@ -15,7 +15,7 @@
   // rows), a tapped card lifts 14 px
   // (a card you can play stands 6 px proud when others cannot be played). An opponent's face-down hand of more than
   // five cards is one back and a count chip.
-  var SHORT_TABLE_H = 420, MANY_CHIPS = 5, NORTH_GAP_PX = 6, COUNT_AT = 0.86, STATUS_MAX = 44, MIN_STRIP_PX = 22, LIFT_PX = 14, PLAYABLE_LIFT_PX = 6, COLLAPSE_FROM = 6;
+  var WIDE_CHOICES = 10, SHORT_TABLE_H = 420, MANY_CHIPS = 5, NORTH_GAP_PX = 6, COUNT_AT = 0.86, STATUS_MAX = 44, MIN_STRIP_PX = 22, LIFT_PX = 14, PLAYABLE_LIFT_PX = 6, COLLAPSE_FROM = 6;
   // Games that play a card on its second tap: the first tap lifts it (amber outline), the second plays it.
   var LIFT_THEN_PLAY = { spades: 1, euchre: 1, belote: 1, crazyeights: 1, durak: 1 };
   // SCORE_BAR_H: the chips' row (28 px, cardtable.css .ct-chip) and air under it for the ring round whoever is to play.
@@ -81,6 +81,8 @@
     // so a tray of choices above the status line never covers them.
     g.short = m.H < SHORT_TABLE_H;
     g.sideTop = g.short ? g.northY : g.yTop;
+    // The tray of choices sits across the middle of a short table, so a trick or a pile stands to the right of it.
+    g.midX = g.short ? Math.round(m.W - m.pad - g.cw * (0.5 + TRICK_DX)) : cx;
     g.yBot = g.southY - (g.rows - 1) * g.rowStep - g.raise - 6;    // the rows above it push the status line up
     g.statusY = g.yBot - STATUS_H;
     // The trick sits high on the felt (40% down the table), clear of the north hand and the status line: eyes stay between the opponents and your hand.
@@ -100,7 +102,7 @@
   function sideStep(g, n) { return Math.max(g.ch * SIDE_STEP_MIN, Math.min(g.ch * SIDE_STEP_MAX, (g.statusY - g.sideTop - g.ch) / Math.max(1, n - 1))); }
   // A card's corner in the middle for each position's play, and where a position's cards sit.
   function trickSpot(g, pos) {
-    var x = g.cx - g.cw / 2, y = g.cy - g.ch / 2;
+    var x = (g.midX === undefined ? g.cx : g.midX) - g.cw / 2, y = g.cy - g.ch / 2;
     return [{ x: x, y: y + g.ch * TRICK_DY }, { x: x - g.cw * TRICK_DX, y: y }, { x: x, y: y - g.ch * TRICK_DY }, { x: x + g.cw * TRICK_DX, y: y },
       { x: x - g.cw * NORTH_TRICK_DX, y: y - g.ch * TRICK_DY }, { x: x + g.cw * NORTH_TRICK_DX, y: y - g.ch * TRICK_DY }][pos];
   }
@@ -226,6 +228,7 @@
       statusText.textContent = !view.flash && hd.fact && line && (hd.fact + ' \u00b7 ' + line).length <= STATUS_MAX ? hd.fact + ' \u00b7 ' + line : (line || hd.fact || '');
       statusBtn.textContent = hd.label || ''; statusBtn.hidden = !hd.label; statusBtn.disabled = !hd.action; statusBtn.classList.toggle('gs-primary', !!hd.action);   // the next thing to do is the filled amber button
       panel.textContent = ''; panel.hidden = !(hd.choices && hd.choices.length);
+      panel.classList.toggle('ct-wide', (hd.choices || []).length >= WIDE_CHOICES);   // a long row of bids takes the table's width
       (hd.choices || []).forEach(function (c, i) {
         var b = Z.h('button', { class: 'ar-btn ct-choice' + (c.cls ? ' ' + c.cls : ''), type: 'button', text: c.label });
         if (c.pressed !== undefined) b.setAttribute('aria-pressed', String(!!c.pressed));

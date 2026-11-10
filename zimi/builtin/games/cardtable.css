@@ -50,3 +50,6 @@
 .ct-token::after { content: ""; position: absolute; inset: 3px; border-radius: 50%; border: 1px solid rgba(255, 255, 255, 0.55); }
 .ct-d500 { --ct-chip: #6b46c1; } .ct-d100 { --ct-chip: #232a33; } .ct-d50 { --ct-chip: #d9780b; } .ct-d25 { --ct-chip: #2f855a; }
 .ct-d10 { --ct-chip: #2b6cb0; } .ct-d5 { --ct-chip: #b3261e; } .ct-d1 { --ct-chip: #9aa3ad; }
+
+/* A long row of choices (Spades' bids) gets the width of the table, so on a phone on its side it is one row. */
+.ct-panel.ct-wide { width: min(100% - 16px, 780px); }
