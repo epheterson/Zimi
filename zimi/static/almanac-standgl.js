@@ -404,6 +404,7 @@ var AE_ST_BODY_FRAG = [
 
 // ── The ground ──
 // The small sky stretched over the screen: device pixels over the screen's size.
+var AE_ST_COPY_FRAG = 'precision highp float; uniform sampler2D tMs; varying vec2 vNdc; void main() { gl_FragColor = vec4(texture2D(tMs, vNdc * 0.5 + 0.5).rgb, 1.0); }';
 var AE_ST_BLIT_FRAG = [
   'precision highp float;',
   'uniform sampler2D tSky; uniform vec2 uRes, uTexel;',

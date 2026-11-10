@@ -393,6 +393,7 @@ function _aeStandDispose(st) {
   if (st.craftHost && st.craftHost.parentNode) st.craftHost.parentNode.removeChild(st.craftHost);
   if (st.stars) st.stars.geometry.dispose();
   if (st.skyRT) st.skyRT.dispose();
+  if (st.msaa) { st.msaa.rt.dispose(); st.msaa.mat.dispose(); st.msaa = null; }
   if (st.skyMatAir) st.skyMatAir.dispose();
   if (st.cloudMesh) st.cloudMesh.material.dispose();
   if (st.skyPts) st.skyPts.mesh.geometry.dispose();
@@ -879,13 +880,31 @@ function _aeStandPaint(st, now, moving, place) {
   _aeStandSprites(st, st.fr, st.photo, view.pixAng, view.pos[2]);
   _aeStandCraftMarks(st, st.fr, view);
   _aeStandSkyPass(st);
-  _ae.gl.renderer.render(st.scene, st.camera);
+  _aeStandRender(st);
   _aeStandBudget(st, now);
   if (st.handoff && st.handoff._firstFrame && st.mode === 'ground' && !st.fading) { var ff = st.handoff._firstFrame; st.handoff._firstFrame = null; ff(true); }
   st.dirty = false;
   if (st.hud && now - st.hudAt > AE_STAND_HUD_MS) { st.hudAt = now; _aeStandHudText(st); }
 }
 // The sky into its small target (or, with no way to make one, straight to the screen as before).
+// The picture drawn with 4x multisampling when the canvas has none (the 3D view's own context drops it from AE_MSAA_BELOW_DPR up): into a multisampled target and
+// copied out, so a horizon of bright ground against a black sky is not a staircase. WebGL2 only; a light device (capability level skyQuality 0) keeps the plain draw.
+var AE_STAND_MSAA_SAMPLES = 4;
+function _aeStandRender(st) {
+  var S = _ae.gl, r = S.renderer, THREE = S.THREE, gl = r.getContext(), attrs = gl && gl.getContextAttributes ? gl.getContextAttributes() : null;
+  if (!attrs || attrs.antialias || typeof THREE.WebGLRenderTarget !== 'function' || !(r.capabilities && r.capabilities.isWebGL2) || (typeof ZimiCap !== 'undefined' && ZimiCap.get('skyQuality') < 1)) { r.render(st.scene, st.camera); return; }
+  var ratio = r.getPixelRatio(), W = Math.max(1, Math.round(_ae.w * ratio)), H = Math.max(1, Math.round(_ae.h * ratio));
+  if (!st.msaa || st.msaa.w !== W || st.msaa.h !== H) {
+    if (st.msaa) { st.msaa.rt.dispose(); st.msaa.mat.dispose(); }
+    var rt = new THREE.WebGLRenderTarget(W, H, { minFilter: THREE.LinearFilter, magFilter: THREE.LinearFilter, samples: AE_STAND_MSAA_SAMPLES });
+    var mat = new THREE.ShaderMaterial({ uniforms: { tMs: { value: rt.texture } }, vertexShader: AE_ST_SKY_VERT, fragmentShader: AE_ST_COPY_FRAG, depthTest: false, depthWrite: false });
+    var scene = new THREE.Scene(), mesh = new THREE.Mesh(st.skyBlit.geometry, mat);
+    mesh.frustumCulled = false; scene.add(mesh);
+    st.msaa = { rt: rt, mat: mat, scene: scene, w: W, h: H };
+  }
+  r.setRenderTarget(st.msaa.rt); r.clear(); r.render(st.scene, st.camera); r.setRenderTarget(null);
+  r.render(st.msaa.scene, st.camera);
+}
 function _aeStandSkyPass(st) {
   _aeStandAirSelect(st);
   _aeStandCloudSelect(st);
