@@ -24,8 +24,9 @@ GL_ARGS = [
 VIEW = {"width": 390, "height": 844}
 PLACE = '{"lat":37.77,"lon":-122.42,"name":"San Francisco"}'
 READY_MS = 240_000
-# A wait for the view under software GL on a machine that other runs share: the flight alone is seconds of frames.
-WAIT_MS = 150_000
+# A wait for tiles under software GL: frames are the point of these. The view's flights are skipped (reduced motion), so no
+# wait depends on how fast frames come.
+WAIT_MS = 60_000
 INSERT = {"site": "apollo11", "lat": 0.67408, "lon": 23.47297, "z": 2, "x0": 4, "x1": 5, "y0": 0, "y1": 1}
 LEVELS = {"earth/day": 2, "earth/night": 1, "moon/albedo": 1, "moon/relief": 1}
 OFFER = {
@@ -139,6 +140,7 @@ def _open_earth(browser, url, route_hd=None, base="/w/zimi_almanac_"):
         has_touch=True,
         is_mobile=True,
         service_workers="block",
+        reduced_motion="reduce",
     )
     ctx.add_init_script(
         "try { localStorage.setItem('zimi_almanac_place', %r); sessionStorage.setItem('zimi_almanac_location', %r);"

@@ -225,3 +225,11 @@ def test_unmapped_black_is_filled_from_the_mapped_colour_beside_it(tmp_path):
     )
     assert out[:40].min() > 20  # the unmapped top is no longer black
     assert abs(out[-1, 5, 1] - 100) < 4  # the mapped part is untouched
+
+
+def test_the_builders_parts_and_the_apps_are_the_same_set():
+    from zimi import almanachd
+
+    assert set(hd.PARTS) == set(almanachd.PARTS)
+    assert hd.part_of("terrain/moon/3/1/1.webp") == "moon"
+    assert hd.part_of("terrain/earth/3/1/1.webp") == ""

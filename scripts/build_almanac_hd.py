@@ -1187,11 +1187,12 @@ MIMES = {
 
 #: Layers too big for one release file (GitHub's limit is 2 GiB) are packed as ZIMs of their own, parts of one set:
 #: ``zimi_almanac_hd_<part>_<month>.zim`` with an ``hd.json`` listing only their layers (zimi/almanachd.py PARTS).
-#: Everything else is the core, the file the Almanac's HD flavour is made from.
+#: A part holds a body's terrain layers (``terrain/<body>/``) as well as its imagery, so a body is wholly in one file.
+#: Everything else is the core, the file the Almanac's HD flavour is made from. A new part is also named in almanachd.PARTS.
 PARTS = {
-    "moon": ("moon/",),
-    "mars": ("planets/mars/",),
-    "mercury": ("planets/mercury/",),
+    "moon": ("moon/", "terrain/moon/"),
+    "mars": ("planets/mars/", "terrain/mars/"),
+    "mercury": ("planets/mercury/", "terrain/mercury/"),
 }
 
 
