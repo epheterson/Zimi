@@ -674,7 +674,10 @@ function _aeStPhoto(st, fr) {
   // The provider's eclipse: the share of the Sun's light that reaches the place (the ground, its shadows and the Sun's sprite), the faintest star the dimmed sky shows, and the disc geometry.
   if (_aeStandAirOn(st)) {
     var P = _aeStandAir, share = _aeStAirCall(P.sunShare, st, fr), lm = _aeStAirCall(P.limitMag, st, fr), ecl = _aeStAirCall(P.eclipse, st, fr);
-    if (share >= 0 && share < 1) { p.sunE = p.sunE.map(function (x) { return x * share; }); p.sunShare = share; }
+    if (share >= 0 && share < 1) {   // the Sun's light, and with it every term of the light that comes from the sky it lights (this view's own march: the provider's ambient replaces them)
+      var dim = function (v) { return v ? v.map(function (x) { return x * share; }) : v; };
+      p.sunE = dim(p.sunE); p.amb = dim(p.amb); p.hor = dim(p.hor); p.zen = dim(p.zen); p.near = dim(p.near); p.diffSky = dim(p.diffSky); e2 *= share; p.sunShare = share;
+    }
     if (typeof lm === 'number' && isFinite(lm)) p.lim = lm;
     if (ecl && typeof ecl === 'object') p.ecl = ecl;
   }
@@ -875,7 +878,7 @@ function _aeStandSprites(st, fr, ph, pixAng, alt) {
     if (ecl && o === moonO && ecl.corona > 0) { uni.uCorona.value = ecl.corona; uni.uHalf.value = Math.max(uni.uHalf.value, o.rho * AE_STAND_CORONA_RADII * 1.05); }
     uni.uSkyLit.value = 1;
     // The body's own map, once it has been looked at long enough to ask for it (a disc of a few pixels is its tint).
-    var tex = !o.sun && o.rho > pixAng * AE_STAND_MAP_PX ? _aeStandDiscMap(st, o.key) : null;
+    var tex = !o.sun && o.rho > pixAng * AE_STAND_MAP_PX ? _aeStandDiscMap(st, o.key, o.rho > pixAng * AE_STAND_MOON_CLOSE_PX) : null;
     uni.uMap.value = tex; uni.uMapped.value = tex ? 1 : 0; uni.uGrey.value = o.key === AE_STAND_MOON_NAME ? 1 : 0;
     uni.uMapGain.value = (o.alb || 0.3) / AE_STAND_MAP_GAIN_ALBEDO;
     if (o.rows) uni.uBody.value = _aeStMat3(o.rows);
@@ -891,20 +894,28 @@ var AE_STAND_CORONA_RADII = 3.4;   // the corona's reach in Moon radii (almanac-
 var AE_STAND_MAP_PX = 3;                       // a disc this many pixels across (radius) or more is drawn from its map
 var AE_STAND_SATURN_RINGS = [74500, 140220];   // km, the C ring's inside to the A ring's outside (as almanac-earth.js AE_PLANETS)
 // The map of a body seen as a disc: the orbit view's own once it has it, else fetched (once; the disc shows it when it is in).
-function _aeStandDiscMap(st, key) {
+function _aeStandDiscMap(st, key, close) {
   var S = _ae.gl, tex = null;
   if (key === 'earth') tex = S.earthUni.dayMap.value;
   else if (key === AE_STAND_MOON_NAME) tex = S.moonUni.moonMap.value;
   else if (S.planets && S.planets[key]) tex = S.planets[key].uni.map.value;
-  if (tex) return tex;
-  var b = _aePlanetBody(key);
   st.discMaps = st.discMaps || {};
-  if (b && b.map && !st.discMaps[key]) {
+  // The Moon seen close (a tap on it): the 4k map, fetched once when the disc is big enough to show it.
+  var hiKey = key + '-hi';
+  if (key === AE_STAND_MOON_NAME && close && !st.discMaps[hiKey]) {
+    st.discMaps[hiKey] = true;
+    _aeLoadTexture(S.THREE, AE_STAND_MOON_HI_URL).then(function (t) { if (_ae.stand === st) { st.discMaps[hiKey] = t; st.dirty = true; _ae.dirty = true; _aeKick(); } else t.dispose(); }, function () {});
+  }
+  if (st.discMaps[hiKey] && st.discMaps[hiKey] !== true) return st.discMaps[hiKey];
+  if (tex) return tex;
+  var b = _aePlanetBody(key), url = b && b.map ? _aePlanetMapUrl(b) : key === AE_STAND_MOON_NAME ? AE_STAND_MOON_URL : null;
+  if (url && !st.discMaps[key]) {
     st.discMaps[key] = true;
-    _aeLoadTexture(S.THREE, _aePlanetMapUrl(b)).then(function (t) { if (_ae.stand === st) { st.discMaps[key] = t; st.dirty = true; _ae.dirty = true; _aeKick(); } else t.dispose(); }, function () {});
+    _aeLoadTexture(S.THREE, url).then(function (t) { if (_ae.stand === st) { st.discMaps[key] = t; st.dirty = true; _ae.dirty = true; _aeKick(); } else t.dispose(); }, function () {});
   }
   return st.discMaps[key] && st.discMaps[key] !== true ? st.discMaps[key] : null;
 }
+var AE_STAND_MOON_URL = '/static/earth/moon-v1.webp', AE_STAND_MOON_HI_URL = '/static/earth/moon-4k-v1.webp', AE_STAND_MOON_CLOSE_PX = 24;   // the disc's radius in pixels from which the 4k map is used
 var AE_STAND_CRAFT_TOP_PX = 110, AE_STAND_CRAFT_BOTTOM_PX = 120;   // the bar and the clock keep their own bands
 var AE_STAND_CRAFT_CHAR_PX = 7, AE_STAND_CRAFT_LINE_PX = 16;       // a name's width per letter, and a line's height
 var AE_STAND_STATION_REACH_KM = 2e4;                                  // the station is a mark only from the Earth's neighbourhood
