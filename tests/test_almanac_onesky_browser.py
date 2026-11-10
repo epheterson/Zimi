@@ -724,7 +724,7 @@ def test_in_totality_the_sky_is_deep_twilight_and_venus_and_jupiter_are_drawn(
         timeout=READY_MS,
         polling=250,
     )
-    pg.evaluate("(ms) => _aeGoTo(ms)", ms)
+    pg.evaluate("(ms) => { _almClockSetRate(0); _aeGoTo(ms); }", ms)
     try:
         pg.wait_for_function(
             "(ms) => _ae.stand.photo && _ae.stand.photo.lim > 2.4",
