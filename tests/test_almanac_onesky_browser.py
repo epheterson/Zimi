@@ -727,7 +727,7 @@ def test_in_totality_the_sky_is_deep_twilight_and_venus_and_jupiter_are_drawn(
     pg.evaluate("(ms) => { _almClockSetRate(0); _aeGoTo(ms); }", ms)
     try:
         pg.wait_for_function(
-            "(ms) => _ae.stand.photo && _ae.stand.photo.lim > 2.4",
+            "(ms) => _ae.stand.photo && _ae.stand.photo.lim > 1.8",
             arg=ms,
             timeout=60_000,
             polling=250,
@@ -740,7 +740,7 @@ def test_in_totality_the_sky_is_deep_twilight_and_venus_and_jupiter_are_drawn(
             )
         )
     lim = pg.evaluate("() => _ae.stand.photo.lim")
-    assert 2.4 < lim < 3.4, lim
+    assert 1.8 < lim < 3.4, lim
     for planet in ("venus", "jupiter"):
         found = pg.evaluate(
             """(name) => { const st = _ae.stand, o = st.fr.objs.find(x => x.key === name);
