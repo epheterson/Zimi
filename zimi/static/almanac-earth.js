@@ -1767,8 +1767,15 @@ var AE_SUNFX_MIN_PX = 28;            // the Sun's disc, radius in CSS px, past w
 function _aeSunFxWanted(S, ms) {
   if (typeof _aeSunFxTick === 'function') { _aeSunFxTick(S, ms); return; }
   if (S.sunFxAsked || typeof document === 'undefined') return;
-  var d = _aeLen(_aeSub([S.camera.position.x, S.camera.position.y, S.camera.position.z], [S.sun.position.x, S.sun.position.y, S.sun.position.z]));
+  var to = _aeSub([S.sun.position.x, S.sun.position.y, S.sun.position.z], [S.camera.position.x, S.camera.position.y, S.camera.position.z]), d = _aeLen(to);
   if (AE_SUN_SHOW_R / Math.max(1e-9, d) * _ae.h / 2 / Math.tan(_aeRad(S.camera.fov) / 2) < AE_SUNFX_MIN_PX) return;
+  // Wide on screen is not enough: on a phone the Sun is "wide" from the first frame, looking the other way. It is asked for when
+  // the view is on the Sun, or the Sun is within the picture (the angle to it inside the corner of the frame).
+  if (_ae.target !== 'sun') {
+    var f = S.camera.getWorldDirection(S.sunFxDir || (S.sunFxDir = new S.THREE.Vector3())), cosA = (to[0] * f.x + to[1] * f.y + to[2] * f.z) / Math.max(1e-9, d);
+    var tanV = Math.tan(_aeRad(S.camera.fov) / 2), corner = Math.atan(tanV * Math.hypot(1, _ae.w / Math.max(1, _ae.h)));
+    if (Math.acos(Math.max(-1, Math.min(1, cosA))) > corner + AE_SUN_SHOW_R / Math.max(1e-9, d)) return;
+  }
   S.sunFxAsked = true;
   var el = document.createElement('script');
   el.src = AE_SUNFX_JS;
@@ -2133,6 +2140,21 @@ function _aeSharedHiMoon(S) {
     });
   };
 }
+// The 4096 Moon (730 KB, 43 MB of texture memory once on the GPU) is asked for when the 1024 map can no longer show the Moon: the
+// Moon is what the view is on (opened from Go to, or a flight there), or its disc is wide enough that a texel of the small map
+// is bigger than a pixel (a hemisphere of the map, W / 2 texels, across a disc 2R pixels wide: W / 4R texels to a pixel). Until
+// then the 3D Moon is drawn from the small map, and the Earth opens without this file.
+var AE_MOON_LO_MAP_W = 1024;          // the width of the small map (AE_TEX_MOON)
+function _aeMoonDiscPx(S) {
+  var e = S.moon.matrixWorld.elements, cam = S.camera.position, d = Math.hypot(cam.x - e[12], cam.y - e[13], cam.z - e[14]);
+  return AE_MOON_RADIUS_RE / Math.max(1e-9, d) * _ae.h / 2 / Math.tan(_aeRad(S.camera.fov) / 2) * (typeof window !== 'undefined' && window.devicePixelRatio || 1);
+}
+function _aeMoonHiWanted(S) {
+  if (S.moonHiAsked || !S.moonUni.moonMapped.value) return;
+  if (_ae.target !== 'moon' && _aeMoonDiscPx(S) < AE_MOON_LO_MAP_W / 4) return;
+  S.moonHiAsked = true;
+  _aeLoadMap(S, S.moonUni.moonMap, AE_TEX_MOON_HI, AE_THREE_RED_FORMAT, _aeSharedHiMoon(S));
+}
 // Loads whatever maps are not in yet; resolves with whether the day map is.
 function _aeLoadMaps(S) {
   _aeLoadStars(S);
@@ -2142,7 +2164,7 @@ function _aeLoadMaps(S) {
   _aeLoadMap(S, S.moonUni.moonMap, AE_TEX_MOON).then(function (ok) {
     if (!ok) return;
     S.moonUni.moonMapped.value = 1;
-    _aeLoadMap(S, S.moonUni.moonMap, AE_TEX_MOON_HI, AE_THREE_RED_FORMAT, _aeSharedHiMoon(S));
+    _aeMoonHiWanted(S);   // the 4096 one at once if the Moon is what the view opens on; else when it is wanted (each frame)
   });
   if (_ae.hdInstalled && !S.hdAsked) { S.hdAsked = true; _aeHdLoad(S); }   // a view built again (it gives the GPU back)
   return _aeLoadMap(S, S.earthUni.dayMap, AE_TEX_DAY);
@@ -2936,7 +2958,7 @@ function _aeUpdatePlanets(sc) {
     }
     return out;
   };
-  if (_aeIsPlanet(_ae.target) || _ae.target === 'sun' || _ae.dist > AE_AST_WIDE_DIST || _aeIsProbe(_ae.target)) _aeTracksLoad();
+  if (_aeTracksNeeded()) _aeTracksLoad();
 
   var cam = S.camera, eye = [cam.position.x, cam.position.y, cam.position.z];
   var pxPerRad = _ae.h / 2 / Math.tan(_aeRad(cam.fov) / 2);
@@ -3748,8 +3770,13 @@ function _aeTrackAt(track, jd) {
   while (hi - lo > 1) { var mid = (lo + hi) >> 1; if (s[mid][0] <= jd) lo = mid; else hi = mid; }
   return _aeHermite(s[lo], s[hi], jd);
 }
+// Whether the view is somewhere the table is needed: among the planets, on the Sun or a probe, or wide enough to see the belt. The Earth and
+// the Moon opened on do not need it (Pluto's place is asked for every frame, so a frame by itself does not count as a reason).
+function _aeTracksNeeded() {
+  return _aeIsPlanet(_ae.target) || _ae.target === 'sun' || _ae.dist > AE_AST_WIDE_DIST || _aeIsProbe(_ae.target);
+}
 function _aeTracked(b, jd) {
-  if (!_aeTracks) { _aeTracksLoad(); return null; }
+  if (!_aeTracks) { if (_aeTracksNeeded()) _aeTracksLoad(); return null; }
   return _aeTrackAt(b.track === 'planets' ? _aeTracks.planets[b.eph] : _aeTracks.tracks[b.trackKey], jd);
 }
 // Where a planet is (heliocentric AU) at any date: the ephemeris, or the table for Pluto.
@@ -6948,6 +6975,7 @@ function _aeUpdate(ms) {
   S.sunT.value = (ms / 1000 / AE_GRANULE_LIFE_S) % AE_GRANULE_CYCLE;
   _aeUpdateSpots(S, ms);
   _aeSunFxWanted(S, ms);
+  _aeMoonHiWanted(S);
   _aeUpdateMoonPath(ms);
   _aeUpdateSats(ms, sc);
   if (typeof _asSatFrame === 'function') _asSatFrame(ms, sc);   // every active satellite (almanac-sats.js)
@@ -8552,17 +8580,16 @@ function _aeShow(fromHero) {
 // hero it lands in shows it.
 // Where the header's arrow goes back to: the Almanac's page (the hero, the sky) or its solar system (the orrery).
 // Where the arrow really goes: a lane that put the view here names it (`_ae.backLabel`: a mission, Look); on the ground, the card that handed the sky over (`handoff.backLabel`,
-// else the sky's) or the view of the body it stands on; otherwise where the view was opened from: the Solar System, the sky card, or the Almanac page.
+// else the page's) or the view of the body it stands on; otherwise where the view was opened from: the Solar System, the sky card, or the Almanac page.
 function _aeBackLabel() {
-  var cap = function (t) { return t ? t.charAt(0).toUpperCase() + t.slice(1) : t; };
   if (_ae && _ae.backLabel) return _ae.backLabel;
   var st = _ae && (_ae.stand || _ae.standPending);
   if (st) {
     var h = st.handoff || st.pend && st.pend.handoff || st.handoff;
-    if (h) return h.backLabel || cap(_aeT('alm_sky'));
+    if (h) return h.backLabel || _aeT('almanac');   // a card's hand-off goes back to the card, which is on the Almanac page
     return _aeInfoName(st.key || (st.pend && st.pend.key) || 'earth');
   }
-  return _aeFrom === 'orrery' ? _aeT('alm_solar_system') : _aeFrom === 'sky' ? cap(_aeT('alm_sky')) : _aeT('almanac');
+  return _aeFrom === 'orrery' ? _aeT('alm_solar_system') : _aeT('almanac');   // opened from the sky card or the hero: the arrow lands on the Almanac page
 }
 function _aeClose() {
   if (!_aeIsOpen || (_ae.hand && _ae.hand.dir < 0)) return;
