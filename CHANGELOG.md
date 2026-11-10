@@ -7,6 +7,39 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Highlights
+
+**Zimi**
+
+- Search finds documents in PDF collections, by their listed title and by the text inside them (#142).
+- Voices work on the portable Linux build (#151).
+- `zimi check` checks a ZIM the way openZIM's zimcheck does.
+- `zimi serve /path/to/zims` works, the same as `--zim-dir` (#152).
+
+**Almanac**
+
+- On a phone the solar system no longer makes the tables page scroll sideways.
+
+### Added
+
+- **PDF collections:** search finds the documents in nautilus and zimgit libraries by their listed title, description and author and by the text inside the PDFs, from an index Zimi builds in the background beside the ZIM (#142).
+- **`list_entries`:** an MCP tool and `/entries` endpoint that lists a source's entries by MIME type or path prefix, paged (#142).
+- **`zimi check FILE...`:** a ZIM's checksum, metadata, icon, redirects and internal links, the checks openZIM's zimcheck makes; `--quick` skips the slow ones.
+- **`zimi serve DIR`:** the ZIM folder as an argument, like `--zim-dir` (#152).
+- **Clear catalog copies:** Manage's cache panel frees the cached catalog and the kept .torrent files of ZIMs that are not installed.
+
+### Fixed
+
+- Voices on the portable Linux build: the helper it was missing is included, a first voice download sets up its engine with the machine's Python or uv, and a disk mounted noexec is named instead of failing (#151).
+- Settings > Language says why a voice can't be installed instead of doing nothing (#151).
+- Settings panes no longer grow wider than their card, so Capture's switches are no longer cut off, and they match the switches everywhere else (#150).
+- Reddot, Zimipedia, ZimiTube, the PDF reader and Manage's Maps pane follow a setting changed in another window.
+- A second `zimi serve -d` started while the first is still starting no longer removes its pid file.
+- The portable build includes Pillow.
+- Place search handles long place words, and small holes in region outlines are kept.
+- Almanac: the solar system is sized by its box, so a phone's tables page no longer scrolls sideways.
+- Almanac clock: picking today returns it to live time.
+
 ## [1.15.4]
 
 ### Highlights
