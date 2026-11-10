@@ -171,9 +171,9 @@ def test_back_to_real_time_by_touch(served, dpr):
                     break
                 pg.wait_for_timeout(300)
                 edges = pg.evaluate(
-                    """() => { var at = function (el, y) { var r = el.getBoundingClientRect(), e = document.elementFromPoint(r.left + r.width / 2, y(r));
+                    """() => { var at = function (el, y) { if (!el) return 'not in view'; var r = el.getBoundingClientRect(), e = document.elementFromPoint(r.left + r.width / 2, y(r));
                   return el.contains(e) ? 'own' : e ? (e.id || e.className || e.tagName) + '@' + Math.round(y(r)) : 'none'; };
-                var now = document.querySelector('.alm-pin-clock .alm-ck-now'), sec = document.querySelector('#alm-secbar-slot #alm-secbar-pills > *');
+                var now = document.querySelector('.alm-pin-clock .alm-ck-now'), sec = Array.prototype.filter.call(document.querySelectorAll('#alm-secbar-slot #alm-secbar-pills > *'), function (p) { var r = p.getBoundingClientRect(), x = r.left + r.width / 2; return x > 0 && x < innerWidth; })[0];
                 return [at(now, function (r) { return r.bottom - 1; }), at(sec, function (r) { return r.top + 1; })]; }"""
                 )
             assert edges == ["own", "own"], edges
