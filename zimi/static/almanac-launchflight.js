@@ -381,7 +381,7 @@ function _lfSkyBatch(dep, ms, obsLat, obsLon) {
   if (!dep || ms < dep.sepMs) return out;
   var w = _lfWatcher(ms, obsLat, obsLon);
   if (w.sunAlt >= AE_SATS_REF.passSunAlt + 1) return out;
-  var area = AE_SATS_REF.areaM2.starlink, before = [];
+  var area = AE_LAUNCH_REF.batchAreaM2, before = [];
   for (var k = 1; k <= LF_BATCH_TRAIL_STEPS; k++) before.push(_lfWatcher(ms - k * LF_BATCH_TRAIL_STEP_S * 1000, obsLat, obsLon));
   for (var i = 0; i < dep.n; i++) {
     var pos = dep.at(ms, i), v = _lfSeenBy(w, pos);

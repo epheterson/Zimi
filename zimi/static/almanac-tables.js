@@ -1968,6 +1968,7 @@ var TB_CONST_ROWS = {
       ['launch_falcon_entry', AE_LAUNCH_REF.falcon.entryBurnS.join('–'), 0, 's', 'SpaceX Starlink 4-9 timeline'],
       ['launch_falcon_land', AE_LAUNCH_REF.falcon.landS, 0, 's', 'SpaceX Starlink 4-9 timeline'],
       ['launch_sight_mag', Object.keys(AE_LAUNCH_REF.sightMag).map(function (k) { return k + ' ' + AE_LAUNCH_REF.sightMag[k]; }).join(', '), 0, '', 'Zimi (estimates)'],
+      ['launch_batch_area', AE_LAUNCH_REF.batchAreaM2, 0, 'm²', 'Zimi (fitted)'],
       ['launch_azimuth', 'sin A = cos i / cos φ', 0, '', 'Sutton, Rocket Propulsion Elements'],
       ['launch_j2', AE_LAUNCH_REF.j2.toExponential(5), 0, '', 'Earth Gravitational Model 1996'],
       ['launch_earth_rate', AE_LAUNCH_REF.earthRateRadS.toExponential(7), 0, 'rad/s', 'IERS'],

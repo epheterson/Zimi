@@ -465,6 +465,7 @@ var AE_LAUNCH_REF = {
   minElDeg: 1,                          // a rocket is seen above this height over the horizon
   darkSunAlt: -3,                       // and the sky is dark enough to see an exhaust once the Sun is below this (start of civil twilight)
   plumeMinKm: 40,                       // a burning engine spreads into a lit cloud above this height
+  batchAreaM2: 20,                      // the size a freshly released Starlink is given for its brightness: fitted so a days-old string is naked-eye (magnitude 3 to 5), as the first nights' reports describe; it flies flat-on, bigger than the 3 m2 of a pass's average view
   sightMag: { jellyfish: -4, flame: -3, dot: 0, day: -3 },   // the brightness each sight is given where a sky wants a magnitude (estimates: a lit exhaust cloud, an engine's flame, a lit stage, a daytime point)
   coastS: 11,                           // seconds from the end of the first stage's burn to the second stage's light (Falcon 9: 2:31 to 2:42)
   insertionKm: [160, 400],              // the height the burn ends at is the orbit's perigee, held between these

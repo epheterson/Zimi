@@ -3794,5 +3794,6 @@
   "tb_kn_launch_falcon_ses": "Falcon 9 : le second étage s’allume à",
   "tb_kn_launch_falcon_seco": "Falcon 9 : la première combustion du second étage s’achève à",
   "tb_kn_sat_leo_gone": "Un satellite en orbite basse n’est pas dessiné si ses éléments ont plus de",
-  "tb_kn_launch_sight_mag": "Éclat de chaque vue là où un ciel demande une magnitude (estimations)"
+  "tb_kn_launch_sight_mag": "Éclat de chaque vue là où un ciel demande une magnitude (estimations)",
+  "tb_kn_launch_batch_area": "La taille donnée à un Starlink tout juste largué pour son éclat"
 }
