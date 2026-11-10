@@ -3692,5 +3692,6 @@
   "alm_blurb_jwst": "Un télescope à miroir doré qui voit les plus anciennes galaxies en infrarouge.",
   "alm_blurb_cassini": "A passé des années autour de Saturne et envoyé un atterrisseur sur Titan.",
   "alm_blurb_galileo": "Le premier engin en orbite autour de Jupiter, qui a lâché une sonde dans ses nuages.",
-  "alm_blurb_europaclipper": "En route vers Jupiter pour étudier l'océan caché d'Europe."
+  "alm_blurb_europaclipper": "En route vers Jupiter pour étudier l'océan caché d'Europe.",
+  "clear_catalog_copies": "Effacer les copies du catalogue ({size})"
 }

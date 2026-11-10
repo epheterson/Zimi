@@ -222,6 +222,26 @@ def test_the_tiles(page):
     )
 
 
+def test_the_orrery_is_never_wider_than_its_box(page):
+    """The orrery was drawn once at the width its box had that moment and kept it in pixels: when the box was narrower afterwards
+    the canvas stood past it and the Almanac scrolled sideways on a phone (CI saw 390 px in a 358 px box)."""
+    page.wait_for_function(
+        "() => _almPanelsReady === true && !!document.getElementById('almanac-orrery')",
+        timeout=60000,
+    )
+    # A narrower screen, looked at before the resize handler's pause is out: the canvas is the box's size by CSS, not the pixels it was drawn at.
+    page.set_viewport_size({"width": 320, "height": VIEW["height"]})
+    try:
+        sizes = page.evaluate(
+            "() => { var cv = document.getElementById('almanac-orrery');"
+            " return [cv.getBoundingClientRect().width, cv.parentElement.getBoundingClientRect().width]; }"
+        )
+        assert sizes[0] == sizes[1] < 358, sizes
+    finally:
+        page.set_viewport_size(VIEW)
+    assert _no_side_scroll(page)
+
+
 @pytest.mark.parametrize("id_", TABLES)
 def test_every_table_opens_and_its_window_changes_its_rows(page, id_):
     _open(page, id_)

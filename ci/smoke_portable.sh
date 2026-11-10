@@ -21,6 +21,9 @@ Z="$STICK/zimi/zimi"
 export ZIMI_TORRENT=0 ZIMI_OFFLINE=1 HOME="$STICK/home"
 mkdir "$HOME"
 
+echo "the voice helper is a file beside the package (the voices venv runs it as a script, #151)..."
+[ -f "$STICK/zimi/_internal/zimi/voicehelper.py" ] || { echo "FAIL: _internal/zimi/voicehelper.py is not in the bundle"; exit 1; }
+
 echo "zimi config (the portable folder decides the paths)..."
 "$Z" config | tee "$STICK/config.txt"
 grep -q "portable" "$STICK/config.txt" || { echo "FAIL: config does not show the portable folder"; exit 1; }

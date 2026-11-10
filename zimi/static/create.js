@@ -2393,7 +2393,7 @@ function _createChipHtml(attrs, words) {
 }
 
 function _createSwitchHtml(attrs) {
-  return '<span class="switch switch-sm"><input type="checkbox" role="switch"' + attrs + '><span class="switch-slider"></span></span>';
+  return '<span class="switch"><input type="checkbox" role="switch"' + attrs + '><span class="switch-slider"></span></span>';
 }
 
 function _createDefaultRowHtml(key, d) {

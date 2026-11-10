@@ -290,6 +290,9 @@ _ENGINE_MODULES = {
     KOKORO: ("kokoro_onnx", "misaki", "jieba", "pypinyin", "cn2an", "num2words"),
 }
 
+NOEXEC_FLAG = getattr(
+    os, "ST_NOEXEC", 8
+)  # statvfs f_flag: the mount refuses to run or map programs
 VOICES_DIR = "voices"
 MANIFEST = "installed.json"
 
@@ -327,7 +330,9 @@ _lock = threading.Lock()  # the engine discovery memo and the download state
 _synth_locks = {e: threading.Lock() for e in ENGINES}
 # Said or waiting, per engine too: a stalled voice's queue filling up must not turn away the voice Automatic gives way to.
 _synth_slots = {e: threading.BoundedSemaphore(1 + SYNTH_QUEUE) for e in ENGINES}
-_synth_waiting = collections.Counter()  # engine -> requests waiting for its lock (under _lock)
+_synth_waiting = (
+    collections.Counter()
+)  # engine -> requests waiting for its lock (under _lock)
 _sampled = {}  # engine -> the fingerprint it was last given a speed sample under
 _found = {}
 _download = {}
@@ -491,7 +496,9 @@ def _engines_marker():
 
     def find():
         try:
-            with open(os.path.join(engines_dir(), ENGINES_MARKER), encoding="utf-8") as f:
+            with open(
+                os.path.join(engines_dir(), ENGINES_MARKER), encoding="utf-8"
+            ) as f:
                 got = json.load(f)
             return got if isinstance(got, dict) else {}
         except (OSError, ValueError):
@@ -514,7 +521,8 @@ def _kokoro_python():
     PATH. Read from names, never by running one: the Dictionary's first
     open asks."""
     lo, hi = KOKORO_PYTHONS
-    if lo <= sys.version_info[:2] < hi:
+    # A frozen build's sys.executable is Zimi itself, not a Python.
+    if not getattr(sys, "frozen", False) and lo <= sys.version_info[:2] < hi:
         return sys.executable
     for name in _PYTHON_NAMES:
         found = shutil.which(name)
@@ -535,8 +543,18 @@ def _setup_plan():
             return Plan(py, ENGINE_REQUIREMENTS, DOWNLOADED, None, ENGINES_BYTES)
         uv = shutil.which("uv")
         if uv:
-            return Plan(UV_PYTHON, ENGINE_REQUIREMENTS, DOWNLOADED, uv, ENGINES_BYTES + UV_PYTHON_BYTES)
-        return Plan(sys.executable, PIPER_REQUIREMENTS, (PIPER,), None, ENGINES_BYTES)
+            return Plan(
+                UV_PYTHON,
+                ENGINE_REQUIREMENTS,
+                DOWNLOADED,
+                uv,
+                ENGINES_BYTES + UV_PYTHON_BYTES,
+            )
+        # Piper alone, on a Python: Zimi's own, or (frozen) the machine's.
+        own = (
+            shutil.which("python3") if getattr(sys, "frozen", False) else sys.executable
+        )
+        return Plan(own, PIPER_REQUIREMENTS, (PIPER,), None, ENGINES_BYTES)
 
     return _memo("setup", find)
 
@@ -551,7 +569,77 @@ def _can_set_up():
     """Whether Zimi can install the engines itself: a Python install can
     (a venv beside it); a desktop build carries them in zimi-voice or not
     at all, and an operator who named a Piper (ZIMI_PIPER) keeps their own."""
-    return not getattr(sys, "frozen", False) and not os.environ.get(PIPER_CMD_ENV, "").strip()
+    if os.environ.get(PIPER_CMD_ENV, "").strip():
+        return False
+    if not getattr(sys, "frozen", False):
+        return True
+    # The portable build carries voicehelper.py as a file and sets the engines
+    # up with the machine's own Python (or uv). The desktop app carries
+    # neither: zimi-voice, or nothing.
+    return os.path.isfile(_helper_script()) and _setup_plan().python is not None
+
+
+def _helper_script():
+    return os.path.join(os.path.dirname(__file__), HELPER_SCRIPT)
+
+
+def _mount_of(path):
+    """The mount point of the filesystem holding ``path``, from /proc/mounts;
+    "" where that can't be read (not Linux)."""
+    best = ""
+    try:
+        real = os.path.realpath(path)
+        with open("/proc/mounts", encoding="utf-8", errors="replace") as f:
+            for line in f:
+                parts = line.split()
+                if len(parts) < 2:
+                    continue
+                mp = parts[1].replace("\\040", " ")
+                if (real == mp or real.startswith(mp.rstrip("/") + "/")) and len(
+                    mp
+                ) >= len(best):
+                    best = mp
+    except OSError:
+        pass
+    return best
+
+
+def noexec_mount(path):
+    """The mount point of the filesystem under ``path`` when it is mounted
+    noexec (nothing there can be mapped as code, so a venv's compiled modules
+    fail to load), else None. Asks the nearest folder that exists, so it can
+    be asked before the folder is made."""
+    probe = os.path.abspath(path)
+    while not os.path.exists(probe) and probe != os.path.dirname(probe):
+        probe = os.path.dirname(probe)
+    try:
+        flags = os.statvfs(probe).f_flag
+    except (OSError, AttributeError):
+        return None
+    if not flags & NOEXEC_FLAG:
+        return None
+    return _mount_of(probe) or probe
+
+
+def setup_problem():
+    """Why the engines could not be installed here, in a sentence, or None.
+    Checked before anything is downloaded, and shown where a voice would
+    otherwise just not be offered."""
+    frozen = getattr(sys, "frozen", False)
+    if os.environ.get(PIPER_CMD_ENV, "").strip():
+        return None
+    if frozen and not os.path.isfile(_helper_script()):
+        return None  # the desktop app: its voices ship in it, or not at all
+    if frozen and _setup_plan().python is None:
+        return "Voices need Python 3 or uv installed on this machine, and neither was found."
+    mount = noexec_mount(engines_dir())
+    if mount:
+        return (
+            "Voices cannot be installed in %s: %s is mounted noexec, so the engines cannot run from it. "
+            "Start Zimi with --data-dir on a disk that allows programs to run."
+            % (engines_dir(), mount)
+        )
+    return None
 
 
 def _runner(engine):
@@ -561,7 +649,9 @@ def _runner(engine):
     helper = helper_command()
     if helper:
         return helper + [engine]
-    script = os.path.join(os.path.dirname(__file__), HELPER_SCRIPT)
+    script = _helper_script()
+    if not os.path.isfile(script):
+        return None  # not on disk (a frozen build without it): nothing to run
     if _has_modules(*_ENGINE_MODULES[engine]):
         return [sys.executable, script, engine]
     own = _engines_python(engine)
@@ -584,6 +674,11 @@ def _set_up_engines():
     from zimi.importer import _run_stream, _venv_bin, build_venv
 
     venv = engines_dir()
+    problem = setup_problem()
+    if problem:
+        with _lock:
+            _download["reason"] = problem
+        return False
     plan = _setup_plan()
     python, requirements, engines = plan.python, plan.requirements, plan.engines
     tail = collections.deque(maxlen=20)
@@ -597,13 +692,24 @@ def _set_up_engines():
             if _download.get("cancel"):
                 raise _Cancelled()
 
-    log.info("Voices: setting up %s with Python %s in %s", ", ".join(engines), python, venv)
+    log.info(
+        "Voices: setting up %s with Python %s in %s", ", ".join(engines), python, venv
+    )
     ok = build_venv(
-        venv, python, requirements, _venv_bin(venv, "python"), say,
-        run=_run_stream, uv=plan.uv,
+        venv,
+        python,
+        requirements,
+        _venv_bin(venv, "python"),
+        say,
+        run=_run_stream,
+        uv=plan.uv,
     )
     if not ok:
         log.warning("Voices: could not set up the engines:\n%s", "\n".join(tail))
+        with _lock:
+            _download["reason"] = "Setting up the engines failed: " + (
+                tail[-1].strip() if tail else "no output"
+            )
         return False
     from zimi import server as _srv
 
@@ -670,7 +776,9 @@ def _package_versions():
     from importlib import metadata
 
     # The engines venv's site-packages too, where the engines live there.
-    paths = sys.path + glob.glob(os.path.join(engines_dir(), "lib*", "python*", "site-packages"))
+    paths = sys.path + glob.glob(
+        os.path.join(engines_dir(), "lib*", "python*", "site-packages")
+    )
     paths += glob.glob(os.path.join(engines_dir(), "Lib", "site-packages"))
     out = {}
     for name in ("piper-tts", "kokoro-onnx"):
@@ -691,7 +799,9 @@ def versions():
         out = {}
         if piper_command():
             pkg = pkgs.get("piper-tts")
-            out[PIPER] = ("Piper %s" % pkg if pkg else "Piper") + ", voices " + PIPER_REVISION
+            out[PIPER] = (
+                ("Piper %s" % pkg if pkg else "Piper") + ", voices " + PIPER_REVISION
+            )
         if kokoro_command():
             pkg = pkgs.get("kokoro-onnx")
             out[KOKORO] = "kokoro-onnx %s" % pkg if pkg else "kokoro-onnx"
@@ -761,7 +871,9 @@ def _fingerprint():
     from zimi import server as _srv
 
     what = dict(_hardware(), zimi=_srv.ZIMI_VERSION, engines=versions())
-    return hashlib.sha1(json.dumps(what, sort_keys=True).encode("utf-8")).hexdigest()[:16]
+    return hashlib.sha1(json.dumps(what, sort_keys=True).encode("utf-8")).hexdigest()[
+        :16
+    ]
 
 
 def _forget_fingerprint():
@@ -875,7 +987,9 @@ def _timed(engine, voice, text, out, weight=TIMING_WEIGHT):
     start = time.monotonic()
     done = _synthesize(engine, voice, text, out)
     if done == OK:
-        _note_timing(engine, time.monotonic() - start, _wav_seconds(out), len(text), cold, weight)
+        _note_timing(
+            engine, time.monotonic() - start, _wav_seconds(out), len(text), cold, weight
+        )
     return done
 
 
@@ -969,7 +1083,9 @@ def _srv_write(t):
     _srv._atomic_write_json(_dir(TIMINGS), t)
 
 
-_testing = {}  # the Test in flight: {"engine", "done", "total", "started"}; {"error"} after one failed
+_testing = (
+    {}
+)  # the Test in flight: {"engine", "done", "total", "started"}; {"error"} after one failed
 
 
 def testing():
@@ -998,12 +1114,19 @@ def start_test(lang, chunks):
     for engine in reversed(ENGINES):  # quickest first: numbers come in soonest
         langs = [p for p, row in said.items() if engine in row["engines"]]
         if langs:
-            todo.append((engine, _primary(lang) if _primary(lang) in langs else langs[0]))
+            todo.append(
+                (engine, _primary(lang) if _primary(lang) in langs else langs[0])
+            )
     with _lock:
         if _testing.get("engine"):
             return None
         _testing.clear()
-        _testing.update(engine=todo[0][0] if todo else "", done=0, total=len(todo), started=int(time.time()))
+        _testing.update(
+            engine=todo[0][0] if todo else "",
+            done=0,
+            total=len(todo),
+            started=int(time.time()),
+        )
 
     def run():
         try:
@@ -1013,7 +1136,9 @@ def start_test(lang, chunks):
                 _test_engine(engine, l, texts)
             with _lock:
                 _testing.clear()
-        except Exception as e:  # anything (a full disk, say): never leave "Testing" on for good
+        except (
+            Exception
+        ) as e:  # anything (a full disk, say): never leave "Testing" on for good
             if isinstance(e, (Busy, Failed)):
                 log.warning("Voices: the speed test stopped: %s", e)
             else:
@@ -1275,7 +1400,11 @@ def _espeak_voices():
             if len(cols) < 2:
                 continue
             code = cols[1]
-            if len(cols) > 4 and cols[4].startswith("art/") and code not in _ESPEAK_CONSTRUCTED:
+            if (
+                len(cols) > 4
+                and cols[4].startswith("art/")
+                and code not in _ESPEAK_CONSTRUCTED
+            ):
                 continue
             parts = code.split("-")
             if code in _ESPEAK_REGIONS:
@@ -1675,14 +1804,19 @@ def warm(langs, engine=None):
         key = _load_key(req)
         with _workers_lock:
             if key in worker.loaded:
-                _sample_in_background(picked[0], lang)  # a lock that was busy at the last warm
+                _sample_in_background(
+                    picked[0], lang
+                )  # a lock that was busy at the last warm
                 continue
             if key in worker.warming:
                 continue
             worker.warming.add(key)
         started.append(picked[0])
         threading.Thread(
-            target=_warm_one, args=(worker, req, key, lang), daemon=True, name="voice-warm"
+            target=_warm_one,
+            args=(worker, req, key, lang),
+            daemon=True,
+            name="voice-warm",
         ).start()
     return started
 
@@ -1701,11 +1835,17 @@ def presay(words):
         text, lang, engine = w.get("text"), w.get("lang"), w.get("engine") or None
         if not (isinstance(text, str) and isinstance(lang, str)):
             continue
-        if clean_text(text) is None or not valid_lang(lang) or (engine is not None and engine not in ENGINES):
+        if (
+            clean_text(text) is None
+            or not valid_lang(lang)
+            or (engine is not None and engine not in ENGINES)
+        ):
             continue
         todo.append((text, lang, engine))
     if todo:
-        threading.Thread(target=_presay_all, args=(todo,), daemon=True, name="voice-presay").start()
+        threading.Thread(
+            target=_presay_all, args=(todo,), daemon=True, name="voice-presay"
+        ).start()
     return len(todo)
 
 
@@ -1780,7 +1920,9 @@ def _sample_speed(engine, lang):
 
 
 def _sample_in_background(engine, lang):
-    threading.Thread(target=_sample_speed, args=(engine, lang), daemon=True, name="voice-sample").start()
+    threading.Thread(
+        target=_sample_speed, args=(engine, lang), daemon=True, name="voice-sample"
+    ).start()
 
 
 def _load_key(req):
@@ -1963,6 +2105,8 @@ def start_download(tag):
     rec = installed().get(tag)
     if rec and _is_current(tag, rec):
         return False, "installed"
+    if not runtime(VOICES[tag].engine) and setup_problem():
+        return False, "blocked"  # said in words by setup_problem()
     global _fetcher
     # A download just cancelled stops at its next chunk: Download again
     # right after Cancel waits for it rather than being refused.
@@ -2001,7 +2145,9 @@ def _fetch_file(url, dest, expect):
     got = 0
     # certifi's bundle: a frozen desktop build has no system certificates.
     with (
-        urllib.request.urlopen(req, timeout=FETCH_TIMEOUT_S, context=_srv.SSL_CTX) as resp,
+        urllib.request.urlopen(
+            req, timeout=FETCH_TIMEOUT_S, context=_srv.SSL_CTX
+        ) as resp,
         open(dest, "wb") as f,
     ):
         while True:
@@ -2039,7 +2185,9 @@ def _fetch_voice(tag):
                 with _lock:
                     if _download.get("cancel"):  # stopped, not failed
                         raise _Cancelled()
-                raise RuntimeError("the engines could not be installed")
+                with _lock:
+                    reason = _download.get("reason")
+                raise RuntimeError(reason or "the engines could not be installed")
             with _lock:
                 if _download.get("cancel"):
                     raise _Cancelled()
@@ -2082,7 +2230,7 @@ def _fetch_voice(tag):
         log.warning("Voices: could not fetch %s: %s", pin.id, e)
         with _lock:
             _download.clear()
-            _download.update({"tag": None, "error": tag})
+            _download.update({"tag": None, "error": tag, "reason": str(e)[:300]})
     finally:
         for part, _final in parts:
             if os.path.exists(part):
@@ -2148,7 +2296,9 @@ def page_payload():
             # which one says it is Manage's choice, not the Dictionary's.
             if (langs.get(lang) or {}).get("engine") not in DOWNLOADED:
                 # The engines first where they are not here: one figure.
-                offers.setdefault(lang, {"tag": tag, "bytes": _bytes(tag) + setup_bytes(pin.engine)})
+                offers.setdefault(
+                    lang, {"tag": tag, "bytes": _bytes(tag) + setup_bytes(pin.engine)}
+                )
     return {
         "langs": langs,
         # Which voices are here, in the address of every word's audio: a
@@ -2193,7 +2343,11 @@ def _manage_row(tag, rec):
         "tag": tag,
         "voice": pin.id,
         "kind": pin.engine,
-        "bytes": rec.get("bytes", _bytes(pin)) if rec else _bytes(pin) + setup_bytes(pin.engine),
+        "bytes": (
+            rec.get("bytes", _bytes(pin))
+            if rec
+            else _bytes(pin) + setup_bytes(pin.engine)
+        ),
         "license": pin.license,
         "credit": pin.credit,
         "credit_required": needs_credit(pin.license),
@@ -2227,7 +2381,11 @@ def _lang_row(primary, have, chosen, fetch_ok):
         stale = [t for t in here if not _is_current(t, have[t])]
         want = stale or ([] if here else tags)
         if want:
-            offer = {"tag": want[0], "bytes": _bytes(want[0]) + setup_bytes(PIPER), "newer": bool(stale)}
+            offer = {
+                "tag": want[0],
+                "bytes": _bytes(want[0]) + setup_bytes(PIPER),
+                "newer": bool(stale),
+            }
     return {
         "lang": primary,
         "engines": options,
@@ -2260,6 +2418,12 @@ def manage_payload():
         "voices": rows,
         "langs": langs,
         "downloading": downloading(),
+        # Why no voice can be set up here, when none is here and none is offered.
+        "problem": (
+            None
+            if (runtime(PIPER) or runtime(KOKORO) or _usable(PIPER))
+            else setup_problem()
+        ),
         "timings": timings(),
         "testing": testing(),
     }
