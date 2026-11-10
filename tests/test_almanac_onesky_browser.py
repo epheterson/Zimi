@@ -834,6 +834,7 @@ def test_the_land_files_wait_for_the_sky_card_to_be_seen_not_for_the_almanac_or_
     card into view does."""
     ctx = _context(browser)
     pg = ctx.new_page()
+    pg.set_viewport_size({"width": 390, "height": 560})  # the sky card is below the first screen
     seen = []
     pg.on("request", lambda r: seen.append(r.url))
     pg.goto(served + "/#almanac", wait_until="load")
