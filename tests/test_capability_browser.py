@@ -83,30 +83,20 @@ def test_software_gl_is_the_low_level_and_the_view_is_a_plain_line(page):
     assert page.evaluate("() => !_ae.gl && !window.THREE")
 
 
-def test_the_gear_offers_the_three_choices_and_Full_tries_the_view(page):
-    page.click("#ae-gear")
-    page.wait_for_selector("input[name=cap-setting]")
-    values = page.evaluate(
-        "() => [...document.querySelectorAll('input[name=cap-setting]')].map(i => i.value)"
-    )
-    assert values == ["auto", "light", "full"]
-    assert (
-        page.evaluate(
-            "() => document.querySelector('input[name=cap-setting]:checked').value"
-        )
-        == "auto"
-    )
-    page.evaluate(
-        "() => document.querySelector('input[name=cap-setting][value=full]').click()"
-    )
+def test_Try_it_anyway_is_Full_and_the_gear_then_offers_the_three_choices(page):
+    # Set aside, the view shows its line, one button and the way back: not the gear.
+    assert not page.is_visible("#ae-gear")
+    page.click(".ae-msg-try")
     page.wait_for_function("() => !_ae.capStatic && !_ae.failed", timeout=10_000)
     assert page.evaluate("() => localStorage.getItem('zimi_cap')") == "full"
     assert page.evaluate("() => ZimiCap.view3d()") == "open"
     # The view is making itself (software GL is slow); what matters is that it did not stay a plain line.
-    page.wait_for_function(
-        "() => document.getElementById('ae-msg').textContent !== 'The 3D view is off on this device. Choose Full in the gear to try it.'",
-        timeout=10_000,
-    )
+    page.wait_for_function("() => !document.getElementById('ae-msg').querySelector('.ae-msg-try')", timeout=10_000)
+    page.click("#ae-gear")
+    page.wait_for_selector("input[name=cap-setting]")
+    values = page.evaluate("() => [...document.querySelectorAll('input[name=cap-setting]')].map(i => i.value)")
+    assert values == ["auto", "light", "full"]
+    assert page.evaluate("() => document.querySelector('input[name=cap-setting]:checked').value") == "full"
 
 
 def test_Auto_puts_the_plain_line_back(page):
