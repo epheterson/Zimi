@@ -96,6 +96,7 @@ const S = {
   EN, HE_PLANETS,
 };
 vm.createContext(S);
+S._almAsset = (p) => p;   // app.js: a /static address with its version; here, as it is
 vm.runInContext(require("./sk.cjs")(), S);   // app.js SK, loaded before every Almanac file
 vm.runInContext(require("./sk.cjs").prefWriteSource(), S);
 vm.runInContext(

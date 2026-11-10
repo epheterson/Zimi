@@ -9,7 +9,7 @@
 // (Earth radii) once a frame.
 
 // ── Constants ──
-var AS_DATA_URL = '/static/earth/sites-v1.json';
+var AS_DATA_URL = _almAsset('/static/earth/sites-v1.json');
 var AS_MRE = 1 / (AE_EARTH_RADIUS_KM * 1000);            // one metre, in Earth radii
 var AS_PATCH_R_M = 24000;                                  // the ground patch's reach: past the horizon of anyone standing on it
 var AS_PATCH_RINGS = 84, AS_PATCH_SEGS = 72, AS_PATCH_R0_M = 0.4;
@@ -66,7 +66,7 @@ function _asLoad() {
 _asLoad();
 
 // The rover's own file, fetched at the first Drive.
-var AS_DRIVE_JS = '/static/almanac-sites-drive.js', AS_LAUNCH_JS = '/static/almanac-sites-launch.js', AS_TRAIL_JS = '/static/almanac-sites-trail.js', _asLoadingScripts = {};
+var AS_DRIVE_JS = _almAsset('/static/almanac-sites-drive.js'), AS_LAUNCH_JS = _almAsset('/static/almanac-sites-launch.js'), AS_TRAIL_JS = _almAsset('/static/almanac-sites-trail.js'), _asLoadingScripts = {};
 function _asLoadScript(src, then) {
   if (_asLoadingScripts[src]) return;
   _asLoadingScripts[src] = true;
