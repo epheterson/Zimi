@@ -115,7 +115,7 @@ def test_leaving_a_mission_puts_back_the_date_the_reader_chose(browser, served):
         ctx.close()
 
 
-STANDING = "() => !!(_ae.stand && _ae.stand.mode === 'ground')"
+STANDING = "() => !!(typeof _ae !== 'undefined' && _ae && _ae.stand && _ae.stand.mode === 'ground')"
 
 
 def test_back_from_stand_here_returns_to_the_globe_it_was_entered_from(browser, served):
