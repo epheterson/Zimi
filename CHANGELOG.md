@@ -19,11 +19,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 - `zimi serve /path/to/zims` works, the same as `--zim-dir` (#152).
 - `zimi check` checks a ZIM the way openZIM's zimcheck does.
 - Manage can clear cached catalog copies.
-
-**Almanac**
-
-- On a phone the solar system no longer makes the tables page scroll sideways.
-- Getting back to 1x by touch is easier.
+- The Docker image builds again with Playwright 1.65.
 
 ### Added
 
