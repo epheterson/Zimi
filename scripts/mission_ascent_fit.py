@@ -12,7 +12,7 @@ import mission_apollo11 as a
 from mission_apollo11_path import ecef_state
 from mission_physics import MU_EARTH, R_EARTH, earth_pole_ecl, elements
 
-OECO_ALT_KM = 62.0
+OECO_ALT_KM = 67.0  # the launch view's Apollo 11 fit (almanac-sites-launch.js): 67 km, 91 km downrange, 2.4 km/s Earth-fixed at 161.6 s; Saturn V AS-506 flight evaluation
 OECO_REL_KMS = 2.40
 INSERT_ALT_KM = 0.5 * (a.PARKING["perigee_km"] + a.PARKING["apogee_km"])
 

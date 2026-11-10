@@ -83,7 +83,7 @@ def assemble(verbose=False):
     ]
     lm_parts = [
         part("site-lm", rx=-90, **{"from": E["csm_siv_sep"], "to": E["eject"]}),
-        part("ms-lm-asc", rx=-90, **{"from": E["csm_siv_sep"], "to": E["eject"]}),
+        part("site-lm-ascent", rx=-90, **{"from": E["csm_siv_sep"], "to": E["eject"]}),
     ]
     # the lunar module parts ride the keyframes of lm_anim, the ascent stage a little above the descent stage
     lm_parts[0]["anim"] = lm_anim
@@ -227,7 +227,7 @@ def assemble(verbose=False):
             "legs": [pair_leg],
             "parts": [
                 part("site-lm", rx=-90),
-                part("ms-lm-asc", B.LM_ASC_Z, rx=-90),
+                part("site-lm-ascent", B.LM_ASC_Z, rx=-90),
                 part("ms-csm", 8.0 + 12.4, rx=180),
             ],
             "flames": [
@@ -302,7 +302,7 @@ def lunar_and_return(fl, out, V):
                          eci(col_rows[col_rows[:, 0] >= E["tei"] - 400], 0.05, ref="earth", max_gap=900.0)],
                 "parts": [part("ms-csm", 0.0)] + [dict(part("site-lm", 0.0), **{"from": 1e12})],
                 "flames": [{"from": t0, "to": t0 + ret.TEI_S, "at": [0, -2.8, 0], "len": 9, "r": 1.1}]}
-    columbia["parts"] = [part("ms-csm", 0.0), part("ms-lm-asc", 12.4 + 2.2, rx=90, **{"from": B.EXTRA["dock2"], "to": B.EXTRA["jettison"]})]
+    columbia["parts"] = [part("ms-csm", 0.0), part("site-lm-ascent", 12.4 + 2.2, rx=90, **{"from": B.EXTRA["dock2"], "to": B.EXTRA["jettison"]})]
     res.append(columbia)
     # ── Eagle ──
     (t_l, Y_l), y_pdi = lm.lm_to_pdi(fl, y_undock, st3["kappa_doi"])
@@ -315,12 +315,12 @@ def lunar_and_return(fl, out, V):
     leg_desc = {"frame": "mcmf", "ref": "moon", "s": pack(thin(km[:, 0:7], 0.003, 20.0), 4, 6), "sd": 150}
     leg_desc["s"] = _with_up(km, leg_desc["s"])
     res.append({"id": "eagle", "on": E["undock"], "off": E["landing"], "legs": [leg_eci, leg_desc],
-                "parts": [part("site-lm"), part("ms-lm-asc", B.LM_ASC_Z)],
+                "parts": [part("site-lm"), dict(part("site-lm-ascent"), at=[0.0, 0.0, B.LM_ASC_Z])],
                 "flames": [{"from": E["doi"], "to": E["doi"] + lm.DOI_S, "at": [0, 0, 1.0], "len": 3.0, "r": 0.4, "rx": 90},
                            {"from": E["pdi"], "to": E["landing"], "at": [0, 0, 1.0], "len": 7.0, "r": 0.7, "rx": 90}]})
     site = km[-1]
     stay = {"frame": "mcmf", "ref": "moon", "att": "level", "s": [[E["landing"], *[round(float(v), 5) for v in site[1:4]], 0, 0, 0], [E["liftoff_moon"] + 5.0, *[round(float(v), 5) for v in site[1:4]], 0, 0, 0]]}
-    res.append({"id": "eagle_surface", "on": E["landing"], "off": E["liftoff_moon"], "legs": [stay], "parts": [part("site-lm"), part("ms-lm-asc", B.LM_ASC_Z)], "flames": [], "dot": False})
+    res.append({"id": "eagle_surface", "on": E["landing"], "off": E["liftoff_moon"], "legs": [stay], "parts": [part("site-lm"), dict(part("site-lm-ascent"), at=[0.0, 0.0, B.LM_ASC_Z])], "flames": [], "dot": False})
     stay2 = dict(stay, s=[[E["liftoff_moon"], *[round(float(v), 5) for v in site[1:4]], 0, 0, 0], [E["splash"] + 120.0, *[round(float(v), 5) for v in site[1:4]], 0, 0, 0]])
     res.append({"id": "eagle_base", "on": E["liftoff_moon"], "off": E["splash"] + 120.0, "legs": [stay2], "parts": [part("site-lm")], "flames": [], "dot": False})
     # ── Eagle's ascent stage: the climb, the coast, and the arc of the terminal phase to Columbia ──
@@ -333,13 +333,9 @@ def lunar_and_return(fl, out, V):
     pre = geo_rows(tE, YE)
     sm_leg = eci(shifted(pre, lambda tt: -0.6 * (tt - E["cm_sm_sep"])), 0.1, max_gap=60.0)
     res.append({"id": "sm", "on": E["cm_sm_sep"], "off": E["entry"] + 120.0, "legs": [sm_leg], "parts": [part("ms-sm", 0.0)], "flames": [], "dot": True})
-    ex = json.load(open(os.path.join(CACHE, "apollo11_entry.json")))["x"]
-    ent_t, ent_Y = ent.fly(np.array(YE[-1]), ex)
-    i_dr = ent.until_drogue(ent_t, ent_Y)
-    ent_rows = np.array([np.concatenate([[ti], path.ecef_state(ti, yi)]) for ti, yi in zip(ent_t[: i_dr + 1], ent_Y[: i_dr + 1])])
+    ent_rows = entry_profile()
     cm_leg1 = eci(pre, 0.02, att="retro", max_gap=30.0)
-    cm_leg2 = {"frame": "ecef", "ref": "earth", "att": "retro", "s": pack(thin(ent_rows, 0.03, 10.0), 4, 6)}
-    # under the parachutes: from the drogue's altitude to the sea in ground-fixed rows (drifting a little with the wind)
+    cm_leg2 = {"frame": "ecef", "ref": "earth", "att": "retro", "s": pack(ent_rows, 4, 6), "sd": 30}
     p0 = ent_rows[-1]
     drogue_t, splash_t = ent_rows[-1, 0], E["splash"]
     main_t = splash_t - 353.0
@@ -354,14 +350,24 @@ def lunar_and_return(fl, out, V):
             alt = 3.0 * (1 - (tt - main_t) / (splash_t - main_t))
         chute_rows.append((tt, alt))
     base_dir = p0[1:4] / np.linalg.norm(p0[1:4])
+    lat_d, lon_d = lat0[0], lat0[1]
     prows = []
-    for (tt, alt) in chute_rows:
-        r = base_dir * (mp.R_EARTH + alt + 0.0)
-        prows.append(np.concatenate([[tt], r, [0, 0, 0]]))
+    for tt, alt in chute_rows:
+        lon = lon_d + math.degrees(CHUTE_DRIFT_KMS * (tt - drogue_t) / (mp.R_EARTH * math.cos(math.radians(lat_d))))
+        prows.append(np.concatenate([[tt], mp.geodetic_to_ecef(lat_d, lon, alt)]))
     prows = np.array(prows)
+    prows = np.hstack([prows, np.gradient(prows[:, 1:4], prows[:, 0], axis=0)])
     cm_leg3 = {"frame": "ecef", "ref": "earth", "att": "level", "s": pack(prows, 4, 6), "sd": 8}
-    res.append({"id": "cm", "on": E["cm_sm_sep"], "off": E["splash"] + 90.0, "legs": [cm_leg1, cm_leg2, cm_leg3],
-                "parts": [part("ms-cm", 0.0, to=drogue_t), dict(part("ms-cm", 0.0, rx=90, **{"from": drogue_t}))], "flames": [], "dot": True})
+    hang = dict(rx=90, **{"from": drogue_t})
+    apex = [0.0, 0.0, 3.2]
+    cm_parts = [
+        part("ms-cm", 0.0, to=drogue_t),
+        part("ms-cm", 0.0, **hang),
+        dict(part("ms-apollo-drogues"), at=apex, rx=90, **{"from": drogue_t, "to": main_t}),
+        dict(part("ms-apollo-mains"), at=apex, rx=90, **{"from": main_t}),
+    ]
+    plasma = {"from": E["entry"] + 20.0, "to": E["entry"] + 20.0 + PLASMA_S, "at": [0, 3.4, 0], "len": 30.0, "r": 1.7, "rx": 180}
+    res.append({"id": "cm", "on": E["cm_sm_sep"], "off": E["splash"] + 90.0, "legs": [cm_leg1, cm_leg2, cm_leg3], "parts": cm_parts, "flames": [plasma], "dot": True})
     return res
 
 
@@ -379,6 +385,8 @@ def ascent_vehicle(fl, t_c, Y_c):
     plane /= np.linalg.norm(plane)
     x = asc.fit_climb(fl, plane, verbose=False)
     tt, yy = asc.climb(fl, plane, x)
+    alt_end = float(np.linalg.norm(yy[-1, 0:3])) - 1737.4
+    print('ascent climb x', x, 'end alt %.1f km, min alt %.1f km, plane.up0 %.3f' % (alt_end, float(np.linalg.norm(yy[:, 0:3], axis=1).min()) - 1737.4, float(np.dot(plane, yy[0, 0:3]) / np.linalg.norm(yy[0, 0:3]))))
     rows_fixed = []
     for ti, yi in zip(tt, yy):
         F = moon_fixed_matrix(ti)
@@ -388,26 +396,28 @@ def ascent_vehicle(fl, t_c, Y_c):
     leg1 = {"frame": "mcmf", "ref": "moon", "att": "level", "s": pack(thin(rows_fixed, 0.003, 20.0), 4, 6), "sd": 30}
     pm, vm = fl.moon.state(tt[-1])
     yg = np.concatenate([yy[-1, 0:3] + pm, yy[-1, 3:6] + vm, [yy[-1, 6]]])
-    tpi, dock = B.EXTRA["tpi"], B.EXTRA["dock2"]
-    ta, Ya = fl.run(yg, tt[-1], tpi, (), step=20.0)
-    j = int(np.argmin(abs(t_c - dock)))
-    ycd = fl.run(Y_c[j], t_c[j], dock, (), step=None)[1][-1] if abs(t_c[j] - dock) > 0.5 else Y_c[j]
-    pt, vt = fl.moon.state(tpi)
-    pd, vd = fl.moon.state(dock)
-    hk = np.cross(Ya[-1][0:3] - pt, Ya[-1][3:6] - vt)
-    v1, _ = lambert(Ya[-1][0:3] - pt, ycd[0:3] - pd, dock - tpi, mp.MU_MOON, prograde=True, normal=hk)
-    y1 = Ya[-1].copy()
-    y1[3:6] = v1 + vt
-    tb, Yb = fl.run(y1, tpi, dock, (), step=10.0)
-    arc = geo_rows(tb, Yb)
-    delta = ycd[0:3] - Yb[-1][0:3]
-    u = (arc[:, 0] - tpi) / (dock - tpi)
-    sm = u * u * (3 - 2 * u)
-    arc[:, 1:4] += delta[None, :] * sm[:, None]
-    arc[:, 4:7] += delta[None, :] * (6 * u * (1 - u) / (dock - tpi))[:, None]
-    rows = np.vstack([geo_rows(ta, Ya), arc[1:]])
+    # The rendezvous: this lunar module coasts in its own orbit, and its offset from Columbia (whose phase is not the report's) is closed smoothly to
+    # nothing at the docking, so the two meet exactly without a transfer arc that would climb hundreds of kilometres.
+    from scipy.interpolate import CubicHermiteSpline
+
+    dock = B.EXTRA["dock2"]
+    t_i = tt[-1]
+    ta, Ya = fl.run(yg, t_i, dock, (), step=10.0)
+    sel_c = (t_c >= t_i - 60) & (t_c <= dock + 60)
+    spl = CubicHermiteSpline(t_c[sel_c], Y_c[sel_c][:, 0:3], Y_c[sel_c][:, 3:6])
+    dspl = spl.derivative()
+    t0b = t_i + 300.0
+    out = []
+    for ti, yi in zip(ta, Ya):
+        off = yi[0:3] - spl(ti)
+        offv = yi[3:6] - dspl(ti)
+        u = min(1.0, max(0.0, (ti - t0b) / (dock - t0b)))
+        sm = u * u * (3 - 2 * u)
+        dsm = 6 * u * (1 - u) / (dock - t0b) if 0 < u < 1 else 0.0
+        out.append(np.concatenate([[ti], yi[0:3] - off * sm, yi[3:6] - offv * sm - off * dsm]))
+    rows = np.array(out)
     return {"id": "eagle_asc", "on": tl, "off": dock, "legs": [leg1, eci(rows, 0.03, ref="moon", max_gap=120.0, sd=120)],
-            "parts": [part("ms-lm-asc", 0.0)],
+            "parts": [part("site-lm-ascent", 0.0)],
             "flames": [{"from": tl, "to": tl + asc.BURN_S, "at": [0, 0, -0.4], "len": 3.0, "r": 0.35, "rx": 90}]}
 
 
@@ -415,6 +425,42 @@ def moon_fixed_matrix(t):
     from mission_apollo11_moon import fixed_matrix
 
     return fixed_matrix(t)
+
+
+CHUTE_DRIFT_KMS = 0.008  # the wind carries the capsule along the surface a little: its attitude needs a horizontal heading
+PLASMA_S = 330.0  # the entry heating: from about 20 s after the interface to the end of the high-speed run (the blackout lasted about 3.5 minutes)
+
+
+def entry_profile():
+    """The entry from the entry interface to the drogue parachutes as a smooth profile through the mission report's published points (MR table 7-VII:
+    400,000 ft at 36,194 ft/s and -6.48 degrees at 195:03:05.7, peak deceleration about 6.5 g, drogues at 195:12:06.9 at 13.30 N 169.15 W): altitude and speed
+    against time as monotone splines, the way along the great circle from the interface to the drogue point. It follows the report's entry events;
+    it is not a simulated guidance law. Rows are Earth-fixed [t, x, y, z, vx, vy, vz] (km, km/s)."""
+    from scipy.interpolate import PchipInterpolator
+
+    t0, t1 = E["entry"], ent.DROGUE["t"]
+    T = t1 - t0
+    k_t = np.array([0, 50, 100, 150, 200, 280, 360, 440, T])
+    k_alt = np.array([121.92, 90.0, 62.0, 50.0, 45.0, 40.0, 33.0, 20.0, ent.DROGUE["alt_km"]])
+    k_v = np.array([11.03, 10.9, 9.5, 6.5, 4.6, 2.9, 1.5, 0.6, 0.15])
+    alt = PchipInterpolator(k_t, k_alt)
+    sp = PchipInterpolator(k_t, k_v)
+    ts = np.arange(0.0, T + 1e-9, 2.0)
+    cum = np.concatenate([[0.0], np.cumsum(0.5 * (sp(ts)[1:] + sp(ts)[:-1]) * 2.0)])
+    frac = cum / cum[-1]
+    p0 = mp.geodetic_to_ecef(ret.EI["lat"], ret.EI["lon"], 0.0)
+    p1 = mp.geodetic_to_ecef(ent.DROGUE["lat"], ent.DROGUE["lon"], 0.0)
+    u0, u1 = p0 / np.linalg.norm(p0), p1 / np.linalg.norm(p1)
+    ang = math.acos(float(np.dot(u0, u1)))
+    rows = []
+    for f, tt in zip(frac, ts):
+        w = (math.sin((1 - f) * ang) * u0 + math.sin(f * ang) * u1) / math.sin(ang)
+        lat = math.degrees(math.asin(w[2]))
+        lon = math.degrees(math.atan2(w[1], w[0]))
+        rows.append([t0 + tt] + list(mp.geodetic_to_ecef(lat, lon, float(alt(tt)))))
+    rows = np.array(rows)
+    vel = np.gradient(rows[:, 1:4], rows[:, 0], axis=0)
+    return np.hstack([rows, vel])
 
 
 def math_lat_lon_alt(p):

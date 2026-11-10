@@ -83,7 +83,12 @@ def fit_climb(fl, plane, verbose=True):
         ]
 
     s = least_squares(
-        resid, [2.0, 0.004], diff_step=1e-5, x_scale=[0.2, 0.0005], max_nfev=60
+        resid,
+        [0.92, 0.00267],
+        bounds=([0.3, 0.0], [3.0, 0.01]),
+        diff_step=1e-5,
+        x_scale=[0.2, 0.0005],
+        max_nfev=60,
     )
     if verbose:
         print(

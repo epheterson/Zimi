@@ -318,6 +318,7 @@ function _aeSiteLight(sc) {
   sh.ambient.value = st.info.ambient;
   sh.sun.value.set(fr.sunLocal[0], fr.sunLocal[1], fr.sunLocal[2]);
   sh.lit.value = lit;
+  if (typeof _asPartsByTime === 'function') _asPartsByTime(st);
   sh.fade.value = _aeFadeU.value;
   // The Sun low: shadows are long and not longer.
   var ss = Math.max(AS_SHADOW_MIN_SUN_Z, sunZ), sl = Math.hypot(fr.sunLocal[0], fr.sunLocal[1]) || 1, k = Math.sqrt(Math.max(0, 1 - ss * ss)) / sl;

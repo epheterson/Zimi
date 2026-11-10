@@ -320,6 +320,44 @@ def m_csm():
 BUILDERS.update({"lm-ascent": m_lm_ascent, "lm": m_lm, "csm": m_csm})
 
 
+def _canopy(m, c, r, h, gores=12, rings=4):
+    """A dome canopy of radius r and height h about the point c, its apex up (y), in alternating orange and white gores."""
+    cx, cy, cz = c
+    pts = lambda rr, y, a: np.array([cx + rr * math.cos(a), cy + y, cz + rr * math.sin(a)])
+    for i in range(gores):
+        a0, a1 = math.radians(i * 360 / gores), math.radians((i + 1) * 360 / gores)
+        for k in range(rings):
+            r0, r1 = r * k / rings, r * (k + 1) / rings
+            y0, y1 = h * math.sqrt(max(0.0, 1 - (r0 / r) ** 2)), h * math.sqrt(max(0.0, 1 - (r1 / r) ** 2))
+            m.add([pts(r0, y0, a0), pts(r1, y1, a0), pts(r1, y1, a1), pts(r0, y0, a1)], [(0, 1, 2), (0, 2, 3), (0, 2, 1), (0, 3, 2)], 0 if i % 2 == 0 else 1)
+    return [pts(r, 0.0, math.radians(a)) for a in (0, 90, 180, 270)]
+
+
+def _hung(m, centres, r, h, line_len):
+    """Canopies on their lines to a payload at the origin: each canopy's skirt at height line_len, four risers to the origin."""
+    for c in centres:
+        for p in _canopy(m, (c[0], line_len, c[1]), r, h):
+            m.tube((0, 0, 0), tuple(p), 0.04, 3, n=4)
+
+
+def m_apollo_mains():
+    """The three main parachutes of the Apollo command module: 25.4 m (83.5 ft) ringsail canopies, orange and white, on 28 m lines (Apollo Operations Handbook)."""
+    m = Stack([ORANGE, WHITE, DARK, ALU])
+    ring = 11.5
+    _hung(m, [(ring * math.cos(math.radians(a)), ring * math.sin(math.radians(a))) for a in (90, 210, 330)], 25.4 / 2, 9.0, 28.0)
+    return m.save("apollo-mains")
+
+
+def m_apollo_drogues():
+    """The two drogue parachutes: 4.9 m (16.5 ft) conical ribbon canopies on 14 m lines (Apollo Operations Handbook)."""
+    m = Stack([ORANGE, WHITE, DARK, ALU])
+    _hung(m, [(-3.0, 0.0), (3.0, 0.0)], 4.9 / 2, 2.4, 14.0)
+    return m.save("apollo-drogues")
+
+
+BUILDERS.update({"apollo-mains": m_apollo_mains, "apollo-drogues": m_apollo_drogues})
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--only", default="")
