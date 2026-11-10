@@ -8699,7 +8699,7 @@ function _aeBackLabel() {
   }
   return _aeFrom === 'orrery' ? _aeT('alm_solar_system') : _aeT('almanac');   // opened from the sky card or the hero: the arrow lands on the Almanac page
 }
-function _aeClose() {
+function _aeClose(toOrrery) {
   if (!_aeIsOpen || (_ae.hand && _ae.hand.dir < 0)) return;
   if (_ae.site) _aeSiteLeave(true);   // the ground's camera gives way before the view is handed back to the page
   if (_ae.mission) _amStop(true);
