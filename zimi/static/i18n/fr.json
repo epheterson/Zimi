@@ -3831,7 +3831,7 @@
   "alm_ms_ph_final": "Approche finale",
   "tb_kn_ms_a11_zero": "Apollo 11 : instant zéro",
   "tb_kn_ms_park": "Apollo 11 : orbite d'attente (apogée × périgée, inclinaison)",
-  "tb_kn_ms_tli": "Apollo 11 : allumage d'injection translunaire (temps de vol)",
+  "tb_kn_ms_tli": "Apollo 11 : heure d'allumage de la TLI",
   "tb_kn_ms_loi": "Apollo 11 : mise en orbite lunaire (début, durée, orbite)",
   "tb_kn_ms_pdi": "Apollo 11 : descente motorisée (début, porte haute)",
   "tb_kn_ms_land": "Apollo 11 : atterrissage (heure, lieu)",
@@ -3844,5 +3844,11 @@
   "alm_ms_plan_axes": "Lancement → · Arrivée ↑",
   "alm_ms_plan_fly": "La faire voler",
   "tb_kn_ms_entry": "Apollo 11 : trajectoire de rentrée",
-  "tb_kn_ms_entry_v": "Suit les événements d'entrée du rapport de mission ; pas une loi de guidage simulée"
+  "tb_kn_ms_entry_v": "Suit les événements d'entrée du rapport de mission ; pas une loi de guidage simulée",
+  "alm_ms_back": "Retour à la mission",
+  "alm_ms_ph_chutes": "Parachutes",
+  "alm_ms_ph_splash": "Amerrissage",
+  "tb_kn_ms_tli_v": "Décalée d'environ deux minutes par rapport au rapport, à l'heure où l'orbite de parking ajustée atteint la latitude du rapport (8,03 S)",
+  "tb_kn_ms_rdv": "Apollo 11 : rendez-vous",
+  "tb_kn_ms_rdv_v": "Une réduction lissée de l'écart du module lunaire avec Columbia jusqu'à l'amarrage ; pas la séquence coelliptique du rapport"
 }

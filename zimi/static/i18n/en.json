@@ -3831,7 +3831,7 @@
   "alm_ms_ph_final": "Final approach",
   "tb_kn_ms_a11_zero": "Apollo 11 range zero",
   "tb_kn_ms_park": "Apollo 11 parking orbit (apogee × perigee, inclination)",
-  "tb_kn_ms_tli": "Apollo 11 translunar injection burn (GET)",
+  "tb_kn_ms_tli": "Apollo 11 TLI ignition time",
   "tb_kn_ms_loi": "Apollo 11 lunar orbit insertion (start, length, orbit)",
   "tb_kn_ms_pdi": "Apollo 11 powered descent (start, high gate)",
   "tb_kn_ms_land": "Apollo 11 touchdown (time, place)",
@@ -3844,5 +3844,11 @@
   "alm_ms_plan_axes": "Launch → · Arrival ↑",
   "alm_ms_plan_fly": "Fly it",
   "tb_kn_ms_entry": "Apollo 11 entry path",
-  "tb_kn_ms_entry_v": "Follows the mission report's entry events; not a simulated guidance law"
+  "tb_kn_ms_entry_v": "Follows the mission report's entry events; not a simulated guidance law",
+  "alm_ms_back": "Back to the mission",
+  "alm_ms_ph_chutes": "Parachutes",
+  "alm_ms_ph_splash": "Splashdown",
+  "tb_kn_ms_tli_v": "Moved about two minutes from the report's, to the time the fitted parking orbit reaches the report's latitude (8.03 S)",
+  "tb_kn_ms_rdv": "Apollo 11 rendezvous",
+  "tb_kn_ms_rdv_v": "A smoothed closure of the lander's offset from Columbia to the docking time; not the report's coelliptic sequence"
 }
