@@ -398,8 +398,8 @@ function _aeStCoverPixels(tex) {   // the colour map's pixels, once
   cx.drawImage(im, 0, 0, mw, mh);
   return { w: mw, h: mh, d: cx.getImageData(0, 0, mw, mh).data };
 }
-function _aeStForest(px, lat, lon) {   // 0..1: how much of this place the map shows as forest
-  var x = Math.min(px.w - 1, Math.max(0, Math.floor((lon + 180) / 360 * px.w))), y = Math.min(px.h - 1, Math.max(0, Math.floor((90 - lat) / 180 * px.h))), i = 4 * (y * px.w + x);
+function _aeStForest(px, lat, lon) {   // 0..1: how much of this place the map shows as forest (the bitmap is flipped, south first, as the ground's own lookup assumes)
+  var x = Math.min(px.w - 1, Math.max(0, Math.floor((lon + 180) / 360 * px.w))), y = Math.min(px.h - 1, Math.max(0, Math.floor((lat + 90) / 180 * px.h))), i = 4 * (y * px.w + x);
   var r = px.d[i] / 255, g = px.d[i + 1] / 255, b = px.d[i + 2] / 255, lum = 0.3 * r + 0.59 * g + 0.11 * b;
   if (g < r * 1.02 || g < b * 1.08) return 0;
   return Math.max(0, Math.min(1, (0.42 - lum) / 0.2));
