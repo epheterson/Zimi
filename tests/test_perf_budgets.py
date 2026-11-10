@@ -93,7 +93,7 @@ ALMANAC_MAX_REQUESTS = 20
 ALMANAC_MAX_KB = 1400
 # Then the 3D view, opened as a tap on the Moon opens it (10 requests, 602 KB today).
 EARTH_MAX_REQUESTS = 20   # the sky, sun, orrery hand-over and land modules came with 1.16; the 5 percent budget below is the real gate
-EARTH_MAX_KB = 800
+EARTH_MAX_KB = 1500   # includes the Moon's 4096 map (730 KB), which 1.15.4 fetched on Home; the globe does not need it for its first frame (see the 5 percent test)
 # Files that must NOT come with Home or with the Almanac: the 3D view loads on its first use.
 LAZY_PREFIXES = (
     "/static/earth/three",

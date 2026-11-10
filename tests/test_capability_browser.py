@@ -114,34 +114,21 @@ def test_Auto_puts_the_plain_line_back(page):
     page.wait_for_function("() => _ae.capStatic && _ae.failed", timeout=20_000)
     assert page.evaluate("() => localStorage.getItem('zimi_cap')") == "auto"
     assert not page.errors, page.errors
-def _almanac_with(served, init, idle_ms=6000):
-    """Open the Almanac on a fresh page under `init` and wait out the quiet-time preload; whether almanac-earth.js came."""
-    from playwright.sync_api import sync_playwright
-
-    with sync_playwright() as pw:
-        br = pw.chromium.launch(args=GL_ARGS)
-        ctx = br.new_context(
-            viewport={"width": 390, "height": 844},
-            device_scale_factor=2,
-            has_touch=True,
-            is_mobile=True,
-            service_workers="block",
-        )
+def _almanac_with(page, served, init, idle_ms=6000):
+    """Open the Almanac on a fresh context under `init` and wait out the quiet-time preload; whether almanac-earth.js came."""
+    ctx = page.context.browser.new_context(viewport={"width": 390, "height": 844}, device_scale_factor=2, has_touch=True, is_mobile=True, service_workers="block")
+    try:
         ctx.add_init_script(init)
         pg = ctx.new_page()
         pg.goto(served + "/#almanac", wait_until="load")
-        pg.wait_for_function(
-            "() => typeof _almanacLoaded !== 'undefined' && _almanacLoaded && typeof ZimiCap !== 'undefined'",
-            timeout=120_000,
-        )
+        pg.wait_for_function("() => typeof _almanacLoaded !== 'undefined' && _almanacLoaded && typeof ZimiCap !== 'undefined'", timeout=120_000)
         pg.wait_for_timeout(idle_ms)
-        came = pg.evaluate("() => typeof window.openAlmanacEarth === 'function'")
-        low = pg.evaluate("() => ZimiCap.lowPower()")
-        br.close()
-        return came, low
+        return pg.evaluate("() => typeof window.openAlmanacEarth === 'function'"), pg.evaluate("() => ZimiCap.lowPower()")
+    finally:
+        ctx.close()
 
 
-def test_the_page_holds_the_3d_files_back_on_what_capability_calls_low(served):
+def test_the_page_holds_the_3d_files_back_on_what_capability_calls_low(page, served):
     mem1 = "Object.defineProperty(navigator, 'deviceMemory', { get: () => 1 });"
     came, low = _almanac_with(
         served, mem1 + "try { localStorage.setItem('zimi_cap', 'auto'); } catch (e) {}"
