@@ -11,6 +11,7 @@ var AE_ST_PI = '3.14159265';
 var AE_ST_SNOW_LINE_M = 5000, AE_ST_SNOW_LINE_POW = 2.2, AE_ST_TREE_BELOW_M = 600;   // the snow line over the equator and how it falls with latitude (about 2,250 m at 46 N), the trees stop this far below it
 var AE_ST_COVER_WOBBLE_M = 160, AE_ST_SLOPE_GAIN = 1.6;   // how far the lines wander, and the DEM's slopes made steeper (its cells smooth them)
 var AE_ST_GLARE = [0.3, 0.04];   // the glare round the Sun: its peak (a share of the Sun's light) and the angle (radians) where it has halved twice
+var AE_ST_FAR_HAZE = 0.55;   // the Earth's terrain 20 km and more away keeps this share of the air's in-scatter: a range 50 km off is a blue-grey shape against the sky, not erased by it
 var AE_ST_DISC_K_PER_E = 40;   // the exposure a lit disc is held under, over its sunlight: a mean lunar albedo (0.12) comes out about three quarters bright
 var AE_ST_SUN_DISC_GAIN = 6e4;     // the Sun's disc against the sky's glow: stays a distinct disc where thick dust dims and blues it (Mars at sunset)
 var AE_ST_FINE_SLOPE = 0.045;   // the ground's fine relief: its height over its own wavelength (about 3 degrees), at every scale
@@ -428,7 +429,7 @@ var AE_ST_GROUND_FRAG = [
   'uniform vec3 uCam; uniform float uKg, uPixAng, uTime;',
   'uniform sampler2D uMap; uniform float uMapped, uGrey; uniform vec3 uBase, uGain;',
   'uniform vec3 uAmbient, uSkyHor, uSkyZen, uE2, uDir2;',
-  'uniform vec2 uHead; uniform float uCloudDim; uniform float uGrass, uCanopy; uniform float uLommel, uRough, uRock, uDetail, uCover, uDiffuse, uVis, uDirect; uniform vec3 uDiffSky;',
+  'uniform vec2 uHead; uniform float uCloudDim; uniform float uGrass, uTundra, uCanopy; uniform float uLommel, uRough, uRock, uDetail, uCover, uDiffuse, uVis, uDirect; uniform vec3 uDiffSky;',
   'varying vec3 vP, vN, vDir; varying float vH, vSea, vShade;',
   // Rock, fractal bumps and mottling at the scales a pixel can show, all fixed to the ground (the camera never moves on it).
   'float fine(vec3 p, float foot) {',
@@ -491,6 +492,11 @@ var AE_ST_GROUND_FRAG = [
   '    float lg = min(dot(alb, vec3(0.3, 0.59, 0.11)), 0.2), dull = 1.0 - smoothstep(0.0, 0.06, alb.g - max(alb.r, alb.b));',
   '    alb = mix(alb, vec3(0.72, 1.0, 0.42) * lg * 0.7, uGrass * (0.55 + 0.4 * dull));',
   '  }',
+  // Tundra: low, dull, no green: the map's brightness kept in a brown-olive.
+  '  if (uDetail > 0.5 && vSea < 0.5 && uTundra > 0.0) {',
+  '    float lt = min(dot(alb, vec3(0.3, 0.59, 0.11)), 0.17);',
+  '    alb = mix(alb, vec3(0.62, 0.52, 0.36) * lt * 0.85, uTundra * 0.7);',
+  '  }',
   // Ground cover by height, slope and latitude (the Earth's): snow above the snow line, bare rock on steep ground and above the
   // trees, the Blue Marble's own tint elsewhere; the lines wander with a slow noise so no height is a ruled edge.
   '  if (uCover > 0.5 && vSea < 0.5) {',
@@ -541,7 +547,7 @@ var AE_ST_GROUND_FRAG = [
   '  if (uDiffuse > 0.5) { float T = exp(-dist * 0.001 / uVis); L = L * T + uDiffSky * (1.0 - T); }',
   '  else if (uAtmo > 0.5) {',
   '    vec3 o = uCam * 0.001, d = -V, Tt, ins; float t0, t1;',
-  '    if (airSpan(o, d, t0, t1)) { t1 = min(t1, dist * 0.001); if (t1 > t0) { ins = inscatterGround(o + d * t0, d, t1 - t0, Tt); L = L * Tt + ins; } }',
+  '    if (airSpan(o, d, t0, t1)) { t1 = min(t1, dist * 0.001); if (t1 > t0) { ins = inscatterGround(o + d * t0, d, t1 - t0, Tt); ins *= mix(1.0, ' + AE_ST_FAR_HAZE.toFixed(2) + ', smoothstep(5000.0, 20000.0, dist) * uDetail); L = L * Tt + ins; } }',
   '  }',
   '  gl_FragColor = vec4(tone(L, uKg), 1.0);',
   '}'

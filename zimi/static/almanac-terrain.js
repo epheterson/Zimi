@@ -23,10 +23,10 @@ var AE_TERRAIN_OCTAVE = 2.1;                            // wavelengths of the ge
 // depth over radius.
 var AE_STAND_BODIES = {
   earth: { km: 6371.0, flat: 0.00335281, terrain: true, sea: true, relief: true, fbm: { amp: 260, lam: [24, 0.002], H: 0.85, ridge: 0.65 } },
-  moon: { km: 1737.4, terrain: true, fbm: { amp: 70, lam: [24, 0.002], H: 0.9, ridge: 0 }, craters: { density: 0.6, rMax: 14, depth: 0.17 } },
-  mercury: { km: 2439.7, terrain: true, fbm: { amp: 110, lam: [24, 0.002], H: 0.9, ridge: 0 }, craters: { density: 0.6, rMax: 14, depth: 0.15 } },
+  moon: { km: 1737.4, terrain: true, fbm: { amp: 70, lam: [24, 0.002], H: 0.9, ridge: 0 }, craters: { density: 0.6, rMax: 5, depth: 0.12 } },
+  mercury: { km: 2439.7, terrain: true, fbm: { amp: 110, lam: [24, 0.002], H: 0.9, ridge: 0 }, craters: { density: 0.6, rMax: 6, depth: 0.12 } },
   venus: { km: 6051.8, terrain: true, relief: true, fbm: { amp: 70, lam: [24, 0.002], H: 0.8, ridge: 0.6 } },
-  mars: { km: 3396.2, flat: 0.00589, terrain: true, relief: true, fbm: { amp: 110, lam: [24, 0.002], H: 0.85, ridge: 0.2 }, craters: { density: 0.4, rMax: 10, depth: 0.12 } },
+  mars: { km: 3396.2, flat: 0.00589, terrain: true, relief: true, fbm: { amp: 110, lam: [24, 0.002], H: 0.85, ridge: 0.2 }, craters: { density: 0.4, rMax: 6, depth: 0.1 } },
   io: { km: 1821.6, fbm: { amp: 260, lam: [24, 0.002], H: 0.9, ridge: 0.3 } },
   europa: { km: 1560.8, fbm: { amp: 25, lam: [24, 0.002], H: 0.7, ridge: 0.85 }, craters: { density: 0.06, rMax: 5, depth: 0.06 } },
   ganymede: { km: 2634.1, fbm: { amp: 120, lam: [24, 0.002], H: 0.85, ridge: 0.5 }, craters: { density: 0.4, rMax: 12, depth: 0.1 } },

@@ -436,6 +436,82 @@ def test_a_provider_eclipse_dims_the_sun_shows_stars_and_draws_the_moon_over_the
     assert not page.errors, page.errors
 
 
+def _ground_luma(page):
+    """The mean linear luminance of the ground band of the picture (the lower quarter, above the clock)."""
+    import io
+
+    from PIL import Image
+
+    im = Image.open(io.BytesIO(page.screenshot())).convert("RGB")
+    w, h = im.size
+    band = im.crop((0, int(h * 0.62), w, int(h * 0.86))).resize((60, 24))
+    px = list(band.getdata())
+    return sum(0.2126 * (r / 255) ** 2.2 + 0.7152 * (g / 255) ** 2.2 + 0.0722 * (b / 255) ** 2.2 for r, g, b in px) / len(px)
+
+
+def test_the_ground_is_dark_at_night_under_a_providers_huge_exposure(page):
+    """A provider's night exposure is millions: any floor of this view's own light on the ground would glow (a green night at Boulder).
+    A stub with the real provider's measured values: ambient ~2e-10 and exposureK 2.5e6 at Sun -25, ambient ~1e-2 and K 32 at noon."""
+    _stand_anywhere(page, "earth", 40.0, -105.0)
+    page.evaluate(
+        """() => { _aeStandAir = { wants: function (st) { return st.key === 'earth'; },
+          glsl: 'uniform vec3 uTest; vec3 oaSky(vec3 d) { return uTest; }', uniforms: { uTest: [1e-9, 1e-9, 2e-9] }, update: function () {},
+          exposureK: function (st, fr) { return fr.sunAlt > -6 ? 32 : 2.5e6; },
+          ambient: function (st, fr) { return fr.sunAlt > -6
+            ? { amb: [0.0096, 0.0202, 0.0454], horizon: [0.0517, 0.0818, 0.107], zenith: [0.0094, 0.0178, 0.0385] }
+            : { amb: [2e-10, 3.2e-10, 5.7e-10], horizon: [2.3e-9, 2.2e-9, 1.4e-9], zenith: [4.2e-10, 6.9e-10, 7.1e-10] }; } };
+          window.__go = function (ms) { var st = _ae.stand; _aeGoTo(ms); st.handoff = { clouds: 'clear' }; st.userYaw = Math.PI * 1.5 - st.yaw; st.fr = null; st.dirty = true; _ae.dirty = true; _aeKick(); }; }"""
+    )
+    page.evaluate("() => window.__go(Date.UTC(2026, 5, 20, 18, 0, 0))")
+    page.wait_for_function("() => _ae.stand.fr && _ae.stand.fr.sunAlt > 50 && _ae.stand.photo.provAmb === true", timeout=60_000, polling=250)
+    page.wait_for_timeout(2500)
+    noon = _ground_luma(page)
+    night_ms = page.evaluate(
+        """() => { var st = _ae.stand, t0 = Date.UTC(2026, 5, 21, 3, 0, 0), best = t0, bd = 999;
+          for (var t = t0; t < t0 + 8 * 3600000; t += 300000) { var d = Math.abs(_aeStFrame(st, t).sunAlt + 25); if (d < bd) { bd = d; best = t; } } return best; }"""
+    )
+    page.evaluate("(ms) => window.__go(ms)", night_ms)
+    page.wait_for_function("() => _ae.stand.fr && _ae.stand.fr.sunAlt < -20 && _ae.stand.photo.provAmb === true", timeout=60_000, polling=250)
+    page.wait_for_timeout(2500)
+    night = _ground_luma(page)
+    page.evaluate("() => { _aeStandAir = null; }")
+    _leave(page)
+    assert noon > 0.02, noon
+    assert night < 0.03 * noon, (night, noon)
+    assert not page.errors, page.errors
+
+
+def test_a_direct_handoff_is_on_the_ground_at_once_and_says_when_its_first_frame_is_drawn(page):
+    """h.direct: no flight down; h.firstFrame: a promise of the first live ground picture (the card holds its still until then)."""
+    page.evaluate(
+        "() => { window.__back = 0; window.__h = { lat: 46.0, lon: 6.85, ms: Date.UTC(2026, 5, 21, 10, 0), heading: 123, direct: true, back: function () { window.__back++; } }; }"
+    )
+    assert page.evaluate("async () => { await _aeStandOpen(window.__h); return await window.__h.firstFrame; }") is True
+    assert page.evaluate("() => _ae.stand.mode") == "ground"
+    hud = page.evaluate("() => document.getElementById('ae-stand-text').innerText")
+    import re
+
+    assert re.search(r"☀ -?\d+°( ↓)? · [NESW]+\s+\d+° [NESW]+", hud), hud  # the Sun's height is degrees, its bearing the letter
+    page.evaluate("() => _aeStandClose()")
+    page.wait_for_function("() => !_ae.stand && window.__back === 1", timeout=60_000, polling=250)
+    assert not page.errors, page.errors
+
+
+def test_a_night_on_the_moon_offers_the_way_to_the_next_sunrise(page):
+    _stand_anywhere(page, "moon", 20.19, 30.77)
+    night = page.evaluate(
+        """() => { var st = _ae.stand, t0 = Date.UTC(2026, 10, 10, 0, 0, 0);
+          for (var t = t0; t < t0 + 30 * 86400000; t += 3600000) if (_aeStFrame(st, t).sunAlt < -10) return t; return null; }"""
+    )
+    assert night
+    page.evaluate("(ms) => { _aeGoTo(ms); _ae.stand.fr = null; _ae.stand.dirty = true; _ae.dirty = true; _aeKick(); }", night)
+    page.wait_for_function("() => document.querySelector('[data-ae-sunrise]')", timeout=60_000, polling=250)
+    page.evaluate("() => document.querySelector('[data-ae-sunrise]').click()")
+    page.wait_for_function("() => _ae.stand.fr && _ae.stand.fr.sunAlt >= -0.5", timeout=60_000, polling=250)
+    _leave(page)
+    assert not page.errors, page.errors
+
+
 def test_the_live_sky_cards_handoff_opens_stand_facing_its_way_and_close_goes_back(
     page,
 ):
