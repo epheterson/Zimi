@@ -347,6 +347,7 @@ function _lfThen(L, place, seen) {
 // ── For a sky that draws what it is given ──
 // What a place sees at an instant, as plain objects a sky can paint: {kind, name, az, el, mag, rgb, trail, sight}. The 2D live
 // sky (almanac-launches.js) and the ground view's sky-objects hook both read these.
+var LF_BATCH_TRAIL_STEPS = 2, LF_BATCH_TRAIL_STEP_S = 2;   // a released satellite's short tail: two points, two seconds apart (four seconds)
 var LF_SKY_TRAIL_S = 12, LF_SKY_TRAIL_STEP_S = 2;   // a rocket's trail: this far back, a point this often
 var LF_SIGHT_RGB = { jellyfish: [160, 215, 255], flame: [255, 170, 90], dot: [255, 244, 225], day: [255, 244, 225] };
 // The rocket of a launch (flight: _lfAscent's, L: the launch) at ms as seen from a place, or null when it is not up or not
@@ -380,12 +381,19 @@ function _lfSkyBatch(dep, ms, obsLat, obsLon) {
   if (!dep || ms < dep.sepMs) return out;
   var w = _lfWatcher(ms, obsLat, obsLon);
   if (w.sunAlt >= AE_SATS_REF.passSunAlt + 1) return out;
-  var area = AE_SATS_REF.areaM2.starlink;
+  var area = AE_SATS_REF.areaM2.starlink, before = [];
+  for (var k = 1; k <= LF_BATCH_TRAIL_STEPS; k++) before.push(_lfWatcher(ms - k * LF_BATCH_TRAIL_STEP_S * 1000, obsLat, obsLon));
   for (var i = 0; i < dep.n; i++) {
     var pos = dep.at(ms, i), v = _lfSeenBy(w, pos);
     if (v.el < 0 || !v.lit) continue;
+    var trail = [];
+    for (k = 0; k < before.length; k++) {
+      var q = _lfSeenBy(before[k], dep.at(ms - (k + 1) * LF_BATCH_TRAIL_STEP_S * 1000, i));
+      if (q.el < 0) break;
+      trail.push({ az: q.az, el: q.el });
+    }
     var rho = [w.o[0] - pos[0], w.o[1] - pos[1], w.o[2] - pos[2]], phase = Math.acos(Math.max(-1, Math.min(1, _lfDot(w.sun, rho) / v.range)));
-    out.push({ kind: 'sat', name: '', az: v.az, el: v.el, mag: _lfMagnitude(area, v.range, phase), km: Math.hypot(pos[0], pos[1], pos[2]) - LF_MEAN_RADIUS_KM });
+    out.push({ kind: 'sat', name: '', trail: trail, az: v.az, el: v.el, mag: _lfMagnitude(area, v.range, phase), km: Math.hypot(pos[0], pos[1], pos[2]) - LF_MEAN_RADIUS_KM });
   }
   return out;
 }
@@ -400,6 +408,6 @@ function _lfStandObjects(flight, L, dep, ms, lat, lon) {
     out.push({ kind: 'rocket', name: r.name, az: r.az, el: r.el, mag: r.mag, rgb: rgb, trail: r.trail });
     if (r.sight === 'jellyfish') out.push({ kind: 'plume', name: r.name, az: r.az, el: r.el, mag: r.mag + 1, rgb: rgb });
   }
-  _lfSkyBatch(dep, ms, lat, lon).forEach(function (v) { out.push({ kind: 'train', name: L.mission || L.name, az: v.az, el: v.el, mag: v.mag, rgb: [1, 0.94, 0.8] }); });
+  _lfSkyBatch(dep, ms, lat, lon).forEach(function (v) { out.push({ kind: 'train', name: L.mission || L.name, az: v.az, el: v.el, mag: v.mag, rgb: [1, 0.94, 0.8], trail: v.trail }); });
   return out;
 }

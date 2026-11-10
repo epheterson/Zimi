@@ -279,7 +279,7 @@ const flight = S._lfAscent(SLC40);
   const f25 = S._lfAscent({ name: 'Falcon 9', lat: 28.608, lon: -80.604, siteName: 'Kennedy', incDeg: 53.05, perigeeKm: 261, ok: true });
   const dep = S._lfDeploy(L25, f25, t25, 63), at = Date.UTC(2021, 4, 7, 4, 19);
   const train = S._lfStandObjects(f25, { name: 'Falcon 9', mission: 'Starlink V1.0-L25', ms: t25, lat: 28.608, lon: -80.604, ok: true }, dep, at, 39.22, -121.06);
-  check(train.length > 20 && train.every((x) => x.kind === 'train' && x.el >= 0 && x.az >= 0 && x.az < 360 && isFinite(x.mag)), 'the L25 batch over Grass Valley on 6 May: ' + train.length + ' train points');
+  check(train.length > 20 && train.every((x) => x.kind === 'train' && x.trail.length >= 1 && x.el >= 0 && x.az >= 0 && x.az < 360 && isFinite(x.mag)), 'the L25 batch over Grass Valley on 6 May: ' + train.length + ' train points');
   check(S._lfStandObjects(f25, { name: 'Falcon 9', ms: t25, lat: 28.608, lon: -80.604, ok: true }, null, at, 39.22, -121.06).length === 0, 'and with the batch not asked for, none');
 }
 
