@@ -71,12 +71,11 @@ function _atListHtml() {
   return html;
 }
 function _atDetailHtml(m) {
-  return _atHeader(_alThenAtTitle(m)) + '<ul class="al-facts">' +
-    '<li>' + _atSvg('<path d="M4 6h16v14H4zM4 10h16M8 3v4M16 3v4"/>') + '<span>' + _almEsc(_atWhen(m)) + '</span></li>' +
+  return _atHeader(_alThenAtTitle(m)) + '<p class="at-when">' + _almEsc(_atWhen(m)) + '</p><ul class="al-facts">' +
     '<li>' + _atSvg('<path d="M12 21.5s-6.5-6.2-6.5-11.3a6.5 6.5 0 0 1 13 0c0 5.1-6.5 11.3-6.5 11.3z"/><circle cx="12" cy="10.2" r="2.3"/>') + '<span>' + _almEsc(m.place.name) + '</span></li>' +
     '<li>' + _atSvg(AT_ICON) + '<span>' + _almEsc(_atSeeText(m)) + '</span></li></ul>' +
     '<p class="al-note">' + _almEsc(m.notes) + '</p>' +
-    '<div class="al-acts"><button type="button" class="ae-btn" id="at-stand">' + _atSvg('<circle cx="12" cy="5" r="2.2"/><path d="M12 8v7M8 11l4-1 4 1M9.5 21l2.5-6 2.5 6"/>', 18) + _almEsc(_aeT('then_stand')) + '</button>' +
+    '<div class="al-acts"><button type="button" class="ae-btn at-primary" id="at-stand">' + _atSvg('<circle cx="12" cy="5" r="2.2"/><path d="M12 8v7M8 11l4-1 4 1M9.5 21l2.5-6 2.5 6"/>', 18) + _almEsc(_aeT('then_stand')) + '</button>' +
     (_atBody(m) === 'earth' ? '<button type="button" class="ae-btn" id="at-sky">' + _atSvg('<path d="M3 18c4-9 10-13 18-13"/><circle cx="12" cy="10" r="1.8" fill="currentColor" stroke="none"/>', 18) + _almEsc(_aeT('then_live_sky')) + '</button>' : '') + '</div>' +
     '<p class="al-note">' + m.refs.map(function (r) { return '<a href="' + _almEsc(r) + '" target="_blank" rel="noopener noreferrer">' + _almEsc(m.source.name) + '</a>'; }).slice(0, 1).join('') + '</p>';
 }
