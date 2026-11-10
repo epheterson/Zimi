@@ -112,6 +112,11 @@ var AE_ST_SKY_VERT = [
   'varying vec2 vNdc;',
   'void main() { vNdc = position.xy; gl_Position = vec4(position.xy, 0.9999, 1.0); }'
 ].join('\n');
+// The same triangle at exactly the far plane: with depth testing on, the clouds show only where no ground or tree was drawn.
+var AE_ST_SKY_VERT_FAR = [
+  'varying vec2 vNdc;',
+  'void main() { vNdc = position.xy; gl_Position = vec4(position.xy, 1.0, 1.0); }'
+].join('\n');
 var AE_ST_SKY_FRAG = [
   'precision highp float;',
   AE_ST_GLSL_ATMO, AE_ST_GLSL_TONE,

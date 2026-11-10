@@ -965,7 +965,7 @@ function _aeStandCloudSelect(st) {
     var own = {};
     if (prov) Object.keys(prov.uniforms || {}).forEach(function (k) { own[k] = { value: prov.uniforms[k] }; });
     else own = { uCloudA: { value: [0, 2000, 700, 0] }, uCloudB: { value: [0, 0, 0, 0] } };
-    var m = new THREE.ShaderMaterial({ uniforms: Object.assign({}, st.sky, own), vertexShader: AE_ST_SKY_VERT, fragmentShader: _aeStCloudFrag(chunk), transparent: true, depthTest: false, depthWrite: false });
+    var m = new THREE.ShaderMaterial({ uniforms: Object.assign({}, st.sky, own), vertexShader: AE_ST_SKY_VERT_FAR, fragmentShader: _aeStCloudFrag(chunk), transparent: true, depthTest: true, depthWrite: false });
     st.cloudMesh = new THREE.Mesh(st.skyMesh.geometry, m);
     st.cloudMesh.frustumCulled = false; st.cloudMesh.renderOrder = -0.5;
     st.scene.add(st.cloudMesh); st.cloudSrc = chunk; st.cloudProv = !!prov;
