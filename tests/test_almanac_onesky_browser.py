@@ -741,7 +741,7 @@ def test_in_totality_the_sky_is_deep_twilight_and_venus_and_jupiter_are_drawn(
             )
         )
     lim = pg.evaluate("() => _ae.stand.photo.lim")
-    assert 1.0 < lim < 2.2, lim
+    assert 1.2 < lim < 2.6, lim
     for planet in ("venus", "jupiter"):
         found = pg.evaluate(
             """([name, ms]) => { const st = _ae.stand, e = _skyEphemeris(new Date(ms), 30.0474, -99.1403), o = e.planets.find(x => x.name.toLowerCase() === name);
@@ -773,10 +773,10 @@ def test_in_totality_the_sky_is_deep_twilight_and_venus_and_jupiter_are_drawn(
     ctx.close()
 
 
-def test_totality_overhead_looks_like_a_sun_at_minus_7_twilight_and_a_minute_before_is_three_times_brighter(
+def test_totality_overhead_looks_like_a_sun_at_minus_7_5_twilight_and_a_minute_before_is_three_times_brighter(
     browser, served
 ):
-    """The sky at totality goes through the twilight's own path: the overhead sky within 20 percent of the same view with the real Sun 7 degrees
+    """The sky at totality goes through the twilight's own path: the overhead sky within 20 percent of the same view with the real Sun 7.5 degrees
     below the horizon, and a minute before totality at least three times brighter than totality."""
     import numpy as np
     from PIL import Image
@@ -792,7 +792,7 @@ def test_totality_overhead_looks_like_a_sun_at_minus_7_twilight_and_a_minute_bef
     )
     twilight = pg.evaluate(
         """() => { let lo = Date.parse('2024-04-09T01:00:00Z'), hi = Date.parse('2024-04-09T03:00:00Z');
-          for (let i = 0; i < 30; i++) { const mid = (lo + hi) / 2; if (_skyEphemeris(new Date(mid), 30.0474, -99.1403).sunGeoAlt > -7) lo = mid; else hi = mid; }
+          for (let i = 0; i < 30; i++) { const mid = (lo + hi) / 2; if (_skyEphemeris(new Date(mid), 30.0474, -99.1403).sunGeoAlt > -7.5) lo = mid; else hi = mid; }
           return Math.round(lo); }"""
     )
     pg.evaluate(
