@@ -480,6 +480,37 @@ def test_the_ground_is_dark_at_night_under_a_providers_huge_exposure(page):
     assert not page.errors, page.errors
 
 
+def test_a_direct_handoff_is_on_the_ground_at_once_and_says_when_its_first_frame_is_drawn(page):
+    """h.direct: no flight down; h.firstFrame: a promise of the first live ground picture (the card holds its still until then)."""
+    page.evaluate(
+        "() => { window.__back = 0; window.__h = { lat: 46.0, lon: 6.85, ms: Date.UTC(2026, 5, 21, 10, 0), heading: 123, direct: true, back: function () { window.__back++; } }; }"
+    )
+    assert page.evaluate("async () => { await _aeStandOpen(window.__h); return await window.__h.firstFrame; }") is True
+    assert page.evaluate("() => _ae.stand.mode") == "ground"
+    hud = page.evaluate("() => document.getElementById('ae-stand-text').innerText")
+    import re
+
+    assert re.search(r"☀ -?\d+°( ↓)? · [NESW]+\s+\d+° [NESW]+", hud), hud  # the Sun's height is degrees, its bearing the letter
+    page.evaluate("() => _aeStandClose()")
+    page.wait_for_function("() => !_ae.stand && window.__back === 1", timeout=60_000, polling=250)
+    assert not page.errors, page.errors
+
+
+def test_a_night_on_the_moon_offers_the_way_to_the_next_sunrise(page):
+    _stand_anywhere(page, "moon", 20.19, 30.77)
+    night = page.evaluate(
+        """() => { var st = _ae.stand, t0 = Date.UTC(2026, 10, 10, 0, 0, 0);
+          for (var t = t0; t < t0 + 30 * 86400000; t += 3600000) if (_aeStFrame(st, t).sunAlt < -10) return t; return null; }"""
+    )
+    assert night
+    page.evaluate("(ms) => { _aeGoTo(ms); _ae.stand.fr = null; _ae.stand.dirty = true; _ae.dirty = true; _aeKick(); }", night)
+    page.wait_for_function("() => document.querySelector('[data-ae-sunrise]')", timeout=60_000, polling=250)
+    page.evaluate("() => document.querySelector('[data-ae-sunrise]').click()")
+    page.wait_for_function("() => _ae.stand.fr && _ae.stand.fr.sunAlt >= -0.5", timeout=60_000, polling=250)
+    _leave(page)
+    assert not page.errors, page.errors
+
+
 def test_the_live_sky_cards_handoff_opens_stand_facing_its_way_and_close_goes_back(
     page,
 ):

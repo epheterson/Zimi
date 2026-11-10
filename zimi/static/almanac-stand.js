@@ -471,13 +471,15 @@ function _aeStCrown(tri, t, sd, kind) {
   }
 }
 // Open country's trees stand in clumps and along draws, not scattered: a density (0..1) at a place round the viewer from two slow noises.
+var AE_STAND_SHRUBS = 0.05;   // the share of a dry cell's sites that hold a shrub, in clumps
+function _aeStShrubs(x, y) { var clump = Math.max(0, _aeNoise3(x / 90, y / 90, 7.5, 61)); return Math.min(0.6, AE_STAND_SHRUBS * (0.5 + 10 * clump * clump)); }
 var AE_STAND_GRASS_NEAR_MIN = 24, AE_STAND_SAVANNA_THIN_M = [60, 130];   // open country: trees from 60 m, in their full number by 130
 function _aeStSavanna(x, y) {
   var clump = Math.max(0, _aeNoise3(x / 140, y / 140, 0.5, 31)), draw = Math.exp(-Math.pow(_aeNoise3(x / 260, y / 260, 3.5, 47) / 0.07, 2));
   return Math.min(0.85, AE_STAND_GRASS_TREES * (0.25 + 9 * clump * clump) + 0.5 * draw);
 }
 // The class's ground: grass pulled green and the distant woods' texture, by the cell the viewer stands in; and the tufts of grass round the feet.
-var AE_STAND_GRASS_COUNT = 18000, AE_STAND_GRASS_RANGE_M = [1.0, 15], AE_STAND_GRASS_DENSITY = { grass: 1, broadleaf: 0.5, conifer: 0.35, tundra: 0.2 };
+var AE_STAND_GRASS_COUNT = 18000, AE_STAND_GRASS_RANGE_M = [1.0, 15], AE_STAND_GRASS_DENSITY = { grass: 1, broadleaf: 0.5, conifer: 0.35, tundra: 0.2, desert: 0.22 };
 function _aeStandGround(st, land, px) {
   var g = st.ground, cls = land && land.cls;
   var rock = px ? _aeStRock(px, st.lat, st.lon) : 0;   // lava and scree under a green class: next to no grass
@@ -518,7 +520,8 @@ function _aeStandGrass(st, dens, cls, px) {
   st.dirty = true; _ae.dirty = true; _aeKick();
 }
 function _aeStGrassColour(st, px, cls) {
-  var c = [0.2, 0.28, 0.1];   // a green meadow's albedo, linear
+  var c = cls === 'desert' ? [0.3, 0.24, 0.12] : [0.2, 0.28, 0.1];   // a green meadow's albedo (a dry cell's tufts are straw), linear
+  if (cls === 'desert') return c;
   if (px) {
     var x = Math.min(px.w - 1, Math.max(0, Math.floor((st.lon + 180) / 360 * px.w))), y = Math.min(px.h - 1, Math.max(0, Math.floor((st.lat + 90) / 180 * px.h))), i = 4 * (y * px.w + x);
     var lin = [px.d[i] / 255, px.d[i + 1] / 255, px.d[i + 2] / 255].map(function (v) { return Math.pow(v, 2.2); }), l = 0.3 * lin[0] + 0.59 * lin[1] + 0.11 * lin[2];
@@ -548,17 +551,18 @@ function _aeStandTrees(st) {
     if (rnd() > near * near) continue;   // thinner near the viewer: the first frame is not a wall
     var wood = _aeStForest(px, d.lat, d.lon), land = typeof _osLandCover === 'function' ? _osLandCover(d.lat, d.lon) : null;
     if (land) {   // the grid's class decides whether, and what: forests are wooded whatever one pixel's green says, grass has clumps and rows, the rest none
-      if (land.cls === 'sea' || land.cls === 'desert' || land.cls === 'snow' || land.cls === 'tundra') continue;
-      wood = land.cls === 'grass' ? _aeStSavanna(r * Math.sin(th), r * Math.cos(th)) : Math.max(wood, AE_STAND_FOREST_TREES);
+      if (land.cls === 'sea' || land.cls === 'snow' || land.cls === 'tundra') continue;
+      wood = land.cls === 'grass' ? _aeStSavanna(r * Math.sin(th), r * Math.cos(th)) : land.cls === 'desert' ? _aeStShrubs(r * Math.sin(th), r * Math.cos(th)) : Math.max(wood, AE_STAND_FOREST_TREES);
     }
-    wood *= 1 - _aeStRock(px, d.lat, d.lon);
+    if (land && land.cls !== 'desert') wood *= 1 - _aeStRock(px, d.lat, d.lon);
     if (wood <= 0 || rnd() > wood) continue;
     var ht = _aeTerrainHeight('earth', d.lat, d.lon, r * 0.0005);
     if (ht.sea || ht.h > AE_ST_SNOW_LINE_M * Math.pow(Math.cos(_aeRad(d.lat)), AE_ST_SNOW_LINE_POW) - AE_ST_TREE_BELOW_M) continue;
     var kind = _aeStTreeKind(d.lat, ht.h, rnd, land && land.cls);
     if (!kind) continue;
     var x = r * Math.sin(th), y = r * Math.cos(th), z = _aeTerrainLocal('earth', lat0, lon0, h0, x, y, r * 0.0005, st.pend && st.pend.flat);
-    var sz = kind === 'conifer' ? [20, 40] : kind === 'broadleaf' ? (land && land.cls === 'grass' ? [6, 13] : [10, 25]) : [8, 18], u = Math.pow(rnd(), 1.3);
+    if (land && land.cls === 'desert') kind = 'broadleaf';   // the dry country's few woody plants: low round shrubs
+    var sz = land && land.cls === 'desert' ? [1.2, 2.8] : kind === 'conifer' ? [20, 40] : kind === 'broadleaf' ? (land && land.cls === 'grass' ? [6, 13] : [10, 25]) : [8, 18], u = Math.pow(rnd(), 1.3);
     list.push({ kind: kind, x: x, y: y, z: z, h: sz[0] + (sz[1] - sz[0]) * u, seed: rnd(), lean: (rnd() - 0.5) * 0.12, w: 0.8 + rnd() * 0.5 });
   }
   // Open country always has some near: a few oaks within 300 m, wherever the clumps happen to fall.
@@ -826,7 +830,7 @@ function _aeStandDefaultHeading(lat) {
 function _aeStandView(st, now) {
   if (st.zf) _aeStandZoomStep(st, now);
   var span = st.mode === 'ascend' ? AE_STAND_ASCENT_MS : AE_STAND_DESCENT_MS;
-  var u = _aeReduceMotion() ? 1 : _aeSmoother(_aeClamp((now - st.t0) / span, 0, 1));   // reduced motion: there at once
+  var u = _aeReduceMotion() || (st.handoff && st.handoff.direct) ? 1 : _aeSmoother(_aeClamp((now - st.t0) / span, 0, 1));   // direct: no flight down, the ground at once   // reduced motion: there at once
   var lo = Math.log(AE_STAND_EYE_M / 1000), hi = Math.log(st.alt0), pitchLook = st.userPitch + _aeRad(AE_STAND_PITCH_DEG), down = -_aeRad(AE_STAND_PITCH_MAX_DEG);
   if (st.mode === 'descend') {
     st.altKm = Math.exp(hi + (lo - hi) * u);
@@ -873,6 +877,7 @@ function _aeStandPaint(st, now, moving, place) {
   _aeStandSkyPass(st);
   _ae.gl.renderer.render(st.scene, st.camera);
   _aeStandBudget(st, now);
+  if (st.handoff && st.handoff._firstFrame && st.mode === 'ground' && !st.fading) { var ff = st.handoff._firstFrame; st.handoff._firstFrame = null; ff(true); }
   st.dirty = false;
   if (st.hud && now - st.hudAt > AE_STAND_HUD_MS) { st.hudAt = now; _aeStandHudText(st); }
 }
@@ -967,7 +972,7 @@ function _aeStandApplyGround(st, fr, ph, view, now) {
   g.uCam.value = view.pos; g.uPixAng.value = view.pixAng;
   var hl = Math.hypot(view.e[8], view.e[9]) || 1;
   g.uHead.value = [-view.e[8] / hl, -view.e[9] / hl]; g.uTime.value = now / 1000;
-  g.uAmbient.value = st.key === 'earth' && !ph.provAmb ? ph.amb.map(function (x) { return Math.max(x, AE_STAND_NIGHT_GLOW); }) : ph.amb; g.uSkyHor.value = ph.hor; g.uSkyZen.value = ph.zen; g.uDiffSky.value = ph.diffSky;
+  g.uAmbient.value = !ph.provAmb ? ph.amb.map(function (x) { return Math.max(x, AE_STAND_NIGHT_GLOW); }) : ph.amb; g.uSkyHor.value = ph.hor; g.uSkyZen.value = ph.zen; g.uDiffSky.value = ph.diffSky;
   if (fr.light2) { g.uDir2.value = fr.light2.dir; g.uE2.value = fr.light2.rgb; }
   else g.uE2.value = [0, 0, 0];
 }
@@ -1087,6 +1092,7 @@ function _aeStandCraftMarks(st, fr, view) {
 //   _aeStandClose()     (almanac-earth.js; _aeStandCloseNow here) the one way back: climbs out of Stand here, closes the 3D view if _aeStandOpen opened it, then calls h.back()
 function _aeStandOpenNow(h) {
   h = h || (typeof window !== 'undefined' ? window._osHandoff : null);
+  if (h && !h.firstFrame) h.firstFrame = new Promise(function (res) { h._firstFrame = res; });   // h.firstFrame resolves when Stand's first live picture of the ground is drawn (h.direct: no flight down, the ground at once)
   if (typeof window !== 'undefined' && h && h === window._osHandoff) window._osHandoff = null;
   if (!h || typeof h.lat !== 'number' || typeof h.lon !== 'number') return Promise.resolve(false);
   h.openedView = !(typeof _aeIsOpen !== 'undefined' && _aeIsOpen);
@@ -1362,6 +1368,7 @@ var AE_STAND_CSS = [
   '.ae-stand-hud>*{pointer-events:auto}',
   '.ae-stand-text{display:flex;flex-direction:column;gap:2px;min-width:0;padding-top:6px;font-size:13px;line-height:1.3;color:#fff;text-shadow:0 0 4px #000,0 1px 3px #000;pointer-events:none}',
   '.ae-stand-text b{font-weight:600}',
+  '.ae-stand-text .ae-stand-sunrise{color:var(--amber);text-decoration:underline;pointer-events:auto;font-weight:600}',
   '.ae-stand-text span{color:rgba(255,255,255,.88)}',
   '.ae-stand-hud .ae-tool-svg{width:18px;height:18px;fill:none;stroke:currentColor;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round}',
   '.ae-stand-crafts{position:absolute;inset:0;pointer-events:none;overflow:hidden;z-index:1}',
@@ -1389,6 +1396,12 @@ function _aeStandHud(st) {
   _ae.el.appendChild(hud);
   st.hud = hud;
   _aeById('ae-stand-back').onclick = function () { _aeStandLeave(); };
+  _aeById('ae-stand-text').addEventListener('click', function (e) {
+    var a = e.target && e.target.closest && e.target.closest('[data-ae-sunrise]');
+    if (!a) return;
+    e.preventDefault();
+    if (st.rise) { _aeGoTo(st.rise.at); st.fr = null; st.dirty = true; _ae.dirty = true; _aeKick(); }
+  });
   _aeStandMotionButton(st, hud);
   _aeStandHudText(st);
   var cv = _aeById('ae-canvas');
@@ -1421,9 +1434,29 @@ function _aeStandHudText(st) {
   var el = _aeById('ae-stand-text'), fr = st.fr;
   if (!el) return;
   var head = ((st.yaw + st.userYaw) * 180 / Math.PI % 360 + 360) % 360;   // where the view faces; the Sun's own bearing follows its height
-  var line2 = (fr ? '☀ ' + Math.round(fr.sunAlt) + '° ' + _aeCompassPoint(fr.sunAz) + '  ·  ' : '') + Math.round(head) + '° ' + _aeCompassPoint(head);
+  var line2 = (fr ? '☀ ' + Math.round(fr.sunAlt) + '°' + (fr.sunAlt < 0 ? ' ↓' : '') + ' · ' + _aeCompassPoint(fr.sunAz) + '    ' : '') + Math.round(head) + '° ' + _aeCompassPoint(head);
   var local = _aeStPlaceTime(st), html = '<b>' + _almEsc(_aeInfoName(st.key)) + '</b><span>' + _almEsc(_aeFmtLatLon({ lat: st.lat, lon: st.lon })) + ' · ' + _almEsc(_aeStHeightText(st.h0)) + '</span><span>' + _almEsc(line2) + '</span>' + (local ? '<span>' + _almEsc(local) + '</span>' : '');
+  var rise = fr && fr.sunAlt < -AE_STAND_RISE_OFFER_DEG && st.key !== 'earth' ? _aeStNextSunrise(st, _aeDisplayMs()) : null;
+  if (rise) html += '<span><a href="#" class="ae-stand-sunrise" data-ae-sunrise>' + _almEsc(_aeT('alm_lm_night_until', { date: _aeFmtWhen(rise) })) + '</a></span>';
   if (el._html !== html) { el._html = html; el.innerHTML = html; }
+}
+// The Moon's and the planets' night is long and black: the way to the next sunrise is one tap in the corner. Found by stepping the Sun's height forward.
+var AE_STAND_RISE_OFFER_DEG = 1, AE_STAND_RISE_STEPS = 420, AE_STAND_RISE_STEP_MS = { moon: 4 * 3600000 };
+function _aeStNextSunrise(st, ms) {
+  var c = st.rise;
+  if (c && ms >= c.from && ms < c.at) return c.at;
+  var step = AE_STAND_RISE_STEP_MS[st.key] || 20 * 60000, prev = _aeStFrame(st, ms).sunAlt;
+  for (var k = 1; k <= AE_STAND_RISE_STEPS; k++) {
+    var t = ms + k * step, a = _aeStFrame(st, t).sunAlt;
+    if (prev < 0 && a >= 0) {
+      var lo = t - step, hi = t;
+      while (hi - lo > 60000) { var mid = (lo + hi) / 2; if (_aeStFrame(st, mid).sunAlt < 0) lo = mid; else hi = mid; }
+      st.rise = { from: ms, at: hi };
+      return hi;
+    }
+    prev = a;
+  }
+  return null;
 }
 // The eight points of the compass, from the app's own cardinal letters (NE = N then E).
 var AE_POINT_KEYS = ['n', 'ne', 'e', 'se', 's', 'sw', 'w', 'nw'];
