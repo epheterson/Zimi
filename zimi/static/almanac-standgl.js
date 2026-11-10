@@ -194,6 +194,31 @@ function _aeStSkyAirFrag(chunk) {
     '}'
   ].join('\n');
 }
+// Trees (the Earth's, almanac-stand.js _aeStandTrees): dark cones lit and hazed as the ground is, so they read as trees at dusk.
+var AE_ST_TREE_VERT = [
+  'attribute vec3 aNrm; attribute vec2 aTree;',
+  'varying vec3 vP, vN; varying vec2 vTree;',
+  'void main() { vP = position; vN = aNrm; vTree = aTree; gl_Position = projectionMatrix * viewMatrix * vec4(position, 1.0); }'
+].join('\n');
+var AE_ST_TREE_FRAG = [
+  'precision highp float;',
+  AE_ST_GLSL_ATMO, AE_ST_GLSL_TONE,
+  _aeStInscatterGlsl('inscatterGround', AE_ST_STEPS_GROUND),
+  'uniform vec3 uCam, uAmbient; uniform float uK;',
+  'varying vec3 vP, vN; varying vec2 vTree;',
+  'void main() {',
+  '  gJit = fract(52.9829189 * fract(dot(gl_FragCoord.xy, vec2(0.06711056, 0.00583715))));',
+  '  float dist = length(vP - uCam); vec3 V = (uCam - vP) / dist, N = normalize(vN);',
+  '  vec3 alb = vec3(0.028, 0.055, 0.03) * (0.8 + 0.4 * vTree.y) * (0.55 + 0.45 * vTree.x);',   // darker below, paler at the tips, each tree its own shade
+  '  vec3 sT = sunTrans(vP * 0.001) * uSunE;',
+  '  vec3 L = alb * (sT * max(dot(N, uSunDir), 0.0) / PI + uAmbient * (0.55 + 0.45 * N.z));',
+  '  if (uAtmo > 0.5) {',
+  '    vec3 o = uCam * 0.001, d = -V, Tt, ins; float t0, t1;',
+  '    if (airSpan(o, d, t0, t1)) { t1 = min(t1, dist * 0.001); if (t1 > t0) { ins = inscatterGround(o + d * t0, d, t1 - t0, Tt); L = L * Tt + ins; } }',
+  '  }',
+  '  gl_FragColor = vec4(tone(L, uK), 1.0);',
+  '}'
+].join('\n');
 var AE_ST_STARS_FRAG = [
   'precision highp float; varying vec3 vCol; varying float vA;',
   'void main() { vec2 c = gl_PointCoord - 0.5; float a = vA * (1.0 - smoothstep(0.15, 0.5, length(c))); if (a < 0.003) discard; gl_FragColor = vec4(vCol, a); }'

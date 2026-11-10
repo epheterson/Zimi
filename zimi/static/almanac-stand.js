@@ -177,6 +177,7 @@ function _aeStandEnter(st) {
     if (typeof ho.pitch === 'number') st.userPitch = _aeRad(ho.pitch) - _aeRad(AE_STAND_PITCH_DEG);
   }
   st.yaw0 = 0;
+  if (st.key === 'earth') setTimeout(function () { if (_ae.stand === st || (_ae.site && _ae.site.host && _ae.site.host.st === st)) _aeStandTrees(st); }, AE_STAND_TREES_DELAY_MS);
   _ae.dirty = true;
   _aeKick();
 }
@@ -380,6 +381,69 @@ function _aeStandDispose(st) {
   if (st.skyTag && st.skyTag.parentNode) st.skyTag.parentNode.removeChild(st.skyTag);
   clearTimeout(st.skyTagTimer);
   st.geo = st.mats = null; st.scene = st.camera = null;
+}
+
+// ── Trees ──
+// Where the Blue Marble says forest (a dark green), below the trees' line, not in the sea: dark cones scattered in rings out to a few
+// kilometres, a tree to a few metres at the feet and a wood at the horizon. The same trees every visit to a place (seeded by it).
+var AE_STAND_TREES_DELAY_MS = 40, AE_STAND_TREES_MAX = 1800, AE_STAND_TREES_TRIES = 9000;
+var AE_STAND_TREES_RANGE_M = [9, 3500], AE_STAND_TREES_H_M = [7, 24], AE_STAND_TREES_CONE = 0.2, AE_STAND_TREES_SIDES = 6;
+function _aeStCoverPixels(tex) {   // the colour map's pixels, once
+  if (!tex || !tex.image) return null;
+  var im = tex.image, w = im.width || im.naturalWidth, h = im.height || im.naturalHeight;
+  if (!w || !h) return null;
+  var c = document.createElement('canvas'), mw = Math.min(w, 2048), mh = Math.round(mw * h / w);
+  c.width = mw; c.height = mh;
+  var cx = c.getContext('2d', { willReadFrequently: true });
+  cx.drawImage(im, 0, 0, mw, mh);
+  return { w: mw, h: mh, d: cx.getImageData(0, 0, mw, mh).data };
+}
+function _aeStForest(px, lat, lon) {   // 0..1: how much of this place the map shows as forest
+  var x = Math.min(px.w - 1, Math.max(0, Math.floor((lon + 180) / 360 * px.w))), y = Math.min(px.h - 1, Math.max(0, Math.floor((90 - lat) / 180 * px.h))), i = 4 * (y * px.w + x);
+  var r = px.d[i] / 255, g = px.d[i + 1] / 255, b = px.d[i + 2] / 255, lum = 0.3 * r + 0.59 * g + 0.11 * b;
+  if (g < r * 1.02 || g < b * 1.08) return 0;
+  return Math.max(0, Math.min(1, (0.42 - lum) / 0.2));
+}
+function _aeStandTrees(st) {
+  if (!st || !st.scene || st.trees || st.key !== 'earth') return;
+  var px = null;
+  try { px = _aeStCoverPixels(st.pend && st.pend.tex); } catch (e) { px = null; }
+  if (!px) return;
+  var R = st.b.km * 1000, h0 = st.h0, lat0 = st.lat, lon0 = st.lon, THREE = _ae.gl.THREE;
+  var seed = (Math.round(lat0 * 1e4) * 73856093) ^ (Math.round(lon0 * 1e4) * 19349663), rnd = function () { seed |= 0; seed = seed + 0x6D2B79F5 | 0; var t = Math.imul(seed ^ seed >>> 15, 1 | seed); t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t; return ((t ^ t >>> 14) >>> 0) / 4294967296; };
+  var list = [], ratio = AE_STAND_TREES_RANGE_M[1] / AE_STAND_TREES_RANGE_M[0];
+  for (var k = 0; k < AE_STAND_TREES_TRIES && list.length < AE_STAND_TREES_MAX; k++) {
+    var r = AE_STAND_TREES_RANGE_M[0] * Math.pow(ratio, rnd()), th = rnd() * 2 * Math.PI, d = _aeDestination(lat0, lon0, r / R, th);
+    var wood = _aeStForest(px, d.lat, d.lon);
+    if (wood <= 0 || rnd() > wood) continue;
+    var x = r * Math.sin(th), y = r * Math.cos(th), ht = _aeTerrainHeight('earth', d.lat, d.lon, r * 0.0005);
+    if (ht.sea || ht.h > AE_ST_SNOW_LINE_M * Math.pow(Math.cos(_aeRad(d.lat)), AE_ST_SNOW_LINE_POW) - AE_ST_TREE_BELOW_M) continue;
+    var z = _aeTerrainLocal('earth', lat0, lon0, h0, x, y, r * 0.0005, st.pend && st.pend.flat);
+    list.push([x, y, z, AE_STAND_TREES_H_M[0] + (AE_STAND_TREES_H_M[1] - AE_STAND_TREES_H_M[0]) * Math.pow(rnd(), 1.4), rnd()]);
+  }
+  if (!list.length) return;
+  var n = AE_STAND_TREES_SIDES, per = n * 3, pos = new Float32Array(list.length * per * 3), nrm = new Float32Array(list.length * per * 3), at = new Float32Array(list.length * per * 2);
+  list.forEach(function (t, i) {
+    var rad = t[3] * AE_STAND_TREES_CONE, apex = [t[0], t[1], t[2] + t[3]], ring = [];
+    for (var s = 0; s < n; s++) { var a = s / n * 2 * Math.PI; ring.push([t[0] + Math.cos(a) * rad, t[1] + Math.sin(a) * rad, t[2] + t[3] * 0.1]); }
+    for (var f = 0; f < n; f++) {
+      var A = ring[f], B = ring[(f + 1) % n], v = [A, B, apex], mid = Math.atan2((A[1] + B[1]) / 2 - t[1], (A[0] + B[0]) / 2 - t[0]);
+      var nx = Math.cos(mid) * t[3], ny = Math.sin(mid) * t[3], nz = rad, nl = Math.hypot(nx, ny, nz);
+      for (var q = 0; q < 3; q++) {
+        var o = ((i * n + f) * 3 + q);
+        pos.set(v[q], o * 3); nrm.set([nx / nl, ny / nl, nz / nl], o * 3);
+        at[o * 2] = q === 2 ? 1 : 0; at[o * 2 + 1] = t[4];
+      }
+    }
+  });
+  var g = new THREE.BufferGeometry();
+  g.setAttribute('position', new THREE.BufferAttribute(pos, 3)); g.setAttribute('aNrm', new THREE.BufferAttribute(nrm, 3)); g.setAttribute('aTree', new THREE.BufferAttribute(at, 2));
+  var m = new THREE.ShaderMaterial({ uniforms: st.ground, vertexShader: AE_ST_TREE_VERT, fragmentShader: AE_ST_TREE_FRAG, side: AE_THREE_DOUBLE_SIDE });
+  var mesh = new THREE.Mesh(g, m);
+  mesh.frustumCulled = false; mesh.renderOrder = 1;
+  st.scene.add(mesh); st.trees = { mesh: mesh, count: list.length };
+  st.geo.push(g); st.mats.push(m);
+  st.dirty = true; _ae.dirty = true; _aeKick();
 }
 
 // ── The sky and the bodies in it, for an instant ──
