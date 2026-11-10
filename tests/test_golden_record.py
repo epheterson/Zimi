@@ -155,3 +155,49 @@ def test_the_built_zims_hold_49_and_8(tmp_path):
     assert len(kiwix) == PUBLIC_DOMAIN
     assert kiwix == sorted(im["file"] for im in kiwix_table if im["pd"])
     assert sum(1 for im in kiwix_table if im.get("omitted")) == ALL - PUBLIC_DOMAIN
+    from libzim.reader import Archive
+
+    meta = Archive(str(tmp_path / "kiwix.zim"))
+    assert meta.get_metadata("Name").decode() == build_almanac_kiwix.DEFAULT_NAME == "zimi_eng_almanac"
+    assert meta.get_metadata("Title").decode() == build_almanac_kiwix.DEFAULT_TITLE == "Zimi Almanac"
+
+
+# The gallery's own code, run in node on each edition's table: what the list holds.
+_RENDER = r"""
+const fs = require('fs'), vm = require('vm');
+const src = fs.readFileSync(process.argv[1], 'utf8');
+function grab(re) { const m = src.match(re); if (!m) throw new Error('missing ' + re); return m[0]; }
+const code = [/var _GR_DIR = [^\n]*/, /function _grCap\(idx\)[^\n]*/, /function _grCredit\(idx\) \{[\s\S]*?\n\}/,
+  /function _renderGoldenRecordGallery\(\) \{[\s\S]*?\n\}/].map(grab).join('\n');
+const ctx = { t: (k) => k, _almEsc: (x) => String(x), _grImages: JSON.parse(fs.readFileSync(process.argv[2], 'utf8')).images };
+vm.createContext(ctx); vm.runInContext(code, ctx);
+const html = ctx._renderGoldenRecordGallery();
+const count = (re) => (html.match(re) || []).length;
+console.log(JSON.stringify({ rows: count(/<li class="gr-row/g), text: count(/gr-row gr-row-text/g),
+  pictures: count(/<img /g), omittedLine: html.includes('alm_gr_omitted') }));
+"""
+
+
+def _render(folder):
+    import shutil
+    import subprocess
+
+    node = shutil.which("node")
+    if not node:
+        pytest.skip("node is not installed")
+    r = subprocess.run(
+        [node, "-e", _RENDER, os.path.join(STATIC, "almanac.js"), os.path.join(folder, "credits.json")],
+        capture_output=True, text=True, timeout=60,
+    )
+    assert r.returncode == 0, r.stderr
+    return json.loads(r.stdout)
+
+
+def test_the_list_holds_49_pictures_in_zimi(staged):
+    got = _render(os.path.join(staged[False], almanacstage.GOLDEN_RECORD))
+    assert got == {"rows": ALL, "text": 0, "pictures": ALL, "omittedLine": False}
+
+
+def test_the_kiwix_list_shows_8_pictures_and_names_41(staged):
+    got = _render(os.path.join(staged[True], almanacstage.GOLDEN_RECORD))
+    assert got == {"rows": ALL, "text": ALL - PUBLIC_DOMAIN, "pictures": PUBLIC_DOMAIN, "omittedLine": True}
