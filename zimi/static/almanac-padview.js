@@ -14,17 +14,22 @@
 var PV_MISSIONS_JS = '/static/almanac-missions.js', PV_LAUNCH_JS = '/static/almanac-sites-launch.js';
 var PV_COUNT_S = 30;                       // the view opens this long before zero
 var PV_TOWER_CLEAR_M = 122;                // the umbilical tower's height at LC-39A: the vehicle clears it when its base passes this (published, in the Almanac's constants)
-var PV_VEHICLE_FRAME_SHARE = 0.17;         // the vehicle fills this share of the screen's height at the start
+var PV_VEHICLE_FRAME_SHARE = 0.13;         // the vehicle fills this share of the screen's height at the start
 var PV_FOV_MIN_DEG = 1.5, PV_FOV_MAX_DEG = 70, PV_FOV_REF_DIST = 100;   // the field's range; a pinch scales it (the site's own distance is the zoom)
 var PV_FOLLOW_EASE = 1.7, PV_FOLLOW_RETURN_S = 2.5;   // 1/s: how the view turns after the vehicle; seconds after a finger before it does again
 var PV_FOLLOW_LOW_SHARE = 0.16;            // the vehicle rides this share of the field below the middle, the sky ahead of it above
-var PV_HORIZON_SHARE = 0.22;               // at the start the horizon stands this share of the field above the bottom
+var PV_HORIZON_SHARE = 0.1;               // at the start the horizon stands this share of the field above the bottom
 var PV_EARLY_AFTER_S = 15;                 // the climb is fitted up to the first table row this long after lift-off
 var PV_STILL_MS = [4, 60];                 // below the first speed the vehicle points up, above the second along its path (the mission player's rule, in m/s)
+var PV_CORE_RGB = [1, 0.97, 0.84], PV_CORE_WIDTH = 0.42, PV_CORE_LENGTH = 0.9;   // the flame's white-hot core: its colour, and its width and length against the outer flame's
+var PV_FLAME_FALLOFF = '1.1';              // the flame's brightness along its length (the mission's cone: 2)
 var PV_FLAME_RAMP_S = 2.5;                 // the engines come up to full flame over this long after ignition
 var PV_SMOKE_MAX = 3000, PV_FLAME_MAX = 600;
 var PV_FLAME_RATE = 280, PV_PAD_CLOUD_RATE = 70;   // puffs a second at full flame
-var PV_CLOUD_ALT_M = [60, 700];            // the cloud at the pad gives way to a trail between these heights
+var PV_CLOUD_ALT_M = [25, 300];            // the cloud at the pad gives way to a trail between these heights
+var PV_CLOUD_SPREAD_RAD = 0.55;             // how far the cloud's directions scatter about the line across the view
+var PV_LOW_TRAIL_M = 1500, PV_LOW_TRAIL_EXTRA = 1.2;   // near the ground the trail is denser and its puffs bigger (the smoke before it thins to a contrail)
+var PV_BACK_TOL_S = 2, PV_JUMP_S = 12, PV_STEP_MAX_S = 3;   // a step back in time under the first, or forward under the second, is the clock running (a hitch at 4x, or the pause dropping the clock's extrapolated step), not a jump; one frame advances the exhaust by at most the third
 var PV_TRAIL_JUMP_M = 5000;                // a flame this far from where it was last frame was moved, not flown: no trail between
 var PV_TRAIL_END_ALT_M = 30000, PV_TRAIL_SPACING_M = 12, PV_TRAIL_MAX_MS = 700;
 var PV_SHAKE_S = 14, PV_SHAKE_SHARE = 0.006;   // seconds of tremor after lift-off, and its size as a share of the field
@@ -41,8 +46,8 @@ var PV_PRELOAD_S = 400;                    // the models of what flies in the fi
 // base over the ground; cloud: the size of the cloud at the pad against a Saturn V's; heightM: the stack, for the field of view; midM: its middle along the nose from the vehicle's own origin (the
 // Atlas V's origin is its spacecraft, at the top); tower: which pad (the site models, or boxes).
 var PV_PADS = {
-  apollo11: { mission: 'apollo11', name: 'Apollo 11', pad: 'LC-39A', deckM: 5, heightM: 111, midM: 50, baseM: -3.5, towerM: AE_SITE_FACTS.launchTowerM, viewM: 5000, bearing: 200, tower: 'lc39a', cloud: 1, shake: 1 },
-  perseverance: { mission: 'perseverance', name: 'Perseverance', pad: 'SLC-41', deckM: 14.3, heightM: 58, midM: -24, baseM: -49, towerM: 68, viewM: 4000, bearing: 215, tower: 'slc41', cloud: 0.45, shake: 0.4 }
+  apollo11: { mission: 'apollo11', name: 'Apollo 11', pad: 'LC-39A', deckM: 5, heightM: 111, midM: 50, baseM: -3.5, towerM: AE_SITE_FACTS.launchTowerM, viewM: 5000, bearing: 200, tower: 'lc39a', cloud: 1, shake: 1, flameK: 1.7, flameW: 1.6 },
+  perseverance: { mission: 'perseverance', name: 'Perseverance', pad: 'SLC-41', deckM: 14.3, heightM: 58, midM: -24, baseM: -49, towerM: 68, viewM: 4000, bearing: 215, tower: 'slc41', cloud: 0.45, shake: 0.4, flameK: 1.3, flameW: 1.3 }
 };
 var PV_SITE_TOWERS = {   // the site models of a pad (almanac-sites.js): parts of the visit's own definition
   lc39a: [{ m: 'pad-slab', x: 0, y: 0, h: 0, noShadow: 1 }, { m: 'pad39a', x: 0, y: 0, h: 0 }],
@@ -288,19 +293,31 @@ function _pvFlame(veh, f, fi, state, t, base) {
   if (!F) {
     F = v.flames[key] = _amFlameMesh(_ae.gl);
     _ae.gl.scene.remove(F); st.group.add(F);
-    v.flames.push(F);
+    var core = F.userData.core = _amFlameMesh(_ae.gl);   // a narrower, whiter cone inside it: the flame's bright core
+    core.material.uniforms.hot.value.set(PV_CORE_RGB[0], PV_CORE_RGB[1], PV_CORE_RGB[2]);
+    _ae.gl.scene.remove(core); st.group.add(core);
+    [F, core].forEach(function (m) {   // the mission's cone fades out within the first half of its length; a flame holds its brightness to near the tip
+      m.material.fragmentShader = m.material.fragmentShader.replace('(1.0 - vK) * (1.0 - vK) * 0.7', 'pow(1.0 - vK, ' + PV_FLAME_FALLOFF + ') * 0.85');
+      m.material.needsUpdate = true;
+    });
+    v.flames.push(F, core);
   }
   var b = _pvBasis(v.P, state.v), bf = f.rx ? _amTurnX(b, f.rx) : b, alt = Math.max(0, state.p[2]) / 1000;
   var ramp = _amSmooth(f.from, f.from + PV_FLAME_RAMP_S, t) * (0.9 + 0.1 * _amSmooth(f.from, f.from + 8, t));
-  var vac = 1 + (f.vac || 0) * _amSmooth(0, 1, alt / (f.vacAlt || 120)), len = f.len * vac * ramp * (0.9 + 0.2 * Math.random());
+  var vac = 1 + (f.vac || 0) * _amSmooth(0, 1, alt / (f.vacAlt || 120)), len = f.len * v.cfg.flameK * vac * ramp * (0.88 + 0.24 * Math.random());
   var o = _pvLocal(b, f.at);
   F.position.set(state.p[0] + o[0], state.p[1] + o[1], base + state.p[2] + o[2]);
   F.quaternion.setFromRotationMatrix(new _ae.gl.THREE.Matrix4().makeBasis(_pvV3(bf.x), _pvV3(bf.y), _pvV3(bf.z)));
-  F.scale.set(f.r * (0.6 + 0.4 * ramp), len, f.r * (0.6 + 0.4 * ramp));
-  F.visible = ramp > 0.01;
-  F.material.uniforms.fade.value = st.shared.fade.value;
-  F.updateMatrix(); F.updateMatrixWorld();
-  F.material.blending = st.shared.lit.value > PV_FLAME_DAY_LIT ? PV_THREE_NORMAL : PV_THREE_ADDITIVE;   // by day over the sky, by night added to it
+  var core = F.userData.core, blend = st.shared.lit.value > PV_FLAME_DAY_LIT ? PV_THREE_NORMAL : PV_THREE_ADDITIVE;   // by day over the sky, by night added to it
+  [[F, 1, 1], [core, PV_CORE_WIDTH, PV_CORE_LENGTH]].forEach(function (m) {
+    var M = m[0], w = f.r * v.cfg.flameW * (0.6 + 0.4 * ramp) * m[1];
+    M.position.copy(F.position); M.quaternion.copy(F.quaternion);
+    M.scale.set(w, len * m[2], w);
+    M.visible = ramp > 0.01;
+    M.material.uniforms.fade.value = st.shared.fade.value;
+    M.material.blending = blend;
+    M.updateMatrix(); M.updateMatrixWorld();
+  });
   if (veh === v.P.stack && fi === 0) v.flameAt = { p: F.position.clone(), power: ramp, dir: bf.y, speed: Math.hypot(state.v[0], state.v[1], state.v[2]), alt: Math.max(0, F.position.z - base) };
 }
 
@@ -345,6 +362,13 @@ function _pvFxReset() {
     P.geo.attributes.position.needsUpdate = true; P.geo.attributes.life.needsUpdate = true;
   });
 }
+// One puff of the cloud at the pad: it leaves the trench out to the left or right of the view (never toward the viewer, never in front of the
+// vehicle), low and wide, a little way from the centre line, and stays under about a third of the stack.
+function _pvPadPuff(P, v, ground) {
+  var k = v.cfg.cloud, rr = Math.random, side = rr() < 0.5 ? 1 : -1, across = (v.cfg.bearing + 90 * side) * Math.PI / 180;
+  var a = across + (rr() + rr() + rr() - 1.5) * PV_CLOUD_SPREAD_RAD, sp = (14 + rr() * 34) * k, off = (14 + rr() * 40) * k;
+  _asPuffEmit(P, Math.sin(across) * off, Math.cos(across) * off, ground + 2 + rr() * 8 * k, Math.sin(a) * sp, Math.cos(a) * sp, (0.2 + rr() * 1.2) * k, (28 + rr() * 42) * k, (1.5 + rr() * 2.5) * k, 20 + rr() * 22);
+}
 // Advance the exhaust by sd simulated seconds with the flame as it stands now.
 function _pvExhaust(sd, t) {
   var v = _pv, fx = _pvFx(), fa = v.flameAt;
@@ -352,7 +376,7 @@ function _pvExhaust(sd, t) {
     var pw = fa.power, alt = fa.alt, dir = fa.dir, pos = fa.p, thin = 1 - Math.exp(-alt / 9000);
     fx.acc.flame += sd * PV_FLAME_RATE * pw; fx.acc.cloud += sd * PV_PAD_CLOUD_RATE * pw * (1 - _amSmooth(PV_CLOUD_ALT_M[0], PV_CLOUD_ALT_M[1], alt));
     // The trail: a puff every PV_TRAIL_SPACING_M of the way, from where the cloud at the pad gives way up to PV_TRAIL_END_ALT_M.
-    fx.acc.trail += sd * Math.min(fa.speed, PV_TRAIL_MAX_MS) / PV_TRAIL_SPACING_M * pw * _amSmooth(PV_CLOUD_ALT_M[0], PV_CLOUD_ALT_M[1], alt) * (1 - _amSmooth(PV_TRAIL_END_ALT_M * 0.7, PV_TRAIL_END_ALT_M, alt));
+    fx.acc.trail += sd * Math.min(fa.speed, PV_TRAIL_MAX_MS) / PV_TRAIL_SPACING_M * pw * (1 + PV_LOW_TRAIL_EXTRA * (1 - _amSmooth(0, PV_LOW_TRAIL_M, alt))) * _amSmooth(PV_CLOUD_ALT_M[0], PV_CLOUD_ALT_M[1], alt) * (1 - _amSmooth(PV_TRAIL_END_ALT_M * 0.7, PV_TRAIL_END_ALT_M, alt));
     while (fx.acc.flame >= 1) {
       fx.acc.flame -= 1;
       var life = 0.25 + Math.random() * 0.3, sp = 120 + 300 * thin + Math.random() * 60, sd2 = 12 + 26 * thin, r = Math.random;
@@ -362,14 +386,13 @@ function _pvExhaust(sd, t) {
       var ground = _asGroundAt(v.st, 0, 0, false);
       while (fx.acc.cloud >= 1) {
         fx.acc.cloud -= 1;
-        var a = Math.random() * 6.2832, k = v.cfg.cloud, sp2 = (16 + Math.random() * 34) * k, life2 = 20 + Math.random() * 22;
-        _asPuffEmit(fx.smoke, (Math.random() - 0.5) * 30 * k, (Math.random() - 0.5) * 30 * k, ground + 3 + Math.random() * 10, Math.cos(a) * sp2, Math.sin(a) * sp2, (3 + Math.random() * 11) * k, (40 + Math.random() * 70) * k, (5 + Math.random() * 4) * k, life2);
+        _pvPadPuff(fx.smoke, v, ground);
       }
       // Spread along the way the flame came this frame, each as old as the time since the vehicle was there: a fast frame is not a clump.
       var n = Math.floor(fx.acc.trail), from = fx.last && pos.distanceTo(fx.last) < PV_TRAIL_JUMP_M ? fx.last : pos;
       for (var j = 1; j <= n; j++) {
         var f = j / n, age = (1 - f) * sd, rr = Math.random;
-        _asPuffEmit(fx.smoke, from.x + (pos.x - from.x) * f + (rr() - 0.5) * 6, from.y + (pos.y - from.y) * f + (rr() - 0.5) * 6, from.z + (pos.z - from.z) * f - dir[2] * 8, (rr() - 0.5) * 8, (rr() - 0.5) * 8, (rr() - 0.5) * 3, 26 + 18 * rr(), 3.2 + 2 * rr(), 26 + 16 * rr());
+        _asPuffEmit(fx.smoke, from.x + (pos.x - from.x) * f + (rr() - 0.5) * 6, from.y + (pos.y - from.y) * f + (rr() - 0.5) * 6, from.z + (pos.z - from.z) * f - dir[2] * 8, (rr() - 0.5) * 8, (rr() - 0.5) * 8, (rr() - 0.5) * 3, (26 + 18 * rr()) * (1 + 0.6 * (1 - _amSmooth(0, PV_LOW_TRAIL_M, alt))), 3.2 + 2 * rr(), 26 + 16 * rr());
         var i = (fx.smoke.next - 1) % fx.smoke.max;
         fx.smoke.age[i] = age; fx.smoke.life[i] = 1 - age / fx.smoke.maxLife[i]; fx.smoke.size[i] += fx.smoke.grow[i] * age;
       }
@@ -443,7 +466,8 @@ function _pvTick(st, t, dt, now) {
   }
   _pvPlace(t);
   var sd = v.lastT == null ? 0 : t - v.lastT;
-  if (sd < 0 || sd > 3) { _pvFxReset(); sd = 0; v.flameAt = null; }
+  if (sd < -PV_BACK_TOL_S || sd > PV_JUMP_S) { _pvFxReset(); sd = 0; v.flameAt = null; }   // a jump in time starts the exhaust over
+  else sd = Math.max(0, Math.min(sd, PV_STEP_MAX_S));
   v.lastT = t;
   _pvExhaust(sd, t);
   _pvHudTick(t, now);
@@ -509,7 +533,8 @@ var PV_CSS = [
   '.pv-back span{overflow:hidden;text-overflow:ellipsis}',
   '.pv-clock{position:absolute;left:0;right:0;top:calc(env(safe-area-inset-top) + 60px);text-align:center;color:rgba(255,255,255,.92);text-shadow:0 1px 14px rgba(0,0,0,.65);pointer-events:none}',
   '.pv-clock b{display:block;font-size:42px;font-weight:300;letter-spacing:.02em;line-height:1.05}',
-  '.pv-clock span{display:block;min-height:16px;margin-top:2px;font-size:13px;letter-spacing:.06em;text-transform:uppercase;color:rgba(255,255,255,.7);transition:opacity .4s}',
+  '.pv-clock span{display:inline-block;margin-top:4px;padding:3px 12px;border-radius:999px;background:rgba(14,14,16,.6);font-size:12px;letter-spacing:.08em;text-transform:uppercase;color:#fff;text-shadow:none}',
+  '.pv-clock span:empty{display:none}',
   '.pv-ctl{position:absolute;left:0;right:0;bottom:calc(16px + env(safe-area-inset-bottom));display:flex;justify-content:center;align-items:center;gap:10px;pointer-events:none}',
   '.pv-ctl>*{pointer-events:auto}',
   '.pv-ctl .pv-pace{font-size:12px;min-width:44px;font-variant-numeric:tabular-nums}',
