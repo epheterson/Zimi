@@ -36,6 +36,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 - Reddot, Zimipedia, ZimiTube, the PDF reader and Manage's Maps pane follow a setting changed in another window.
 - A second `zimi serve -d` started while the first is still starting no longer removes its pid file.
 - The portable build includes Pillow.
+- With Playwright 1.65, a stalled rendered capture's browser can be stopped again, and the Docker image builds.
 - Place search handles long place words, and small holes in region outlines are kept.
 - Almanac: the solar system is sized by its box, so a phone's tables page no longer scrolls sideways.
 - Almanac clock: picking today returns it to live time.
