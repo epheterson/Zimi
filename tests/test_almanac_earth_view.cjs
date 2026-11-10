@@ -354,8 +354,8 @@ const run = (code) => vm.runInContext(code, S);
     check(run('_ae.gl') === null, 'and lets the scene go');
     check(held.size > 10 && disposed === held.size, 'every geometry and material is disposed (' + disposed + ' of ' + held.size + ')');
     check(maps.length === 3 && maps.every((x) => x.disposed), 'every map is disposed');
-    check(textures.some((x) => x.url === S.AE_TEX_MOON_HI) && textures.filter((x) => x.url === S.AE_TEX_MOON).every((x) => x.disposed),
-      'the Moon\'s 4096 map replaced its 1024 one, which was given back then');
+    check(!textures.some((x) => x.url === S.AE_TEX_MOON_HI) && textures.filter((x) => x.url === S.AE_TEX_MOON).every((x) => x.disposed),
+      'opened on the Earth the 4096 Moon map is not fetched (tests/test_almanac_lazy_open.cjs has its triggers), and the 1024 one is given back');
     check(r1.did('dispose') && r1.did('forceContextLoss'), 'the renderer is disposed and its context given back');
     const fresh = document.getElementById('ae-canvas');
     check(fresh !== oldCanvas && oldCanvas.parentNode === null, 'a fresh canvas replaces the one whose context is lost');
