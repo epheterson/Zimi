@@ -623,7 +623,7 @@ var AE_CSS = [
   '@media (max-width:370px){#ae-views,.ae-chips{gap:3px}#ae-views .ae-btn{font-size:12px}#ae-views .ae-btn:not(.ae-round){padding-inline:5px}#ae-views .ae-round{width:30px;height:30px}}',
   // Short landscape (a phone on its side, 390 high): the sheet takes the height, short of the control column, so a list of places shows
   // six rows, not one and a half.
-  '@media (orientation:landscape) and (max-height:460px){.ae-go{inset-inline:12px 68px;top:8px;max-height:none}}',
+  '@media (orientation:landscape) and (max-height:460px){.ae-go{inset-inline:12px 68px;top:8px;max-height:none}.ae-go-row{min-height:34px}.ae-go h4{margin:6px 10px 2px}.ae-go-find{padding:4px 14px}}',
   '.ae-go-find{position:sticky;bottom:-8px;z-index:1;display:flex;align-items:center;gap:8px;margin:4px -6px -8px;padding:8px 14px;background:' + AE_PANEL_BG + ';border-top:1px solid var(--border);color:var(--text3)}',
   '.ae-go-find input{flex:1;min-width:0;height:32px;border:0;background:none;color:var(--text);font:inherit;font-size:16px;outline:none;-webkit-user-select:text;user-select:text;-webkit-appearance:none;appearance:none}',
   '.ae-go-find input::-webkit-search-cancel-button{-webkit-appearance:none}',
@@ -1766,7 +1766,7 @@ var AE_SUNFX_JS = '/static/almanac-sun.js?v=45';
 var AE_SUNFX_MIN_PX = 28;            // the Sun's disc, radius in CSS px, past which its close-up is asked for
 function _aeSunFxWanted(S, ms) {
   if (typeof _aeSunFxTick === 'function') { _aeSunFxTick(S, ms); return; }
-  if (S.sunFxAsked || typeof document === 'undefined') return;
+  if (S.sunFxAsked || typeof document === 'undefined' || !_ae.ready || !_aeIsOpen) return;   // nor while the scene is being built (the default camera has the Sun in frame)
   var to = _aeSub([S.sun.position.x, S.sun.position.y, S.sun.position.z], [S.camera.position.x, S.camera.position.y, S.camera.position.z]), d = _aeLen(to);
   if (AE_SUN_SHOW_R / Math.max(1e-9, d) * _ae.h / 2 / Math.tan(_aeRad(S.camera.fov) / 2) < AE_SUNFX_MIN_PX) return;
   // Wide on screen is not enough: on a phone the Sun is "wide" from the first frame, looking the other way. It is asked for when
@@ -2111,6 +2111,11 @@ function _aeLoadMap(S, uni, url, format, load) {
       if (format) tx.format = format;
       if (uni.value) uni.value.dispose();   // a map it replaces (the Moon's 1024 one)
       uni.value = tx;
+      if (typeof ZimiCap !== 'undefined' && tx.image && tx.image.width) {   // the capability level's memory budget (capability.js)
+        if (uni.__capKey) ZimiCap.gpuFree(uni.__capKey);
+        uni.__capKey = 'map:' + url;
+        ZimiCap.gpuTrack(uni.__capKey, tx.image.width * tx.image.height * 4 * 1.34);
+      }
       return true;
     }, function () {
       delete S.maps[url];
@@ -2150,7 +2155,8 @@ function _aeMoonDiscPx(S) {
   return AE_MOON_RADIUS_RE / Math.max(1e-9, d) * _ae.h / 2 / Math.tan(_aeRad(S.camera.fov) / 2) * (typeof window !== 'undefined' && window.devicePixelRatio || 1);
 }
 function _aeMoonHiWanted(S) {
-  if (S.moonHiAsked || !S.moonUni.moonMapped.value) return;
+  // Not while the scene is being built: until the view is ready and open the camera sits at its default distance, where the Moon's disc is wide.
+  if (S.moonHiAsked || !S.moonUni.moonMapped.value || !_ae.ready || !_aeIsOpen) return;
   if (_ae.target !== 'moon' && _aeMoonDiscPx(S) < AE_MOON_LO_MAP_W / 4) return;
   S.moonHiAsked = true;
   _aeLoadMap(S, S.moonUni.moonMap, AE_TEX_MOON_HI, AE_THREE_RED_FORMAT, _aeSharedHiMoon(S));
