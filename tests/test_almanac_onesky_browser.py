@@ -408,3 +408,155 @@ def test_the_card_is_a_plain_horizon_until_the_grid_is_in_and_stays_so_without_i
     assert len(asked) <= 1, asked
     assert not errors, errors
     ctx.close()
+
+
+CLOUD_PLACE = {"lat": 40.015, "lon": -105.27, "name": "Boulder"}
+CLOUD_MS = 1782075600000  # 2026-06-21 21:00 UTC, 3 PM there: a partly cloudy deck
+CLOUD_DIRS = [(180 + da, al) for da in (-25, 0, 25) for al in (25, 40, 55)]
+CLOUD_DIFF_LEVELS = 12.0
+
+
+def _cloudy(png_with, png_without, points):
+    """Per point, whether the picture with the deck differs from the one without it by more than the threshold."""
+    import numpy as np
+    from PIL import Image
+
+    a = np.asarray(Image.open(io.BytesIO(png_with)).convert("RGB")).astype(float)
+    b = np.asarray(Image.open(io.BytesIO(png_without)).convert("RGB")).astype(float)
+    out = []
+    for x, y in points:
+        x, y = int(round(x)), int(round(y))
+        if not (4 <= x < a.shape[1] - 4 and 4 <= y < a.shape[0] - 4):
+            out.append(None)
+            continue
+        out.append(
+            float(
+                np.abs(
+                    a[y - 3 : y + 4, x - 3 : x + 4] - b[y - 3 : y + 4, x - 3 : x + 4]
+                ).mean()
+            )
+            > CLOUD_DIFF_LEVELS
+        )
+    return out
+
+
+def test_the_card_and_the_ground_view_draw_the_same_cloud_field(browser, served):
+    """One field, one shader: at one place, instant and facing, the directions where the deck is (the picture with it differs from the
+    picture without it) are the directions in both views."""
+    place = json.dumps(CLOUD_PLACE)
+    clear = "() => { const f = window.__realField || (window.__realField = _osCloudField); window._osCloudField = (d) => Object.assign(f(d), { coverage: 0 }); }"
+    real = (
+        "() => { if (window.__realField) window._osCloudField = window.__realField; }"
+    )
+
+    def context():
+        c = browser.new_context(
+            viewport=VIEW,
+            device_scale_factor=1,
+            has_touch=True,
+            is_mobile=True,
+            service_workers="block",
+        )
+        c.add_init_script(
+            "try { localStorage.setItem('zimi_almanac_place', %r); sessionStorage.setItem('zimi_almanac_location', %r); } catch (e) {}"
+            % (place, place)
+        )
+        return c
+
+    # The card, through the look-around host.
+    ctx = context()
+    pg = ctx.new_page()
+    pg.goto(served + "/#almanac", wait_until="load")
+    pg.wait_for_function(
+        "() => typeof AlmanacSkyView !== 'undefined' && _skyState && _skyState.eph && typeof _jdToJulianCentury === 'function'",
+        timeout=120_000,
+    )
+    pg.evaluate(
+        "() => { const h = document.createElement('div'); h.style.cssText = 'position:fixed;inset:0;z-index:99999;background:#000'; document.body.appendChild(h); window._osh = h; }"
+    )
+    pg.evaluate(
+        "(ms) => { _almClockSetRate(0); _almScrubSettle(new Date(ms)); }", CLOUD_MS
+    )
+    pg.wait_for_timeout(500)
+
+    def card_shot():
+        pg.evaluate(
+            "([la, lo, az, alt]) => { AlmanacSkyView.unmount(_osh); AlmanacSkyView.mount(_osh, { lat: la, lon: lo, name: '' }); AlmanacSkyView.setView(_osh, az, alt, 70); }",
+            [CLOUD_PLACE["lat"], CLOUD_PLACE["lon"], 180, 40],
+        )
+        pg.wait_for_function(
+            "() => _sgReady() && _sg.starCount === 9096 && _sg.mwReady",
+            timeout=60_000,
+            polling=250,
+        )
+        pg.wait_for_timeout(1200)
+        return pg.screenshot()
+
+    with_clouds = card_shot()
+    pts = pg.evaluate(
+        "(ds) => ds.map(([az, alt]) => { const p = AlmanacSkyView.screenOf(_osh, az, alt); return [p.x, p.y]; })",
+        CLOUD_DIRS,
+    )
+    pg.evaluate(clear)
+    without = card_shot()
+    card_mask = _cloudy(with_clouds, without, pts)
+    ctx.close()
+
+    # The ground view.
+    ctx = context()
+    pg = ctx.new_page()
+    pg.goto(served + "/#almanac", wait_until="load")
+    pg.wait_for_function(
+        "() => typeof openAlmanacEarth === 'function' && typeof _aeLoadThree === 'function'",
+        timeout=120_000,
+    )
+    pg.evaluate("openAlmanacEarth({ target: 'earth' })")
+    pg.wait_for_function(
+        "() => typeof _aeReady === 'function' && _aeReady() && _aeIsOpen && !_ae.fly",
+        timeout=READY_MS,
+        polling=250,
+    )
+    pg.evaluate(
+        "([la, lo]) => _aeStandAt('earth', la, lo)",
+        [CLOUD_PLACE["lat"], CLOUD_PLACE["lon"]],
+    )
+    pg.wait_for_function(
+        "() => _ae.stand && _ae.stand.live && _ae.stand.mode === 'ground' && _ae.stand.fr",
+        timeout=READY_MS,
+        polling=250,
+    )
+
+    def stand_shot():
+        pg.evaluate(
+            """([ms, head, pitch]) => { _aeGoTo(ms); const st = _ae.stand; st.userYaw = head * Math.PI / 180 - st.yaw;
+              st.userPitch = pitch * Math.PI / 180 - _aeRad(AE_STAND_PITCH_DEG); st.dirty = true; st.fr = null; _ae.dirty = true; _aeKick(); }""",
+            [CLOUD_MS, 180, 40],
+        )
+        pg.wait_for_timeout(3000)
+        data = pg.evaluate(
+            "() => { const st = _ae.stand; _ae.gl.renderer.render(st.scene, st.camera); return _ae.gl.renderer.domElement.toDataURL('image/png'); }"
+        )
+        return base64.b64decode(data.split(",")[1])
+
+    with_clouds = stand_shot()
+    pts = pg.evaluate(
+        """(ds) => { const st = _ae.stand, V = _ae.gl.THREE.Vector3;
+          return ds.map(([az, alt]) => { const d = _aeStandSkyDir(az, alt); const p = new V(d[0] * 10, d[1] * 10, d[2] * 10).project(st.camera); return [(p.x + 1) / 2 * _ae.w, (1 - p.y) / 2 * _ae.h]; }); }""",
+        CLOUD_DIRS,
+    )
+    pg.evaluate(clear)
+    without = stand_shot()
+    stand_mask = _cloudy(with_clouds, without, pts)
+    ctx.close()
+
+    both = [
+        (a, b) for a, b in zip(card_mask, stand_mask) if a is not None and b is not None
+    ]
+    assert len(both) >= 7, (card_mask, stand_mask)
+    assert any(a for a, _ in both) and not all(a for a, _ in both), (
+        "the day shows both cloud and clear sky",
+        card_mask,
+        stand_mask,
+    )
+    agree = sum(1 for a, b in both if a == b)
+    assert agree >= len(both) - 1, (card_mask, stand_mask)
