@@ -29,13 +29,14 @@ var PV_FLAME_RATE = 280, PV_PAD_CLOUD_RATE = 70;   // puffs a second at full fla
 var PV_CLOUD_ALT_M = [25, 300];            // the cloud at the pad gives way to a trail between these heights
 var PV_CLOUD_SPREAD_RAD = 0.55;             // how far the cloud's directions scatter about the line across the view
 var PV_LOW_TRAIL_M = 1500, PV_LOW_TRAIL_EXTRA = 1.2;   // near the ground the trail is denser and its puffs bigger (the smoke before it thins to a contrail)
+var PV_GLOW_S = 14;                         // the flame lights the cloud at the pad for this long after lift-off
 var PV_BACK_TOL_S = 2, PV_JUMP_S = 12, PV_STEP_MAX_S = 3;   // a step back in time under the first, or forward under the second, is the clock running (a hitch at 4x, or the pause dropping the clock's extrapolated step), not a jump; one frame advances the exhaust by at most the third
 var PV_TRAIL_JUMP_M = 5000;                // a flame this far from where it was last frame was moved, not flown: no trail between
 var PV_TRAIL_END_ALT_M = 30000, PV_TRAIL_SPACING_M = 12, PV_TRAIL_MAX_MS = 700;
 var PV_SHAKE_S = 14, PV_SHAKE_SHARE = 0.006;   // seconds of tremor after lift-off, and its size as a share of the field
 var PV_HUD_ID = 'pv-hud', PV_CSS_ID = 'pv-css', PV_WATCH_MS = 500, PV_EVENT_SHOW_S = 4;
 var PV_PACES = [1, 0.25, 4];
-var PV_STEPS_M = [1, 0.5, 0.2];            // the viewing distance as a share of the pad's, each press of "closer"
+var PV_STEPS_M = [1, 0.5, 0.2, 2];            // the viewing distance as a share of the pad's, each press of "closer"
 var PV_THREE_NORMAL = 1, PV_THREE_ADDITIVE = 2, PV_FLAME_DAY_LIT = 0.15;   // three's blending constants; the Sun's share of light above which a flame is drawn over the sky
 var PV_CLEAR_SEARCH_S = 60, PV_CLEAR_STEP_S = 0.1;   // where to look for the moment the tower is cleared
 var PV_PRELOAD_S = 400;                    // the models of what flies in the first minutes load with the pad, not at their stage
@@ -46,7 +47,7 @@ var PV_PRELOAD_S = 400;                    // the models of what flies in the fi
 // base over the ground; cloud: the size of the cloud at the pad against a Saturn V's; heightM: the stack, for the field of view; midM: its middle along the nose from the vehicle's own origin (the
 // Atlas V's origin is its spacecraft, at the top); tower: which pad (the site models, or boxes).
 var PV_PADS = {
-  apollo11: { mission: 'apollo11', name: 'Apollo 11', pad: 'LC-39A', deckM: 5, heightM: 111, midM: 50, baseM: -3.5, towerM: AE_SITE_FACTS.launchTowerM, viewM: 5000, bearing: 200, tower: 'lc39a', cloud: 1, shake: 1, flameK: 1.7, flameW: 1.6 },
+  apollo11: { mission: 'apollo11', name: 'Apollo 11', pad: 'LC-39A', deckM: 5, heightM: 111, midM: 50, baseM: -3.5, towerM: AE_SITE_FACTS.launchTowerM, viewM: 2500, fieldM: 5000, bearing: 200, tower: 'lc39a', cloud: 1, shake: 1, flameK: 3.6, flameW: 2.2 },
   perseverance: { mission: 'perseverance', name: 'Perseverance', pad: 'SLC-41', deckM: 14.3, heightM: 58, midM: -24, baseM: -49, towerM: 68, viewM: 4000, bearing: 215, tower: 'slc41', cloud: 0.45, shake: 0.4, flameK: 1.3, flameW: 1.3 }
 };
 var PV_SITE_TOWERS = {   // the site models of a pad (almanac-sites.js): parts of the visit's own definition
@@ -297,7 +298,7 @@ function _pvFlame(veh, f, fi, state, t, base) {
     core.material.uniforms.hot.value.set(PV_CORE_RGB[0], PV_CORE_RGB[1], PV_CORE_RGB[2]);
     _ae.gl.scene.remove(core); st.group.add(core);
     [F, core].forEach(function (m) {   // the mission's cone fades out within the first half of its length; a flame holds its brightness to near the tip
-      m.material.fragmentShader = m.material.fragmentShader.replace('(1.0 - vK) * (1.0 - vK) * 0.7', 'pow(1.0 - vK, ' + PV_FLAME_FALLOFF + ') * 0.85');
+      m.material.fragmentShader = m.material.fragmentShader.replace('(1.0 - vK) * (1.0 - vK) * 0.7', 'pow(1.0 - vK, ' + PV_FLAME_FALLOFF + ') * 0.85').replace('vec3(1.0, 0.85, 0.55)', 'vec3(1.0, 0.97, 0.88)');   // white at the nozzles
       m.material.needsUpdate = true;
     });
     v.flames.push(F, core);
@@ -329,7 +330,7 @@ var PV_SMOKE_FRAG = [
   '  if (r > 1.0) discard;',
   '  float a = (1.0 - r) * (1.0 - r);',
   '  vec3 col = vec3(0.93, 0.92, 0.9) * (0.32 + 0.68 * lit + ambient);',
-  '  col = mix(col, vec3(1.0, 0.74, 0.46), 0.55 * glow * pow(vLife, 6.0));',   // a young puff is lit by the flame, an old one is just cloud
+  '  col = mix(col, vec3(1.0, 0.74, 0.46), 0.7 * glow * pow(vLife, 4.0));',   // a young puff is lit by the flame, an old one is just cloud
   '  gl_FragColor = vec4(sqrt(min(col, vec3(1.0))), fade * a * min(1.0, vLife * 1.7) * 0.55);',
   '}'
 ].join('\n');
@@ -406,7 +407,7 @@ function _pvExhaust(sd, t) {
   }
   var pxr = _ae.h / 2 / Math.tan(_aeRad(_ae.gl.camera.fov) / 2) * _ae.gl.renderer.getPixelRatio();   // a point's size is in the drawing buffer's pixels
   fx.flame.uni.pxPerRad.value = pxr;
-  if (fx.smoke) { fx.smoke.uni.pxPerRad.value = pxr; fx.smoke.uni.glow.value = _amSmooth(8, 0, t - v.P.tLift) * (fa ? Math.min(1, fa.power) : 0); }
+  if (fx.smoke) { fx.smoke.uni.pxPerRad.value = pxr; fx.smoke.uni.glow.value = _amSmooth(PV_GLOW_S, 0, t - v.P.tLift) * (fa ? Math.min(1, fa.power) : 0); }
 }
 
 // ── The camera and the step: once a frame ──
@@ -416,7 +417,7 @@ function _pvEyePlace(v) {
   var st = v.st, c = v.cfg, d = v.eye.dist, b = c.bearing * Math.PI / 180, x = Math.sin(b) * d, y = Math.cos(b) * d;
   return { x: x, y: y, z: _asGroundAt(st, x, y, false) + AE_STAND_EYE_M };
 }
-function _pvFieldDeg(v) { return 2 * Math.atan(v.cfg.heightM / (2 * PV_VEHICLE_FRAME_SHARE * v.cfg.viewM)) * 180 / Math.PI; }   // from the pad's own viewing distance: walking nearer makes the vehicle larger, not the field wider
+function _pvFieldDeg(v) { return 2 * Math.atan(v.cfg.heightM / (2 * PV_VEHICLE_FRAME_SHARE * (v.cfg.fieldM || v.cfg.viewM))) * 180 / Math.PI; }   // from the pad's own viewing distance: walking nearer makes the vehicle larger, not the field wider
 function _pvCamera(st, dt) {
   var v = _pv;
   if (!v || v.st !== st) return { pos: [0, 0, 20], focus: [0, 100, 20] };
