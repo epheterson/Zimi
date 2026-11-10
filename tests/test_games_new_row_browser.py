@@ -110,3 +110,31 @@ def test_no_added_no_row(browser, served):
     )
     assert sections[-1] == "ar-library" and sections[0] != "ar-library", sections
     ctx.close()
+
+
+def test_kiwix_viewer_links_keep_the_opening_rows(browser, served):
+    """kiwix-serve 3.8's viewer rewrites every link of the framed page to "/viewer#<book>/<path>" once it has loaded, before
+    games.json comes back: the table, World favorites and the Daily row still find their tiles (the shelf opened on the
+    Library group in Kiwix without this)."""
+    ctx = browser.new_context(viewport=VIEW, has_touch=True, is_mobile=True, reduced_motion="reduce")
+    page = ctx.new_page()
+    body = json.dumps(rows())
+
+    def late(route):
+        page.wait_for_timeout(300)
+        route.fulfill(body=body, content_type="application/json")
+
+    page.route("**/games.json", late)
+    page.add_init_script(
+        "document.addEventListener('DOMContentLoaded', function () {"
+        " document.querySelectorAll('a[href]').forEach(function (a) { var h = a.getAttribute('href');"
+        " if (!/^(https?:|#|\\/)/.test(h)) a.setAttribute('href', '/viewer#zimi_games_2026-11/' + h); }); });"
+    )
+    page.goto("%s/index.html" % served)
+    page.wait_for_selector(".ar-daily a.ar-game")
+    order = page.eval_on_selector_all(
+        ".sh-top > section",
+        "els => els.map(e => e.className.split(' ').filter(c => /^ar-(continue|world|daily)$/.test(c))[0])",
+    )
+    assert order[:2] == ["ar-continue", "ar-world"] and "ar-daily" in order, order
+    ctx.close()

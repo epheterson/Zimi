@@ -128,7 +128,7 @@
     Object.keys(snaps).forEach(function (path) {
       var src = snapSrc(snaps[path]);
       if (!src) return;
-      Array.prototype.forEach.call(doc.querySelectorAll('a.ar-game[href="' + path + '"]'), function (tile) {
+      tilesAt(path).forEach(function (tile) {
         var art = tile.querySelector('.ar-game-art');
         if (!art || art.tagName.toLowerCase() === 'img') return;
         var img = doc.createElement('img');
@@ -150,8 +150,18 @@
 
   // A tile for a game: the shelf's own, copied, so the art matches. A game the
   // shelf has no tile of borrows nothing: there is no tile to show.
+  // The shelf's tiles for a page. Kiwix's viewer (kiwix-serve 3.8) rewrites a book's links once the page has loaded, to its own
+  // "/viewer#<book>/<path>", before games.json has come back: a tile is found by the path its link ends in, written either way.
+  var VIEWER = '/viewer#';
+  function tilesAt(path) {
+    return Array.prototype.filter.call(doc.querySelectorAll('a.ar-game'), function (a) {
+      var h = a.getAttribute('href') || '', at = h.indexOf(VIEWER);
+      if (at >= 0) h = h.slice(h.indexOf('/', at + VIEWER.length) + 1);
+      return h === path;
+    });
+  }
   function tileFor(game) {
-    var tile = doc.querySelector('a.ar-game[href="' + canon(game.path) + '"]');
+    var tile = tilesAt(canon(game.path))[0];
     if (!tile) return null;
     var el = tile.cloneNode(true);
     var text = el.querySelector('.ar-game-text');

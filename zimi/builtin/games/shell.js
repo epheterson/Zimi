@@ -198,7 +198,7 @@
   // frame's bottom is kept clear through --host-bottom, which games.css folds into --safe-b.
   var KIWIX_JS_TOOLBAR_PX = 48;
   var kiwixJs = !!d && root.parent !== root && !inZimi() && String(root.location && root.location.pathname).indexOf('/content/') < 0;
-  if (kiwixJs) d.documentElement.style.setProperty('--host-bottom', KIWIX_JS_TOOLBAR_PX + 'px');
+  if (kiwixJs && d.documentElement.style) d.documentElement.style.setProperty('--host-bottom', KIWIX_JS_TOOLBAR_PX + 'px');
   Shell.kiwixJs = kiwixJs;
 
   // ── the daily edition ──
@@ -1746,10 +1746,12 @@
   if (!hosted && d.head) {
     var homeJs = d.createElement('script');
     homeJs.src = HOME + 'zimihome.js';
-    homeJs.onload = function () {
+    var placeHome = function () {
       var desc = d.querySelector('.ar-shelf > header > p:not(.gs-needjs)'), line = desc && homeLine();
       if (line) desc.parentNode.insertBefore(line, desc.nextSibling);
     };
+    // The file can arrive before the shelf's header is parsed (shell.js runs in the head): then it waits for the page.
+    homeJs.onload = function () { if (d.readyState === 'loading') d.addEventListener('DOMContentLoaded', placeHome); else placeHome(); };
     d.head.appendChild(homeJs);
   }
   // Measured now, again once the page is laid out (before that a phone may still report the default 980 px layout's
