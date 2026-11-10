@@ -1858,8 +1858,18 @@ function _skyPaintWhale(ctx, s, a, ts) {
 // in the sand, out of the view (Eric: "Move the compass under or something
 // it's ugly"; it sat on the sea).
 var SKY_COMPASS_FOOT_PX = 4;   // css px from the bottom edge to the letters' baseline
+// The foreground: the sea where the grid says there is a coast, the place's own land (almanac-skyland.js) elsewhere, a plain horizon
+// until the grid is in (almanac-onesky.js _osCardScene).
+var SKY_PLAIN_GROUND = [0.3, 0.29, 0.24];
 function _skyPaintGround(ctx, s) {
-  _skyPaintSea(ctx, s, s.sea ? s.sea.frac : SKY_CALM_FRAC);
+  var scene = _osCardScene(s);
+  if (scene === 'beach') _skyPaintSea(ctx, s, s.sea ? s.sea.frac : SKY_CALM_FRAC);
+  else if (scene !== 'plain' && typeof _skyPaintLand === 'function') _skyPaintLand(ctx, s, scene);
+  else {
+    var yh = s.H * SKY_HORIZON_Y, lit = s.lit = _skyGroundLight(s);
+    ctx.fillStyle = _skyRgb(_skyLitColour(SKY_PLAIN_GROUND, lit).map(function (v) { return v * 255; }));
+    ctx.fillRect(0, yh, s.W, s.H - yh);
+  }
 }
 // The points of the compass along the foot of the beach: drawn after the palms, which would stand over them.
 function _skyPaintCompassFoot(ctx, s) {
@@ -2551,8 +2561,10 @@ function _skyPaint(ts) {
     _skyPaintActors(ctx, s, ts);
     ctx.restore();
     if (beach) {
-      for (var i = 0; i < s.actors.length; i++) if (s.actors[i].type === 'whale') _skyPaintWhale(ctx, s, s.actors[i], ts);
-      _skyPaintPalms(ctx, s, ts);
+      if (_osCardScene(s) === 'beach') {
+        for (var i = 0; i < s.actors.length; i++) if (s.actors[i].type === 'whale') _skyPaintWhale(ctx, s, s.actors[i], ts);
+        _skyPaintPalms(ctx, s, ts);
+      }
       _skyPaintCompassFoot(ctx, s);
     }
   }

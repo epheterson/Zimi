@@ -179,6 +179,49 @@ function _osStandClouds(mode) {
   st.dirty = true; _ae.dirty = true;
 }
 
+// ── What the card stands on ──
+// The foreground of the live sky is the place's own land (almanac-skyland.js, from the one grid: almanac-oneland.js). Until the grid is in
+// it is a plain horizon, never the palms; the grid and the painter load after the card's first picture, and the answer for a place is
+// kept (a place is the same land next time) so a return visit paints it at once.
+var OS_LAND_KEY = 'zimi_sky_land', OS_LAND_SRCS = ['/static/almanac-oneland.js', '/static/almanac-skyland.js'];
+var _osLandLoading = false, _osLandFailed = false;
+function _osLandKey(s) { return Math.floor(s.lat) + ',' + Math.floor(s.lon); }
+function _osLandRemembered(key) {
+  try { var r = JSON.parse(localStorage.getItem(OS_LAND_KEY)); return r && r.k === key ? r : null; } catch (e) { return null; }
+}
+function _osLandRemember(key, land) {
+  try { localStorage.setItem(OS_LAND_KEY, JSON.stringify({ k: key, cls: land.cls, coast: land.coast, rgb: land.rgb })); } catch (e) { /* private window */ }
+}
+// The scene to draw: 'plain' | 'beach' | a land class ('broadleaf', 'conifer', 'grass', 'desert', 'snow', 'tundra').
+function _osCardScene(s) {
+  if (s.hosted) return 'beach';   // Look's own sphere keeps what it had
+  var key = _osLandKey(s);
+  if (s.landKey !== key) { s.landKey = key; s.land = _osLandRemembered(key); }
+  if (!s.land) { _osLandKick(s, key); return 'plain'; }
+  return s.land.coast || s.land.cls === 'sea' ? 'beach' : s.land.cls;
+}
+function _osLandKick(s, key) {
+  if (_osLandLoading || _osLandFailed || typeof _loadScript !== 'function') return;
+  _osLandLoading = true;
+  var go = function () {
+    Promise.all(OS_LAND_SRCS.map(function (src) { return _loadScript(src); })).then(function (ok) {
+      if (!ok.every(Boolean) || typeof _osLandCoverLoad !== 'function') return false;
+      return _osLandCoverLoad();
+    }).then(function (ok) {
+      _osLandLoading = false;
+      if (!ok) _osLandFailed = true;   // the plain horizon stays; not retried every picture
+      var st = typeof _skyState !== 'undefined' ? _skyState : null;
+      if (!ok || !st || _osLandKey(st) !== key) return;
+      st.land = _osLandCover(st.lat, st.lon);
+      if (st.land) _osLandRemember(key, st.land);
+      st.baseDirty = true;
+      if (typeof _skyKick === 'function') _skyKick();
+    });
+  };
+  // After the card's first picture and the page's own work, when the person is not touching the screen.
+  if (typeof requestIdleCallback === 'function') requestIdleCallback(go, { timeout: 2500 }); else setTimeout(go, 400);
+}
+
 // ── The objects on the card ──
 // What _osObjects holds for the place, drawn on the sky's canvas (the panorama or a lens): a point's glow by its magnitude, its trail
 // fading by the magnitude of each step, a rocket's plume as a soft glow, the GPS satellites as rings. Hidden when the sky is brighter
