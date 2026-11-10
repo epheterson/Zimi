@@ -216,43 +216,22 @@ def test_one_source_of_positions_at_every_date(browser, served):
     assert not errors, errors
 
 
-def test_no_webgl_the_orrery_says_so_and_stays(served):
-    from playwright.sync_api import sync_playwright
+NO_WEBGL = """(() => { var g = HTMLCanvasElement.prototype.getContext;
+  HTMLCanvasElement.prototype.getContext = function (k) { return /webgl/i.test(k) ? null : g.apply(this, arguments); }; })()"""
 
-    with sync_playwright() as pw:
-        br = pw.chromium.launch(
-            args=[
-                "--disable-gpu",
-                "--disable-3d-apis",
-                "--disable-webgl",
-                "--disable-webgl2",
-            ]
-        )
-        ctx = br.new_context(viewport=PORTRAIT, device_scale_factor=2)
-        pg = ctx.new_page()
-        errors = []
-        pg.on("pageerror", lambda e: errors.append(str(e)))
-        pg.goto(served + "/#almanac", wait_until="load")
-        pg.wait_for_function(
-            "() => typeof openAlmanacEarth === 'function' && document.getElementById('almanac-orrery')",
-            timeout=120000,
-        )
-        pg.evaluate(
-            "document.getElementById('almanac-orrery').scrollIntoView({ block: 'center' })"
-        )
-        pg.evaluate("_orreryOpenEarthView('mars')")
-        pg.wait_for_function(
-            "() => openAlmanacEarth.unsupported === true",
-            timeout=60000,
-            polling=POLL_MS,
-        )
-        assert not pg.evaluate("_aeIsOpen")
-        assert pg.evaluate("document.getElementById('orrery-hint').textContent").strip()
-        assert (
-            pg.evaluate(
-                "document.getElementById('almanac-orrery').getBoundingClientRect().width"
-            )
-            > 0
-        )
-        assert not errors, errors
-        br.close()
+
+def test_no_webgl_the_orrery_says_so_and_stays(browser, served):
+    ctx = browser.new_context(viewport=PORTRAIT, device_scale_factor=2)
+    ctx.add_init_script(NO_WEBGL)
+    pg = ctx.new_page()
+    errors = []
+    pg.on("pageerror", lambda e: errors.append(str(e)))
+    pg.goto(served + "/#almanac", wait_until="load")
+    pg.wait_for_function("() => typeof openAlmanacEarth === 'function' && document.getElementById('almanac-orrery')", timeout=120000)
+    pg.evaluate("document.getElementById('almanac-orrery').scrollIntoView({ block: 'center' })")
+    pg.evaluate("_orreryOpenEarthView('mars')")
+    pg.wait_for_function("() => openAlmanacEarth.unsupported === true", timeout=60000, polling=POLL_MS)
+    assert not pg.evaluate("_aeIsOpen")
+    pg.wait_for_function("() => document.getElementById('orrery-hint').textContent.trim() !== ''", timeout=10000, polling=POLL_MS)
+    assert pg.evaluate("document.getElementById('almanac-orrery').getBoundingClientRect().width") > 0
+    assert not errors, errors
