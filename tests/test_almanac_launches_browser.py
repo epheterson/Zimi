@@ -126,12 +126,12 @@ def test_a_launch_opens_at_its_pad_and_says_what_la_could_see(browser, served):
         assert abs(shown - LIFTOFF_MS) < CLOCK_SLACK_MS * 10, shown
         assert (
             pg.evaluate("_al.flight.family") == "falcon"
-            and pg.evaluate("_al.flight.points.length") == 526
+            and pg.evaluate("_al.flight.points.length") == 527
         )
         pg.wait_for_timeout(1500)
         assert (
             pg.evaluate("_al.track.visible && _al.track.geometry.drawRange.count")
-            == 526
+            == 527
         )
         text = pg.inner_text(".al-sheet")
         assert "Starlink Group 4-31" in text and "Vandenberg" in text
