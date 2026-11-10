@@ -743,13 +743,12 @@ def test_in_totality_the_sky_is_deep_twilight_and_venus_and_jupiter_are_drawn(
     assert 1.8 < lim < 3.4, lim
     for planet in ("venus", "jupiter"):
         found = pg.evaluate(
-            """(name) => { const st = _ae.stand, o = st.fr.objs.find(x => x.key === name);
+            """([name, ms]) => { const st = _ae.stand, e = _skyEphemeris(new Date(ms), 30.0474, -99.1403), o = e.planets.find(x => x.name.toLowerCase() === name);
               if (!o) return null;
-              const az = Math.atan2(o.dir[0], o.dir[1]) * 180 / Math.PI, alt = Math.asin(o.dir[2]) * 180 / Math.PI;
-              st.userYaw = az * Math.PI / 180 - st.yaw; st.userPitch = alt * Math.PI / 180 - _aeRad(AE_STAND_PITCH_DEG);
+              st.userYaw = o.az * Math.PI / 180 - st.yaw; st.userPitch = o.alt * Math.PI / 180 - _aeRad(AE_STAND_PITCH_DEG);
               st.dirty = true; st.fr = null; _ae.dirty = true; _aeKick();
-              return { mag: o.mag, az: az, alt: alt }; }""",
-            planet,
+              return { mag: o.mag, az: o.az, alt: o.alt, sunAz: e.sun.az, sunAlt: e.sunGeoAlt }; }""",
+            [planet, ms],
         )
         assert found and found["mag"] < lim and found["alt"] > 5, (planet, found)
         pg.wait_for_function(
@@ -757,10 +756,10 @@ def test_in_totality_the_sky_is_deep_twilight_and_venus_and_jupiter_are_drawn(
         )
         pg.wait_for_timeout(1500)
         xy = pg.evaluate(
-            """(name) => { const V = _ae.gl.THREE.Vector3, st = _ae.stand, o = st.fr.objs.find(x => x.key === name), p = new V(o.dir[0] * 10, o.dir[1] * 10, o.dir[2] * 10).project(st.camera);
+            """([az, alt]) => { const V = _ae.gl.THREE.Vector3, st = _ae.stand, a = az * Math.PI / 180, h = alt * Math.PI / 180, p = new V(Math.sin(a) * Math.cos(h) * 10, Math.cos(a) * Math.cos(h) * 10, Math.sin(h) * 10).project(st.camera);
               const r = _ae.gl.renderer.domElement.getBoundingClientRect();
               return [r.left + (p.x + 1) / 2 * r.width, r.top + (1 - p.y) / 2 * r.height]; }""",
-            planet,
+            [found["az"], found["alt"]],
         )
         img = np.asarray(
             Image.open(io.BytesIO(pg.screenshot())).convert("L")
