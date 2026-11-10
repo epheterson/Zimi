@@ -208,7 +208,7 @@
     if (g.over) return;
     if (g.turn !== 0 || timer) { ZimiShell.shake(cells[i]); line.reason(T('shell.thinking')); return; }
     if (g.cands[0].indexOf(i) < 0) { ZimiShell.shake(cells[i]); line.reason(T('whoisit.out')); return; }
-    selected = selected === i ? -1 : i;
+    selected = selected === i && g.cands[0].length > 1 ? -1 : i;   // the last face is the answer: tapping it again keeps it chosen
     paint(); say();
   }
   function tapQuestion(id) {
