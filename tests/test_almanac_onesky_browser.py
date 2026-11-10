@@ -215,7 +215,7 @@ def stand(browser, served, times):
         pg.wait_for_timeout(2500)
         pts = pg.evaluate(
             """(ds) => { const st = _ae.stand, V = _ae.gl.THREE.Vector3;
-              return ds.map(([az, alt]) => { const d = _aeStandSkyDir(az, alt); const p = new V(d[0] * 10, d[1] * 10, d[2] * 10).project(st.camera); return [(p.x + 1) / 2 * _ae.w, (1 - p.y) / 2 * _ae.h]; }); }""",
+              return ds.map(([az, alt]) => { const d = _aeStandSkyDir(az, alt); const p = new V(d[0] * 1e4, d[1] * 1e4, d[2] * 1e4).project(st.camera); return [(p.x + 1) / 2 * _ae.w, (1 - p.y) / 2 * _ae.h]; }); }""",
             SAMPLE_DIRS,
         )
         data = pg.evaluate(
@@ -338,7 +338,9 @@ FOREGROUNDS = [
     ("Salina", 38.84, -97.61, "grass"),
     ("Ghat", 25.0, 10.0, "desert"),
     ("Greenland", 72.0, -40.0, "snow"),
-    ("Tiksi", 71.6, 128.9, "beach"),  # a coast, so the sea; no palms at 71 N
+    ("Tiksi", 71.6, 128.9, "tundra"),  # a tundra shore is tundra, not a beach
+    ("Cairo", 30.04, 31.24, "desert"),  # the Nile valley in a dry cell
+    ("McMurdo", -77.85, 166.67, "snow"),  # an ice shore, not a beach
     ("Lisbon", 38.72, -9.14, "beach"),
     ("Sydney", -33.87, 151.21, "beach"),
 ]
@@ -406,5 +408,285 @@ def test_the_card_is_a_plain_horizon_until_the_grid_is_in_and_stays_so_without_i
     assert pg.evaluate("() => _osCardScene(_skyState)") == "plain"
     assert not pg.evaluate("() => !!_skyState.land")
     assert len(asked) <= 1, asked
+    assert not errors, errors
+    ctx.close()
+
+
+def _cloud_change(png_with, png_without):
+    """How much the whole picture changes, in levels, when the deck is taken away (at night the sky is dark either way: a cloud is a few levels)."""
+    import numpy as np
+    from PIL import Image
+
+    a = np.asarray(Image.open(io.BytesIO(png_with)).convert("RGB")).astype(float)
+    b = np.asarray(Image.open(io.BytesIO(png_without)).convert("RGB")).astype(float)
+    return float(np.abs(a - b).mean())
+
+
+CLOUD_PLACE = {"lat": 40.015, "lon": -105.27, "name": "Boulder"}
+CLOUD_MS = 1782075600000  # 2026-06-21 21:00 UTC, 3 PM there: a partly cloudy deck
+CLOUD_DIRS = [(180 + da, al) for da in (-25, 0, 25) for al in (25, 40, 55)]
+CLOUD_DIFF_LEVELS = 12.0
+
+
+def _cloudy(png_with, png_without, points, levels):
+    """Per point, whether the picture with the deck differs from the one without it by more than the threshold."""
+    import numpy as np
+    from PIL import Image
+
+    a = np.asarray(Image.open(io.BytesIO(png_with)).convert("RGB")).astype(float)
+    b = np.asarray(Image.open(io.BytesIO(png_without)).convert("RGB")).astype(float)
+    out = []
+    for x, y in points:
+        x, y = int(round(x)), int(round(y))
+        if not (4 <= x < a.shape[1] - 4 and 4 <= y < a.shape[0] - 4):
+            out.append(None)
+            continue
+        out.append(
+            float(
+                np.abs(
+                    a[y - 3 : y + 4, x - 3 : x + 4] - b[y - 3 : y + 4, x - 3 : x + 4]
+                ).mean()
+            )
+            > levels
+        )
+    return out
+
+
+CLOUD_SCENES = [
+    # (id, place, instant, the difference with and without the deck that counts as cloud (levels), whether the day shows both cloud and clear sky)
+    ("boulder_3pm", CLOUD_PLACE, CLOUD_MS, 12.0, True),
+    (
+        "black_forest_noon_heavy",
+        {"lat": 47.8, "lon": 8.2, "name": "Black Forest"},
+        1790076432000,
+        12.0,
+        False,
+    ),
+    (
+        "black_forest_night_heavy",
+        {"lat": 47.8, "lon": 8.2, "name": "Black Forest"},
+        1790104570890,
+        3.0,
+        False,
+    ),
+]
+
+
+@pytest.mark.parametrize(
+    "scene,cplace,cms,levels,mixed", CLOUD_SCENES, ids=[c[0] for c in CLOUD_SCENES]
+)
+def test_the_card_and_the_ground_view_draw_the_same_cloud_field(
+    browser, served, scene, cplace, cms, levels, mixed
+):
+    """One field, one shader: at one place, instant and facing, the directions where the deck is (the picture with it differs from the
+    picture without it) are the directions in both views."""
+    place = json.dumps(cplace)
+    clear = "() => { const f = window.__realField || (window.__realField = _osCloudField); window._osCloudField = (d) => Object.assign(f(d), { coverage: 0 }); }"
+    real = (
+        "() => { if (window.__realField) window._osCloudField = window.__realField; }"
+    )
+
+    def context():
+        c = browser.new_context(
+            viewport=VIEW,
+            device_scale_factor=1,
+            has_touch=True,
+            is_mobile=True,
+            service_workers="block",
+        )
+        c.add_init_script(
+            "try { localStorage.setItem('zimi_almanac_place', %r); sessionStorage.setItem('zimi_almanac_location', %r); } catch (e) {}"
+            % (place, place)
+        )
+        return c
+
+    # The card, through the look-around host.
+    ctx = context()
+    pg = ctx.new_page()
+    pg.goto(served + "/#almanac", wait_until="load")
+    pg.wait_for_function(
+        "() => typeof AlmanacSkyView !== 'undefined' && _skyState && _skyState.eph && typeof _jdToJulianCentury === 'function'",
+        timeout=120_000,
+    )
+    pg.evaluate(
+        "() => { const h = document.createElement('div'); h.style.cssText = 'position:fixed;inset:0;z-index:99999;background:#000'; document.body.appendChild(h); window._osh = h; }"
+    )
+    pg.evaluate("(ms) => { _almClockSetRate(0); _almScrubSettle(new Date(ms)); }", cms)
+    pg.wait_for_timeout(500)
+
+    def card_shot():
+        pg.evaluate(
+            "([la, lo, az, alt]) => { AlmanacSkyView.unmount(_osh); AlmanacSkyView.mount(_osh, { lat: la, lon: lo, name: '' }); AlmanacSkyView.setView(_osh, az, alt, 70); }",
+            [cplace["lat"], cplace["lon"], 180, 40],
+        )
+        pg.wait_for_function(
+            "() => _sgReady() && _sg.starCount === 9096 && _sg.mwReady",
+            timeout=60_000,
+            polling=250,
+        )
+        pg.wait_for_timeout(1200)
+        return pg.screenshot()
+
+    with_clouds = card_shot()
+    pts = pg.evaluate(
+        "(ds) => ds.map(([az, alt]) => { const p = AlmanacSkyView.screenOf(_osh, az, alt); return [p.x, p.y]; })",
+        CLOUD_DIRS,
+    )
+    pg.evaluate(clear)
+    without = card_shot()
+    card_mask = _cloudy(with_clouds, without, pts, levels)
+    card_change = _cloud_change(with_clouds, without)
+    ctx.close()
+
+    # The ground view.
+    ctx = context()
+    pg = ctx.new_page()
+    pg.goto(served + "/#almanac", wait_until="load")
+    pg.wait_for_function(
+        "() => typeof openAlmanacEarth === 'function' && typeof _aeLoadThree === 'function'",
+        timeout=120_000,
+    )
+    pg.evaluate("openAlmanacEarth({ target: 'earth' })")
+    pg.wait_for_function(
+        "() => typeof _aeReady === 'function' && _aeReady() && _aeIsOpen && !_ae.fly",
+        timeout=READY_MS,
+        polling=250,
+    )
+    pg.evaluate(
+        "([la, lo]) => _aeStandAt('earth', la, lo)",
+        [cplace["lat"], cplace["lon"]],
+    )
+    pg.wait_for_function(
+        "() => _ae.stand && _ae.stand.live && _ae.stand.mode === 'ground' && _ae.stand.fr",
+        timeout=READY_MS,
+        polling=250,
+    )
+
+    def stand_shot():
+        pg.evaluate(
+            """([ms, head, pitch]) => { _aeGoTo(ms); const st = _ae.stand; st.userYaw = head * Math.PI / 180 - st.yaw;
+              st.userPitch = pitch * Math.PI / 180 - _aeRad(AE_STAND_PITCH_DEG); st.dirty = true; st.fr = null; _ae.dirty = true; _aeKick(); }""",
+            [cms, 180, 40],
+        )
+        pg.wait_for_timeout(3000)
+        data = pg.evaluate(
+            "() => { const st = _ae.stand; _ae.gl.renderer.render(st.scene, st.camera); return _ae.gl.renderer.domElement.toDataURL('image/png'); }"
+        )
+        return base64.b64decode(data.split(",")[1])
+
+    with_clouds = stand_shot()
+    pts = pg.evaluate(
+        """(ds) => { const st = _ae.stand, V = _ae.gl.THREE.Vector3;
+          return ds.map(([az, alt]) => { const d = _aeStandSkyDir(az, alt); const p = new V(d[0] * 1e4, d[1] * 1e4, d[2] * 1e4).project(st.camera); return [(p.x + 1) / 2 * _ae.w, (1 - p.y) / 2 * _ae.h]; }); }""",
+        CLOUD_DIRS,
+    )
+    pg.evaluate(clear)
+    without = stand_shot()
+    stand_mask = _cloudy(with_clouds, without, pts, levels)
+    stand_change = _cloud_change(with_clouds, without)
+    ctx.close()
+
+    if (
+        levels < 5
+    ):  # night: the views are compared by how much of the picture the deck is
+        assert card_change > 1.0 and stand_change > 1.0, (card_change, stand_change)
+        assert 0.2 < card_change / stand_change < 5.0, (card_change, stand_change)
+        return
+    both = [
+        (a, b) for a, b in zip(card_mask, stand_mask) if a is not None and b is not None
+    ]
+    assert len(both) >= 7, (card_mask, stand_mask)
+    if mixed:
+        assert any(a for a, _ in both) and not all(a for a, _ in both), (
+            "the day shows both cloud and clear sky",
+            card_mask,
+            stand_mask,
+        )
+    else:  # a heavy day: the field says cloud nearly everywhere, and both views must draw it
+        assert sum(1 for a, _ in both if a) >= len(both) - 2, ("card", card_mask)
+        assert sum(1 for _, b in both if b) >= len(both) - 2, ("stand", stand_mask)
+    agree = sum(1 for a, b in both if a == b)
+    assert agree >= len(both) - 1, (card_mask, stand_mask)
+
+
+def test_look_goes_down_to_the_ground_facing_the_same_way_and_comes_back(
+    browser, served
+):
+    """Look's ground button opens Stand here at its place, at the page's instant, facing where Look faced; Stand's way back opens Look again."""
+    ctx = _context(browser)
+    pg = ctx.new_page()
+    errors = []
+    pg.on("pageerror", lambda e: errors.append(str(e)))
+    pg.goto(served + "/#almanac", wait_until="load")
+    pg.wait_for_function(
+        "() => typeof openAlmanacLook === 'function' && typeof _skyState !== 'undefined' && _skyState && _skyState.eph && typeof _jdToJulianCentury === 'function'",
+        timeout=120_000,
+    )
+    pg.evaluate("() => openAlmanacLook()")
+    pg.wait_for_function(
+        "() => !!document.getElementById('look-stand') && !!_look && _look.skyMounted",
+        timeout=60_000,
+    )
+    pg.evaluate(
+        "() => { _look.target = { az: 130, alt: 25, roll: 0 }; _look.view = { az: 130, alt: 25, roll: 0 }; }"
+    )
+    pg.click("#look-stand")
+    pg.wait_for_function(
+        "() => typeof _ae !== 'undefined' && _ae && _ae.stand && _ae.stand.live && _ae.stand.mode === 'ground'",
+        timeout=READY_MS,
+        polling=250,
+    )
+    assert pg.evaluate("() => !_look"), "Look is closed while the ground is open"
+    head = pg.evaluate(
+        "() => (((_ae.stand.yaw + _ae.stand.userYaw) * 180 / Math.PI) % 360 + 360) % 360"
+    )
+    assert abs(((head - 130) + 540) % 360 - 180) < 2, head
+    pg.evaluate("() => _aeStandClose()")
+    pg.wait_for_function("() => !!_look", timeout=60_000, polling=250)
+    assert not errors, errors
+    ctx.close()
+
+
+def test_without_webgl2_the_there_and_then_list_stands_and_the_ground_buttons_do_not(
+    browser, served
+):
+    """No WebGL2: the card shows no Stand here button, There and then opens its list over the page (not a dead black 3D view), and an entry
+    shows its facts with the ground button off and one short line saying why."""
+    ctx = _context(browser)
+    ctx.add_init_script(
+        "(() => { const g = HTMLCanvasElement.prototype.getContext; HTMLCanvasElement.prototype.getContext = function (t) {"
+        " return /webgl/.test(t) ? null : g.apply(this, arguments); }; })();"
+    )
+    pg = ctx.new_page()
+    errors = []
+    pg.on("pageerror", lambda e: errors.append(str(e)))
+    pg.goto(served + "/#almanac", wait_until="load")
+    pg.wait_for_function(
+        "() => typeof _skyState !== 'undefined' && _skyState && _skyState.eph && typeof openAlmanacThens === 'function'",
+        timeout=120_000,
+    )
+    pg.wait_for_function(
+        "() => document.querySelector('.alm-sky-stand') && document.querySelector('.alm-sky-stand').hidden === true",
+        timeout=30_000,
+        polling=250,
+    )
+    pg.evaluate(
+        "() => document.querySelector('.alm-sky-then').scrollIntoView({ block: 'center' })"
+    )
+    pg.click(".alm-sky-then")
+    pg.wait_for_function(
+        "() => document.querySelectorAll('.al-sheet .at-row').length > 3",
+        timeout=60_000,
+        polling=250,
+    )
+    assert not pg.evaluate(
+        "() => typeof _aeIsOpen !== 'undefined' && _aeIsOpen"
+    ), "the 3D view did not open"
+    pg.click(".al-sheet .at-row")
+    pg.wait_for_function("() => !!document.getElementById('at-no3d')", timeout=30_000)
+    assert pg.evaluate("() => document.getElementById('at-stand').disabled")
+    assert pg.evaluate(
+        "() => document.querySelector('.al-sheet .al-facts li') !== null"
+    )
     assert not errors, errors
     ctx.close()

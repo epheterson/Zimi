@@ -246,8 +246,7 @@ def horizons(command, start, stop, step, center="500@399"):
         "REF_PLANE": "'ECLIPTIC'",
         "VEC_TABLE": "'2'",
         "OUT_UNITS": "'KM-S'",
-        "CSV_FORMAT": "'YES'",
-        "VEC_LABELS": "'NO'",
+        "CSV_FORMAT": "'NO'",  # (the CSV form has been returning only the dates)
     }
     url = HORIZONS + "?" + urllib.parse.urlencode(q)
     os.makedirs(CACHE, exist_ok=True)
@@ -279,9 +278,12 @@ def horizons(command, start, stop, step, center="500@399"):
             % (command, start, stop, text[:500])
         )
     rows = []
-    for line in m.group(1).strip().splitlines():
-        f = [v.strip() for v in line.split(",") if v.strip()]
-        rows.append([float(f[0])] + [float(v) for v in f[2:8]])
+    num = r"([-+]?[0-9.]+(?:E[-+]?[0-9]+)?)"
+    pat = re.compile(num + r"\s*=.*?\n\s*X\s*=\s*" + num + r"\s*Y\s*=\s*" + num + r"\s*Z\s*=\s*" + num + r"\s*\n\s*VX\s*=\s*" + num + r"\s*VY\s*=\s*" + num + r"\s*VZ\s*=\s*" + num, re.I)
+    for g in pat.findall(m.group(1)):
+        rows.append([float(v) for v in g])
+    if not rows:
+        raise RuntimeError("Horizons table for %s %s..%s had no vectors" % (command, start, stop))
     with open(path, "w") as fh:
         json.dump(rows, fh)
     return np.array(rows)

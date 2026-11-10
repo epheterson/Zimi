@@ -33,7 +33,7 @@ GL_ARGS = ["--use-angle=swiftshader", "--enable-unsafe-swiftshader"]
 VIEW = {"width": 390, "height": 844}
 PLACE = {"lat": 37.7749, "lon": -122.4194, "name": "San Francisco"}
 NIGHT = "2026-08-10T08:00:00Z"  # 01:00 in San Francisco, Sagittarius low in the south
-HORIZON = "localStorage.setItem('zimi_sky_settings', '{\"skin\":\"horizon\"}');"  # the true horizon, chosen
+HORIZON = "localStorage.setItem('zimi_sky_settings', '{\"skin\":\"horizon\"}');"   # the true horizon, chosen
 POLL_MS = 100
 WAIT_MS = 170000  # a loaded runner compiles shaders slowly
 
@@ -121,9 +121,7 @@ def _almanac(browser, served, place=PLACE, init="", **ctx_args):
 
 
 def _settle(pg, iso):
-    pg.evaluate(
-        "(iso) => { _almClockSetRate(0); _almScrubSettle(new Date(iso)); }", iso
-    )
+    pg.evaluate("(iso) => { _almClockSetRate(0); _almScrubSettle(new Date(iso)); }", iso)
     pg.wait_for_function(
         "(t) => _skyState && _skyState.nowTime === t && !_skyState.moonAnim && _skyState.baseBodies",
         arg=_ms(iso),
@@ -161,7 +159,8 @@ def test_the_gpu_sky_draws_the_catalogue_where_the_ephemeris_puts_it(browser, se
                 sum += v; if (Math.hypot(i - R, j - R) <= 2) near = Math.max(near, v);
               }
               return { near: near, mean: sum / ((2 * R + 1) ** 2), alt: st.alt, at: [p.x, p.y] };
-            }""")
+            }"""
+        )
         assert not got.get("missing"), "Vega is up at 01:00 in August"
         # A bright point within two pixels of where the ephemeris puts it, well above its surroundings.
         assert got["near"] > 450 and got["near"] > 3 * got["mean"], got
@@ -182,13 +181,12 @@ SYDNEY = {"lat": -33.8688, "lon": 151.2093, "name": "Sydney"}
 JULY_MIDNIGHT = "2026-07-20T14:30:00Z"  # winter midnight in Sydney: the galactic centre high in the south
 
 
-def test_the_milky_way_stands_on_the_galactic_plane_brightest_at_the_centre(
-    browser, served
-):
+def test_the_milky_way_stands_on_the_galactic_plane_brightest_at_the_centre(browser, served):
     ctx, pg, errors = _almanac(browser, served, place=SYDNEY)
     try:
         _settle(pg, JULY_MIDNIGHT)
-        got = pg.evaluate("""async () => {
+        got = pg.evaluate(
+            """async () => {
               const s = _skyState, e = s.eph, M = _sgHorizonMatrix(e.P, e.lst, s.lat);
               const eq = (l, b) => { const v = [Math.cos(b) * Math.cos(l), Math.cos(b) * Math.sin(l), Math.sin(b)], G = SG_EQ_TO_GAL;
                 return [0, 1, 2].map((j) => G[j] * v[0] + G[3 + j] * v[1] + G[6 + j] * v[2]); };
@@ -203,15 +201,12 @@ def test_the_milky_way_stands_on_the_galactic_plane_brightest_at_the_centre(
                 for (let i = 0; i < d.length; i += 4) t += d[i] + d[i + 1] + d[i + 2]; return t / ((2 * R + 1) ** 2) / 3; };
               const at = (l, b) => { const a = aa(l, b); return lum(a.az, a.alt); };
               return { gc: at(0, 0), plane: at(25, 0), north: at(0, 25), south: at(0, -25), far: at(180, 0), gcAlt: gc.alt };
-            }""")
+            }"""
+        )
         assert got["gcAlt"] > 40, got
         # The centre outshines the plane away from it, which outshines the sky off the plane on both sides.
         off = min(got["north"], got["south"])
-        assert (
-            got["gc"] > 1.2 * got["plane"]
-            and got["gc"] > 2 * off
-            and got["plane"] > off
-        ), got
+        assert got["gc"] > 1.2 * got["plane"] and got["gc"] > 2 * off and got["plane"] > off, got
         assert not errors, errors
     finally:
         ctx.close()
@@ -223,37 +218,20 @@ HOST = (
 )
 
 
-def test_the_look_around_view_draws_the_whole_sphere_on_demand_and_leaves_the_card_alone(
-    browser, served
-):
+def test_the_look_around_view_draws_the_whole_sphere_on_demand_and_leaves_the_card_alone(browser, served):
     ctx, pg, errors = _almanac(browser, served)
     try:
         _settle(pg, NIGHT)
         assert pg.evaluate(HOST % json.dumps(PLACE)) is True
-        pg.wait_for_function(
-            "() => document.querySelector('#lookhost canvas') && _sg.starCount === 9096 && _sg.mwReady",
-            polling=POLL_MS,
-        )
+        pg.wait_for_function("() => document.querySelector('#lookhost canvas') && _sg.starCount === 9096 && _sg.mwReady", polling=POLL_MS)
         lit = (
             "() => { const c = document.querySelector('#lookhost canvas'), x = c.getContext('2d', { willReadFrequently: true });"
             " const d = x.getImageData(0, 0, c.width, c.height).data; let n = 0, r = 0, g = 0; for (let i = 0; i < d.length; i += 4) { if (d[i] + d[i + 1] + d[i + 2] > 120) n++; r += d[i]; g += d[i + 1]; } return { n, r, g, w: c.width, h: c.height }; }"
         )
         # Straight up, and across the sky at several bearings, and down: always painted, with stars to the top.
-        for az, alt, fov in [
-            (0, 90, 100),
-            (90, 80, 60),
-            (200, 45, 120),
-            (310, 75, 20),
-            (45, 0, 90),
-            (180, -50, 90),
-        ]:
-            pg.evaluate(
-                "([a, b, c]) => AlmanacSkyView.setView(window.__host, a, b, c)",
-                [az, alt, fov],
-            )
-            pg.evaluate(
-                "() => new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r)))"
-            )
+        for az, alt, fov in [(0, 90, 100), (90, 80, 60), (200, 45, 120), (310, 75, 20), (45, 0, 90), (180, -50, 90)]:
+            pg.evaluate("([a, b, c]) => AlmanacSkyView.setView(window.__host, a, b, c)", [az, alt, fov])
+            pg.evaluate("() => new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r)))")
             got = pg.evaluate(lit)
             if alt >= 0:
                 assert got["n"] > 20, ((az, alt, fov), got)
@@ -267,9 +245,7 @@ def test_the_look_around_view_draws_the_whole_sphere_on_demand_and_leaves_the_ca
         # module's clock can be counted); an idle view never draws. The turns above
         # may still have a frame pending (a slow page has not run it yet), and a
         # burst joins a pending frame instead of asking for another: let it land first.
-        pg.evaluate(
-            "() => new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r)))"
-        )
+        pg.evaluate("() => new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r)))")
         turn = pg.evaluate(
             "() => { let t = 0, f = 0; const st = window.setTimeout, raf = window.requestAnimationFrame;"
             " window.setTimeout = function () { t++; return st.apply(this, arguments); };"
@@ -278,12 +254,8 @@ def test_the_look_around_view_draws_the_whole_sphere_on_demand_and_leaves_the_ca
             " window.setTimeout = st; window.requestAnimationFrame = raf; return [t, f]; }"
         )
         assert turn == [0, 1], "thirty turns asked for %s timers and frames" % turn
-        pg.evaluate(
-            "() => new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r)))"
-        )
-        pg.evaluate(
-            "() => { window.__draws = 0; const d = window._skyHostDraw; window._skyHostDraw = function () { window.__draws++; return d.apply(this, arguments); }; }"
-        )
+        pg.evaluate("() => new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r)))")
+        pg.evaluate("() => { window.__draws = 0; const d = window._skyHostDraw; window._skyHostDraw = function () { window.__draws++; return d.apply(this, arguments); }; }")
         pg.wait_for_timeout(4000)
         assert pg.evaluate("window.__draws") == 0, "an idle view drew"
         # Red night mode applies in the view too.
@@ -293,14 +265,9 @@ def test_the_look_around_view_draws_the_whole_sphere_on_demand_and_leaves_the_ca
         pg.evaluate("ZimiSky.setRedMode(false)")
         # Unmounted, the card works as before.
         pg.evaluate("AlmanacSkyView.unmount(window.__host)")
-        assert (
-            pg.evaluate("document.querySelector('#lookhost canvas')") is None
-            and pg.evaluate("_skyHost") is None
-        )
+        assert pg.evaluate("document.querySelector('#lookhost canvas')") is None and pg.evaluate("_skyHost") is None
         pg.evaluate("_skyState.baseDirty = true; _skyKick()")
-        pg.wait_for_function(
-            "() => !_skyState.baseDirty && _skyState.baseBodies.length", polling=POLL_MS
-        )
+        pg.wait_for_function("() => !_skyState.baseDirty && _skyState.baseBodies.length", polling=POLL_MS)
         assert not errors, errors
     finally:
         ctx.close()
@@ -316,9 +283,7 @@ COUNT = (
 def test_an_idle_sky_asks_for_no_frame_and_a_live_tick_that_moved_nothing_paints_nothing(
     browser, served
 ):
-    ctx, pg, errors = _almanac(
-        browser, served, init=HORIZON
-    )  # the beach's breeze asks for twelve frames a second; this is the still sky
+    ctx, pg, errors = _almanac(browser, served, init=HORIZON)   # the beach's breeze asks for twelve frames a second; this is the still sky
     try:
         _settle(pg, NIGHT)
         _drawn(pg)
@@ -363,8 +328,7 @@ def test_the_beach_with_its_life_is_the_default_and_the_true_horizon_a_choice_th
             and pg.evaluate("_skySetting('lines')") == "off"
         )
         pg.wait_for_function(
-            "() => _skyTimers.sway && _skyTimers.plane && _skyTimers.meteor",
-            polling=POLL_MS,
+            "() => _skyTimers.sway && _skyTimers.plane && _skyTimers.meteor", polling=POLL_MS
         )
         # The beach's sea mirrors the sky that was drawn: the strip is kept. With the GPU sky its colours are read
         # back a frame or more later (never by waiting on the GPU); with the Canvas 2D sky (a runner whose WebGL
@@ -372,11 +336,7 @@ def test_the_beach_with_its_life_is_the_default_and_the_true_horizon_a_choice_th
         # A software GPU (CI's) may never hand the read back in time; the ground then keeps the horizon's tone, which
         # is the design, so either answer is a lit ground.
         try:
-            pg.wait_for_function(
-                "() => _skyState.ground && _skyState.ground.hor",
-                polling=POLL_MS,
-                timeout=20_000,
-            )
+            pg.wait_for_function("() => _skyState.ground && _skyState.ground.hor", polling=POLL_MS, timeout=20_000)
             ground = pg.evaluate("() => _skyState.ground")
             assert len(ground["hor"]) == 3 and len(ground["avg"]) == 3, ground
         except Exception:
@@ -386,8 +346,7 @@ def test_the_beach_with_its_life_is_the_default_and_the_true_horizon_a_choice_th
         # The true horizon: chosen, it stops every one of them, and is kept across a reload.
         pg.evaluate("_skySet('skin', 'horizon')")
         pg.wait_for_function(
-            "() => !_skyTimers.sway && !_skyTimers.plane && !_skyTimers.meteor",
-            polling=POLL_MS,
+            "() => !_skyTimers.sway && !_skyTimers.plane && !_skyTimers.meteor", polling=POLL_MS
         )
         pg.reload(wait_until="load")
         pg.wait_for_function(
@@ -465,21 +424,14 @@ def test_without_webgl2_the_panorama_turns_and_the_sky_still_draws(browser, serv
         ctx.close()
 
 
-def test_without_webgl2_the_look_around_is_drawn_by_canvas_and_never_empty(
-    browser, served
-):
+def test_without_webgl2_the_look_around_is_drawn_by_canvas_and_never_empty(browser, served):
     ctx, pg, errors = _almanac(browser, served, init=NO_WEBGL2)
     try:
         _settle(pg, NIGHT)
         assert pg.evaluate(HOST % json.dumps(PLACE)) is True
         for az, alt, fov in [(180, 40, 90), (0, 90, 60), (270, 10, 120)]:
-            pg.evaluate(
-                "([a, b, c]) => AlmanacSkyView.setView(window.__host, a, b, c)",
-                [az, alt, fov],
-            )
-            pg.evaluate(
-                "() => new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r)))"
-            )
+            pg.evaluate("([a, b, c]) => AlmanacSkyView.setView(window.__host, a, b, c)", [az, alt, fov])
+            pg.evaluate("() => new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r)))")
             lit = pg.evaluate(
                 "() => { const c = document.querySelector('#lookhost canvas'), x = c.getContext('2d', { willReadFrequently: true }); const d = x.getImageData(0, 0, c.width, c.height).data; let n = 0, v = 0; for (let i = 0; i < d.length; i += 4) { if (d[i] + d[i + 1] + d[i + 2] > 120) n++; v = Math.max(v, d[i + 2]); } return { n, v }; }"
             )
@@ -522,20 +474,12 @@ def test_red_night_mode_is_red_and_the_switch_is_readable(browser, served):
         assert pg.evaluate("localStorage.getItem('zimi_app_theme')") is None
         pg.evaluate("ZimiSky.setRedMode(true)")
         assert pg.evaluate("localStorage.getItem('zimi_app_theme')") == "red"
-        pg.evaluate(
-            "localStorage.removeItem('zimi_app_theme'); document.documentElement.classList.remove('night-red'); ZimiSky.setRedMode(false)"
-        )
-        pg.evaluate(
-            "window.__red = []; document.documentElement.classList.add('night-red')"
-        )
-        pg.wait_for_function(
-            "() => window.__red.length === 1 && ZimiSky.redMode()", polling=POLL_MS
-        )
+        pg.evaluate("localStorage.removeItem('zimi_app_theme'); document.documentElement.classList.remove('night-red'); ZimiSky.setRedMode(false)")
+        pg.evaluate("window.__red = []; document.documentElement.classList.add('night-red')")
+        pg.wait_for_function("() => window.__red.length === 1 && ZimiSky.redMode()", polling=POLL_MS)
         assert pg.evaluate("window.__red") == [True]
         pg.evaluate("document.documentElement.classList.remove('night-red')")
-        pg.wait_for_function(
-            "() => window.__red.length === 2 && !ZimiSky.redMode()", polling=POLL_MS
-        )
+        pg.wait_for_function("() => window.__red.length === 2 && !ZimiSky.redMode()", polling=POLL_MS)
         assert not errors, errors
     finally:
         ctx.close()
@@ -551,16 +495,11 @@ def test_a_guessed_place_is_said_to_be_guessed_and_named(browser, served):
             "() => document.getElementById('almanac-sky-facts').innerText.length > 8",
             polling=POLL_MS,
         )
-        pg.wait_for_function(
-            "() => document.getElementById('almanac-sky-invite').innerText.length > 10",
-            polling=POLL_MS,
-        )
+        pg.wait_for_function("() => document.getElementById('almanac-sky-invite').innerText.length > 10", polling=POLL_MS)
         text = pg.inner_text("#almanac-sky-invite")
         assert "guessed" in text.lower() and "Los Angeles" in text, text
         # Said once: the guess is the ask's own line, with its two buttons, not a line and then another ask under it.
-        asks = pg.evaluate(
-            "() => [...document.querySelectorAll('.alm-sky-info p')].map(p => ({ t: p.innerText, b: p.querySelectorAll('button').length }))"
-        )
+        asks = pg.evaluate("() => [...document.querySelectorAll('.alm-sky-info p')].map(p => ({ t: p.innerText, b: p.querySelectorAll('button').length }))")
         assert len(asks) == 1 and asks[0]["b"] == 2, asks
         assert not errors, errors
     finally:
@@ -572,9 +511,7 @@ def test_a_guessed_place_is_said_to_be_guessed_and_named(browser, served):
             "() => document.getElementById('almanac-sky-facts').innerText.length > 8",
             polling=POLL_MS,
         )
-        text = pg.inner_text("#almanac-sky-facts") + pg.inner_text(
-            "#almanac-sky-invite"
-        )
+        text = pg.inner_text("#almanac-sky-facts") + pg.inner_text("#almanac-sky-invite")
         assert "guessed" not in text.lower(), text
         assert "moon" in text.lower(), text
         assert "sunrise" in text.lower() and "sunset" in text.lower(), text
@@ -601,29 +538,18 @@ def test_a_planets_phase_is_drawn_as_the_share_that_is_lit(browser, served):
 
 
 def _frames(pg, n=2):
-    pg.evaluate(
-        "(n) => new Promise((r) => { const go = (k) => (k ? requestAnimationFrame(() => go(k - 1)) : r()); go(n); })",
-        n,
-    )
+    pg.evaluate("(n) => new Promise((r) => { const go = (k) => (k ? requestAnimationFrame(() => go(k - 1)) : r()); go(n); })", n)
 
 
-def test_the_twilight_gradient_is_smooth_with_the_sun_between_14_and_18_degrees_down(
-    browser, served
-):
+def test_the_twilight_gradient_is_smooth_with_the_sun_between_14_and_18_degrees_down(browser, served):
     """Posterised bands over the western horizon at SF 2026-10-15 02:40 to 03:05 UT: half-float underflow in the tables."""
     ctx, pg, errors = _almanac(browser, served)
     try:
-        for iso in (
-            "2026-10-15T02:40:00Z",
-            "2026-10-15T02:52:00Z",
-            "2026-10-15T03:05:00Z",
-        ):
+        for iso in ("2026-10-15T02:40:00Z", "2026-10-15T02:52:00Z", "2026-10-15T03:05:00Z"):
             _settle(pg, iso)
             _drawn(pg)
             pg.evaluate("ZimiSky.setView({ az: 262, alt: 12, fov: 45 })")
-            pg.wait_for_function(
-                "() => _skyState.lens && !_skyState.baseDirty", polling=POLL_MS
-            )
+            pg.wait_for_function("() => _skyState.lens && !_skyState.baseDirty", polling=POLL_MS)
             _frames(pg)
             steps = pg.evaluate(
                 """() => { const s = _skyState, x = s.base.getContext('2d', { willReadFrequently: true });
@@ -645,9 +571,7 @@ def test_the_twilight_gradient_is_smooth_with_the_sun_between_14_and_18_degrees_
 
 
 def test_a_full_moon_sky_is_dark_blue_with_hundreds_of_stars(browser, served):
-    ctx, pg, errors = _almanac(
-        browser, served, place={"lat": 32.7767, "lon": -96.797, "name": "Dallas"}
-    )
+    ctx, pg, errors = _almanac(browser, served, place={"lat": 32.7767, "lon": -96.797, "name": "Dallas"})
     try:
         _settle(pg, "2026-10-26T06:00:00Z")
         _drawn(pg)
@@ -665,9 +589,7 @@ def test_a_full_moon_sky_is_dark_blue_with_hundreds_of_stars(browser, served):
               return { peaks: peaks, sky: sky.map((v) => v / n), lm: s.lm }; }"""
         )
         assert got["peaks"] > 300, got
-        assert (
-            got["sky"][2] > got["sky"][0] and got["sky"][2] < 80
-        ), got  # blue, and dark
+        assert got["sky"][2] > got["sky"][0] and got["sky"][2] < 80, got   # blue, and dark
         assert not errors, errors
     finally:
         ctx.close()
@@ -694,9 +616,7 @@ def test_the_milky_way_reads_away_from_the_centre_too(browser, served):
               return { plane: lum(90, 0), north: lum(90, 22), south: lum(90, -22), alt: c.alt }; }"""
         )
         off = max(got["north"], got["south"])
-        assert (
-            got["alt"] > 20 and got["plane"] > off + 6 and got["plane"] > 1.5 * off
-        ), got
+        assert got["alt"] > 20 and got["plane"] > off + 6 and got["plane"] > 1.5 * off, got
         assert not errors, errors
     finally:
         ctx.close()
@@ -719,25 +639,15 @@ def test_every_bright_star_can_be_tapped_and_its_figure_comes_with_it(browser, s
         )
         assert got["n"] > 150 and got["named"] > 3, got
         b = got["first"]
-        pg.evaluate(
-            "document.getElementById('almanac-sky-canvas').scrollIntoView({ block: 'center' })"
-        )
+        pg.evaluate("document.getElementById('almanac-sky-canvas').scrollIntoView({ block: 'center' })")
         pg.wait_for_timeout(300)
-        pos = pg.evaluate(
-            "([x, y]) => { const r = _skyState.canvas.getBoundingClientRect(); return { x: r.left + x, y: r.top + y }; }",
-            [b["x"], b["y"]],
-        )
+        pos = pg.evaluate("([x, y]) => { const r = _skyState.canvas.getBoundingClientRect(); return { x: r.left + x, y: r.top + y }; }", [b["x"], b["y"]])
         pg.mouse.click(pos["x"], pos["y"])
-        pg.wait_for_function(
-            "() => !document.getElementById('almanac-sky-tip').hidden", polling=POLL_MS
-        )
+        pg.wait_for_function("() => !document.getElementById('almanac-sky-tip').hidden", polling=POLL_MS)
         tip = pg.inner_text("#almanac-sky-tip")
         assert b["desig"] in tip and "magnitude" in tip.lower(), (tip, b)
         box = pg.locator("#almanac-sky-tip").bounding_box()
-        assert not (
-            box["x"] <= pos["x"] <= box["x"] + box["width"]
-            and box["y"] <= pos["y"] <= box["y"] + box["height"]
-        ), ("the tip covers what was tapped", box, pos)
+        assert not (box["x"] <= pos["x"] <= box["x"] + box["width"] and box["y"] <= pos["y"] <= box["y"] + box["height"]), ("the tip covers what was tapped", box, pos)
         pg.wait_for_function("() => !!_skyConst && _skyState.reveal", polling=POLL_MS)
         assert any("constellations-v1" in u for u in fetched)
         assert pg.evaluate("_skyState.reveal") == b["con"]
@@ -749,32 +659,21 @@ def test_every_bright_star_can_be_tapped_and_its_figure_comes_with_it(browser, s
         ctx.close()
 
 
-def test_a_lost_gpu_context_is_given_back_and_taken_again_and_dispose_frees_it(
-    browser, served
-):
+def test_a_lost_gpu_context_is_given_back_and_taken_again_and_dispose_frees_it(browser, served):
     ctx, pg, errors = _almanac(browser, served)
     try:
         _settle(pg, NIGHT)
         _drawn(pg)
-        pg.evaluate(
-            "window.__gl = []; document.addEventListener('zimisky:gl', (e) => window.__gl.push(e.detail.ready))"
-        )
+        pg.evaluate("window.__gl = []; document.addEventListener('zimisky:gl', (e) => window.__gl.push(e.detail.ready))")
         pg.evaluate("_sg.gl.getExtension('WEBGL_lose_context').loseContext()")
-        pg.wait_for_function(
-            "() => window.__gl.length >= 1 && window.__gl[0] === false", polling=POLL_MS
-        )
+        pg.wait_for_function("() => window.__gl.length >= 1 && window.__gl[0] === false", polling=POLL_MS)
         # The next paint starts it again.
         pg.evaluate("_skyKickDirty()")
-        pg.wait_for_function(
-            "() => _sgReady() && _sg.starCount === 9096 && _sg.mwReady && !_skyState.baseDirty",
-            polling=POLL_MS,
-        )
+        pg.wait_for_function("() => _sgReady() && _sg.starCount === 9096 && _sg.mwReady && !_skyState.baseDirty", polling=POLL_MS)
         assert pg.evaluate("window.__gl.includes(true)")
         # Dispose gives it all back, and nothing is left to draw with.
         # (One turn of the page: the open sky's next paint takes the GPU again, so two round trips can see two states.)
-        assert pg.evaluate(
-            "() => { _sgDispose(); return [_sg === null, _sgReady()]; }"
-        ) == [True, False]
+        assert pg.evaluate("() => { _sgDispose(); return [_sg === null, _sgReady()]; }") == [True, False]
         assert not errors, errors
     finally:
         ctx.close()
@@ -803,42 +702,24 @@ def test_the_credit_and_the_zone_city_are_on_the_card_without_bearings(browser, 
     try:
         _settle(pg, NIGHT)
         _drawn(pg)
-        pg.wait_for_function(
-            "() => document.getElementById('almanac-sky-facts').innerText.length > 10",
-            polling=POLL_MS,
-        )
-        text = pg.inner_text("#almanac-sky-facts") + pg.inner_text(
-            "#almanac-sky-invite"
-        )
+        pg.wait_for_function("() => document.getElementById('almanac-sky-facts').innerText.length > 10", polling=POLL_MS)
+        text = pg.inner_text("#almanac-sky-facts") + pg.inner_text("#almanac-sky-invite")
         # The rise or set card is two lines, the event and its time: no compass bearing (Eric, 2026-10-29).
-        assert not re.search(
-            r"\b(N|NE|E|SE|S|SW|W|NW|NNE|ENE|ESE|SSE|SSW|WSW|WNW|NNW) \d+\u00b0", text
-        ), text
+        assert not re.search(r"\b(N|NE|E|SE|S|SW|W|NW|NNE|ENE|ESE|SSE|SSW|WSW|WNW|NNW) \d+\u00b0", text), text
         assert "guessed" not in text.lower() and "about" not in text.lower(), text
         # The Milky Way's credit lives in About this data, off the card (the folded-calendar pass).
         assert "Brunier" not in text, text
-        credit = pg.evaluate(
-            "(document.querySelector('#almanac-view .alm-about-credit') || {}).textContent || ''"
-        )
+        credit = pg.evaluate("(document.querySelector('#almanac-view .alm-about-credit') || {}).textContent || ''")
         assert "ESO/S. Brunier" in credit, credit
     finally:
         ctx.close()
-    ctx, pg, errors = _almanac(
-        browser, served, place=None, timezone_id="America/Chicago"
-    )
+    ctx, pg, errors = _almanac(browser, served, place=None, timezone_id="America/Chicago")
     try:
         _settle(pg, NIGHT)
-        pg.wait_for_function(
-            "() => document.getElementById('almanac-sky-invite').innerText.length > 10",
-            polling=POLL_MS,
-        )
-        text = pg.inner_text("#almanac-sky-facts") + pg.inner_text(
-            "#almanac-sky-invite"
-        )
+        pg.wait_for_function("() => document.getElementById('almanac-sky-invite').innerText.length > 10", polling=POLL_MS)
+        text = pg.inner_text("#almanac-sky-facts") + pg.inner_text("#almanac-sky-invite")
         # Chicago's own sunrise on 10 August is about 6:10: not the hour-early guess of an Atlantic longitude.
-        assert (
-            "Chicago" in text and "about" not in text.lower()
-        ), text  # the guess is said once, under the tiles
+        assert "Chicago" in text and "about" not in text.lower(), text   # the guess is said once, under the tiles
         # The sunrise tile's time is Chicago's, not an Atlantic longitude's.
         sunrise = pg.inner_text(".alm-sf-sunrise")
         assert re.search(r"(?i)sunrise\s+[56]:\d\d AM", sunrise), sunrise

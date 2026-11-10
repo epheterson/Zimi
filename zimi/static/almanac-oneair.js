@@ -177,6 +177,10 @@ var _oaAir = {
   sunShare: function (st, fr) { return _osSkyState(_oaDef(st, fr)).sunShare; },
   limitMag: function (st, fr) { return _osSkyState(_oaDef(st, fr)).lm; },
   eclipse: function (st, fr) { return _osEclipse(_oaDef(st, fr)); },
+  // How much of the Moon (or the Sun) the day's deck hides, 0 clear to about 1 solid, from the same field the sky draws; 0 for a visit that
+  // asked for a clear sky. The ground view dims its sprite by 1 minus this.
+  moonVeil: function (st, fr) { return _osMoonVeilAt(_oaDef(st, fr), st.handoff && st.handoff.clouds); },
+  sunVeil: function (st, fr) { return _osSunVeilAt(_oaDef(st, fr), st.handoff && st.handoff.clouds); },
   // The card's exposure, in Stand here's units (the same eye for the sky, the ground and everything on it).
   exposureK: function (st, fr) {
     var lv = _osSkyState(_oaDef(st, fr)).lv;
@@ -194,14 +198,14 @@ var OA_CLOUD_GLSL = [
   SG_GLSL_CLOUDS,
   'vec4 osClouds(vec3 d, vec3 o) { vec4 c = cloudDeck(d, o); return vec4(c.rgb / ' + AE_ST_LUX_PER_UNIT.toExponential(3) + ', c.a); }'
 ].join('\n');
-var OA_CLOUD_UNIFORMS = { uCloud: [0, OS_CLOUD_BASE_M, OS_CLOUD_THICK_M, 0], uCloudWind: [0, 0, 0], uCloudSunE: 0, uSunAltDeg: 0 };
+var OA_CLOUD_UNIFORMS = { uCloud: [0, OS_CLOUD_BASE_M, OS_CLOUD_THICK_M, 0], uCloudWind: [0, 0, 0], uCloudSunE: 0, uSunAltDeg: 0, uMoonVec: [0, 0, -1] };
 _oaAir.clouds = {
   glsl: OA_CLOUD_GLSL,
   uniforms: OA_CLOUD_UNIFORMS,   // joined by the air's own once the tables exist (wants)
   update: function (st, fr, ph, u) {
     _oaAir.update(st, fr, ph, u);
     var def = _oaDef(st, fr), S = _osSkyState(def), cv = _osCloudValues(def, S.p.sunShare, st.handoff && st.handoff.clouds);
-    u.uCloud.value = cv.cloud; u.uCloudWind.value = cv.wind; u.uCloudSunE.value = cv.sunE; u.uSunAltDeg.value = S.p.sunAltGeo;
+    u.uCloud.value = cv.cloud; u.uCloudWind.value = cv.wind; u.uCloudSunE.value = cv.sunE; u.uSunAltDeg.value = S.p.sunAltGeo; u.uMoonVec.value = S.lv.moonVec;
   }
 };
 _aeStandAir = _oaAir;

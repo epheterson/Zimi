@@ -58,6 +58,31 @@ def build_apollo11():
     }
 
 
+
+def build_perseverance():
+    """Perseverance's last day at Mars: Horizons' approach, then the entry, descent and landing as a profile (scripts/mission_perseverance.py)."""
+    import mission_perseverance as mp
+
+    t_ei, trk, fx, vehicles, terminal, extra = mp.build()
+    phases, events = mp.phases_and_events(t_ei, extra["approach_start"], extra)
+    t_touch = t_ei + mp.T_TOUCH
+    t0 = vehicles[0]["on"]
+    return {
+        "name": "Perseverance",
+        "handoff": {"site": "Perseverance", "body": "mars", "phase": "alm_ms_ph_touchdown"},
+        "zeroMs": mp.zero_ms(),
+        "start": float(t0),
+        "end": t_touch + 30.0,
+        "follow": "m20",
+        "ref": {"moon": pack(extra["moon"], 3, 8)},
+        "arc": "helio",
+        "source": "NASA/JPL Mars 2020 press kit (events), JPL Horizons -168 (the approach, Mars-centred, UT, ecliptic J2000); the entry and descent follow the published events "
+                  "between them (scripts/mission_perseverance.py), flown over the view's own Mars-fixed frame to the Perseverance pin in landmarks-v1.json",
+        "vehicles": vehicles,
+        "phases": phases,
+        "events": events,
+    }
+
 def _sec(date, zero):
     from datetime import datetime, timezone
 
@@ -135,9 +160,11 @@ def main():
     out = {"version": 1, "missions": {}}
     if os.path.exists(OUT):
         out = json.load(open(OUT))
-    wanted = [m for m in args.only.split(",") if m] or ["apollo11", "voyager1", "voyager2"]
+    wanted = [m for m in args.only.split(",") if m] or ["apollo11", "perseverance", "voyager1", "voyager2"]
     if "apollo11" in wanted:
         out["missions"]["apollo11"] = build_apollo11()
+    if "perseverance" in wanted:
+        out["missions"]["perseverance"] = build_perseverance()
     for k in ("voyager1", "voyager2", "newhorizons", "cassini"):
         if k in wanted:
             out["missions"][k] = build_probe(k)
