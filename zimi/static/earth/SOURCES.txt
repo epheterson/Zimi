@@ -201,3 +201,21 @@ craft-<model>-v1.bin (scripts/build_craft_models.py)
     through NASA Moon Trek's tile service, to about 0.65 m a pixel.
   - Mercury, Venus, Mars, Jupiter and Saturn at 8192 px: Solar System Scope's
     8k maps, CC BY 4.0, credited on the view while drawn.
+
+../golden-record/ (the Almanac's Golden Record gallery, almanac.js)
+  49 of the 116 pictures on the Voyager Golden Record (1977), as NASA publishes
+  them: scans of the original pictures, 640x480, each with its owner's credit
+  printed on its edge (https://science.nasa.gov/mission/voyager/golden-record-contents/images/).
+  Not decoded from the record's sound. credits.json lists each file, its
+  caption and its credit, in the record's order.
+  Public domain, NASA photographs (8): the record's cover, Mercury, Mars,
+  Jupiter, Earth, Egypt and the Nile, Ed White in space (photographed by
+  James McDivitt), the Titan Centaur launch.
+  Copyright their owners, all rights reserved (41), shown with credit and no
+  claim to them: Jon Lomberg (11), UN Photo (12), Frank Drake (8), the
+  National Astronomy and Ionosphere Center, Cornell University (8),
+  Jay M. Pasachoff (Heron Island), Picturepoint, London (the sprinters). NASA's
+  page: "All of these images are copyright protected. Reproduction without
+  permission of the copyright holder is prohibited."
+  The Almanac built for openZIM/Kiwix (scripts/build_almanac_kiwix.py) leaves
+  the 41 out and draws each as a card with its caption and credit.

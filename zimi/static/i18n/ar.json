@@ -165,7 +165,7 @@
   "alm_galactic_orbit": "{pct}% من الدورة رقم {n}",
   "alm_gps_coords": "GPS: {lat}، {lon}",
   "alm_gps_unavailable": "GPS غير متاح",
-  "alm_gr_subtitle": "49 صورة اختارها فريق كارل ساغان, مفكّكة من إشارات فيديو تناظرية على تسجيل فونوغراف مطلي بالذهب، يبعد الآن أكثر من 24 مليار كم عن الأرض.",
+  "alm_gr_subtitle": "49 صورة من صور التسجيل الـ116، بترتيبها عليه، اختارها فريق كارل ساغان. يبعد التسجيل اليوم أكثر من 20 مليار كم عن الأرض.",
   "alm_gr_title": "صور مُرمّزة على التسجيل",
   "alm_greatest_elongation": "أقصى استطالة",
   "alm_h_abbr": "س",
@@ -3694,5 +3694,8 @@
   "alm_blurb_galileo": "أول مركبة تدور حول المشتري، وأسقطت مسبارا في غيومه.",
   "alm_blurb_europaclipper": "في طريقها إلى المشتري لدراسة محيط أوروبا الخفي.",
   "clear_catalog_copies": "مسح نسخ الفهرس ({size})",
-  "voices_set_up_mb": "إعداد ({mb} ميغابايت)"
+  "voices_set_up_mb": "إعداد ({mb} ميغابايت)",
+  "alm_gr_pd": "ملكية عامة",
+  "alm_gr_omitted": "غير مضمّنة في هذه النسخة",
+  "alm_gr_note": "ثماني صور من هذه الصور التقطتها ناسا وهي ملكية عامة. أما البقية فحقوقها لأصحابها المذكورين تحت كل صورة: Jon Lomberg وUN Photo وFrank Drake وNational Astronomy and Ionosphere Center وJay M. Pasachoff وPicturepoint في لندن. تُعرض هنا ليُرى التسجيل كما أُرسل، ولا تدّعي Zimi أي حق فيها. هذه مسوح ناسا للصور الأصلية، وليست مفكوكة من صوت التسجيل. المصدر: ناسا، science.nasa.gov."
 }
