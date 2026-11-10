@@ -636,6 +636,7 @@ def test_look_goes_down_to_the_ground_facing_the_same_way_and_comes_back(
         "() => { _look.target = { az: 130, alt: 25, roll: 0 }; _look.view = { az: 130, alt: 25, roll: 0 }; }"
     )
     pg.click("#look-stand")
+    assert pg.query_selector("canvas.os-still"), "Look's picture is held over the view while it opens"
     pg.wait_for_function(
         "() => typeof _ae !== 'undefined' && _ae && _ae.stand && _ae.stand.live && _ae.stand.mode === 'ground'",
         timeout=READY_MS,

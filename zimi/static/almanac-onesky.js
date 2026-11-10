@@ -262,8 +262,8 @@ function _osStandHere() {
 // The card's picture held as a still over the 3D view while it opens, so the page never shows a globe: it fades out when Stand's first live
 // ground picture is drawn (h.firstFrame), or after OS_STILL_MAX_MS if that never comes.
 var OS_STILL_MAX_MS = 6000, OS_STILL_FADE_MS = 450;
-function _osStill() {
-  var s = typeof _skyState !== 'undefined' ? _skyState : null, src = s && s.canvas;
+function _osStill(canvas) {
+  var s = typeof _skyState !== 'undefined' ? _skyState : null, src = canvas || (s && s.canvas);
   if (!src || !src.isConnected || !src.width || !src.height) return null;
   try {
     var el = document.createElement('canvas'), W = window.innerWidth, H = window.innerHeight, k = Math.max(W / src.width, H / src.height), w = src.width * k, h = src.height * k;
@@ -310,6 +310,7 @@ function _osStandFromLook() {
   var S = typeof _look !== 'undefined' ? _look : null;
   if (!S) return Promise.resolve(false);
   var place = S.place, view = S.view, sensing = S.mode === 'sensor', ms = typeof _almFocusInstant === 'function' ? _almFocusInstant().getTime() : Date.now();
+  var lookCv = document.querySelector('.look-wrap canvas'), still = _osStill(lookCv);   // Look's own picture, held over the view as the card's is
   _lookClose();
   if (sensing) { try { localStorage.setItem(OS_MOTION_KEY, '1'); } catch (e) { /* private window */ } }
   var def = _osDef({ lat: place.lat, lon: place.lon, tMs: ms, heading: view.az, pitch: Math.max(0, view.alt) });
@@ -322,7 +323,7 @@ function _osStandFromLook() {
     }, onPop = function () { window.removeEventListener('popstate', onPop); setTimeout(open, 0); };
     window.addEventListener('popstate', onPop);
     setTimeout(function () { window.removeEventListener('popstate', onPop); open(); }, OS_LOOK_BACK_MS);
-  });
+  }, still ? { direct: true, still: still } : null).then(function (ok) { if (!ok && still) still.remove(); return ok; });
 }
 
 // ── The place's own night ──
