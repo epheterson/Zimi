@@ -4115,5 +4115,8 @@
   "pdf_failed_file": "הקובץ שביקשת",
   "pdf_failed_back": "חזרה לאוסף",
   "alm_craft_loading": "טוען את החללית",
-  "alm_craft_failed": "אין כאן דגם: מוצגת נקודה"
+  "alm_craft_failed": "אין כאן דגם: מוצגת נקודה",
+  "alm_go_small": "עולמות קטנים",
+  "go_view_grid": "רשת",
+  "go_view_list": "רשימה"
 }

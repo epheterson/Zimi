@@ -4115,5 +4115,8 @@
   "pdf_failed_file": "O arquivo que você pediu",
   "pdf_failed_back": "Voltar à coleção",
   "alm_craft_loading": "A carregar a sonda",
-  "alm_craft_failed": "Sem modelo aqui: mostrada como um ponto"
+  "alm_craft_failed": "Sem modelo aqui: mostrada como um ponto",
+  "alm_go_small": "Mundos menores",
+  "go_view_grid": "Grade",
+  "go_view_list": "Lista"
 }

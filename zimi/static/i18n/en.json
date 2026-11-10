@@ -4115,5 +4115,8 @@
   "pdf_failed_file": "The file you asked for",
   "pdf_failed_back": "Back to the collection",
   "alm_craft_loading": "Loading the spacecraft",
-  "alm_craft_failed": "No model of it here: shown as a dot"
+  "alm_craft_failed": "No model of it here: shown as a dot",
+  "alm_go_small": "Small worlds",
+  "go_view_grid": "Grid",
+  "go_view_list": "List"
 }

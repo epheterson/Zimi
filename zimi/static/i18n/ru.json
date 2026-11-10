@@ -4115,5 +4115,8 @@
   "pdf_failed_file": "Запрошенный файл",
   "pdf_failed_back": "Назад к коллекции",
   "alm_craft_loading": "Загрузка аппарата",
-  "alm_craft_failed": "Модели нет: показана точка"
+  "alm_craft_failed": "Модели нет: показана точка",
+  "alm_go_small": "Малые миры",
+  "go_view_grid": "Сетка",
+  "go_view_list": "Список"
 }

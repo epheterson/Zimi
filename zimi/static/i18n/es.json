@@ -4115,5 +4115,8 @@
   "pdf_failed_file": "El archivo que pediste",
   "pdf_failed_back": "Volver a la colección",
   "alm_craft_loading": "Cargando la sonda",
-  "alm_craft_failed": "Sin modelo aquí: se muestra un punto"
+  "alm_craft_failed": "Sin modelo aquí: se muestra un punto",
+  "alm_go_small": "Mundos menores",
+  "go_view_grid": "Cuadrícula",
+  "go_view_list": "Lista"
 }
