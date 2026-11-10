@@ -16,7 +16,7 @@ var AE_ST_FINE_SLOPE = 0.045;   // the ground's fine relief: its height over its
 var AE_ST_FILL = 0.12;   // a slope turned from the Sun keeps this share of the flat ground's light (backscatter off the regolith round it)
 var AE_ST_BACKSCATTER = 0.07, AE_ST_SURGE = 0.9, AE_ST_SURGE_WIDTH = 0.14;   // the share of the Sun a regolith shadow keeps; the opposition surge round the antisolar point (Apollo's heiligenschein)
 var AE_ST_ROCK_FADE_M = [8, 45];  // stones thin out with distance into plain ground (a pixel of them at range is noise, not stone)
-var AE_ST_STEPS_SKY = 22, AE_ST_STEPS_GROUND = 5, AE_ST_STEPS_SUN = 6;   // the air's march: the sky is drawn at half size, so it can afford many (fewer stripe the twilight where the shadow's edge crosses the air)
+var AE_ST_STEPS_SKY = 30, AE_ST_STEPS_GROUND = 5, AE_ST_STEPS_SUN = 6;   // the air's march: the sky is drawn at half size, so it can afford many (fewer stripe the twilight where the shadow's edge crosses the air)
 var AE_ST_GAMMA = '2.2';
 
 // The air of each body that has some. ray: Rayleigh scattering per km at the surface (red, green, blue) and its scale
@@ -121,7 +121,6 @@ var AE_ST_SKY_FRAG = [
   'uniform sampler2D uMilky; uniform float uMw; uniform mat3 uToGal;',      // the Milky Way: its panorama, its strength, local -> galactic
   'varying vec2 vNdc;',
   'void main() {',
-  '  gJit = fract(52.9829189 * fract(dot(gl_FragCoord.xy, vec2(0.06711056, 0.00583715))));',
   '  vec3 d = normalize(uFwd + uRight * vNdc.x * uTan.x + uUp * vNdc.y * uTan.y), L = vec3(0.0), T;',
   '  if (uDiffuse > 0.5) { L = uDiffSky * (0.7 + 0.3 * smoothstep(-0.1, 0.5, d.z)); }',
   '  else if (uAtmo > 0.5) {',
@@ -194,6 +193,32 @@ function _aeStSkyAirFrag(chunk) {
     '}'
   ].join('\n');
 }
+// Trees (the Earth's, almanac-stand.js _aeStandTrees): dark cones lit and hazed as the ground is, so they read as trees at dusk.
+var AE_ST_TREE_VERT = [
+  'attribute vec3 aNrm, aTree;',
+  'varying vec3 vP, vN, vTree;',
+  'void main() { vP = position; vN = aNrm; vTree = aTree; gl_Position = projectionMatrix * viewMatrix * vec4(position, 1.0); }'
+].join('\n');
+var AE_ST_TREE_FRAG = [
+  'precision highp float;',
+  AE_ST_GLSL_ATMO, AE_ST_GLSL_TONE,
+  _aeStInscatterGlsl('inscatterGround', AE_ST_STEPS_GROUND),
+  'uniform vec3 uCam, uAmbient; uniform float uK;',
+  'varying vec3 vP, vN, vTree;',
+  'void main() {',
+  '  gJit = fract(52.9829189 * fract(dot(gl_FragCoord.xy, vec2(0.06711056, 0.00583715))));',
+  '  float dist = length(vP - uCam); vec3 V = (uCam - vP) / dist, N = normalize(vN);',
+  '  vec3 alb = vTree.z < 0.5 ? vec3(0.026, 0.05, 0.03) : vTree.z < 1.5 ? vec3(0.06, 0.09, 0.03) : vTree.z < 2.5 ? vec3(0.05, 0.09, 0.035) : vec3(0.04, 0.028, 0.02);',
+  '  alb *= (0.8 + 0.4 * vTree.y) * (0.6 + 0.4 * min(vTree.x, 1.0));',   // each tree its own shade, darker below, paler at the tips
+  '  vec3 sT = sunTrans(vP * 0.001) * uSunE;',
+  '  vec3 L = alb * (sT * max(dot(N, uSunDir), 0.0) / PI + uAmbient * (0.55 + 0.45 * N.z));',
+  '  if (uAtmo > 0.5) {',
+  '    vec3 o = uCam * 0.001, d = -V, Tt, ins; float t0, t1;',
+  '    if (airSpan(o, d, t0, t1)) { t1 = min(t1, dist * 0.001); if (t1 > t0) { ins = inscatterGround(o + d * t0, d, t1 - t0, Tt); L = L * Tt + ins; } }',
+  '  }',
+  '  gl_FragColor = vec4(tone(L, uK), 1.0);',
+  '}'
+].join('\n');
 var AE_ST_STARS_FRAG = [
   'precision highp float; varying vec3 vCol; varying float vA;',
   'void main() { vec2 c = gl_PointCoord - 0.5; float a = vA * (1.0 - smoothstep(0.15, 0.5, length(c))); if (a < 0.003) discard; gl_FragColor = vec4(vCol, a); }'
@@ -288,8 +313,13 @@ var AE_ST_BODY_FRAG = [
 // The small sky stretched over the screen: device pixels over the screen's size.
 var AE_ST_BLIT_FRAG = [
   'precision highp float;',
-  'uniform sampler2D tSky; uniform vec2 uRes;',
-  'void main() { gl_FragColor = vec4(texture2D(tSky, gl_FragCoord.xy / uRes).rgb, 1.0); }'
+  'uniform sampler2D tSky; uniform vec2 uRes, uTexel;',
+  // The small sky stretched, with a blur of its own size (four taps half a texel off): the march's jitter averages out to a smooth sky.
+  'void main() {',
+  '  vec2 uv = gl_FragCoord.xy / uRes, o = uTexel * 0.5;',
+  '  vec3 c = texture2D(tSky, uv + vec2(o.x, o.y)).rgb + texture2D(tSky, uv + vec2(-o.x, o.y)).rgb + texture2D(tSky, uv + vec2(o.x, -o.y)).rgb + texture2D(tSky, uv + vec2(-o.x, -o.y)).rgb;',
+  '  gl_FragColor = vec4(c * 0.25, 1.0);',
+  '}'
 ].join('\n');
 var AE_ST_GROUND_VERT = [
   'attribute vec3 aDir; attribute vec3 aNrm; attribute float aH; attribute float aSea; attribute float aShade;',
@@ -306,7 +336,7 @@ var AE_ST_GROUND_FRAG = [
   'uniform vec3 uCam; uniform float uK, uPixAng, uTime;',
   'uniform sampler2D uMap; uniform float uMapped, uGrey; uniform vec3 uBase, uGain;',
   'uniform vec3 uAmbient, uSkyHor, uSkyZen, uE2, uDir2;',
-  'uniform float uLommel, uRough, uRock, uDetail, uCover, uDiffuse, uVis, uDirect; uniform vec3 uDiffSky;',
+  'uniform vec2 uHead; uniform float uLommel, uRough, uRock, uDetail, uCover, uDiffuse, uVis, uDirect; uniform vec3 uDiffSky;',
   'varying vec3 vP, vN, vDir; varying float vH, vSea, vShade;',
   // Rock, fractal bumps and mottling at the scales a pixel can show, all fixed to the ground (the camera never moves on it).
   'float fine(vec3 p, float foot) {',
@@ -351,11 +381,18 @@ var AE_ST_GROUND_FRAG = [
   '  alb *= (1.0 + mott);',
   // Living ground (the Earth's): grain at the scales a pixel shows, from blades to tufts to patches, its hue following the land's own class
   // (grass leans green, dry ground and sand lighter, rock and snow keep their tone).
+  '  vec2 rr = uHead, tt = vec2(-uHead.y, uHead.x);',   // the way the view faces on the ground: grain is stretched along it, one direction for the whole picture
   '  if (uDetail > 0.5 && vSea < 0.5) {',
   '    float gr = 0.0, grass = smoothstep(0.0, 0.07, map.g - max(map.r, map.b));',
   '    for (int i = 0; i < 3; i++) { float s = 0.2 * pow(5.0, float(i)), wg = 1.0 - smoothstep(0.3, 1.0, 2.5 * foot / s); if (wg > 0.0) gr += (vnoise(vP / s + 17.0 * float(i)) - 0.5) * wg * 0.5; }',
   '    alb *= clamp(1.0 + gr * 0.55, 0.7, 1.3);',
   '    alb.g *= 1.0 + 0.3 * gr * grass; alb.r *= 1.0 - 0.18 * gr * grass;',
+  // Underfoot: blades and tussocks as fine noise stretched along the line of sight (as grass is seen across a field), sharp at the
+  // feet and gone where a pixel would hold several of them, so it softens with distance as the Moon's stones do.
+  '    float across = dot(vP.xy, tt), along = dot(vP.xy, rr), bl = 0.0;',
+  '    for (int i = 0; i < 4; i++) { float s = 0.03 * pow(3.0, float(i)), wb = 1.0 - smoothstep(0.5, 2.0, 2.5 * foot / s); if (wb > 0.0) bl += (vnoise(vec3(across / s, along / (s * (i < 2 ? 2.4 : 1.3)), 41.0 + float(i) * 5.0)) - 0.5) * wb * (0.9 - 0.15 * float(i)); }',
+  '    float tuft = smoothstep(0.52, 0.72, vnoise(vP / 0.42 + 9.0)) * (1.0 - smoothstep(0.5, 2.0, 2.5 * foot / 0.42));',
+  '    alb *= clamp(1.0 + bl * 1.4 - tuft * 0.18 * grass, 0.4, 1.45);',
   '  }',
   // Ground cover by height, slope and latitude (the Earth's): snow above the snow line, bare rock on steep ground and above the
   // trees, the Blue Marble's own tint elsewhere; the lines wander with a slow noise so no height is a ruled edge.
@@ -366,7 +403,15 @@ var AE_ST_GROUND_FRAG = [
   '    float snow = smoothstep(sl - 120.0, sl + 120.0, hh) * (1.0 - smoothstep(0.55, 0.9, slope));',
   '    float rock = max(smoothstep(0.35, 0.65, slope), smoothstep(sl - ' + AE_ST_TREE_BELOW_M.toFixed(1) + ', sl, hh)) * (1.0 - snow);',
   '    alb = mix(alb, vec3(0.17, 0.155, 0.14), rock * 0.85);',
+  '    // Scree where rock lies: pebbles in a hash lattice; sand ripples where the tint is pale and not green; snow that sparkles.',
+  '    float sw = 1.0 - smoothstep(0.1, 0.4, 2.5 * foot / 0.07), pebble = hash31(floor(vP / 0.07)) * sw;',
+  '    alb *= 1.0 + rock * (pebble - 0.5) * 0.9;',
+  '    float dry = smoothstep(0.35, 0.6, (map.r + map.g) * 0.5) * (1.0 - smoothstep(0.0, 0.05, map.g - max(map.r, map.b))) * (1.0 - rock) * (1.0 - snow);',
+  '    float rip = sin(dot(vP.xy, tt) / 0.11 + vnoise(vP / 1.3) * 5.0) * (1.0 - smoothstep(0.1, 0.4, 2.5 * foot / 0.11));',
+  '    alb *= 1.0 + dry * rip * 0.12;',
   '    alb = mix(alb, vec3(0.78, 0.8, 0.84), snow);',
+  '    float sp = step(0.9985, hash31(floor(vP / 0.03))) * (1.0 - smoothstep(0.1, 0.5, 2.5 * foot / 0.03));',
+  '    alb += vec3(sp * snow * 1.6);',
   '  }',
   '  vec2 rk = (vSea > 0.5 || dist > ' + AE_ST_ROCK_FADE_M[1].toFixed(1) + ') ? vec2(0.0) : rocks(vP, foot) * (1.0 - smoothstep(' + AE_ST_ROCK_FADE_M[0].toFixed(1) + ', ' + AE_ST_ROCK_FADE_M[1].toFixed(1) + ', dist)); float hb = vSea > 0.5 ? 0.0 : fine(vP, foot) + rk.x; alb *= clamp(1.0 + 0.5 * rk.y, 0.5, 1.35);',
   '  vec3 dpx = dFdx(vP), dpy = dFdy(vP); float hx = dFdx(hb), hy = dFdy(hb);',

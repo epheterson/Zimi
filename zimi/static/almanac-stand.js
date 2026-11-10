@@ -177,6 +177,7 @@ function _aeStandEnter(st) {
     if (typeof ho.pitch === 'number') st.userPitch = _aeRad(ho.pitch) - _aeRad(AE_STAND_PITCH_DEG);
   }
   st.yaw0 = 0;
+  if (st.key === 'earth') setTimeout(function () { if (_ae.stand === st || (_ae.site && _ae.site.host && _ae.site.host.st === st)) _aeStandTrees(st); }, AE_STAND_TREES_DELAY_MS);
   _ae.dirty = true;
   _aeKick();
 }
@@ -279,7 +280,7 @@ function _aeStandSkyMesh(st, U, mat) {
   low.frustumCulled = false;
   st.skyLowMesh = low; st.skyMatOwn = sky.material;
   st.skyScene = new THREE.Scene(); st.skyScene.add(low);
-  var blit = st.skyBlit = new THREE.Mesh(tri, new THREE.ShaderMaterial({ uniforms: { tSky: { value: null }, uRes: { value: [1, 1] } }, vertexShader: AE_ST_SKY_VERT, fragmentShader: AE_ST_BLIT_FRAG, depthTest: false, depthWrite: false }));
+  var blit = st.skyBlit = new THREE.Mesh(tri, new THREE.ShaderMaterial({ uniforms: { tSky: { value: null }, uRes: { value: [1, 1] }, uTexel: { value: [1, 1] } }, vertexShader: AE_ST_SKY_VERT, fragmentShader: AE_ST_BLIT_FRAG, depthTest: false, depthWrite: false }));
   blit.frustumCulled = false; blit.renderOrder = -3; blit.visible = false;
   st.mats.push(blit.material);
   _aeLoadTexture(THREE, SG_MILKYWAY_URL).then(function (t) { uni.uMilky.value = t; st.dirty = true; if (_ae) { _ae.dirty = true; _aeKick(); } }, function () {});
@@ -320,7 +321,7 @@ function _aeStandGroundMesh(st, pend, U, mat) {
     uMap: { value: pend.tex || null }, uMapped: { value: pend.tex ? 1 : 0 }, uGrey: { value: AE_STAND_GREY_MAP[st.key] ? 1 : 0 },
     uBase: { value: AE_STAND_BASE[st.key] || [0.5, 0.5, 0.5] }, uGain: { value: AE_STAND_TINT[st.key] || [1, 1, 1] },
     uAmbient: { value: [0, 0, 0] }, uSkyHor: { value: [0, 0, 0] }, uSkyZen: { value: [0, 0, 0] }, uE2: { value: [0, 0, 0] }, uDir2: { value: [0, 0, 1] },
-    uLommel: { value: a ? 0 : 1 }, uRough: { value: AE_STAND_ROUGH[st.key] || (st.b.fbm.amp > 100 ? 1.3 : 1) }, uRock: { value: AE_STAND_ROCK[st.key] || 0.25 }, uDetail: { value: st.key === 'earth' ? 1 : 0 }, uCover: { value: st.key === 'earth' ? 1 : 0 },
+    uLommel: { value: a ? 0 : 1 }, uRough: { value: AE_STAND_ROUGH[st.key] || (st.b.fbm.amp > 100 ? 1.3 : 1) }, uRock: { value: AE_STAND_ROCK[st.key] || 0.25 }, uDetail: { value: st.key === 'earth' ? 1 : 0 }, uHead: { value: [0, 1] }, uCover: { value: st.key === 'earth' ? 1 : 0 },
     uDiffuse: { value: d ? 1 : 0 }, uVis: { value: d ? d.vis : 1 }, uDirect: { value: 1 }, uDiffSky: { value: [0, 0, 0] }
   }, U);
   var ground = st.groundMesh = new THREE.Mesh(g, mat(AE_ST_GROUND_VERT, AE_ST_GROUND_FRAG, gu, {}));
@@ -380,6 +381,107 @@ function _aeStandDispose(st) {
   if (st.skyTag && st.skyTag.parentNode) st.skyTag.parentNode.removeChild(st.skyTag);
   clearTimeout(st.skyTagTimer);
   st.geo = st.mats = null; st.scene = st.camera = null;
+}
+
+// ── Trees ──
+// Where the Blue Marble says forest (a dark green), below the trees' line, not in the sea: dark cones scattered in rings out to a few
+// kilometres, a tree to a few metres at the feet and a wood at the horizon. The same trees every visit to a place (seeded by it).
+var AE_STAND_TREES_DELAY_MS = 40, AE_STAND_TREES_MAX = 3200, AE_STAND_TREES_TRIES = 18000;
+var AE_STAND_TREES_RANGE_M = [60, 4500], AE_STAND_TREES_THIN_M = [60, 380];   // out to here; thinner near the viewer (nothing at all inside the first number's reach)
+var AE_STAND_TREE_KINDS = { conifer: 0, broadleaf: 1, palm: 2, trunk: 3 };   // what the shader colours by
+function _aeStCoverPixels(tex) {   // the colour map's pixels, once
+  if (!tex || !tex.image) return null;
+  var im = tex.image, w = im.width || im.naturalWidth, h = im.height || im.naturalHeight;
+  if (!w || !h) return null;
+  var c = document.createElement('canvas'), mw = Math.min(w, 2048), mh = Math.round(mw * h / w);
+  c.width = mw; c.height = mh;
+  var cx = c.getContext('2d', { willReadFrequently: true });
+  cx.drawImage(im, 0, 0, mw, mh);
+  return { w: mw, h: mh, d: cx.getImageData(0, 0, mw, mh).data };
+}
+function _aeStForest(px, lat, lon) {   // 0..1: how much of this place the map shows as forest (the bitmap is flipped, south first, as the ground's own lookup assumes)
+  var x = Math.min(px.w - 1, Math.max(0, Math.floor((lon + 180) / 360 * px.w))), y = Math.min(px.h - 1, Math.max(0, Math.floor((lat + 90) / 180 * px.h))), i = 4 * (y * px.w + x);
+  var r = px.d[i] / 255, g = px.d[i + 1] / 255, b = px.d[i + 2] / 255, lum = 0.3 * r + 0.59 * g + 0.11 * b;
+  if (g < r * 1.02 || g < b * 1.08) return 0;
+  return Math.max(0, Math.min(1, (0.42 - lum) / 0.2));
+}
+// What grows where: firs and spruce in the north and the mountains (20 to 40 m), round-crowned broadleaves in the temperate lowlands
+// (10 to 25 m), palms in the tropics (8 to 18 m); nothing where the map is not green, above the tree line or beyond the high latitudes.
+function _aeStTreeKind(lat, h, rnd) {
+  var a = Math.abs(lat);
+  if (a > 66) return null;
+  if (a < 24 && h < 1500) return rnd() < 0.7 ? 'palm' : 'broadleaf';
+  if (a > 44 || h > 1100) return rnd() < 0.9 ? 'conifer' : 'broadleaf';
+  return rnd() < 0.7 ? 'broadleaf' : 'conifer';
+}
+function _aeStandTrees(st) {
+  if (!st || !st.scene || st.trees || st.key !== 'earth') return;
+  var px = null;
+  try { px = _aeStCoverPixels(st.pend && st.pend.tex); } catch (e) { px = null; }
+  if (!px) return;
+  var R = st.b.km * 1000, h0 = st.h0, lat0 = st.lat, lon0 = st.lon, THREE = _ae.gl.THREE;
+  var seed = (Math.round(lat0 * 1e4) * 73856093) ^ (Math.round(lon0 * 1e4) * 19349663), rnd = function () { seed |= 0; seed = seed + 0x6D2B79F5 | 0; var t = Math.imul(seed ^ seed >>> 15, 1 | seed); t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t; return ((t ^ t >>> 14) >>> 0) / 4294967296; };
+  var list = [], ratio = AE_STAND_TREES_RANGE_M[1] / AE_STAND_TREES_RANGE_M[0], thin = AE_STAND_TREES_THIN_M;
+  for (var k = 0; k < AE_STAND_TREES_TRIES && list.length < AE_STAND_TREES_MAX; k++) {
+    var r = AE_STAND_TREES_RANGE_M[0] * Math.pow(ratio, rnd()), th = rnd() * 2 * Math.PI, d = _aeDestination(lat0, lon0, r / R, th);
+    var near = Math.max(0, Math.min(1, (r - thin[0]) / (thin[1] - thin[0])));
+    if (rnd() > near * near) continue;   // thinner near the viewer: the first frame is not a wall
+    var wood = _aeStForest(px, d.lat, d.lon);
+    if (wood <= 0 || rnd() > wood) continue;
+    var ht = _aeTerrainHeight('earth', d.lat, d.lon, r * 0.0005);
+    if (ht.sea || ht.h > AE_ST_SNOW_LINE_M * Math.pow(Math.cos(_aeRad(d.lat)), AE_ST_SNOW_LINE_POW) - AE_ST_TREE_BELOW_M) continue;
+    var kind = _aeStTreeKind(d.lat, ht.h, rnd);
+    if (!kind) continue;
+    var x = r * Math.sin(th), y = r * Math.cos(th), z = _aeTerrainLocal('earth', lat0, lon0, h0, x, y, r * 0.0005, st.pend && st.pend.flat);
+    var sz = kind === 'conifer' ? [20, 40] : kind === 'broadleaf' ? [10, 25] : [8, 18], u = Math.pow(rnd(), 1.3);
+    list.push({ kind: kind, x: x, y: y, z: z, h: sz[0] + (sz[1] - sz[0]) * u, seed: rnd(), lean: (rnd() - 0.5) * 0.12, w: 0.8 + rnd() * 0.5 });
+  }
+  if (!list.length) return;
+  var P = [], N = [], T = [];   // flat arrays: positions, normals, (height fraction, seed, kind)
+  var tri = function (a, b, c, ax, kind, seedv, fa, fb, fc) {   // one face, its normal pointing away from the axis point ax
+    var ux = b[0] - a[0], uy = b[1] - a[1], uz = b[2] - a[2], vx = c[0] - a[0], vy = c[1] - a[1], vz = c[2] - a[2];
+    var nx = uy * vz - uz * vy, ny = uz * vx - ux * vz, nz = ux * vy - uy * vx, nl = Math.hypot(nx, ny, nz) || 1;
+    var mx = (a[0] + b[0] + c[0]) / 3 - ax[0], my = (a[1] + b[1] + c[1]) / 3 - ax[1], mz = (a[2] + b[2] + c[2]) / 3 - ax[2];
+    if (nx * mx + ny * my + nz * mz < 0) { nx = -nx; ny = -ny; nz = -nz; }
+    [[a, fa], [b, fb], [c, fc]].forEach(function (q) { P.push(q[0][0], q[0][1], q[0][2]); N.push(nx / nl, ny / nl, nz / nl); T.push(q[1], seedv, kind); });
+  };
+  var cone = function (cx, cy, z0, z1, rad, sides, droop, ax, kind, seedv, f0, f1) {   // a tier: a ring at z0 (the nearer half of it drooping), its tip at z1
+    var ring = [], tip = [cx, cy, z1];
+    for (var q = 0; q < sides; q++) { var an = q / sides * 2 * Math.PI + seedv * 6, w = 0.85 + 0.3 * ((q * 7 + Math.floor(seedv * 50)) % 5) / 4; ring.push([cx + Math.cos(an) * rad * w, cy + Math.sin(an) * rad * w, z0 - (q % 2 ? droop : 0)]); }
+    for (var f = 0; f < sides; f++) tri(ring[f], ring[(f + 1) % sides], tip, ax, kind, seedv, f0, f0, f1);
+  };
+  list.forEach(function (t) {
+    var K = AE_STAND_TREE_KINDS, c0 = [t.x, t.y, t.z], lean = t.lean, cx = function (f) { return t.x + lean * t.h * f; }, sd = t.seed;
+    // the trunk: a dark sliver
+    var tr = Math.max(0.18, t.h * 0.012), tz = t.z + t.h * (t.kind === 'palm' ? 0.85 : t.kind === 'broadleaf' ? 0.55 : 0.22);
+    var tk = [[cx(0) - tr, t.y - tr], [cx(0) + tr, t.y - tr], [cx(0) + tr, t.y + tr], [cx(0) - tr, t.y + tr]];
+    for (var e = 0; e < 4; e++) { var A = tk[e], B = tk[(e + 1) % 4]; tri([A[0], A[1], t.z], [B[0], B[1], t.z], [B[0] + lean * t.h * 0.2, B[1], tz], c0, K.trunk, sd, 0, 0, 0.2); }
+    if (t.kind === 'conifer') {
+      var rad = t.h * 0.13 * t.w;   // three tiers, each narrower, each a little drooped, the lowest well off the ground
+      cone(cx(0.4), t.y, t.z + t.h * 0.14, t.z + t.h * 0.58, rad * 1.15, 7, t.h * 0.03, [cx(0.5), t.y, t.z + t.h * 0.4], K.conifer, sd, 0.14, 0.58);
+      cone(cx(0.65), t.y, t.z + t.h * 0.36, t.z + t.h * 0.82, rad * 0.85, 7, t.h * 0.025, [cx(0.7), t.y, t.z + t.h * 0.6], K.conifer, sd, 0.36, 0.82);
+      cone(cx(0.9), t.y, t.z + t.h * 0.6, t.z + t.h, rad * 0.55, 6, t.h * 0.02, [cx(0.9), t.y, t.z + t.h * 0.8], K.conifer, sd, 0.6, 1.0);
+    } else if (t.kind === 'broadleaf') {
+      var cr = t.h * 0.3 * t.w, cz = t.z + t.h * 0.62, top = [cx(0.7), t.y, t.z + t.h], bot = [cx(0.5), t.y, t.z + t.h * 0.3];   // a crown: a squat bipyramid of seven irregular points
+      var ring = [];
+      for (var q = 0; q < 7; q++) { var an = q / 7 * 2 * Math.PI + sd * 6, w = 0.75 + 0.5 * ((q * 5 + Math.floor(sd * 40)) % 4) / 3; ring.push([cx(0.6) + Math.cos(an) * cr * w, t.y + Math.sin(an) * cr * w, cz + (q % 2 ? 0.05 : -0.04) * t.h]); }
+      for (var g = 0; g < 7; g++) { var A2 = ring[g], B2 = ring[(g + 1) % 7]; tri(A2, B2, top, [cx(0.6), t.y, cz], K.broadleaf, sd, 0.62, 0.62, 1.0); tri(B2, A2, bot, [cx(0.6), t.y, cz], K.broadleaf, sd, 0.62, 0.62, 0.3); }
+    } else {   // a palm: a few long drooping fronds from the top of the trunk
+      var tip2 = [cx(0.85), t.y, t.z + t.h * 0.95], fl = t.h * 0.32;
+      for (var fr = 0; fr < 7; fr++) {
+        var an2 = fr / 7 * 2 * Math.PI + sd * 6, ex = tip2[0] + Math.cos(an2) * fl, ey = tip2[1] + Math.sin(an2) * fl, ez = tip2[2] - fl * 0.45, px2 = -Math.sin(an2) * fl * 0.09, py2 = Math.cos(an2) * fl * 0.09;
+        tri([tip2[0], tip2[1], tip2[2]], [ex + px2, ey + py2, ez], [ex - px2, ey - py2, ez], [tip2[0], tip2[1], tip2[2] - 3], K.palm, sd, 1.0, 0.85, 0.85);
+      }
+    }
+  });
+  var g = new THREE.BufferGeometry();
+  g.setAttribute('position', new THREE.BufferAttribute(new Float32Array(P), 3)); g.setAttribute('aNrm', new THREE.BufferAttribute(new Float32Array(N), 3)); g.setAttribute('aTree', new THREE.BufferAttribute(new Float32Array(T), 3));
+  var m = new THREE.ShaderMaterial({ uniforms: st.ground, vertexShader: AE_ST_TREE_VERT, fragmentShader: AE_ST_TREE_FRAG, side: AE_THREE_DOUBLE_SIDE });
+  var mesh = new THREE.Mesh(g, m);
+  mesh.frustumCulled = false; mesh.renderOrder = 1;
+  st.scene.add(mesh); st.trees = { mesh: mesh, count: list.length };
+  st.geo.push(g); st.mats.push(m);
+  st.dirty = true; _ae.dirty = true; _aeKick();
 }
 
 // ── The sky and the bodies in it, for an instant ──
@@ -615,7 +717,7 @@ function _aeStandSkyPass(st) {
     st.skyRT = new THREE.WebGLRenderTarget(w, h, { minFilter: THREE.LinearFilter, magFilter: THREE.LinearFilter, depthBuffer: false, stencilBuffer: false });
   }
   var u = st.skyBlit.material.uniforms;
-  u.tSky.value = st.skyRT.texture; u.uRes.value = [W, H];
+  u.tSky.value = st.skyRT.texture; u.uRes.value = [W, H]; u.uTexel.value = [1 / w, 1 / h];
   r.setRenderTarget(st.skyRT); r.render(st.skyScene, st.camera); r.setRenderTarget(null);
 }
 // Frames that run long step the pixel ratio down, for good: a phone that cannot keep up is not asked to try again.
@@ -680,7 +782,9 @@ function _aeStandShadeTick(st, fr, now) {
 }
 function _aeStandApplyGround(st, fr, ph, view, now) {
   var g = st.ground;
-  g.uCam.value = view.pos; g.uPixAng.value = view.pixAng; g.uTime.value = now / 1000;
+  g.uCam.value = view.pos; g.uPixAng.value = view.pixAng;
+  var hl = Math.hypot(view.e[8], view.e[9]) || 1;
+  g.uHead.value = [-view.e[8] / hl, -view.e[9] / hl]; g.uTime.value = now / 1000;
   g.uAmbient.value = st.key === 'earth' ? ph.amb.map(function (x) { return Math.max(x, AE_STAND_NIGHT_GLOW); }) : ph.amb; g.uSkyHor.value = ph.hor; g.uSkyZen.value = ph.zen; g.uDiffSky.value = ph.diffSky;
   if (fr.light2) { g.uDir2.value = fr.light2.dir; g.uE2.value = fr.light2.rgb; }
   else g.uE2.value = [0, 0, 0];
