@@ -32,10 +32,45 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 - **The Sun close up:** prominences and flares (illustrative, labelled so), loops over sunspot groups and a finer boiling surface.
 
 - **The sky you remember:** a Launches button in the 3D Earth lists every orbital launch since 1957 by year, site and rocket (Jonathan McDowell's GCAT), opens one at its pad at lift-off, draws its ascent and the satellites it left (reconstructed from the launch's orbit, or exact with your own Space-Track login), and says whether you could have seen it from your place, in the live sky too.
+### Highlights
+
+**Zimi**
+
+- `zimi check` checks a ZIM the way openZIM's zimcheck does: its checksum, metadata, icon, redirects and internal links.
+- An app that is open when you change the language is drawn again in the new one.
+- Manage can clear the catalog copies Zimi keeps: the cached catalog and the `.torrent` files of ZIMs you have not installed.
+
+**Games**
+
+- Tri Peaks and Blast open the right encyclopedia article from their About link, and Net no longer links to a page that does not exist.
+
+**Almanac**
+
+- The beach scene has clouds that glow after sunset where the Sun still reaches them, and a helicopter with blinking lights.
+- A magnifier on a planet's tip in the solar system opens the sky aimed at it.
 
 ## [1.15.4]
 
 ### Highlights
+
+**Zimi**
+
+- Signed in, your settings follow you to every browser.
+- Portable Linux: a headless x64 and arm64 build that runs from a USB stick (#137).
+- A lighter Docker image: 884 MB, down from 1.11 GB.
+- `near:` suggests places as you type.
+- A file already downloading isn't downloaded twice (#143).
+
+**Games**
+
+- ZimCity keeps your cities, plus about 40 fixes across the shelf.
+
+**Almanac**
+
+- One clock, a cleaner 3D view, names on every world, and links that bring you back to the same moment.
+- Almanac HD is its own ZIM that works in Kiwix.
+
+### Added
 
 - **Settings follow you:** signed in, your Almanac, app and puzzle choices follow you to every browser, live.
 - **Portable Linux:** a headless build for x64 and arm64 that runs off a USB stick and keeps its settings beside it (#137).

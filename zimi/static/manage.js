@@ -4784,6 +4784,7 @@ function _msServerHtml() {
         '<button class="pill" onclick="_cacheAction(this,\'clear-suggest\')">' + tH('clear_suggest_cache') + '</button>' +
         '<button class="pill" onclick="_cacheAction(this,\'rebuild-title\')">' + tH('rebuild_title_indexes') + '</button>' +
         '<button class="pill" onclick="_cacheAction(this,\'rebuild-qid\')">' + tH('rebuild_qid_indexes') + '</button>' +
+        (d.catalog_copies && d.catalog_copies.size_bytes ? '<button class="pill" onclick="_cacheAction(this,\'purge-catalog\')">' + tH('clear_catalog_copies', { size: _fmtBytes(d.catalog_copies.size_bytes) }) + '</button>' : '') +
         '<span id="ms-cache-status" class="ms-hint" style="margin:0;align-self:center"></span>' +
       '</div>';
     el.innerHTML = sh;
@@ -6369,6 +6370,7 @@ async function _cacheAction(btn, action) {
     const data = await res.json().catch(() => ({}));
     if (!res.ok) throw new Error(data.error || 'failed');
     if (status) status.textContent = data.status === 'started' ? t('rebuild_started') : t('cleared');
+    if (data.target === 'catalog') btn.remove();   // nothing left to clear until the catalog is fetched again
     // Rebuild kicks off background work — nudge the activity poller so
     // the topbar bar surfaces within ~250ms instead of waiting up to 30s
     // for the next idle-cadence poll.

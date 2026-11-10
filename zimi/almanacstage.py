@@ -39,6 +39,7 @@ SCRIPTS = (
     "almanac-onesky.js",
     "zone-places.js",
     "almanac-skyfacts.js",
+    "almanac-skyscene.js",
     "almanac.js",
     "almanac-ephem.js",
     "almanac-earth.js",

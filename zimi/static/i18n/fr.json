@@ -4001,5 +4001,15 @@
   "alm_ms_ph_splash": "Amerrissage",
   "tb_kn_ms_tli_v": "Décalée d'environ deux minutes par rapport au rapport, à l'heure où l'orbite de parking ajustée atteint la latitude du rapport (8,03 S)",
   "tb_kn_ms_rdv": "Apollo 11 : rendez-vous",
-  "tb_kn_ms_rdv_v": "Une réduction lissée de l'écart du module lunaire avec Columbia jusqu'à l'amarrage ; pas la séquence coelliptique du rapport"
+  "tb_kn_ms_rdv_v": "Une réduction lissée de l'écart du module lunaire avec Columbia jusqu'à l'amarrage ; pas la séquence coelliptique du rapport",
+  "clear_catalog_copies": "Effacer les copies du catalogue ({size})",
+  "alm_sky_heli": "Un hélicoptère",
+  "alm_sky_heli_line": "À quelques centaines de mètres d'altitude, à 200 km/h. Feu rouge à gauche, vert à droite, un feu rouge et un éclat blanc qui clignotent.",
+  "tb_k_scene": "Décor",
+  "tb_k_scene_sub": "Aéronefs",
+  "tb_kn_airliner_h": "Altitude d'un avion de ligne",
+  "tb_kn_airliner_v": "Vitesse d'un avion de ligne",
+  "tb_kn_heli_h": "Altitude d'un hélicoptère",
+  "tb_kn_heli_v": "Vitesse d'un hélicoptère",
+  "tb_kn_heli_beacon": "Clignotement du feu d'un hélicoptère"
 }

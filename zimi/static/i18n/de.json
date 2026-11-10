@@ -4001,5 +4001,15 @@
   "alm_ms_ph_splash": "Wasserung",
   "tb_kn_ms_tli_v": "Etwa zwei Minuten gegenüber dem Bericht verschoben, auf den Zeitpunkt, an dem die angepasste Parkbahn die Breite des Berichts (8,03 S) erreicht",
   "tb_kn_ms_rdv": "Apollo 11: Rendezvous",
-  "tb_kn_ms_rdv_v": "Ein geglättetes Schließen des Abstands der Fähre zu Columbia bis zur Kopplung; nicht die koelliptische Abfolge des Berichts"
+  "tb_kn_ms_rdv_v": "Ein geglättetes Schließen des Abstands der Fähre zu Columbia bis zur Kopplung; nicht die koelliptische Abfolge des Berichts",
+  "clear_catalog_copies": "Katalogkopien löschen ({size})",
+  "alm_sky_heli": "Ein Hubschrauber",
+  "alm_sky_heli_line": "Einige hundert Meter hoch mit 200 km/h. Rotes Licht links, grünes rechts, dazu ein rotes Rundumlicht und ein weißes Blitzlicht, die blinken.",
+  "tb_k_scene": "Szene",
+  "tb_k_scene_sub": "Flieger",
+  "tb_kn_airliner_h": "Flughöhe eines Verkehrsflugzeugs",
+  "tb_kn_airliner_v": "Geschwindigkeit eines Verkehrsflugzeugs",
+  "tb_kn_heli_h": "Flughöhe eines Hubschraubers",
+  "tb_kn_heli_v": "Geschwindigkeit eines Hubschraubers",
+  "tb_kn_heli_beacon": "Blinktakt des Hubschrauber-Rundumlichts"
 }

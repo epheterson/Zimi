@@ -1854,6 +1854,7 @@ var TB_ISA_T0_C = 15;                // ICAO standard atmosphere at sea level
 var TB_ISA_LAPSE_K_PER_KM = 6.5;
 var TB_SAROS_SYNODIC = 223;          // the Saros: 223 synodic months
 var TB_S_PER_DAY_SI = 86400;
+var TB_S_PER_HOUR = 3600;
 var TB_SRC_EXACT = 'SI';
 // Rows: [name key, value, digits, unit, source]; value a number, or text.
 var TB_CONST_ROWS = {
@@ -1996,6 +1997,18 @@ var TB_CONST_ROWS = {
       ['zero_c', TB_ZERO_C_K, 2, 'K', TB_SRC_EXACT]
     ];
   },
+  // The beach scene's things that cross it (almanac-skyscene.js, almanac-sky.js): drawn for illustration, to these sizes.
+  k_scene: function () {
+    var SRC = 'Zimi';
+    var span = function (pair, k) { return _arNum(pair[0] * (k || 1), 1) + ' – ' + _arNum(pair[1] * (k || 1), 1); };
+    return [
+      ['airliner_h', span(SKY_PLANE_KM), 0, 'km', SRC],
+      ['airliner_v', span(SKY_PLANE_KM_S, TB_S_PER_HOUR), 0, 'km/h', SRC],
+      ['heli_h', span(SKY_HELI.km), 0, 'km', SRC],
+      ['heli_v', span(SKY_HELI.kms, TB_S_PER_HOUR), 0, 'km/h', SRC],
+      ['heli_beacon', SKY_HELI_BEACON_MS, 0, 'ms', SRC]
+    ];
+  },
   k_units: function () {
     var rows = [];
     Object.keys(TB_UNITS).forEach(function (kind) {
@@ -2029,7 +2042,8 @@ var TB_CONST_LINKS = {
   sun_sd: 'term:angular_diameter', sunrise_alt: 'term:sunrise', moon_hp: 'term:parallax',
   sun_parallax: 'term:parallax', twilights: 'term:twilight', c: 'term:speed_of_light',
   g: 'term:gravitational_constant', aberration: 'term:aberration', atm: 'term:standard_atmosphere',
-  sea_pressure: 'term:isa', isa_t0: 'term:isa', lapse: 'term:isa'
+  sea_pressure: 'term:isa', isa_t0: 'term:isa', lapse: 'term:isa',
+  airliner_h: 'sky:airliner', airliner_v: 'sky:airliner', heli_h: 'sky:helicopter', heli_v: 'sky:helicopter'
 };
 // What a row cites: each name below becomes its article's link wherever it stands in the
 // Source column ("Meeus 12.4" links Meeus; "SI · exact" links SI).

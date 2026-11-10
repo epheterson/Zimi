@@ -4001,5 +4001,15 @@
   "alm_ms_ph_splash": "Splashdown",
   "tb_kn_ms_tli_v": "Moved about two minutes from the report's, to the time the fitted parking orbit reaches the report's latitude (8.03 S)",
   "tb_kn_ms_rdv": "Apollo 11 rendezvous",
-  "tb_kn_ms_rdv_v": "A smoothed closure of the lander's offset from Columbia to the docking time; not the report's coelliptic sequence"
+  "tb_kn_ms_rdv_v": "A smoothed closure of the lander's offset from Columbia to the docking time; not the report's coelliptic sequence",
+  "clear_catalog_copies": "Clear catalog copies ({size})",
+  "alm_sky_heli": "A helicopter",
+  "alm_sky_heli_line": "A few hundred metres up at 200 km/h. Red light on the left, green on the right, a red beacon and a white strobe that flash.",
+  "tb_k_scene": "Scene",
+  "tb_k_scene_sub": "Flyers",
+  "tb_kn_airliner_h": "Airliner height",
+  "tb_kn_airliner_v": "Airliner speed",
+  "tb_kn_heli_h": "Helicopter height",
+  "tb_kn_heli_v": "Helicopter speed",
+  "tb_kn_heli_beacon": "Helicopter beacon flash"
 }

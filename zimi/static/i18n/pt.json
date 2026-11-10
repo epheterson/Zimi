@@ -4001,5 +4001,15 @@
   "alm_ms_ph_splash": "Amerrissagem",
   "tb_kn_ms_tli_v": "Deslocada cerca de dois minutos em relação ao relatório, para a hora em que a órbita de estacionamento ajustada atinge a latitude do relatório (8,03 S)",
   "tb_kn_ms_rdv": "Apolo 11: encontro orbital",
-  "tb_kn_ms_rdv_v": "Um fechamento suavizado do afastamento do módulo lunar de Columbia até a acoplagem; não a sequência coelíptica do relatório"
+  "tb_kn_ms_rdv_v": "Um fechamento suavizado do afastamento do módulo lunar de Columbia até a acoplagem; não a sequência coelíptica do relatório",
+  "clear_catalog_copies": "Apagar cópias do catálogo ({size})",
+  "alm_sky_heli": "Um helicóptero",
+  "alm_sky_heli_line": "A algumas centenas de metros de altura, a 200 km/h. Luz vermelha à esquerda, verde à direita, um farol vermelho e um flash branco que piscam.",
+  "tb_k_scene": "Cena",
+  "tb_k_scene_sub": "Aeronaves",
+  "tb_kn_airliner_h": "Altura de um avião de passageiros",
+  "tb_kn_airliner_v": "Velocidade de um avião de passageiros",
+  "tb_kn_heli_h": "Altura de um helicóptero",
+  "tb_kn_heli_v": "Velocidade de um helicóptero",
+  "tb_kn_heli_beacon": "Pisca do farol de um helicóptero"
 }

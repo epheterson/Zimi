@@ -4001,5 +4001,15 @@
   "alm_ms_ph_splash": "溅落",
   "tb_kn_ms_tli_v": "与报告相差约两分钟，取拟合停泊轨道到达报告纬度（南纬8.03度）的时刻",
   "tb_kn_ms_rdv": "阿波罗11号交会",
-  "tb_kn_ms_rdv_v": "将着陆器与哥伦比亚号的偏差平滑收拢至对接时刻；并非报告中的共椭圆序列"
+  "tb_kn_ms_rdv_v": "将着陆器与哥伦比亚号的偏差平滑收拢至对接时刻；并非报告中的共椭圆序列",
+  "clear_catalog_copies": "清除目录副本（{size}）",
+  "alm_sky_heli": "一架直升机",
+  "alm_sky_heli_line": "离地几百米，时速约 200 公里。左侧红灯，右侧绿灯，另有闪烁的红色信标灯和白色频闪灯。",
+  "tb_k_scene": "场景",
+  "tb_k_scene_sub": "飞行器",
+  "tb_kn_airliner_h": "客机飞行高度",
+  "tb_kn_airliner_v": "客机速度",
+  "tb_kn_heli_h": "直升机飞行高度",
+  "tb_kn_heli_v": "直升机速度",
+  "tb_kn_heli_beacon": "直升机信标灯闪烁间隔"
 }
