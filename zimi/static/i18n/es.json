@@ -4109,5 +4109,9 @@
   "alm_ms_ev_tmi_burn": "Encendido de inyección a Marte",
   "alm_ms_ev_sc_sep": "Separación de la nave",
   "tb_kn_ms_m20_launch": "Perseverance: lanzamiento y crucero",
-  "tb_kn_ms_m20_launch_v": "El ascenso del Atlas V 541 sigue los eventos publicados del lanzamiento; su altitud y velocidad entre ellos, el acimut, la órbita de aparcamiento y la forma de la inyección son supuestos. Desde las 12:52 UT la nave es la de JPL Horizons (-168), geocéntrica y luego heliocéntrica durante los 203 días hasta Marte"
+  "tb_kn_ms_m20_launch_v": "El ascenso del Atlas V 541 sigue los eventos publicados del lanzamiento; su altitud y velocidad entre ellos, el acimut, la órbita de aparcamiento y la forma de la inyección son supuestos. Desde las 12:52 UT la nave es la de JPL Horizons (-168), geocéntrica y luego heliocéntrica durante los 203 días hasta Marte",
+  "dym_showing": "Mostrando {s} · buscar {o} en su lugar",
+  "pdf_failed_body": "Falta el archivo o está dañado. El resto de la colección está bien.",
+  "pdf_failed_file": "El archivo que pediste",
+  "pdf_failed_back": "Volver a la colección"
 }

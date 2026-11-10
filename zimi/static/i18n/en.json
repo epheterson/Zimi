@@ -4109,5 +4109,9 @@
   "alm_ms_ev_tmi_burn": "Mars injection burn",
   "alm_ms_ev_sc_sep": "Spacecraft separation",
   "tb_kn_ms_m20_launch": "Perseverance launch and cruise",
-  "tb_kn_ms_m20_launch_v": "The Atlas V 541's ascent follows the launch's published events; its altitude and speed between them, the launch azimuth, the parking orbit and the shape of the injection burn are assumed. From 12:52 UT the spacecraft is JPL Horizons' own (-168), Earth-centred, then Sun-centred for the 203 days to Mars"
+  "tb_kn_ms_m20_launch_v": "The Atlas V 541's ascent follows the launch's published events; its altitude and speed between them, the launch azimuth, the parking orbit and the shape of the injection burn are assumed. From 12:52 UT the spacecraft is JPL Horizons' own (-168), Earth-centred, then Sun-centred for the 203 days to Mars",
+  "dym_showing": "Showing {s} · search for {o} instead",
+  "pdf_failed_body": "The file is missing or damaged. The rest of the collection is fine.",
+  "pdf_failed_file": "The file you asked for",
+  "pdf_failed_back": "Back to the collection"
 }

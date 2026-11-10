@@ -464,59 +464,21 @@ var _EARTH_RING_ALPHA = 0.16;
 
 // Once a first open finds no WebGL (almanac-earth.js sets .unsupported), the
 // glow and the tips' buttons go, and Earth and the Sun open their articles again.
+// Not yet loaded counts as available where the file is held back (_almLowPower): the tap fetches it.
 function _orreryEarthViewAvailable() {
-  return typeof window.openAlmanacEarth === 'function' && !window.openAlmanacEarth.unsupported;
+  if (typeof window.openAlmanacEarth === 'function') return !window.openAlmanacEarth.unsupported;
+  return typeof _almLoadEarth === 'function' && _almLowPower();
 }
 // Into the 3D view: the orrery lifts into it, over the body tapped (the Earth when none is named): the 3D camera starts
 // on this drawing (the same projection, the same scale) and flies in from there (almanac-orrery3d.js).
 function _orreryOpenEarthView(target) {
   if (!_orreryEarthViewAvailable()) return;
   _orreryMarkTried('earth');
-  _orreryCommitScenery();
-  window.openAlmanacEarth({ target: target || 'earth', fromOrrery: true });
-}
-
-// ── The hand-over to the 3D view and back ──
-// What the 3D view needs of this drawing to stand where it stands: the canvas on the screen (a square) and the camera
-// (_orreryCam: the ride's follow and zoom; the rest state is the identity). Null when the drawing is not on the page.
-function _orreryFrameState() {
-  if (!_orreryCanvas || !_orreryCanvas.isConnected) return null;
-  var r = _orreryCanvas.getBoundingClientRect();
-  if (!r.width) return null;
-  return { left: r.left, top: r.top, size: r.width, cam: { x: _orreryCam.x, y: _orreryCam.y, zoom: _orreryCam.zoom } };
-}
-// The opening spin is scenery, an offset on the drawn moment and never the page's: a drawing that is about to become the
-// 3D view's moment gives its moment to the page's clock first, so the two show the same instant.
-function _orreryCommitScenery() {
-  if (!_orreryScenery && !_orrerySceneryMs) return;
-  var ms = _orrerySimTime();
-  _orreryClockTouched();
-  if (typeof _almScrubSettle === 'function') _almScrubSettle(new Date(ms));
-}
-// The 3D view is coming back to this drawing: it is brought on screen, at rest and painted at the page's moment, and the
-// canvas is returned for the view to settle onto (null when it is not there).
-function _orreryHandBack() {
-  if (!_orreryCanvas || !_orreryCanvas.isConnected) return null;
-  _orreryCamReset();
-  _orreryCanvas.scrollIntoView({ block: 'center' });   // at once: a smooth scroll is cut short behind the view
-  if (typeof _almSecBarSync === 'function') _almSecBarSync();
-  _drawOrrery(_orreryCanvas, _orreryDpr);
-  return _orreryFrameState();
-}
-// A line where the hint stands, for a moment: what the tap could not do (no 3D here).
-var _ORRERY_NOTE_MS = 5000;
-var _orreryNoteTimer = 0;
-function _orreryNote(text) {
-  var el = document.getElementById('orrery-hint');
-  if (!el) return;
-  clearTimeout(_orreryNoteTimer);
-  el.textContent = text;
-  el.hidden = false;
-  _orreryNoteTimer = setTimeout(_orreryRenderHint, _ORRERY_NOTE_MS);
-}
-// The canvas breathes while the 3D view is being made ready behind it (the first tap on a cold page).
-function _orreryWake(on) {
-  if (_orreryCanvas) _orreryCanvas.classList.toggle('alm-orrery-waking', on);
+  if (typeof window.openAlmanacEarth !== 'function') {
+    _almLoadEarth().then(function () { if (typeof window.openAlmanacEarth === 'function') window.openAlmanacEarth(target ? { target: target } : undefined); }, function () {});
+    return;
+  }
+  window.openAlmanacEarth(target ? { target: target } : undefined);
 }
 
 // ── Saying what the orrery does, until it has been done ──
@@ -838,7 +800,8 @@ function _initOrrery() {
         _almEsc(t('alm_orr_planet_view', { name: _tp(hit.data.name) })) + '</button>'
       : '';
     if (_orreryIsDestination(hit)) {
-      return close + '<button type="button" class="orrery-tip-btn" data-orr-fly="' + _almEsc(hit.data.name) + '">' +
+      // Two ways in, one primary: the ride is the amber button, the close-up beside it is the quiet one.
+      return close.replace('class="orrery-tip-btn"', 'class="orrery-tip-btn orrery-tip-quiet"') + '<button type="button" class="orrery-tip-btn" data-orr-fly="' + _almEsc(hit.data.name) + '">' +
         _almEsc(t('alm_orr_fly')) + '</button>';
     }
     if (close) return close;

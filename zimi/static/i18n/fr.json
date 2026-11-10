@@ -4109,5 +4109,9 @@
   "alm_ms_ev_tmi_burn": "Allumage d'injection vers Mars",
   "alm_ms_ev_sc_sep": "Séparation de la sonde",
   "tb_kn_ms_m20_launch": "Perseverance : lancement et croisière",
-  "tb_kn_ms_m20_launch_v": "L'ascension de l'Atlas V 541 suit les événements publiés du lancement ; son altitude et sa vitesse entre eux, l'azimut, l'orbite de parking et la forme de l'injection sont supposés. À partir de 12:52 UT la sonde est celle de JPL Horizons (-168), géocentrique puis héliocentrique pendant les 203 jours jusqu'à Mars"
+  "tb_kn_ms_m20_launch_v": "L'ascension de l'Atlas V 541 suit les événements publiés du lancement ; son altitude et sa vitesse entre eux, l'azimut, l'orbite de parking et la forme de l'injection sont supposés. À partir de 12:52 UT la sonde est celle de JPL Horizons (-168), géocentrique puis héliocentrique pendant les 203 jours jusqu'à Mars",
+  "dym_showing": "Résultats pour {s} · chercher plutôt {o}",
+  "pdf_failed_body": "Le fichier est absent ou endommagé. Le reste de la collection est intact.",
+  "pdf_failed_file": "Le fichier demandé",
+  "pdf_failed_back": "Retour à la collection"
 }

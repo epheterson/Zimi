@@ -1987,7 +1987,7 @@
   .content-search-indicator .spinner-inline { display: inline-block; width: 12px; height: 12px; vertical-align: middle; margin-right: 6px; }
   .empty { text-align: center; padding: 48px 20px; color: var(--text2); }
   .empty p { font-size: 14px; margin-bottom: 8px; }
-  .empty .hint { font-size: 12px; opacity: 0.5; }
+  .empty .hint { font-size: 12px; color: var(--text2); }
   /* A download still arriving in another program's folder (Project NOMAD). */
   .folder-note { font-size: 13px; color: var(--text2); margin: 0 0 14px; text-wrap: balance; }
   .empty .folder-note { margin: 14px 0 0; }
@@ -2031,6 +2031,8 @@
   .empty .did-you-mean { margin-bottom: 12px; }
   .did-you-mean a { color: var(--amber); font-style: italic; text-decoration: none; border-bottom: 1px solid var(--amber-border); }
   .did-you-mean a:hover { border-bottom-color: var(--amber); }
+  .did-you-mean.dym-ran { font-size: 13px; margin-bottom: 12px; text-wrap: balance; }
+  .did-you-mean.dym-ran b { color: var(--text); font-weight: 600; }
   .search-deeper {
     text-align: center; padding: 14px 20px; margin-top: 16px;
     color: var(--amber); font-size: 13px; cursor: pointer;
@@ -2104,6 +2106,10 @@
   .set-row .share-row-title, .set-row .share-row-desc { display: block; }
   .set-row .share-row-title { font-weight: 500; font-size: 14px; }
   .set-row-icon { display: flex; flex-shrink: 0; color: var(--amber); }
+  .addon-row { flex-wrap: wrap; }
+  .addon-act { margin-inline-start: auto; display: flex; align-items: center; gap: 8px; color: var(--text2); font-size: 12px; }
+  .addon-row .dl-progress { flex-basis: 100%; }
+  .addon-failed { color: var(--red, #e5484d); }
   .set-row-icon svg { width: 22px; height: 22px; }
   .set-row.share-locked { cursor: default; }
   /* Apps: shut, one disclosure row (title, how many are on, a chevron);
@@ -3278,7 +3284,11 @@
   .topbar-search .search-help:hover, .topbar-search .search-help[aria-expanded="true"] { color: var(--amber); border-color: var(--amber-border); background: var(--amber-glow); }
   .topbar-search.has-help input { padding-inline-end: 62px; }
   .search-tips-head { padding: 8px 14px 4px; font-size: 12px; font-weight: 600; color: var(--text2); }
-  .search-example { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 10px; }
+  .search-example { display: flex; flex-wrap: wrap; align-items: baseline; gap: 2px 12px; padding: 12px 16px; }
+  .search-example-note { color: var(--text2); font-size: 12px; }
+  /* The tips: a sheet from the bar down, full width, scrolling inside if it is taller than the screen. */
+  .suggest-dropdown.tips-sheet { position: fixed; left: 0; right: 0; max-height: calc(100dvh - 56px); border-radius: 0 0 var(--radius) var(--radius); border-inline: 0; overscroll-behavior: contain; }
+  @media (min-width: 700px) { .suggest-dropdown.tips-sheet { position: absolute; left: 0; right: auto; width: min(460px, 90vw); } }
   .search-example-q { color: var(--text); font-weight: 500; }
 
   /* ── Mobile ── */
