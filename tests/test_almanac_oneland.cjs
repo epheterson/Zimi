@@ -12,6 +12,7 @@ const check = (ok, label) => { if (!ok) { console.error('FAIL: ' + label); failu
 
 const S = { Math, Promise, Uint8Array, DataView, ArrayBuffer, String, isFinite, fetch: () => Promise.reject(new Error('offline')) };
 vm.createContext(S);
+S._almAsset = (p) => p;   // app.js: a /static address with its version; here, as it is
 vm.runInContext(fs.readFileSync(path.join(STATIC, 'almanac-oneland.js'), 'utf8'), S);
 const bin = fs.readFileSync(path.join(STATIC, 'earth', 'landcover-v1.bin'));
 S.__buf = bin.buffer.slice(bin.byteOffset, bin.byteOffset + bin.byteLength);

@@ -13,6 +13,7 @@ const STATIC = path.join(__dirname, '..', 'zimi', 'static');
 const read = (f) => fs.readFileSync(path.join(STATIC, f), 'utf8');
 const ctx = { console, Math, Float32Array, Int16Array, Uint32Array, Uint8Array, DataView, ArrayBuffer, performance: { now: () => Date.now() } };
 vm.createContext(ctx);
+ctx._almAsset = (p) => p;   // app.js: a /static address with its version; here, as it is
 vm.runInContext(read('almanac-terrain.js'), ctx);
 vm.runInContext(read('almanac-terrainshade.js'), ctx);
 const T = (code) => vm.runInContext(code, ctx);
@@ -181,6 +182,7 @@ check(T('_aeStandHeight("jupiter", 0, 0)') === 0, 'a body that cannot be stood o
   const gl = fs.readFileSync(path.join(STATIC, 'almanac-standgl.js'), 'utf8');
   const g = { Math };
   vm.createContext(g);
+  g._almAsset = (p) => p;
   // The constants almanac-earth.js owns and the atmospheres are built from.
   vm.runInContext(['AE_STAND_MARS_TAU', 'AE_STAND_HAZE_VIS_KM'].map((n) => earthSrc.match(new RegExp('var ' + n + ' = [^;]*;'))[0]).join('\n'), g);
   vm.runInContext(gl.replace(/var AE_ST_SKY_FRAG[\s\S]*?\n\];/, '').replace(/var AE_ST_GROUND_FRAG[\s\S]*?\n\];/, '').replace(/var AE_ST_BODY_FRAG[\s\S]*?\n\];/, ''), g);

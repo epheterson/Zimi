@@ -62,7 +62,12 @@ check(Math.abs(ks(1) - run('_sgSkyShare(1, 68)')) < 1e-9 && ks(0.5) > run('_sgSk
   run('__q = 7');
   check(oct() === 4, 'a level out of range is the full sky');
   S.window.devicePixelRatio = 3;
-  check(run('_osDpr()') === 1.5, 'the canvas pixel ratio is capped: min(devicePixelRatio, dprCap)');
+  run('__q = 2');
+  check(run('_osDpr()') === 3, 'at level 2 the card draws at the device ratio, not the 3D view\'s cap');
+  run('__q = 1');
+  check(run('_osDpr()') === 3, 'and at level 1 (the 3D view caps at 1.5 here) the card is cheap: it keeps the device ratio');
+  run('__q = 0');
+  check(run('_osDpr()') === 1.5, 'only the lowest level takes the cap: min(devicePixelRatio, dprCap)');
   S.window.devicePixelRatio = 1;
   check(run('_osDpr()') === 1, 'and never raised');
   run('_osFrame(123)');

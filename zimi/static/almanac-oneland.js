@@ -10,7 +10,7 @@
 //                               coast true when the one-degree cell holds both land and sea (a beach is possible)
 //                               rgb   the cell's mean colour on the Blue Marble, 0..1 (null for sea): a tint, not a picture
 
-var OL_URL = '/static/earth/landcover-v1.bin';
+var OL_URL = _almAsset('/static/earth/landcover-v1.bin');
 var OL_MAGIC = 'ZCOV', OL_VERSION = 1, OL_HEADER_BYTES = 10;
 var OL_CLASSES = ['sea', 'broadleaf', 'conifer', 'grass', 'desert', 'snow', 'tundra'];
 var OL_CLASS_MASK = 7, OL_COAST_BIT = 8;

@@ -105,6 +105,29 @@ function _asDecode(payload) {
   d.topOwners = d.owners.filter(Boolean).sort(function (a, b) { return d.ownerCount[b] - d.ownerCount[a]; }).slice(0, AS_OWNER_CHIPS);
   return d;
 }
+// The catalogue the capability level allows (capability.js ZimiCap 'satMax'): the ISS and the GPS first, then the largest by radar
+// cross-section (the brightest; none last), kept in the file's order. Cut before the worker, the cloud and the filters see it, so
+// their work, the buffers and the count all shrink with it.
+var AS_CAP_FIRST = /^(GPS |NAVSTAR)/;
+function _asCapData(d) {
+  var max = typeof ZimiCap !== 'undefined' ? ZimiCap.get('satMax') : Infinity;
+  if (!(max < d.n)) return d;
+  var weight = function (j) {
+    if (d.norad[j] === AS_ISS_NORAD || AS_CAP_FIRST.test(d.name[j])) return Infinity;
+    return d.rcs[j] === d.rcs[j] ? d.rcs[j] : -1;
+  };
+  var w = [], keep = [], i;
+  for (i = 0; i < d.n; i++) { w.push(weight(i)); keep.push(i); }
+  keep = keep.sort(function (a, b) { return w[b] === w[a] ? a - b : w[b] > w[a] ? 1 : -1; }).slice(0, max).sort(function (a, b) { return a - b; });
+  var o = { n: keep.length, fetched: d.fetched, source: d.source, stale: d.stale, owners: d.owners, ownerCount: d.ownerCount, topOwners: d.topOwners,
+    name: keep.map(function (j) { return d.name[j]; }) };
+  ['norad', 'epoch', 'mm', 'ecc', 'inc', 'raan', 'argp', 'ma', 'bstar', 'launch', 'rcs', 'alt', 'group', 'orbit', 'owner'].forEach(function (k) {
+    var src = d[k], out = new src.constructor(keep.length);
+    for (var t = 0; t < keep.length; t++) out[t] = src[keep[t]];
+    o[k] = out;
+  });
+  return o;
+}
 // Mean altitude (km) from the mean motion in revolutions a day: the orbit's size, not its height at a moment.
 function _asAltitudeKm(mm, ecc) {
   var nRad = mm * 2 * Math.PI / 86400, a = Math.cbrt(AS_MU_KM3_S2 / (nRad * nRad));
@@ -345,6 +368,7 @@ function _asSatLoad() {
     _as.lib = res[0];
     var d = _asDecode(res[1]);
     if (!d) throw new Error('catalogue');
+    d = _asCapData(d);
     _as.data = d;
     return _asStartWorker(d);
   }).then(function () {
