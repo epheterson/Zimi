@@ -172,17 +172,14 @@ def release(read=False):
 
 def estimate():
     """About how big the download is, known offline: the pinned tile source's size plus the Almanac in the package
-    (the flavour is the two together), to the nearest ten MB. None when either is unknown.
-    """
+    (the flavour is the two together), to the nearest ten MB. None when either is unknown. The Ultra parts are
+    not in it: each is its own choice, with its own size."""
     from zimi import ownzims
 
     try:
         with open(TILES_PIN, encoding="utf-8") as f:
-            pin = json.load(f)
-        tiles = pin.get("size") + sum(x.get("size", 0) for x in pin.get("parts", []))
-        almanac = os.path.getsize(
-            ownzims.zim_path(next(o for o in ownzims.OWN if o.name == "zimi_almanac"))
-        )
+            tiles = json.load(f).get("size")
+        almanac = os.path.getsize(ownzims.zim_path(next(o for o in ownzims.OWN if o.name == "zimi_almanac")))
     except (OSError, ValueError, TypeError, StopIteration, AttributeError):
         return None
     if not isinstance(tiles, int) or tiles <= 0:
@@ -213,33 +210,21 @@ def parts_present():
     return {p: part_name(p) for p in PARTS if part_name(p) in have}
 
 
-def _pinned_parts():
-    """The parts this version's set has, from the pinned tile source (offline); none for a single file."""
+def _known_parts(rel=None):
+    """The Ultra parts of this version's set as ``{"part", "file", "size", "sha256"}``: the release's own list once its
+    manifest has been read, else the pinned one (offline: the sizes the offer shows)."""
+    if rel and rel.get("parts"):
+        return list(rel["parts"])
     try:
         with open(TILES_PIN, encoding="utf-8") as f:
-            return [
-                x["part"]
-                for x in json.load(f).get("parts", [])
-                if x.get("part") in PARTS
-            ]
-    except (OSError, ValueError, TypeError, KeyError):
+            return [x for x in json.load(f).get("parts", []) if x.get("part") in PARTS and isinstance(x.get("size"), int)]
+    except (OSError, ValueError, TypeError, AttributeError):
         return []
-
-
-def parts_missing(rel=None):
-    """The parts the set has that are not in the library (the release's list, else the pinned one). 1.15.3's tile ZIM
-    holds every layer: it needs none."""
-    if present() == LEGACY_NAME:
-        return []
-    want = (
-        [x["part"] for x in rel["parts"]] if rel and "parts" in rel else _pinned_parts()
-    )
-    have = parts_present()
-    return [p for p in want if p not in have]
 
 
 def installed():
-    return present() is not None and not parts_missing()
+    """The core of Almanac HD (the flavour or 1.15.3's tile ZIM) is in the library. Ultra parts are separate choices."""
+    return present() is not None
 
 
 def base():
@@ -294,6 +279,7 @@ def status():
         "offer": None,
         "downloading": None,
     }
+    out["ultra"] = _ultra(mode)
     if have or mode == outbound.NEVER:
         return out
     rel = release()
@@ -314,16 +300,43 @@ def status():
     return out
 
 
-def _items(rel):
-    """What of a release is still to fetch: the main file (unless the Almanac is there) and the parts not in the library,
-    each ``{"file", "size", "sha256", "tag"}``."""
-    out = [] if present() else [{k: rel[k] for k in ("file", "size", "sha256", "tag")}]
-    out += [
-        dict(x, tag=rel["tag"])
-        for x in rel.get("parts", [])
-        if x["part"] in parts_missing(rel)
-    ]
+def _ultra(mode):
+    """The Ultra parts, each a choice of its own: ``{"part", "size", "installed", "file", "downloading"}`` (the bytes
+    done and the size, while it comes). Offered while the core is there and the setting lets Zimi fetch; one that is
+    installed is listed always, so it can be removed."""
+    have, core = parts_present(), installed()
+    dls = _downloading_all()
+    out = []
+    for x in _known_parts(release()):
+        part, mine = x["part"], part_name(x["part"])
+        got = part in have
+        if not got and not (core and mode != outbound.NEVER):
+            continue
+        dl = next((d for d in dls if str(d.get("filename") or "").startswith(mine + "_")), None)
+        out.append(
+            {
+                "part": part,
+                "size": x["size"],
+                "installed": got,
+                "file": os.path.basename(_installed_path(mine)) if got else x["file"],
+                "downloading": {"done": dl.get("downloaded_bytes") or 0, "size": dl.get("size_bytes") or x["size"]} if dl else None,
+            }
+        )
     return out
+
+
+def _installed_path(name):
+    from zimi import server as _srv
+
+    return (_srv._zim_files_cache or {}).get(name) or name
+
+
+def _items(rel, part=None):
+    """What of a release one step fetches, each ``{"file", "size", "sha256", "tag"}``: the core (unless it is there), or,
+    for ``part``, that Ultra part alone. Under Automatically only the core is ever fetched on its own."""
+    if part:
+        return [dict(x, tag=rel["tag"]) for x in rel.get("parts", []) if x["part"] == part]
+    return [] if present() else [{k: rel[k] for k in ("file", "size", "sha256", "tag")}]
 
 
 def _missing_size(rel):
@@ -354,17 +367,21 @@ def saved_release(item):
     return {"file": m["file"], "size": size, "sha256": sha, "tag": m["tag"]}
 
 
-def start(actor=None, saved=None):
-    """Queue the download. ``(download id, error)``: error is "never" (the
-    setting, or ZIMI_OFFLINE), "installed", or "unavailable" (no file named
-    for this version). ``saved``: a pending download to resume (saved_release)."""
+def start(actor=None, saved=None, part=None):
+    """Queue the download of the core, or of one Ultra ``part``. ``(download id, error)``: error is "never" (the
+    setting, or ZIMI_OFFLINE), "installed", "needs_core" (a part reads beside the core) or "unavailable" (no file
+    named for this version). ``saved``: a pending download to resume (saved_release)."""
     if POLICY.mode()[0] == outbound.NEVER:
         return None, "never"
-    if installed():
+    if part is not None and part not in PARTS:
+        return None, "unavailable"
+    if part and not installed():
+        return None, "needs_core"
+    if (part and part in parts_present()) or (not part and installed()):
         return None, "installed"
     rel = release(read=True)
     items = (
-        _items(rel)
+        _items(rel, part)
         if rel
         else ([saved_release(saved)] if saved and saved_release(saved) else [])
     )
