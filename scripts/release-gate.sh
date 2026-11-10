@@ -11,11 +11,18 @@
 # It is deliberately NOT part of `pytest tests/`: it costs minutes and boots
 # subprocesses, so it runs before a release rather than on every save.
 #
-# Usage:
-#   ./scripts/release-gate.sh                 # every feature
-#   ./scripts/release-gate.sh -k cross_zim    # one feature, while fixing it
+# It also runs the release checklist first (scripts/release_checks.py): own ZIMs current, whatsnew.json,
+# CHANGELOG highlights, satellite snapshot age, Horizons fixture age, and the Almanac Q-IDs against
+# Wikipedia. Release day is this one command; --fix does what a command can for the red ones.
 #
-# Exit status is non-zero if any feature fails.
+# Usage:
+#   ./scripts/release-gate.sh                 # the checklist, then every feature
+#   ./scripts/release-gate.sh --fix           # rebuild the own ZIMs and whatsnew.json first, then as above
+#   ./scripts/release-gate.sh --checks        # the checklist alone (seconds, not minutes)
+#   ./scripts/release-gate.sh --no-network    # skip the Q-ID audit (offline)
+#   ./scripts/release-gate.sh -k cross_zim    # one feature, while fixing it (skips the checklist)
+#
+# Exit status is non-zero if any check or feature fails.
 
 set -uo pipefail
 
@@ -38,16 +45,39 @@ if ! "$PYTHON" -c 'import libzim.writer' 2>/dev/null; then
   exit 2
 fi
 
+# Our own flags, then whatever is left goes to pytest. A -k (one feature, while fixing it) skips the checklist.
+checks_args=()
+checks_only=0
+run_checks=1
+pytest_args=()
+for arg in "$@"; do
+  case "$arg" in
+    --fix|--no-network) checks_args+=("$arg") ;;
+    --checks) checks_only=1 ;;
+    *) pytest_args+=("$arg") ;;
+  esac
+done
+[ ${#pytest_args[@]} -gt 0 ] && run_checks=0
+
+checks_status=0
+if [ "$run_checks" = 1 ] || [ "$checks_only" = 1 ]; then
+  "$PYTHON" scripts/release_checks.py ${checks_args[@]+"${checks_args[@]}"}
+  checks_status=$?
+  echo
+fi
+if [ "$checks_only" = 1 ]; then exit $checks_status; fi
+
 "$PYTHON" -m pytest tests_release/ \
   -p no:cacheprovider \
   --tb=short \
   -q \
-  "$@"
+  ${pytest_args[@]+"${pytest_args[@]}"}
 status=$?
+if [ $checks_status -ne 0 ]; then status=$checks_status; fi
 
 echo
 if [ $status -eq 0 ]; then
-  echo "Release gate PASSED — every feature above works end to end."
+  echo "Release gate PASSED — the checklist is green and every feature above works end to end."
 else
   echo "Release gate FAILED — do not tag. See the scoreboard above for which"
   echo "feature broke, then re-run just that one with -k <name>."

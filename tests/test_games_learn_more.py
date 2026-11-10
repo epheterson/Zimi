@@ -485,12 +485,19 @@ def test_a_round_of_choices_links_the_answer_and_back_returns(
     # a question whose answer the library has a page for (a list links to articles a small ZIM may leave out: those get no link)
     # (rounds are random: 8 tries all missed the test ZIM once in CI, so try enough that a miss is a real defect)
     for _ in range(30):
+        if f.evaluate("() => __round.at + 1 >= __round.round.length && !!document.querySelector('.rk-choice[disabled]')"):
+            # The round's last question went by with no page: a fresh round, not a click on a finished one's disabled choice.
+            ctx.close()
+            ctx, page, errors = open_game(browser, zimi, name)
+            f = game(page, name)
+            f.wait_for_function("() => window.__round && __round.zim && __round.round.length > 0", timeout=WAIT)
         click(f, ".rk-choice")
         try:
             f.locator("#rk-read").wait_for(state="visible", timeout=4000)
             break
         except Exception:
-            click(f, "#rk-next")
+            if f.evaluate("__round.at + 1 < __round.round.length"):
+                click(f, "#rk-next")
     assert f.locator("#rk-read").is_visible(), "no answer in 30 questions had a page in the test library"
     assert hosted(f)
     if name == "flags.html":
@@ -521,13 +528,16 @@ def test_higher_or_lower_carries_the_answers_article_and_links_it_only_when_the_
     f = game(page, "higherlower.html")
     f.wait_for_function("() => window.__round && __round.zim && __round.round.length > 0", timeout=WAIT)
     assert f.evaluate("__round.round.some(q => q.path && q.zim)"), "no question carries its answer's article"
-    for _ in range(8):
+    # A round holds as many questions as the small library could make (4 to 8): ask each once, and after the last
+    # there is no next question to click (the old fixed 8 clicked a finished round's disabled choice for 30 s).
+    asked_so_far = f.evaluate("__round.round.length")
+    for n in range(asked_so_far):
         click(f, ".rk-choice")
         asked = f.evaluate("JSON.stringify(__round.round[__round.at])")
         has = f.evaluate("q => q.path && q.zim ? GamesLib.hasPage(q.zim, q.path) : false", __import__("json").loads(asked))
         frames(page, 8)
         assert f.locator("#rk-read").is_visible() == bool(has), asked
-        if has:
+        if has or n == asked_so_far - 1:
             break
         click(f, "#rk-next")
     assert not errors, errors

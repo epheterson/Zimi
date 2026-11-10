@@ -16,6 +16,8 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from test_games_trick_fixtures import GAMES, browser, served  # noqa: E402,F401
 from games_wait import quiet  # noqa: E402
 
+XDIST_SPLIT = 3   # independent cases, cheap module fixtures: dealt over workers (tests/conftest.py)
+
 WIDTH = 375
 PAGES = ["index.html"] + sorted({g["path"] for g in json.load(open(os.path.join(GAMES, "games.json"), encoding="utf-8")) if g.get("path")})
 

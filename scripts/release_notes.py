@@ -114,7 +114,11 @@ def voice_problems(changelog, version):
 def main(argv):
     if len(argv) == 3 and argv[1] == "--check":
         with open("CHANGELOG.md", encoding="utf-8") as f:
-            problems = voice_problems(f.read(), argv[2])
+            text = f.read()
+        if _section(text, argv[2])[0] is None:
+            sys.stderr.write("%s: no such section in CHANGELOG.md\n" % argv[2])
+            return 1
+        problems = voice_problems(text, argv[2])
         for p in problems:
             sys.stderr.write("%s: %s\n" % (argv[2], p))
         return 1 if problems else 0

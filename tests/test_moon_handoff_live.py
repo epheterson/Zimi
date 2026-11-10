@@ -47,6 +47,7 @@ DATES = ["2026-10-14T03:00:00Z", "2026-10-03T12:00:00Z", "2026-09-25T12:00:00Z"]
 HERO = "#almanac-head .almanac-moon-open"
 # Waits poll on a timer: a page with nothing moving may not ask for frames.
 POLL_MS = 100
+HANDOFF_MS = 60_000  # the 3D view opening and letting go of the finger, a state; a loaded runner took more than 10 s
 
 
 @pytest.fixture(scope="module")
@@ -208,7 +209,7 @@ def test_one_clock_moves_both_views(browser, served):
         _settle(pg, "2026-10-03T12:00:00Z")
         pg.evaluate("() => openAlmanacEarth({ target: 'moon', fromHero: true })")
         pg.wait_for_function(
-            "() => _aeIsOpen && !_ae.hand", timeout=10000, polling=POLL_MS
+            "() => _aeIsOpen && !_ae.hand", timeout=HANDOFF_MS, polling=POLL_MS
         )
         # The time machine's wheel steps and the lever's frames, as the page
         # runs them, each followed at once by the scene and the hero.
@@ -298,11 +299,11 @@ def test_leaving_restores_the_page(browser, served, reduced):
             pg.mouse.move(cx + i * 5, cy + i)
         pg.mouse.up()
         pg.wait_for_function(
-            "() => _aeIsOpen && !_ae.hand", timeout=10000, polling=POLL_MS
+            "() => _aeIsOpen && !_ae.hand", timeout=HANDOFF_MS, polling=POLL_MS
         )
         assert pg.evaluate("() => _ae.target === 'moon'")
         pg.keyboard.press("Escape")
-        pg.wait_for_function("() => !_aeIsOpen", timeout=10000, polling=POLL_MS)
+        pg.wait_for_function("() => !_aeIsOpen", timeout=HANDOFF_MS, polling=POLL_MS)
         # Focus is handed back once the uncovered page can take it (a few
         # frames under reduced motion, more on a loaded machine).
         pg.wait_for_function(
@@ -382,7 +383,7 @@ def test_one_finger_lifts_and_keeps_turning(browser, served, pointer):
                 pg.mouse.move(x + i * 4, y + i)
             x, y = x + 24, y + 6
         pg.wait_for_function(
-            "() => _aeIsOpen && !_ae.hand", timeout=10000, polling=POLL_MS
+            "() => _aeIsOpen && !_ae.hand", timeout=HANDOFF_MS, polling=POLL_MS
         )
         az0, el0 = pg.evaluate("[_ae.az, _ae.el_]")
         if pointer == "touch":
@@ -486,11 +487,11 @@ def test_the_cost(browser, served):
         # on leaving the Almanac.
         pg.evaluate("() => openAlmanacEarth({ target: 'moon', fromHero: true })")
         pg.wait_for_function(
-            "() => _aeIsOpen && !_ae.hand", timeout=10000, polling=POLL_MS
+            "() => _aeIsOpen && !_ae.hand", timeout=HANDOFF_MS, polling=POLL_MS
         )
         assert pg.evaluate("() => _ae.gl.renderer.getContext().drawingBufferWidth") > 1
         pg.evaluate("() => _aeClose()")
-        pg.wait_for_function("() => !_aeIsOpen", timeout=10000, polling=POLL_MS)
+        pg.wait_for_function("() => !_aeIsOpen", timeout=HANDOFF_MS, polling=POLL_MS)
         # One CSS pixel: the device pixels of one at the view's pixel ratio.
         assert pg.evaluate(
             "() => _ae.gl.renderer.getContext().drawingBufferWidth === _ae.gl.dpr"

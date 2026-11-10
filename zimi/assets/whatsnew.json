@@ -22,8 +22,11 @@
  },
  "1.15.4": {
   "zimi_almanac": [
-   "Almanac HD in Kiwix: the HD Almanac is now a complete flavour of the Almanac, one file that works on its own in Kiwix, attached to every release.",
-   "One clock in the Almanac: type the month, day, year, hour or minute where it stands, and one speed slider (reverse, play and pause, minutes to years a second) runs the page, the solar system and the 3D view together, and at rest it is the plain date and time, changed with a tap."
+   "One clock, a cleaner 3D view, names on every world, and links that bring you back to the same moment.",
+   "Almanac HD is its own ZIM that works in Kiwix."
+  ],
+  "zimi_games": [
+   "ZimCity keeps your cities, plus about 40 fixes across the shelf."
   ]
  }
 }
