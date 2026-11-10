@@ -47,7 +47,8 @@ def test_outside_zimi_the_shelf_and_the_menu_credit_zimi(browser, served):
     ), line.inner_text()
     link = line.query_selector("a")
     assert link.inner_text() == "Zimi" and link.get_attribute("href") == url
-    assert abs(page.evaluate(MARK_OFFSET, ".ar-shelf header .gs-home")) <= 0.5
+    # The shipped default (zimihome.js ZIMI_HOME_MARK = 'none'): no mark in the line, the words alone.
+    assert line.query_selector("img") is None
     page.goto("%s/chess.html" % served)
     page.click(".gs-menu-btn")
     menu_line = page.wait_for_selector(".gs-card .gs-home")
@@ -56,7 +57,7 @@ def test_outside_zimi_the_shelf_and_the_menu_credit_zimi(browser, served):
         and menu_line.query_selector("a").get_attribute("href") == url
     )
     assert "2031" in menu_line.inner_text()
-    assert abs(page.evaluate(MARK_OFFSET, ".gs-card .gs-home")) <= 0.5
+    assert menu_line.query_selector("img") is None
     ctx.close()
 
 
