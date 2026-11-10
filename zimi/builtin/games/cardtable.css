@@ -25,6 +25,8 @@
 .ct-status .ar-btn[hidden] { display: none; }
 .ct-panel { position: absolute; left: 50%; transform: translateX(-50%); display: flex; flex-wrap: wrap; justify-content: center; gap: var(--sp-2); width: min(100% - 16px, 520px); padding: var(--sp-2); border-radius: var(--r-sheet); background: rgba(0, 0, 0, 0.5); z-index: 35; }
 .ct-panel[hidden] { display: none; }
+.ct-panel.ct-side { left: auto; right: var(--sp-2); transform: none; width: 214px; justify-content: flex-end; gap: 6px; padding: 6px; }
+.ct-panel.ct-side .ct-choice { flex: 1 1 calc(50% - 3px); min-width: 0; min-height: 36px; padding: 0 8px; }
 .ct-choice { min-width: var(--target); min-height: var(--target); padding: 0 14px; font-weight: 600; }
 .ct-choice.ct-red { color: var(--suit-red); }
 .ct-choice[aria-pressed="true"] { background: linear-gradient(var(--accent-glow), var(--accent-glow)), var(--surface); border-color: var(--select-ring); color: var(--ink); }

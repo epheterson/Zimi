@@ -647,6 +647,7 @@
       boxSig = sig;
       boxEl.textContent = '';
       boxEl.hidden = !mine;
+      Z.pageEls().table.classList.toggle('br-bidding', mine);   // the hands' card counts (above everything) would sit on the bids
       auctionEl.style.maxHeight = '';
       if (!mine) return;
       // What is left between the auction's top and the box's bottom edge (both in the table's own coordinates).

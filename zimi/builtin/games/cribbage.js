@@ -231,7 +231,7 @@
   }
 
   // ── Layout ──────────────────────────────────────────────────────────────
-  var BOARD_MAX_W = 560, SHORT_BOARD_H_SHARE = 0.22, SHORT_PILE_GAP = 14, BOARD_GAP = 6, ROW_GAP = 22, PILE_JOG = 1.5;
+  var BOARD_MAX_W = 560, SHORT_BOARD_H_SHARE = 0.22, SHORT_PILE_GAP = 14, SHORT_STAIR_SHARE = 0.4, BOARD_GAP = 6, ROW_GAP = 22, PILE_JOG = 1.5;
   function geo(m) {
     var g = T.geometry(m, 1);
     g.boardW = Math.min(m.W - 2 * m.pad, BOARD_MAX_W, g.short ? Math.round(SHORT_BOARD_H_SHARE * m.H * BW / BH) : BOARD_MAX_W);   // a short table gives the board a smaller share of its height
@@ -245,6 +245,7 @@
     g.rowB = g.rowA + g.ch + ROW_GAP; g.rowC = g.rowB + g.ch + ROW_GAP;
     g.cribX = Math.round(g.cx - g.cw * 1.35); g.starterX = Math.round(g.cx + g.cw * 0.35);
     g.pileY = g.rowA;
+    if (g.short) { g.rowB = g.northY; g.rowC = g.northY + Math.round(g.ch * SHORT_STAIR_SHARE); }   // the count's staircase is one tight step beside the opponent's hand on a short table
     // A short table has no row for the crib and the starter under the board: they stand either side of it.
     if (g.short) { g.cribX = Math.max(g.pad, g.boardLeft - g.cw - SHORT_PILE_GAP); g.starterX = Math.min(g.W - g.pad - g.cw, g.boardLeft + g.boardW + SHORT_PILE_GAP); g.pileY = g.boardTop + Math.round((g.boardH - g.ch) / 2); }
     return g;
@@ -279,7 +280,7 @@
     else st.crib.forEach(function (id, k) { cards.push({ id: id, pile: 'crib', idx: k, x: g.cribX + Math.round(k * PILE_JOG), y: g.pileY + Math.round(k * PILE_JOG), up: false }); });
     cards.push({ id: st.starter, pile: 'starter', idx: 0, x: cribUp ? Math.round(g.cx - g.cw / 2) : g.starterX, y: g.pileY, up: st.cut, glow: showing });
     // The count so far, a staircase: North's plays above, yours below.
-    var step = Math.min(g.cw * 0.6, (g.W - 2 * g.pad - g.cw) / 7), x0 = (g.W - (g.cw + 7 * step)) / 2;
+    var step = Math.min(g.cw * 0.6, (g.W - 2 * g.pad - g.cw) / 7), x0 = g.short ? Math.min(Math.round(g.cx + g.cw * 1.8), g.W - g.pad - (g.cw + 7 * step)) : (g.W - (g.cw + 7 * step)) / 2;
     if (st.phase === 'peg') st.seq.forEach(function (p, k) {
       cards.push({ id: p.id, pile: 'seq', idx: k, x: Math.round(x0 + k * step), y: p.seat === V ? g.rowC : g.rowB, up: true });
     });

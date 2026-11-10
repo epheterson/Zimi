@@ -221,7 +221,10 @@
       }
       scoreRow.style.top = m.pad + 'px';
       status.style.top = Math.round(statusY) + 'px'; status.style.height = STATUS_H + 'px';
-      panel.style.bottom = Math.round(m.H - statusY + PANEL_GAP) + 'px';
+      // A game that asks for it (cfg.sidePanel) keeps the tray out of the middle of a short table: a small column at the right, level with the status line.
+      var side = !!(cfg.sidePanel && g.short);
+      panel.classList.toggle('ct-side', side);
+      panel.style.bottom = Math.round(side ? m.H - (statusY + STATUS_H) : m.H - statusY + PANEL_GAP) + 'px';
       // The status line: one sentence. The game's one fact ("Hand 2", "To 121") leads it when both fit.
       // A flash (a reason, a call) is a sentence of its own: nothing leads it. A lifted card says what the next tap does.
       var line = view.flash || (liftedPile && hd.text && !hd.choices ? T('cards.tapAgain') : hd.text) || '';

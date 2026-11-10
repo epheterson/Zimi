@@ -94,3 +94,39 @@ def test_chips_are_not_under_the_tray(browser, served):
         for r in rects(page, ".ct-pile:not(:empty)"):
             assert not overlap(r, panel), (name, r, panel)
         ctx.close()
+
+
+CLICK = "(t) => { const b = [...document.querySelectorAll('button')].filter(x => x.offsetParent && !x.disabled).find(x => x.textContent.trim().startsWith(t)); if (b) { b.click(); return true; } return false; }"
+
+
+def test_holdem_tray_is_a_side_column_and_the_flop_stays_in_view(browser, served):
+    """Hold'em opts in to the side-column tray (cfg.sidePanel): the shared cards and the pot line are never under Fold/Call/Raise."""
+    ctx, page = open_game(browser, served, "holdem")
+    page.evaluate(CLICK, "Deal")
+    page.wait_for_selector(".ct-panel.ct-side:not([hidden]) .ct-choice", timeout=30000)
+    flop = False
+    for _ in range(14):
+        frames(page, 3)
+        shown = rects(page, ".ct-panel:not([hidden])")
+        for panel in shown:
+            for sel in (".zc-card:not(.zc-down)", ".c2-tag"):
+                for r in rects(page, sel):
+                    assert not overlap(r, panel), (sel, r, panel)
+        if len(rects(page, ".zc-card:not(.zc-down)")) >= 5:
+            flop = True
+            break
+        if not (page.evaluate(CLICK, "Call") or page.evaluate(CLICK, "Check")):
+            page.wait_for_timeout(1500)
+        page.wait_for_timeout(2500)
+    assert flop, "the hand never reached the flop"
+    ctx.close()
+
+
+def test_bridge_counts_are_put_away_while_the_bids_are_up(browser, served):
+    ctx, page = open_game(browser, served, "bridge")
+    page.wait_for_selector(".br-box:not([hidden]) .br-bid", timeout=30000)
+    frames(page, 3)
+    box = rects(page, ".br-box")[0]
+    for r in rects(page, ".ct-count"):
+        assert not overlap(r, box), (r, box)
+    ctx.close()
