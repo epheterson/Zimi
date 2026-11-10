@@ -3859,5 +3859,6 @@
   "tb_kn_maps_min": "Máxima aproximación sobre un mapa",
   "tb_kn_maps_tile": "Ancho de una tesela del mapa en pantalla",
   "tb_kn_maps_ride": "La cámara sigue el suelo por debajo de",
-  "tb_kn_maps_data": "Calles y nombres sobre la Tierra"
+  "tb_kn_maps_data": "Calles y nombres sobre la Tierra",
+  "alm_hd_ultra": "Ultra"
 }

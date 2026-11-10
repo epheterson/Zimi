@@ -3859,5 +3859,6 @@
   "tb_kn_maps_min": "Nearest approach over a map",
   "tb_kn_maps_tile": "Map tile width on screen",
   "tb_kn_maps_ride": "The camera rides the ground below",
-  "tb_kn_maps_data": "Roads and names on the Earth"
+  "tb_kn_maps_data": "Roads and names on the Earth",
+  "alm_hd_ultra": "Ultra"
 }
