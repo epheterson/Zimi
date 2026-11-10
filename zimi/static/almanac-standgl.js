@@ -294,7 +294,7 @@ var AE_ST_BODY_VERT = [
 var AE_ST_BODY_FRAG = [
   'precision highp float;', AE_ST_GLSL_TONE,
   'uniform vec3 uDir, uRight, uUp, uSunFrom, uTint, uTrans; uniform float uHalf, uRho, uPix, uE, uK, uEmit, uVis, uGlow, uSkyLit;',
-  'uniform sampler2D uMap; uniform float uMapped, uGrey, uMapGain, uCorona; uniform vec3 uOcc; uniform mat3 uBody;',                    // the body's own map, and local -> body-fixed
+  'uniform sampler2D uMap; uniform float uMapped, uGrey, uMapGain, uCorona, uSeed; uniform vec3 uOcc; uniform mat3 uBody;',                    // the body's own map, and local -> body-fixed
   'uniform sampler2D uRingMap; uniform float uRings, uRp; uniform vec3 uRingN, uCen; uniform vec2 uRing;',    // Saturn's rings: plane, centre and size (km)
   'varying vec2 vUv;',
   'const float PI = ' + AE_ST_PI + ';',
@@ -357,10 +357,18 @@ var AE_ST_BODY_FRAG = [
   '  }',
   // The corona: a ring round the Moon's black disc, pearly white at the edge, thinning to nothing at 3.4 radii (almanac-sky.js _skyPaintCorona).
   '  if (uCorona > 0.0 && uRho > 0.0) {',
-  '    float t = (a / uRho - 0.98) / (3.4 - 0.98);',
+  '    float x = a / uRho, t = (x - 0.98) / (3.4 - 0.98);',
   '    if (t > 0.0 && t < 1.0) {',
-  '      float w = t < 0.25 ? mix(0.85, 0.3, t / 0.25) : mix(0.3, 0.0, (t - 0.25) / 0.75);',
-  '      vec3 cc = mix(vec3(250.0, 246.0, 236.0), vec3(235.0, 236.0, 244.0), clamp(t / 0.25, 0.0, 1.0)) / 255.0;',
+  // Bright and close in, thin and far out: a fast falloff and a slow one, and a few streamers (the day's own, seeded) that reach farther than the rest.
+  '      float phi = atan(o.y, o.x), streak = 0.0;',
+  '      for (int i = 0; i < 8; i++) {',
+  '        float fi = float(i), h1 = fract(sin((uSeed * 91.7 + fi) * 12.9898) * 43758.5453), h2 = fract(sin((uSeed * 53.1 + fi) * 78.233) * 24634.6345), h3 = fract(sin((uSeed * 17.3 + fi) * 39.425) * 51375.2154);',
+  '        float dp = abs(mod(phi - h1 * 6.2832 + 3.1416, 6.2832) - 3.1416), sg = 0.1 + 0.16 * h2;',
+  '        streak += (0.4 + 0.6 * h3) * exp(-dp * dp / (2.0 * sg * sg)) * exp(-(x - 1.0) / (0.45 + 1.5 * h3));',
+  '      }',
+  '      float w = 0.85 * (0.7 * exp(-(x - 0.98) * 2.4) + 0.3 * pow(0.98 / x, 3.0)) + 0.3 * streak * smoothstep(1.0, 1.35, x);',
+  '      w *= 1.0 - smoothstep(2.5, 3.4, x);',
+  '      vec3 cc = mix(vec3(250.0, 246.0, 236.0), vec3(235.0, 236.0, 244.0), clamp(t * 1.6, 0.0, 1.0)) / 255.0;',
   '      col += cc * w * uCorona; alpha = max(alpha, w * uCorona);',
   '    }',
   '  }',

@@ -11,7 +11,7 @@
 
 var AE_STAND_DESCENT_MS = 3400, AE_STAND_ASCENT_MS = 1900, AE_STAND_FADE_MS = 260, AE_STAND_GIVE_UP_MS = 25000;
 var AE_STAND_PITCH_DEG = 3;                // the horizon sits a little below the middle of the picture
-var AE_STAND_FOV_MIN_DEG = 50, AE_STAND_FOV_MAX_DEG = 85, AE_STAND_HFOV_DEG = 64, AE_STAND_ZOOM_MIN = 0.25, AE_STAND_ZOOM_MAX = 1.6;
+var AE_STAND_FOV_MIN_DEG = 50, AE_STAND_FOV_MAX_DEG = 85, AE_STAND_HFOV_DEG = 64, AE_STAND_ZOOM_MIN = 0.06, AE_STAND_ZOOM_MAX = 1.6;
 var AE_STAND_PITCH_MAX_DEG = 89;
 var AE_STAND_DPR_MAX = 1.5;                // the sky is computed per pixel: a phone draws it at most this sharp
 var AE_STAND_FRAME_MS = 1500;              // the sky is worked out again when the clock has moved this much (sooner while it runs fast)
@@ -296,7 +296,7 @@ function _aeStandSpriteMeshes(st, mat) {
     var uni = { uDir: { value: [0, 1, 0] }, uRight: { value: [1, 0, 0] }, uUp: { value: [0, 0, 1] }, uSunFrom: { value: [0, 0, 1] }, uTint: { value: [1, 1, 1] }, uTrans: { value: [1, 1, 1] },
       uHalf: { value: 0.01 }, uRho: { value: 0.001 }, uPix: { value: 0.001 }, uE: { value: 1 }, uK: { value: 1 }, uEmit: { value: 0 }, uVis: { value: 0 }, uGlow: { value: 0 }, uSkyLit: { value: 1 },
       uMap: { value: null }, uMapped: { value: 0 }, uGrey: { value: 0 }, uMapGain: { value: 1 }, uBody: { value: [1, 0, 0, 0, 1, 0, 0, 0, 1] },
-      uOcc: { value: [0, 0, 0] }, uCorona: { value: 0 }, uRingMap: { value: null }, uRings: { value: 0 }, uRp: { value: 1 }, uRingN: { value: [0, 0, 1] }, uCen: { value: [0, 1, 0] }, uRing: { value: [0, 1] } };
+      uOcc: { value: [0, 0, 0] }, uCorona: { value: 0 }, uSeed: { value: 0 }, uRingMap: { value: null }, uRings: { value: 0 }, uRp: { value: 1 }, uRingN: { value: [0, 0, 1] }, uCen: { value: [0, 1, 0] }, uRing: { value: [0, 1] } };
     var mesh = new THREE.Mesh(quad, mat(AE_ST_BODY_VERT, AE_ST_BODY_FRAG, uni, { depthTest: false, depthWrite: false, blending: THREE.AdditiveBlending }));
     mesh.frustumCulled = false; mesh.renderOrder = -1; mesh.visible = false;
     st.sprites.push({ mesh: mesh, uni: uni });
@@ -698,6 +698,7 @@ function _aeStMat3(rows) {   // three rows -> the column-major array a mat3 unif
 
 // ── Drawing ──
 function _aeStandView(st, now) {
+  if (st.zf) _aeStandZoomStep(st, now);
   var span = st.mode === 'ascend' ? AE_STAND_ASCENT_MS : AE_STAND_DESCENT_MS;
   var u = _aeReduceMotion() ? 1 : _aeSmoother(_aeClamp((now - st.t0) / span, 0, 1));   // reduced motion: there at once
   var lo = Math.log(AE_STAND_EYE_M / 1000), hi = Math.log(st.alt0), pitchLook = st.userPitch + _aeRad(AE_STAND_PITCH_DEG), down = -_aeRad(AE_STAND_PITCH_MAX_DEG);
@@ -869,7 +870,7 @@ function _aeStandSprites(st, fr, ph, pixAng, alt) {
     uni.uEmit.value = o.sun ? 1 : 0; uni.uVis.value = vis;
     uni.uGlow.value = o.sun ? (air || d ? 0 : 0.18) : 0;
     uni.uOcc.value = [0, 0, 0];   // the Moon's disc over the Sun's: its centre in the Sun's frame (radians) and its radius
-    uni.uCorona.value = 0;
+    uni.uCorona.value = 0; uni.uSeed.value = (Math.floor(_aeDisplayMs() / 86400000) % 997) / 997;   // the streamers are the day's own
     if (ecl && o.sun && moonO) uni.uOcc.value = [_aeDot(moonO.dir, right) , _aeDot(moonO.dir, up), moonO.rho];
     if (ecl && o === moonO && ecl.corona > 0) { uni.uCorona.value = ecl.corona; uni.uHalf.value = Math.max(uni.uHalf.value, o.rho * AE_STAND_CORONA_RADII * 1.05); }
     uni.uSkyLit.value = 1;
@@ -1121,6 +1122,43 @@ function _aeStandSkyUpdate(st, ms, now) {
   put('skyLines', function () { var l = new THREE.LineSegments(geo(la), st.skyLineMat); l.frustumCulled = false; l.renderOrder = -1; return l; }, la, m);
 }
 // A tap on one of them names it (while it can be seen): true if the tap was theirs.
+// A tap on the Sun or the Moon goes in on it: a field of AE_STAND_BODY_FOV_DEG, glided to; a tap on it again (or any pinch out) comes back.
+var AE_STAND_BODY_FOV_DEG = 6, AE_STAND_BODY_TAP_PX = 44, AE_STAND_ZOOM_FLY_MS = 700, AE_STAND_ZOOMED_IN = 0.3;
+function _aeStandBodyAt(st, x, y) {
+  var V = _ae.gl.THREE.Vector3, best = null, bestD = AE_STAND_BODY_TAP_PX;
+  [{ dir: st.fr.sun, name: 'sun' }].concat(st.fr.objs.filter(function (o) { return o.key === AE_STAND_MOON_NAME; }).map(function (o) { return { dir: o.dir, name: 'moon' }; })).forEach(function (o) {
+    if (o.dir[2] < -0.02) return;
+    var p = new V(o.dir[0] * 10, o.dir[1] * 10, o.dir[2] * 10).project(st.camera);
+    if (p.z < -1 || p.z > 1) return;
+    var d = Math.hypot((p.x + 1) / 2 * _ae.w - x, (1 - p.y) / 2 * _ae.h - y);
+    if (d < bestD) { bestD = d; best = o; }
+  });
+  return best;
+}
+function _aeStandFlyTo(st, zoom, yaw, pitch) {
+  var dy = yaw - st.userYaw; dy = ((dy + Math.PI) % (2 * Math.PI) + 2 * Math.PI) % (2 * Math.PI) - Math.PI;   // the short way round
+  st.zf = { t0: performance.now(), z0: st.zoom, z1: _aeClamp(zoom, AE_STAND_ZOOM_MIN, AE_STAND_ZOOM_MAX), y0: st.userYaw, y1: st.userYaw + dy, p0: st.userPitch, p1: pitch };
+  if (_aeReduceMotion()) st.zf.t0 -= AE_STAND_ZOOM_FLY_MS;
+  st.dirty = true; _ae.dirty = true; _aeKick();
+}
+function _aeStandZoomStep(st, now) {
+  var f = st.zf, e = _aeSmoother(_aeClamp((performance.now() - f.t0) / AE_STAND_ZOOM_FLY_MS, 0, 1));
+  st.zoom = f.z0 * Math.pow(f.z1 / f.z0, e); st.userYaw = f.y0 + (f.y1 - f.y0) * e; st.userPitch = f.p0 + (f.p1 - f.p0) * e;
+  st.dirty = true; _ae.dirty = true;
+  if (e >= 1) st.zf = null; else _aeKick();
+}
+function _aeStandBodyTap(x, y) {
+  var st = _ae.stand;
+  if (!st || !st.live || !st.fr || !st.camera || st.mode !== 'ground') return false;
+  var b = _aeStandBodyAt(st, x, y);
+  if (!b) return false;
+  if (st.zoom <= AE_STAND_ZOOMED_IN && st.zoomBack) { var z = st.zoomBack; st.zoomBack = null; _aeStandFlyTo(st, z.zoom, z.yaw, z.pitch); return true; }
+  if (st.zoom <= AE_STAND_ZOOMED_IN) return false;
+  st.zoomBack = { zoom: st.zoom, yaw: st.userYaw, pitch: st.userPitch };
+  var base = _aeStandFov() / st.zoom, az = Math.atan2(b.dir[0], b.dir[1]), alt = Math.asin(_aeClamp(b.dir[2], -1, 1));
+  _aeStandFlyTo(st, _aeRad(AE_STAND_BODY_FOV_DEG) / base, az - st.yaw, alt - _aeRad(AE_STAND_PITCH_DEG));
+  return true;
+}
 function _aeStandSkyTap(x, y) {
   var st = _ae.stand;
   if (!st || !st.live || !st.skyObjs || !st.camera || !st.photo) return false;
@@ -1147,6 +1185,7 @@ function _aeStandLook(dx, dy) {
   var st = _ae.stand;
   if (!st || !st.live) return;
   if (st.motion && _aeMotionTrim(st, dx, dy, _aeDeg(_aeStandFov()), _ae.h)) { st.dirty = true; _ae.dirty = true; _aeKick(); return; }   // the phone says where; a finger trims
+  st.zf = null;
   var k = _aeStandFov() / _ae.h;
   st.userYaw -= dx * k;
   st.userPitch = _aeClamp(st.userPitch + dy * k, -_aeRad(AE_STAND_PITCH_MAX_DEG) - _aeRad(AE_STAND_PITCH_DEG), _aeRad(AE_STAND_PITCH_MAX_DEG) - _aeRad(AE_STAND_PITCH_DEG));
@@ -1155,6 +1194,7 @@ function _aeStandLook(dx, dy) {
 function _aeStandZoom(factor) {
   var st = _ae.stand;
   if (!st || !st.live) return;
+  st.zf = null;
   st.zoom = _aeClamp(st.zoom * factor, AE_STAND_ZOOM_MIN, AE_STAND_ZOOM_MAX);
   st.dirty = true; _ae.dirty = true; _aeKick();
 }
