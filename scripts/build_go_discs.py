@@ -23,6 +23,7 @@ OUT = os.path.join(EARTH_DIR, "go-discs-v1.webp")
 
 # Sheet order; the Earth's map is earth-day, the others <key>-v1.webp.
 KEYS = [
+    "sun",
     "earth",
     "moon",
     "mercury",
@@ -141,8 +142,30 @@ def _rings(size, supersample, planet_r_px, front):
     return np.dstack([np.broadcast_to(tone, (n, n, 3)), alpha])
 
 
+SUN_R = 0.3          # the Sun's bright disc, as a fraction of the cell; the rest of the cell is its glow
+SUN_CORE = np.array([1.0, 0.97, 0.82], dtype=np.float32)
+SUN_RIM = np.array([1.0, 0.62, 0.16], dtype=np.float32)
+
+
+def _sun(size, supersample):
+    """The Sun: no map, a white-yellow disc going orange at the limb inside a soft glow."""
+    n = size * supersample
+    c = (n - 1) / 2.0
+    ys, xs = np.mgrid[0:n, 0:n].astype(np.float32)
+    d = np.sqrt((xs - c) ** 2 + (ys - c) ** 2) / (size * supersample / 2)   # 0 at the centre, 1 at the cell's edge
+    t = np.clip(d / SUN_R, 0, 1)
+    disc_rgb = SUN_CORE * (1 - t[..., None] ** 2.2) + SUN_RIM * t[..., None] ** 2.2
+    edge = np.clip((SUN_R - d) * size * supersample / 2, 0, 1)
+    glow = np.clip(1 - d, 0, 1) ** 2.4 * 0.75
+    rgb = disc_rgb * edge[..., None] + SUN_RIM * (1 - edge[..., None])
+    alpha = np.maximum(edge, glow * (1 - edge))
+    return np.dstack([rgb, alpha])
+
+
 def disc(key):
     k = SUPERSAMPLE
+    if key == "sun":
+        return _downsample(_sun(CELL, k), k)
     tex = _load(key)
     if key == "saturn":
         r = CELL * SATURN_R / 2

@@ -546,7 +546,7 @@ var AE_PANEL_BG = '#0e0e10', AE_PANEL_BG_RED = '#000';
 // The Go to sheet's little bodies: one sprite sheet of lit discs drawn from the base maps (scripts/build_go_discs.py), asked
 // for only when the sheet is first opened. The order is the script's.
 var AE_GO_DISC_URL = '/static/earth/go-discs-v1.webp';
-var AE_GO_DISC_KEYS = ['earth', 'moon', 'mercury', 'venus', 'mars', 'jupiter', 'saturn', 'uranus', 'neptune', 'pluto', 'ceres', 'vesta', 'io', 'europa',
+var AE_GO_DISC_KEYS = ['sun', 'earth', 'moon', 'mercury', 'venus', 'mars', 'jupiter', 'saturn', 'uranus', 'neptune', 'pluto', 'ceres', 'vesta', 'io', 'europa',
   'ganymede', 'callisto', 'titan', 'mimas', 'enceladus', 'tethys', 'dione', 'rhea', 'iapetus', 'triton', 'charon', 'phobos'];
 var AE_GO_DISC_COLS = 7, AE_GO_DISC_ROWS = 4;
 var AE_CSS = [
@@ -881,9 +881,10 @@ var AE_GLYPHS = {
   spin: _aeGlyph('<circle cx="8" cy="12" r="4.5"/><circle cx="17" cy="12" r="3"/>')
 };
 var AE_GO_FLAG = '<svg class="ae-go-flag" viewBox="0 0 12 12" aria-hidden="true"><path d="M3 1v10" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/><path d="M3 1.5h6.5L8 4l1.5 2.5H3z" fill="currentColor"/></svg>';
-var AE_GO_ISS_HEX = 'rgb(255,209,89)';
+var AE_GO_ISS_HEX = 'rgb(255,209,89)', AE_GO_SUN_HEX = 'rgb(255,184,74)';
 // A body's mean colour as a CSS colour: its planet's own where the view draws one, else its table colour.
 function _aeGoColor(key) {
+  if (key === 'sun') return AE_GO_SUN_HEX;
   var b = _aePlanetBody(key), hex = null, rgb = b ? b.color : key === 'moon' ? [0.78, 0.78, 0.78] : [0.29, 0.56, 0.85];
   if (b && !b.parent && typeof _PLANETS !== 'undefined' && _PLANETS[b.eph]) hex = _PLANETS[b.eph].color;
   if (key === 'earth' && typeof _PLANETS !== 'undefined') hex = _PLANETS.Earth.color;
@@ -893,7 +894,7 @@ function _aeGoColor(key) {
 function _aeGoLmBody(key) { return key.split(':')[1]; }
 function _aeGoDisc(body) {
   var i = AE_GO_DISC_KEYS.indexOf(body), c = _aeGoColor(body);
-  return '<i class="ae-go-disc' + (body === 'saturn' ? ' ae-go-ring' : '') + '" style="--c:' + (i < 0 ? 0 : i % AE_GO_DISC_COLS) + ';--r:' + (i < 0 ? 0 : Math.floor(i / AE_GO_DISC_COLS)) +
+  return '<i class="ae-go-disc' + (body === 'saturn' || body === 'sun' ? ' ae-go-ring' : '') + '" style="--c:' + (i < 0 ? 0 : i % AE_GO_DISC_COLS) + ';--r:' + (i < 0 ? 0 : Math.floor(i / AE_GO_DISC_COLS)) +
     ';--cc:' + c + ';--g:radial-gradient(circle at 35% 35%,rgba(255,255,255,.5),' + c + ' 45%,rgba(0,0,0,.55) 100%)"></i>';
 }
 function _aeGoGlyph(inner, color) { return '<i class="ae-go-glyph"' + (color ? ' style="--gc:' + color + '"' : '') + '>' + inner + '</i>'; }
@@ -931,7 +932,8 @@ function _aeGoKind(key) {
 }
 // [group label key, its keys, its pill when the whole group has one]; Earth and Moon split across Planets and Moons.
 function _aeGoGroups() {
-  var planets = [AE_SPIN_KEY].concat(AE_PLANETS.filter(function (b) { return !b.parent && !b.track; }).map(function (b) { return b.key; }));
+  // The Sun first, Side by side last: a view of them all, not a body, so it closes the list.
+  var planets = ['sun'].concat(AE_PLANETS.filter(function (b) { return !b.parent && !b.track; }).map(function (b) { return b.key; }), [AE_SPIN_KEY]);
   var moons = AE_PLANETS.filter(function (b) { return b.parent; }).map(function (b) { return b.key; });
   var dwarfs = AE_PLANETS.filter(function (b) { return b.track; }).map(function (b) { return b.key; });
   // The spacecraft flying on the shown date: one whose table ends (Cassini into Saturn, Galileo into Jupiter) or has
@@ -957,6 +959,7 @@ function _aeGoName(key) {
   var lmRow = _aeGoLmRow(key);
   if (lmRow) return lmRow.row[0];
   if (key === 'earth') return _tp('Earth');
+  if (key === 'sun') return _aeT('alm_sun');
   if (key === AE_SPIN_KEY) return _aeT('alm_spin_view');
   if (key === 'iss') return _aeT('alm_earth_iss_short');
   if (key === 'moon') return _aeT('alm_moon');
@@ -984,7 +987,7 @@ function _aeGoFind(typed) {
   hits.sort(function (a, b) { return a.match - b.match || a.at - b.at; });
   return hits.map(function (h) { return h.key; });
 }
-var AE_THEN_DOT = '<svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3l2.4 5.6 6.1.5-4.6 4 1.4 6-5.3-3.2L6.7 19l1.4-6-4.6-4 6.1-.5z"/></svg>';
+var AE_THEN_DOT = '<svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3.6 12a8.4 8.4 0 1 0 2.5-6M3.6 4.2v4.4h4.4M12 7.6V12l3 1.9"/></svg>';   // a clock running backward: the sign There and then has on the sky card
 var AE_GRID_SVG = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round" aria-hidden="true"><rect x="4" y="4" width="6.5" height="6.5" rx="1.5"/><rect x="13.5" y="4" width="6.5" height="6.5" rx="1.5"/><rect x="4" y="13.5" width="6.5" height="6.5" rx="1.5"/><rect x="13.5" y="13.5" width="6.5" height="6.5" rx="1.5"/></svg>';
 var AE_LIST_SVG = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M9 6h11M9 12h11M9 18h11M4 6h.01M4 12h.01M4 18h.01"/></svg>';
 function _aeGoRow(k) {
