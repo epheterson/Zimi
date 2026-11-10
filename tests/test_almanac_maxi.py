@@ -103,7 +103,7 @@ def test_the_layer_list_says_whether_the_hd_craft_are_inside(built, tmp_path):
     assert "craft" not in json.loads(_read(Archive(built["flavour"]), "hd/hd.json"))
     craft = tmp_path / "craft"
     craft.mkdir()
-    (craft / "index.json").write_text('{"models":{"voyager":{"file":"voyager.zcr2"}}}')
+    (craft / "index.json").write_text('{"models":{"voyager":{"file":"voyager.zcr2"}}}', encoding="utf-8")
     (craft / "voyager.zcr2").write_bytes(b"ZCR2")
     hd = Archive(
         maxi.build(
