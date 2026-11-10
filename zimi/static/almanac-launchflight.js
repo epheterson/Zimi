@@ -406,7 +406,7 @@ function _lfStandObjects(flight, L, dep, ms, lat, lon) {
   if (r) {
     var rgb = r.rgb.map(function (c) { return c / 255; });
     out.push({ kind: 'rocket', name: r.name, az: r.az, el: r.el, mag: r.mag, rgb: rgb, trail: r.trail });
-    if (r.sight === 'jellyfish') out.push({ kind: 'plume', name: r.name, az: r.az, el: r.el, mag: r.mag + 1, rgb: rgb });
+    if (r.sight === 'jellyfish') out.push({ kind: 'plume', name: r.name, az: r.az, el: r.el, mag: r.mag, rgb: rgb });
   }
   _lfSkyBatch(dep, ms, lat, lon).forEach(function (v) { out.push({ kind: 'train', name: L.mission || L.name, az: v.az, el: v.el, mag: v.mag, rgb: [1, 0.94, 0.8], trail: v.trail }); });
   return out;

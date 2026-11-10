@@ -272,7 +272,7 @@ const flight = S._lfAscent(SLC40);
   const f = S._lfAscent(L);
   const o = S._lfStandObjects(f, L, null, L.ms + 150000, 34.05, -118.24);
   const rocket = o.find((x) => x.kind === 'rocket'), plume = o.find((x) => x.kind === 'plume');
-  check(o.length === 2 && rocket && plume && rocket.az === plume.az && rocket.el === plume.el && plume.mag === rocket.mag + 1, 'a lit exhaust is a rocket point and a plume at the same place');
+  check(o.length === 2 && rocket && plume && rocket.az === plume.az && rocket.el === plume.el && plume.mag === rocket.mag, 'a lit exhaust is a rocket point and a plume at the same place');
   check(rocket.rgb.every((c) => c >= 0 && c <= 1) && rocket.trail.length > 3 && rocket.name.indexOf('Starlink Group 4-31') >= 0, 'with colours 0 to 1, a trail and a name');
   check(S._lfStandObjects(f, L, null, L.ms + 150000, 34.05, 100).length === 0, 'nothing for a place on the far side of the Earth');
   const L25 = { mission: 'Starlink V1.0-L25', inc: 53.05, n: 60, depKm: 268.5 }, t25 = Date.UTC(2021, 4, 4, 19, 1);
