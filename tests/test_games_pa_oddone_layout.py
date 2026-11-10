@@ -37,7 +37,7 @@ def served():
 
 PORTRAIT = {"width": 390, "height": 844}
 LANDSCAPE = {"width": 844, "height": 390}
-MIN_TOUCH_PX = 32
+MIN_TOUCH_PX = 44
 
 
 def open_setup(browser, served, view, lang=None):

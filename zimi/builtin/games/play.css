@@ -118,9 +118,9 @@
 .gs-seg.pl-grid .ar-btn { margin: 0; border-radius: var(--radius); }
 /* Four or more choices in a sheet's option row take the whole line under their label, so a short, wide phone (landscape) neither
    squeezes each into a sliver nor pushes the last one past the card. */
-.ar-sheet-card .gs-row:has(.gs-seg > :nth-child(4)) { flex-wrap: wrap; }
-.ar-sheet-card .gs-row:has(.gs-seg > :nth-child(4)) > .gs-seg { flex: 1 1 100%; }
-.ar-sheet-card .gs-row:has(.gs-seg > :nth-child(4)) > .gs-seg:not(.pl-grid) .ar-btn { flex: 1 1 0; }
+.ar-sheet-card .gs-row:has(.gs-seg > :nth-child(3)) { flex-wrap: wrap; }
+.ar-sheet-card .gs-row:has(.gs-seg > :nth-child(3)) > .gs-seg { flex: 1 1 100%; }
+.ar-sheet-card .gs-row:has(.gs-seg > :nth-child(3)) > .gs-seg:not(.pl-grid) .ar-btn { flex: 1 1 0; }
 
 /* A touch screen has no hover: a key that was just tapped must not stay amber. */
 @media (hover: none) { .pl-main .ar-btn:not(.gm-play, .gs-primary):hover:not(:disabled):not([aria-pressed="true"]) { border-color: var(--line); color: var(--ink); } }
