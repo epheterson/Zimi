@@ -1702,6 +1702,9 @@ function _voicePrefsHtml() {
   var h = _speakingHtml() + '<div class="share-rows set-rows voice-prefs">' + _voiceDefaultHtml(on) + _voiceReadHtml(on) + '</div><div class="share-rows set-rows voice-prefs">' + here.map(function(x) {
     return _voiceRowHtml(x, !x.absent && off.indexOf(x.engine) < 0, on.length === 1);
   }).join('') + '</div>' + _voiceGridHtml();
+  // Why a voice is not offered, or why the last download failed, in the server's words.
+  var why = _voicesHere && (_voicesHere.problem || (_voicesHere.downloading && _voicesHere.downloading.reason));
+  if (why) h += '<div class="ms-hint voice-problem" role="alert">' + esc(why) + '</div>';
   if (_voicesHere && _voicesHere.can_change && _voicesHere.setting) h += _voicesModeHtml(_voicesHere.setting);
   return h + '<div class="ms-hint">' + tH('voices_say_remembers') + '</div>';
 }
@@ -1762,7 +1765,7 @@ function _voicesSend(path, body, failText) {
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(body)
   }).then(function(r) { return r.json(); }).then(function(d) {
-    if (d && d.error) _showToast(failText);
+    if (d && d.error) _showToast(d.detail || failText);
     if (d && d.voices) { d.can_change = !!(_voicesHere && _voicesHere.can_change); _voicesHere = d; _paintVoices(); }
     else _renderVoicePrefs();
     _voicesTellDictionary();
