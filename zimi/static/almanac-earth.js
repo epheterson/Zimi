@@ -4913,7 +4913,7 @@ var AE_FLY_OVERVIEW_MS = 2000, AE_FLY_OVERVIEW_STRETCH = 1.25, AE_FLY_OVERVIEW_K
 //   _aeStandAt(body, lat, lon)         enter the view: a promise of whether it started
 //   _aeGroundHeight(body, lat, lon)    metres above the body's mean radius; 0 until the body's terrain is loaded
 var AE_STAND_KEYS = ['earth', 'moon', 'mercury', 'venus', 'mars', 'io', 'europa', 'ganymede', 'callisto', 'titan', 'pluto'];
-var AE_STAND_SRCS = ['/static/almanac-terrain.js', '/static/almanac-terrainshade.js', '/static/almanac-standlook.js', '/static/almanac-standgl.js', '/static/almanac-stand.js', '/static/almanac-standhost.js'];
+var AE_STAND_SRCS = ['/static/almanac-terrain.js', '/static/almanac-terrainshade.js', '/static/almanac-standlook.js', '/static/almanac-standgl.js', '/static/almanac-oneland.js', '/static/almanac-stand.js', '/static/almanac-standhost.js'];
 var AE_STAND_FIGURE_SVG = '<svg class="ae-tool-svg" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="5.5" r="2.3"/><path d="M12 8.5v6M8.5 11.5l3.5-1 3.5 1M12 14.5l-2.5 5.5M12 14.5l2.5 5.5"/></svg>';
 var AE_STAND_EYE_M = 1.7;                      // an eye above the ground
 var AE_STAND_AIRLESS_DAY_MU = [-0.05, 0.12], AE_STAND_AIRLESS_DAY_LIM = 0.5;   // the Sun's sine of height where the stars go (-3 to 7 degrees), and the faintest star left

@@ -408,10 +408,14 @@ function _aeStForest(px, lat, lon) {   // 0..1: how much of this place the map s
 }
 // What grows where: firs and spruce in the north and the mountains (20 to 40 m), round-crowned broadleaves in the temperate lowlands
 // (10 to 25 m), palms in the tropics (8 to 18 m); nothing where the map is not green, above the tree line or beyond the high latitudes.
-function _aeStTreeKind(lat, h, rnd) {
+var AE_STAND_GRASS_TREES = 0.08, AE_STAND_FOREST_TREES = 0.6;   // the share of a grass cell's sites that hold a tree, and the least of a forest cell's
+function _aeStTreeKind(lat, h, rnd, cls) {
   var a = Math.abs(lat);
   if (a > 66) return null;
-  if (a < 24) return rnd() < 0.3 ? 'palm' : 'broadleaf';   // the tropics: broadleaves and palms up to the tree line (the caller stops there), never firs
+  if (a < 24) return rnd() < 0.3 ? 'palm' : 'broadleaf';
+  if (cls === 'conifer') return rnd() < 0.92 ? 'conifer' : 'broadleaf';   // the grid's own word for the cell, over the latitude's guess
+  if (cls === 'broadleaf') return rnd() < 0.92 ? 'broadleaf' : 'conifer';
+  if (cls === 'grass') return 'broadleaf';   // the tropics: broadleaves and palms up to the tree line (the caller stops there), never firs
   if (a > 44 || h > 1100) return rnd() < 0.9 ? 'conifer' : 'broadleaf';
   return rnd() < 0.7 ? 'broadleaf' : 'conifer';
 }
@@ -447,6 +451,12 @@ function _aeStandTrees(st) {
   var px = null;
   try { px = _aeStCoverPixels(st.pend && st.pend.tex); } catch (e) { px = null; }
   if (!px) return;
+  // What the land is comes from the one grid the live sky card reads too (almanac-oneland.js); wait for it once, then go on without it if it cannot be had.
+  if (typeof _osLandCoverLoad === 'function' && _osLandCover(st.lat, st.lon) === null && !st.landWait) {
+    st.landWait = true;
+    _osLandCoverLoad().then(function () { _aeStandTrees(st); });
+    return;
+  }
   var R = st.b.km * 1000, h0 = st.h0, lat0 = st.lat, lon0 = st.lon, THREE = _ae.gl.THREE;
   var seed = (Math.round(lat0 * 1e4) * 73856093) ^ (Math.round(lon0 * 1e4) * 19349663), rnd = function () { seed |= 0; seed = seed + 0x6D2B79F5 | 0; var t = Math.imul(seed ^ seed >>> 15, 1 | seed); t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t; return ((t ^ t >>> 14) >>> 0) / 4294967296; };
   var list = [], ratio = AE_STAND_TREES_RANGE_M[1] / AE_STAND_TREES_RANGE_M[0], thin = AE_STAND_TREES_THIN_M;
@@ -454,11 +464,15 @@ function _aeStandTrees(st) {
     var r = AE_STAND_TREES_RANGE_M[0] * Math.pow(ratio, rnd()), th = rnd() * 2 * Math.PI, d = _aeDestination(lat0, lon0, r / R, th);
     var near = Math.max(0, Math.min(1, (r - thin[0]) / (thin[1] - thin[0])));
     if (rnd() > near * near) continue;   // thinner near the viewer: the first frame is not a wall
-    var wood = _aeStForest(px, d.lat, d.lon);
+    var wood = _aeStForest(px, d.lat, d.lon), land = typeof _osLandCover === 'function' ? _osLandCover(d.lat, d.lon) : null;
+    if (land) {   // the grid's class decides whether, and what: forests are wooded whatever one pixel's green says, grass has a few, the rest none
+      if (land.cls === 'sea' || land.cls === 'desert' || land.cls === 'snow' || land.cls === 'tundra') continue;
+      wood = land.cls === 'grass' ? Math.min(wood, AE_STAND_GRASS_TREES) : Math.max(wood, AE_STAND_FOREST_TREES);
+    }
     if (wood <= 0 || rnd() > wood) continue;
     var ht = _aeTerrainHeight('earth', d.lat, d.lon, r * 0.0005);
     if (ht.sea || ht.h > AE_ST_SNOW_LINE_M * Math.pow(Math.cos(_aeRad(d.lat)), AE_ST_SNOW_LINE_POW) - AE_ST_TREE_BELOW_M) continue;
-    var kind = _aeStTreeKind(d.lat, ht.h, rnd);
+    var kind = _aeStTreeKind(d.lat, ht.h, rnd, land && land.cls);
     if (!kind) continue;
     var x = r * Math.sin(th), y = r * Math.cos(th), z = _aeTerrainLocal('earth', lat0, lon0, h0, x, y, r * 0.0005, st.pend && st.pend.flat);
     var sz = kind === 'conifer' ? [20, 40] : kind === 'broadleaf' ? [10, 25] : [8, 18], u = Math.pow(rnd(), 1.3);

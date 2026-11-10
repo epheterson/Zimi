@@ -457,15 +457,15 @@ var AE_ST_GROUND_FRAG = [
   '  vec2 rr = uHead, tt = vec2(-uHead.y, uHead.x);',   // the way the view faces on the ground: grain is stretched along it, one direction for the whole picture
   '  if (uDetail > 0.5 && vSea < 0.5) {',
   '    float gr = 0.0, grass = smoothstep(0.0, 0.07, map.g - max(map.r, map.b));',
-  '    for (int i = 0; i < 3; i++) { float s = 0.2 * pow(5.0, float(i)), wg = 1.0 - smoothstep(0.3, 1.0, 2.5 * foot / s); if (wg > 0.0) gr += (vnoise(vP / s + 17.0 * float(i)) - 0.5) * wg * 0.5; }',
+  '    for (int i = 0; i < 3; i++) { float s = 0.2 * pow(5.0, float(i)), wg = 1.0 - smoothstep(0.3, 1.0, 2.5 * foot / s); if (wg > 0.0) gr += vnoise(vP / s + 17.0 * float(i)) * wg * 0.5; }',
   '    alb *= clamp(1.0 + gr * 0.55, 0.7, 1.3);',
   '    alb.g *= 1.0 + 0.3 * gr * grass; alb.r *= 1.0 - 0.18 * gr * grass;',
   // Underfoot: blades and tussocks as fine noise stretched along the line of sight (as grass is seen across a field), sharp at the
   // feet and gone where a pixel would hold several of them, so it softens with distance as the Moon's stones do.
   '    float across = dot(vP.xy, tt), along = dot(vP.xy, rr), bl = 0.0;',
-  '    for (int i = 0; i < 4; i++) { float s = 0.03 * pow(3.0, float(i)), wb = 1.0 - smoothstep(0.5, 2.0, 2.5 * foot / s); if (wb > 0.0) bl += (vnoise(vec3(across / s, along / (s * (i < 2 ? 2.4 : 1.3)), 41.0 + float(i) * 5.0)) - 0.5) * wb * (0.9 - 0.15 * float(i)); }',
-  '    float tuft = smoothstep(0.52, 0.72, vnoise(vP / 0.42 + 9.0)) * (1.0 - smoothstep(0.5, 2.0, 2.5 * foot / 0.42));',
-  '    alb *= clamp(1.0 + bl * 0.8 - tuft * 0.18 * grass, 0.55, 1.18);',
+  '    for (int i = 0; i < 4; i++) { float s = 0.03 * pow(3.0, float(i)), wb = 1.0 - smoothstep(0.5, 2.0, 2.5 * foot / s); if (wb > 0.0) bl += (vnoise(vec3(across / s, along / (s * (i < 2 ? 2.4 : 1.3)), 41.0 + float(i) * 5.0)) ) * wb * (0.9 - 0.15 * float(i)); }',
+  '    float tuft = smoothstep(0.1, 0.6, vnoise(vP / 0.42 + 9.0)) * (1.0 - smoothstep(0.5, 2.0, 2.5 * foot / 0.42));',
+  '    alb *= clamp(1.0 + bl * 0.5 - tuft * 0.12 * grass, 0.6, 1.25);',
   '  }',
   // Ground cover by height, slope and latitude (the Earth's): snow above the snow line, bare rock on steep ground and above the
   // trees, the Blue Marble's own tint elsewhere; the lines wander with a slow noise so no height is a ruled edge.
