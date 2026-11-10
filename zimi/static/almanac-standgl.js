@@ -208,14 +208,14 @@ var AE_ST_TREE_FRAG = [
   'precision highp float;',
   AE_ST_GLSL_ATMO, AE_ST_GLSL_TONE,
   _aeStInscatterGlsl('inscatterGround', AE_ST_STEPS_GROUND),
-  'uniform vec3 uCam, uAmbient; uniform float uK;',
+  'uniform vec3 uCam, uAmbient; uniform float uK, uCloudDim;',
   'varying vec3 vP, vN, vTree;',
   'void main() {',
   '  gJit = fract(52.9829189 * fract(dot(gl_FragCoord.xy, vec2(0.06711056, 0.00583715))));',
   '  float dist = length(vP - uCam); vec3 V = (uCam - vP) / dist, N = normalize(vN);',
-  '  vec3 alb = vTree.z < 0.5 ? vec3(0.026, 0.05, 0.03) : vTree.z < 1.5 ? vec3(0.06, 0.09, 0.03) : vTree.z < 2.5 ? vec3(0.05, 0.09, 0.035) : vec3(0.04, 0.028, 0.02);',
+  '  vec3 alb = vTree.z < 0.5 ? vec3(0.026, 0.05, 0.03) : vTree.z < 1.5 ? vec3(0.036, 0.068, 0.03) : vTree.z < 2.5 ? vec3(0.05, 0.09, 0.035) : vec3(0.04, 0.028, 0.02);',
   '  alb *= (0.8 + 0.4 * vTree.y) * (0.6 + 0.4 * min(vTree.x, 1.0));',   // each tree its own shade, darker below, paler at the tips
-  '  vec3 sT = sunTrans(vP * 0.001) * uSunE;',
+  '  vec3 sT = sunTrans(vP * 0.001) * uSunE * uCloudDim;',
   '  vec3 L = alb * (sT * max(dot(N, uSunDir), 0.0) / PI + uAmbient * (0.55 + 0.45 * N.z));',
   '  if (uAtmo > 0.5) {',
   '    vec3 o = uCam * 0.001, d = -V, Tt, ins; float t0, t1;',
@@ -240,15 +240,20 @@ var AE_ST_CLOUDS_GLSL = [
   '  if (H <= 0.0) return vec4(0.0);',
   '  float t = H / d.z;',
   '  vec2 p = (o.xy + d.xy * t + uCloudB.xy * uCloudA.w) / 2600.0;',
-  '  float n = 0.5 + 0.5 * (cloudFbm(p, uCloudB.zw) * 0.5 + 0.5 * cloudFbm(p * 0.23 + 5.0, uCloudB.wz));',   // vnoise runs -1..1
-  '  n = (n - 0.5) * 1.7 + 0.5;',   // the fbm piles up round its middle: stretched, a coverage of half is half the sky
+  '  float n = 0.5 + 0.5 * (cloudFbm(p, uCloudB.zw) * 0.7 + 0.3 * cloudFbm(p * 0.23 + 5.0, uCloudB.wz));',   // vnoise runs -1..1
+  '  n = (n - 0.5) * 1.8 + 0.5;',   // the fbm piles up round its middle: stretched, a coverage of half is half the sky
   '  float cut = 1.0 - uCloudA.x;',
-  '  float dens = smoothstep(cut - 0.06, cut + 0.2, n);',
+  '  float lump = 0.82 + 0.18 * cloudFbm(p * 5.1 + 3.0, uCloudB.zw);',   // lumps inside the bodies: tops and gaps, not a slab
+  '  float dens = smoothstep(cut - 0.04, cut + 0.14, n) * lump;',
   '  float far = 1.0 - smoothstep(30000.0, 160000.0, t);',
   '  if (dens <= 0.001 || far <= 0.0) return vec4(0.0);',
   '  vec3 sun = sunTrans(vec3(0.0, 0.0, uCloudA.y * 0.001)) * uSunE;',
+  '  vec2 toSun = uSunDir.xy / max(uSunDir.z, 0.25) * 0.09;',
+  '  float n2 = 0.5 + 0.5 * (cloudFbm(p + toSun, uCloudB.zw) * 0.7 + 0.3 * cloudFbm((p + toSun) * 0.23 + 5.0, uCloudB.wz));',
+  '  float dens2 = smoothstep(cut - 0.04, cut + 0.14, (n2 - 0.5) * 1.8 + 0.5) * lump;',
+  '  float face = clamp((dens - dens2) * 3.0, -1.0, 1.0);',   // less cloud toward the Sun: this side faces it (a bright top and edge); more: it is in its own shade
   '  float thin = 1.0 - smoothstep(0.25, 0.95, dens);',
-  '  float lit = mix(0.3, 1.0, thin) * (0.5 + 0.5 * clamp(uSunDir.z * 2.0 + 0.4, 0.0, 1.0));',
+  '  float lit = clamp(mix(0.22, 0.95, thin) + 0.5 * face, 0.12, 1.35) * (0.5 + 0.5 * clamp(uSunDir.z * 2.0 + 0.4, 0.0, 1.0));',
   '  vec3 L = sun * 0.85 * lit / PI + vec3(0.6, 0.75, 1.0) * (0.012 * max(uSunDir.z + 0.12, 0.0) + 2e-8) * (1.0 - thin * 0.5);',   // the sky's own light on it by day, almost none at night
   '  float a = dens * far * 0.94;',
   '  return vec4(L, a);',
@@ -289,7 +294,7 @@ var AE_ST_BODY_VERT = [
 var AE_ST_BODY_FRAG = [
   'precision highp float;', AE_ST_GLSL_TONE,
   'uniform vec3 uDir, uRight, uUp, uSunFrom, uTint, uTrans; uniform float uHalf, uRho, uPix, uE, uK, uEmit, uVis, uGlow, uSkyLit;',
-  'uniform sampler2D uMap; uniform float uMapped, uGrey, uMapGain; uniform mat3 uBody;',                    // the body's own map, and local -> body-fixed
+  'uniform sampler2D uMap; uniform float uMapped, uGrey, uMapGain, uCorona; uniform vec3 uOcc; uniform mat3 uBody;',                    // the body's own map, and local -> body-fixed
   'uniform sampler2D uRingMap; uniform float uRings, uRp; uniform vec3 uRingN, uCen; uniform vec2 uRing;',    // Saturn's rings: plane, centre and size (km)
   'varying vec2 vUv;',
   'const float PI = ' + AE_ST_PI + ';',
@@ -316,6 +321,7 @@ var AE_ST_BODY_FRAG = [
   '      if (uEmit > 0.5) {',
   '        float limb = 1.0 - 0.45 * (1.0 - sqrt(1.0 - r2)), kept = (uRho * uRho) / (R * R);',
   '        col = tone(uTrans * (' + AE_ST_SUN_DISC_GAIN.toExponential(2) + ' * uE * limb * kept), uK);',
+  '        if (uOcc.z > 0.0) col *= smoothstep(uOcc.z - edge, uOcc.z + edge, length(o - uOcc.xy));',   // the Moon in front: its disc takes the Sun's, a crescent is what is left
   '      } else {',
   '        float lam = smoothstep(-0.02, 0.1, dot(n, uSunFrom)) * max(dot(n, uSunFrom), 0.0);',
   '        col = tone(discAlbedo(n) * uE * lam / PI * uTrans, uK);',
@@ -347,6 +353,15 @@ var AE_ST_BODY_FRAG = [
   '          }',
   '        }',
   '      }',
+  '    }',
+  '  }',
+  // The corona: a ring round the Moon's black disc, pearly white at the edge, thinning to nothing at 3.4 radii (almanac-sky.js _skyPaintCorona).
+  '  if (uCorona > 0.0 && uRho > 0.0) {',
+  '    float t = (a / uRho - 0.98) / (3.4 - 0.98);',
+  '    if (t > 0.0 && t < 1.0) {',
+  '      float w = t < 0.25 ? mix(0.85, 0.3, t / 0.25) : mix(0.3, 0.0, (t - 0.25) / 0.75);',
+  '      vec3 cc = mix(vec3(250.0, 246.0, 236.0), vec3(235.0, 236.0, 244.0), clamp(t / 0.25, 0.0, 1.0)) / 255.0;',
+  '      col += cc * w * uCorona; alpha = max(alpha, w * uCorona);',
   '    }',
   '  }',
   '  if (uGlow > 0.0) {',
@@ -386,7 +401,7 @@ var AE_ST_GROUND_FRAG = [
   'uniform vec3 uCam; uniform float uK, uPixAng, uTime;',
   'uniform sampler2D uMap; uniform float uMapped, uGrey; uniform vec3 uBase, uGain;',
   'uniform vec3 uAmbient, uSkyHor, uSkyZen, uE2, uDir2;',
-  'uniform vec2 uHead; uniform float uLommel, uRough, uRock, uDetail, uCover, uDiffuse, uVis, uDirect; uniform vec3 uDiffSky;',
+  'uniform vec2 uHead; uniform float uCloudDim; uniform float uLommel, uRough, uRock, uDetail, uCover, uDiffuse, uVis, uDirect; uniform vec3 uDiffSky;',
   'varying vec3 vP, vN, vDir; varying float vH, vSea, vShade;',
   // Rock, fractal bumps and mottling at the scales a pixel can show, all fixed to the ground (the camera never moves on it).
   'float fine(vec3 p, float foot) {',
@@ -478,7 +493,7 @@ var AE_ST_GROUND_FRAG = [
   '    L = mix(deep, sky, F) + sT * pow(max(dot(R, uSunDir), 0.0), 1400.0) * 10.0;',
   '  } else {',
   '    float vis = uLommel > 0.5 ? max(vShade, ' + AE_ST_BACKSCATTER.toFixed(2) + ') : vShade;',   // a shadow on regolith is lit by the ground around it
-  '    vec3 sT = sunTrans(pk) * uSunE * vis * smoothstep(-0.03, 0.02, dot(upF, uSunDir));',   // a Sun under the horizon lights no slope, however it leans
+  '    vec3 sT = sunTrans(pk) * uSunE * uCloudDim * vis * smoothstep(-0.03, 0.02, dot(upF, uSunDir));',   // a Sun under the horizon lights no slope, however it leans
   '    float ndl = dot(N, uSunDir), mu0 = max(ndl, 0.0), mu = max(dot(N, V), 0.03);',
   '    float lam = uLommel > 0.5 ? 2.0 * mu0 / (mu0 + mu) : mu0;',
   '    float surge = uLommel > 0.5 ? 1.0 + ' + AE_ST_SURGE.toFixed(2) + ' * exp(-acos(clamp(dot(uSunDir, V), -1.0, 1.0)) / ' + AE_ST_SURGE_WIDTH.toFixed(2) + ') : 1.0;',

@@ -146,7 +146,9 @@ function _aeTerrainHdTile(url) {
     });
 }
 // base: the HD ZIM's folder; z: the layer's deepest level. Resolves when the tiles that exist are in.
-function _aeTerrainHdLoad(key, lat, lon, base, z) {
+// m: the layer as the HD manifest merged it ({ max, base, deep: { from, base } }), or a plain folder; the tile urls are _aeHdTileUrl's.
+function _aeTerrainHdLoad(key, lat, lon, m, z) {
+  var meta = Object.assign({}, typeof m === 'string' ? { base: m } : m, { layer: AE_TERRAIN_HD_LAYER + key });
   var t = _aeTerr[key];
   if (!t || t.state !== 'ready' || typeof createImageBitmap !== 'function') return Promise.resolve(false);
   var n = Math.pow(2, z), tx = Math.floor((lon + 180) / 360 * 2 * n), ty = Math.floor((90 - lat) / 180 * n), jobs = [];
@@ -154,7 +156,7 @@ function _aeTerrainHdLoad(key, lat, lon, base, z) {
   for (var dy = -1; dy <= 1; dy++) for (var dx = -1; dx <= 1; dx++) {
     var x = ((tx + dx) % (2 * n) + 2 * n) % (2 * n), y = ty + dy, id = x + '/' + y;
     if (y < 0 || y >= n || hd.tiles[id]) continue;
-    jobs.push(_aeTerrainHdTile(base + AE_TERRAIN_HD_LAYER + key + '/' + z + '/' + x + '/' + y + '.webp').then(function (arr) { hd.tiles[this] = arr; }.bind(id)).catch(function () {}));
+    jobs.push(_aeTerrainHdTile(typeof _aeHdTileUrl === 'function' ? _aeHdTileUrl(meta, { z: z, x: x, y: y }) : (meta.base || '') + meta.layer + '/' + z + '/' + x + '/' + y + '.webp').then(function (arr) { hd.tiles[this] = arr; }.bind(id)).catch(function () {}));
   }
   return Promise.all(jobs).then(function () { return Object.keys(hd.tiles).length > 0; });
 }

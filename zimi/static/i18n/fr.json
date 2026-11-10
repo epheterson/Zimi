@@ -3992,5 +3992,6 @@
   "tb_kn_craft_models": "Modèles d'engins",
   "tb_kn_craft_sun": "Lumière du Soleil sur un engin (éclairement)",
   "tb_kn_craft_shine": "Lumière planétaire sur un engin (part d'une surface qui lui fait face)",
-  "alm_earth_webb_lit": "Le côté du miroir est toujours à l'ombre du pare-soleil : il est montré éclairé."
+  "alm_earth_webb_lit": "Le côté du miroir est toujours à l'ombre du pare-soleil : il est montré éclairé.",
+  "alm_hd_ultra": "Ultra"
 }

@@ -7503,11 +7503,16 @@ def handle_manage_post(handler, parsed, data):
     elif parsed.path == "/manage/almanac-hd":
         # Almanac HD: {"mode": "ask"|"auto"|"never"} saves the setting (the
         # env-lock contract: ZIMI_ALMANAC_HD or ZIMI_OFFLINE wins); {"start":
-        # true} queues the download, the Almanac's offer said yes.
+        # true} queues the download, the Almanac's offer said yes; {"start":
+        # true, "part": "moon"} one Ultra part (removed with /manage/delete, as any ZIM is).
         from zimi import almanachd as _hd
 
         if data.get("start"):
-            dl_id, err = _hd.start(activity_actor(handler))
+            dl_id, err = _hd.start(
+                activity_actor(handler), part=data.get("part") or None
+            )
+            if err == "needs_core":
+                return handler._json(409, {"error": "Almanac HD comes first"})
             if err == "never":
                 return handler._json(
                     409, {"error": "Almanac HD is set to never be fetched"}

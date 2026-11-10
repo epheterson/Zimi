@@ -3992,5 +3992,6 @@
   "tb_kn_craft_models": "Spacecraft models",
   "tb_kn_craft_sun": "Sun's light on a spacecraft (irradiance)",
   "tb_kn_craft_shine": "Planetshine on a spacecraft (share of a facing surface)",
-  "alm_earth_webb_lit": "The mirror side is always in the sunshield's shade: it is shown lit."
+  "alm_earth_webb_lit": "The mirror side is always in the sunshield's shade: it is shown lit.",
+  "alm_hd_ultra": "Ultra"
 }

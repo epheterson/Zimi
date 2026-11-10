@@ -3992,5 +3992,6 @@
   "tb_kn_craft_models": "Modelos de naves",
   "tb_kn_craft_sun": "Luz del Sol sobre una nave (irradiancia)",
   "tb_kn_craft_shine": "Luz planetaria sobre una nave (parte de una superficie que lo mira)",
-  "alm_earth_webb_lit": "El lado del espejo siempre está a la sombra del parasol: aquí se muestra iluminado."
+  "alm_earth_webb_lit": "El lado del espejo siempre está a la sombra del parasol: aquí se muestra iluminado.",
+  "alm_hd_ultra": "Ultra"
 }

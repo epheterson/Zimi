@@ -3992,5 +3992,6 @@
   "tb_kn_craft_models": "Raumfahrzeug-Modelle",
   "tb_kn_craft_sun": "Sonnenlicht auf einem Raumfahrzeug (Bestrahlungsstärke)",
   "tb_kn_craft_shine": "Planetenlicht auf einem Raumfahrzeug (Anteil einer zugewandten Fläche)",
-  "alm_earth_webb_lit": "Die Spiegelseite liegt immer im Schatten des Sonnenschilds: hier ist sie beleuchtet dargestellt."
+  "alm_earth_webb_lit": "Die Spiegelseite liegt immer im Schatten des Sonnenschilds: hier ist sie beleuchtet dargestellt.",
+  "alm_hd_ultra": "Ultra"
 }
