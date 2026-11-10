@@ -34,13 +34,13 @@ check(sep < 0.15, 'and the Moon is on the Sun (' + sep.toFixed(3) + ' deg)');
 const lmAt = (hms) => run('_osSkyState(_osDef({ lat: 30.0474, lon: -99.1403, tMs: Date.parse("2024-04-08T' + hms + 'Z") })).lm');
 const lm0 = lmAt('18:31:00'), lm1 = lmAt('18:31:45'), lm2 = lmAt('18:32:15'), lmT = lmAt('18:34:50'), lmOut = lmAt('18:37:30');
 check(lm0 < lm1 && lm1 < lm2 && lm2 - lm0 > 0.8, 'over the last minute the faintest star shown climbs steadily (' + [lm0, lm1, lm2].map((x) => x.toFixed(2)).join(', ') + ')');
-check(lmT > 1.0 && lmT < 2.0, 'at totality the sky is a Sun -6.5 twilight: the faintest star about +1.4 (Venus at -3.9 and Jupiter at -2 show) (' + lmT.toFixed(2) + ')');
-const twi = run('_sgLimitMag(_sgSkyLum(-6.5, -90, 0, 0, 1, 1))');
-check(Math.abs(lmT - twi) < 0.05, 'the same as a real Sun at -6.5 (' + twi.toFixed(2) + '): one twilight path');
+check(lmT > 1.2 && lmT < 2.2, 'at totality the sky is a Sun -7 twilight: the faintest star about +1.6 (Venus at -3.9 and Jupiter at -2 show) (' + lmT.toFixed(2) + ')');
+const twi = run('_sgLimitMag(_sgSkyLum(-7, -90, 0, 0, 1, 1))');
+check(Math.abs(lmT - twi) < 0.05, 'the same as a real Sun at -7 (' + twi.toFixed(2) + '): one twilight path');
 check(lmOut < lm2 - 0.5, 'and the sky brightens again as the shadow leaves (' + lmOut.toFixed(2) + ')');
 const zen = run('_sgSkyLum(68, -90, 0, 0, _sgSkyShare(1, 68), 1)');
-const twz = run('_sgZenithLum(-6.5)');
-check(Math.abs(zen - twz) / twz < 0.01, 'the zenith at totality is the twilight zenith of a Sun at -6.5 (' + zen.toFixed(2) + ' against ' + twz.toFixed(2) + ' cd/m2)');
+const twz = run('_sgZenithLum(-7)');
+check(Math.abs(zen - twz) / twz < 0.01, 'the zenith at totality is the twilight zenith of a Sun at -7 (' + zen.toFixed(2) + ' against ' + twz.toFixed(2) + ' cd/m2)');
 const ks = (o) => run('_sgAdaptShare(_sgSkyShare(' + o + ', 68), ' + o + ')');
 check(Math.abs(ks(1) - run('_sgSkyShare(1, 68)')) < 1e-9 && ks(0.5) > run('_sgSkyShare(0.5, 68)'), 'the eye lags a partial eclipse and takes the twilight exposure in the last few per cent');
 

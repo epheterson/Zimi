@@ -154,7 +154,7 @@ var SG_SUN_SHARE_MIN = 0.003;      // the sky in totality: light scattered in fr
 function _sgSunShare(obscuration) { return Math.max(SG_SUN_SHARE_MIN, 1 - Math.min(1, obscuration || 0)); }
 // In the last few per cent of the Moon's cover the sky is that of a Sun this far below the horizon (degrees), through the same luminance, exposure
 // and tone path a twilight uses: the cover and the equivalent depth, in log steps. Before it, the Sun's own share of light (above).
-var SG_ECL_DEPTH = [[0.97, -0.5], [0.99, -2], [0.999, -4], [1, -6.5]], SG_SKY_STEEP_FROM = 0.97, SG_LAG_FROM = 0.9;
+var SG_ECL_DEPTH = [[0.97, -0.5], [0.99, -2], [0.999, -4.3], [1, -7]], SG_SKY_STEEP_FROM = 0.97, SG_LAG_FROM = 0.9;
 function _sgEclipseDepth(obscuration) {
   var o = Math.min(1, obscuration || 0), t = SG_ECL_DEPTH;
   if (o <= t[0][0]) return null;
