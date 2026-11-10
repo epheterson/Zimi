@@ -241,3 +241,25 @@ def test_pdf_scan_is_bounded():
     assert pages == 10 and "page 2" in text and "page 3" not in text
     assert docindex.pdf_scan(pdf, max_chars=5)[0] == "page "
     assert search.extract_pdf_text(pdf).startswith("page 0 text page 1 text")
+
+
+def test_snippet_of_a_pdf_is_never_its_bytes(lib):
+    """A card for a document that matched only by its listed title is drawn
+    from the listing (description, then author), never from the file."""
+    assert search.result_snippet(lib, "files/Scan.pdf")["snippet"] == "Pictures only"
+    assert search.result_snippet(lib, "files/Water (1).pdf")["snippet"] == (
+        "For people with a water quality problem"
+    )
+    # Listed with no description: the author; not listed: nothing.
+    assert search.result_snippet(lib, "files/Orphan.pdf")["snippet"] == ""
+
+
+def test_title_only_hit_carries_no_binary(lib):
+    build(lib)
+    hits = docindex.search(lib, "Pamphlet")
+    assert hits and hits[0]["path"] == "files/Scan.pdf"
+    assert hits[0]["snippet"] == "Pictures only"
+    every = hits + search.search_all("Pamphlet", filter_zim=lib)["results"]
+    assert every
+    for hit in every:
+        assert "%PDF" not in hit["snippet"] and "endobj" not in hit["snippet"]

@@ -205,6 +205,13 @@ def _listing(archive):
     return out
 
 
+def listed_note(archive, path):
+    """What the listing says about a document, for a card that has no text of
+    it to show: its description, else its author, else "". Never the file."""
+    _title, dsc, aut = _listing(archive).get(path) or ("", "", "")
+    return (dsc or aut).strip()[:_SNIPPET_CHARS]
+
+
 def _is_pdf(item):
     return (item.mimetype or "").lower() == PDF_MIME
 
