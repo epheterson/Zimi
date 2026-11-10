@@ -592,6 +592,22 @@ def test_the_back_arrow_names_where_it_really_goes(page):
     assert not page.errors, page.errors
 
 
+def test_stand_does_not_wait_for_hd_terrain_tiles_that_never_arrive(page):
+    """A part whose tile server hangs must not hold the first frame: the ground is built on the core's heights after a moment."""
+    page.route("**/hdhang/**", lambda route: None)  # never answered
+    page.evaluate(
+        "() => { window.__hd = _ae.gl.hd; _ae.gl.hd = { man: { layers: { 'terrain/earth': { max: 6, from: 4, base: '/hdhang/' } } } }; }"
+    )
+    try:
+        _stand_anywhere(page, "earth", 40.0, -105.0)  # waits up to GROUND_MS for the ground to be live
+        assert page.evaluate("() => _ae.stand.live") is True
+    finally:
+        page.evaluate("() => { _ae.gl.hd = window.__hd; }")
+        page.unroute("**/hdhang/**")
+    _leave(page)
+    assert not page.errors, page.errors
+
+
 def test_the_live_sky_cards_handoff_opens_stand_facing_its_way_and_close_goes_back(
     page,
 ):

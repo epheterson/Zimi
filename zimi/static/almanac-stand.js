@@ -79,12 +79,17 @@ function _aeStandViewUp() {
 }
 // The terrain and the mesh, built in slices behind the flight.
 // A pending ground is wanted while it is the view's own, or a site's (almanac-standhost.js) that has not been dropped.
+var AE_STAND_HD_WAIT_MS = 1500;   // the most the ground waits for HD terrain tiles before it is built on what it has
 function _aeStandPendAlive(pend) { return !pend.dead && (pend.host || _ae.standPending === pend); }
 function _aeStandBuild(pend, body) {
   _aeTerrainLoad(pend.key).then(function () {
     if (!_aeStandPendAlive(pend)) return;
     var man = _ae.gl && _ae.gl.hd && _ae.gl.hd.man, layer = man && man.layers && man.layers[AE_TERRAIN_HD_LAYER + pend.key];
-    return layer ? _aeTerrainHdLoad(pend.key, pend.lat, pend.lon, layer, layer.max) : null;   // each ZIM of the set stamps its layers with its own folder
+    // Each ZIM of the set stamps its layers with its own folder. The first frame never waits on the finer tiles: what has arrived by AE_STAND_HD_WAIT_MS is used, and the rest
+    // fills the cache (a slow or dead tile server leaves the core's heights, not a ground that never comes).
+    if (!layer) return null;
+    var hdLoad = _aeTerrainHdLoad(pend.key, pend.lat, pend.lon, layer, layer.max);
+    return Promise.race([hdLoad, new Promise(function (res) { setTimeout(res, AE_STAND_HD_WAIT_MS); })]);
   }).catch(function () {}).then(function () {
     if (!_aeStandPendAlive(pend)) return;
     pend.builder = _aeMeshBuilder(pend.key, pend.lat, pend.lon, _aeMeshCap(body.km, pend.alt0), pend.flat);
