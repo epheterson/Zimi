@@ -661,10 +661,10 @@ var AE_CSS = [
   // is in, and for good on a low level or if it never comes). --s is its size; --c and --r its cell in the sheet.
   '.ae-go-thumb{--s:28px;flex:none;position:relative;width:var(--s);height:var(--s)}',
   '.ae-go-disc,.ae-go-glyph{display:block;width:100%;height:100%;border-radius:50%}',
-  '.ae-go-disc{box-shadow:0 0 0 1px rgba(255,255,255,.08);background-image:url(' + AE_GO_DISC_URL + '),var(--g);background-repeat:no-repeat;' +
+  '.ae-go-disc{box-shadow:0 0 0 1px rgba(255,255,255,.08);background-color:var(--cc);background-image:url(' + AE_GO_DISC_URL + '),var(--g);background-repeat:no-repeat;' +
     'background-size:calc(var(--s) * ' + AE_GO_DISC_COLS + ') calc(var(--s) * ' + AE_GO_DISC_ROWS + '),100% 100%;background-position:calc(var(--s) * var(--c) * -1) calc(var(--s) * var(--r) * -1),0 0}',
-  '.ae-go-disc.ae-go-ring{border-radius:0;box-shadow:none;background-image:url(' + AE_GO_DISC_URL + ');background-size:calc(var(--s) * ' + AE_GO_DISC_COLS + ') calc(var(--s) * ' + AE_GO_DISC_ROWS + ');background-position:calc(var(--s) * var(--c) * -1) calc(var(--s) * var(--r) * -1)}',
-  '.ae-go-flat .ae-go-disc,.ae-go-flat .ae-go-disc.ae-go-ring{border-radius:50%;box-shadow:0 0 0 1px rgba(255,255,255,.08);background-image:var(--g);background-size:100% 100%;background-position:0 0}',
+  '.ae-go-disc.ae-go-ring{border-radius:0;box-shadow:none;background-color:transparent;background-image:url(' + AE_GO_DISC_URL + ');background-size:calc(var(--s) * ' + AE_GO_DISC_COLS + ') calc(var(--s) * ' + AE_GO_DISC_ROWS + ');background-position:calc(var(--s) * var(--c) * -1) calc(var(--s) * var(--r) * -1)}',
+  '.ae-go-flat .ae-go-disc,.ae-go-flat .ae-go-disc.ae-go-ring{border-radius:50%;box-shadow:0 0 0 1px rgba(255,255,255,.08);background-color:var(--cc);background-image:var(--g);background-size:100% 100%;background-position:0 0}',
   '.ae-go-glyph{display:flex;align-items:center;justify-content:center;background:rgba(255,255,255,.06);color:var(--gc,' + AE_PROBE_HEX + ')}',
   '.ae-go-glyph svg{width:62%;height:62%}',
   '.ae-go-flag{position:absolute;top:-3px;inset-inline-end:-3px;width:42%;height:42%;color:' + AE_AMBER_HEX + ';filter:drop-shadow(0 0 2px rgba(0,0,0,.9))}',
@@ -894,7 +894,7 @@ function _aeGoLmBody(key) { return key.split(':')[1]; }
 function _aeGoDisc(body) {
   var i = AE_GO_DISC_KEYS.indexOf(body), c = _aeGoColor(body);
   return '<i class="ae-go-disc' + (body === 'saturn' ? ' ae-go-ring' : '') + '" style="--c:' + (i < 0 ? 0 : i % AE_GO_DISC_COLS) + ';--r:' + (i < 0 ? 0 : Math.floor(i / AE_GO_DISC_COLS)) +
-    ';--g:radial-gradient(circle at 35% 35%,rgba(255,255,255,.5),' + c + ' 45%,rgba(0,0,0,.55) 100%),' + c + '"></i>';
+    ';--cc:' + c + ';--g:radial-gradient(circle at 35% 35%,rgba(255,255,255,.5),' + c + ' 45%,rgba(0,0,0,.55) 100%)"></i>';
 }
 function _aeGoGlyph(inner, color) { return '<i class="ae-go-glyph"' + (color ? ' style="--gc:' + color + '"' : '') + '>' + inner + '</i>'; }
 // What a row leads with: the body's disc, a landing's disc with its flag, a mission's or a spacecraft's glyph.
