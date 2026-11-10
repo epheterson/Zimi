@@ -15,7 +15,7 @@
   // rows), a tapped card lifts 14 px
   // (a card you can play stands 6 px proud when others cannot be played). An opponent's face-down hand of more than
   // five cards is one back and a count chip.
-  var MANY_CHIPS = 5, NORTH_GAP_PX = 6, COUNT_AT = 0.86, STATUS_MAX = 44, MIN_STRIP_PX = 22, LIFT_PX = 14, PLAYABLE_LIFT_PX = 6, COLLAPSE_FROM = 6;
+  var SHORT_TABLE_H = 420, MANY_CHIPS = 5, NORTH_GAP_PX = 6, COUNT_AT = 0.86, STATUS_MAX = 44, MIN_STRIP_PX = 22, LIFT_PX = 14, PLAYABLE_LIFT_PX = 6, COLLAPSE_FROM = 6;
   // Games that play a card on its second tap: the first tap lifts it (amber outline), the second plays it.
   var LIFT_THEN_PLAY = { spades: 1, euchre: 1, belote: 1, crazyeights: 1, durak: 1 };
   // SCORE_BAR_H: the chips' row (28 px, cardtable.css .ct-chip) and air under it for the ring round whoever is to play.
@@ -77,6 +77,10 @@
     g.northY = m.pad + SCORE_BAR_H;
     g.southY = m.H - ch - Math.max(m.pad, HAND_BOTTOM_PX);        // your bottom row sits on the bottom (the page already stops above the home-indicator inset)
     g.yTop = g.northY + ch + 8;
+    // A short table (a phone on its side): the west and east hands start level with the north row and are one back and a count each,
+    // so a tray of choices above the status line never covers them.
+    g.short = m.H < SHORT_TABLE_H;
+    g.sideTop = g.short ? g.northY : g.yTop;
     g.yBot = g.southY - (g.rows - 1) * g.rowStep - g.raise - 6;    // the rows above it push the status line up
     g.statusY = g.yBot - STATUS_H;
     // The trick sits high on the felt (40% down the table), clear of the north hand and the status line: eyes stay between the opponents and your hand.
@@ -93,7 +97,7 @@
     return Math.max(1, Math.ceil(n / perRow));
   }
   function rowsFor(m, n) { return handRows(m.W, m.pad, m.cw, n); }
-  function sideStep(g, n) { return Math.max(g.ch * SIDE_STEP_MIN, Math.min(g.ch * SIDE_STEP_MAX, (g.statusY - g.yTop - g.ch) / Math.max(1, n - 1))); }
+  function sideStep(g, n) { return Math.max(g.ch * SIDE_STEP_MIN, Math.min(g.ch * SIDE_STEP_MAX, (g.statusY - g.sideTop - g.ch) / Math.max(1, n - 1))); }
   // A card's corner in the middle for each position's play, and where a position's cards sit.
   function trickSpot(g, pos) {
     var x = g.cx - g.cw / 2, y = g.cy - g.ch / 2;
@@ -104,7 +108,7 @@
   function northRoom(g, pos) { return pos === 2 ? g.W - 2 * g.pad : (g.W - 2 * g.pad) / 2 - NORTH_GAP_PX; }
   function northCx(g, pos) { return pos === 2 ? g.cx : pos === 4 ? g.pad + (g.W - 2 * g.pad) / 4 : g.W - g.pad - (g.W - 2 * g.pad) / 4; }
   function seatSpot(g, pos) {
-    return [{ x: g.cx - g.cw / 2, y: g.southY }, { x: g.westX, y: g.yTop }, { x: g.cx - g.cw / 2, y: g.northY }, { x: g.eastX, y: g.yTop },
+    return [{ x: g.cx - g.cw / 2, y: g.southY }, { x: g.westX, y: g.sideTop }, { x: g.cx - g.cw / 2, y: g.northY }, { x: g.eastX, y: g.sideTop },
       { x: northCx(g, 4) - g.cw / 2, y: g.northY }, { x: northCx(g, 5) - g.cw / 2, y: g.northY }][pos];
   }
   function posOf(seat, players) { return SEAT_POS[players][seat]; }
@@ -140,9 +144,10 @@
   // Face-down (or face-up when `up`) fan of a seat's hand at a table position.
   function fan(g, pos, ids, up) {
     var cards = [], n = ids.length, p = 'p' + pos;
-    if (!up && n >= COLLAPSE_FROM) {
+    var side = pos === 1 || pos === 3;
+    if (!up && (n >= COLLAPSE_FROM || (g.short && side && n > 1))) {
       // One back and a count: every card sits in the same place (so a played card still flies from the hand).
-      var north = pos === 2 || pos >= 4, ax = north ? Math.round(northCx(g, pos) - g.cw / 2) : pos === 1 ? g.westX : g.eastX, ay = north ? g.northY : g.yTop;
+      var north = pos === 2 || pos >= 4, ax = north ? Math.round(northCx(g, pos) - g.cw / 2) : pos === 1 ? g.westX : g.eastX, ay = north ? g.northY : g.sideTop;
       ids.forEach(function (id, k) { cards.push({ id: id, pile: p, idx: k, x: ax, y: ay, up: false }); });
       counts.push({ x: ax + g.cw / 2, y: ay + g.ch * COUNT_AT, n: n });   // low on the back: the Z stays clear
       return cards;
@@ -152,7 +157,7 @@
       ids.forEach(function (id, k) { cards.push({ id: id, pile: p, idx: k, x: Math.round(nx + k * ts), y: g.northY, up: !!up }); });
     } else {
       var sx = pos === 1 ? g.westX : g.eastX, st = sideStep(g, n);
-      ids.forEach(function (id, k) { cards.push({ id: id, pile: p, idx: k, x: sx, y: g.yTop + k * st, up: !!up }); });
+      ids.forEach(function (id, k) { cards.push({ id: id, pile: p, idx: k, x: sx, y: g.sideTop + k * st, up: !!up }); });
     }
     return cards;
   }
@@ -485,7 +490,7 @@
   }
 
   root.ZimiTable = {
-    paintChips: paintChips, SEAT_POS: SEAT_POS, HAND13_COLS: HAND13_COLS, handCols: handCols, stateCols: stateCols, SUIT_GLYPH: SUIT_GLYPH, STATUS_H: STATUS_H, STATUS_MAX: STATUS_MAX, SCORE_BAR_H: SCORE_BAR_H,
+    paintChips: paintChips, SHORT_TABLE_H: SHORT_TABLE_H, SEAT_POS: SEAT_POS, HAND13_COLS: HAND13_COLS, handCols: handCols, stateCols: stateCols, SUIT_GLYPH: SUIT_GLYPH, STATUS_H: STATUS_H, STATUS_MAX: STATUS_MAX, SCORE_BAR_H: SCORE_BAR_H,
     next: next, sortHand: sortHand, rankHigh: rankHigh, short: short, shortList: shortList, shuffleOf: shuffleOf,
     countBy: countBy, maxBy: maxBy, minBy: minBy,
     geometry: geometry, rowsFor: rowsFor, sideStep: sideStep, trickSpot: trickSpot, seatSpot: seatSpot, posOf: posOf, posFor: posFor, handCards: handCards, fan: fan, takeCounts: takeCounts, handRows: handRows,

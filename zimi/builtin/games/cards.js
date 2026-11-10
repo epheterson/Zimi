@@ -1236,7 +1236,9 @@
         if (!stopped) raf = requestAnimationFrame(frame);
       });
       function launch(c) {
-        var e = els[c.id], r = e.getBoundingClientRect(), dir = Math.random() < 0.5 ? -1 : 1;
+        var e = els[c.id], r, dir = Math.random() < 0.5 ? -1 : 1;
+        if (!e) return;   // a card the table is not showing (a partner's hand at the end of a Bridge deal) has nothing to fly from
+        r = e.getBoundingClientRect();
         e.style.visibility = 'hidden'; hidden.push(e);
         flyers.push({ id: c.id, x: r.left, y: r.top, vx: dir * (VX_MIN + Math.random() * VX_SPAN) * scale, vy: -(VY_MIN + Math.random() * VY_SPAN) * scale });
       }

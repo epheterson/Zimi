@@ -194,7 +194,9 @@
           if (bad >= 0) out.text = TX('cards.then', { first: out.text, then: TX('ohhell.notBid', { n: bad }) });
           out.choices = [];
           for (var n = 0; n <= st.sizes[st.handNo]; n++) out.choices.push(bidChoice(n, n === bad));
-          out.lines = [{ text: TX('ohhell.estimate', { n: Math.round(estimate(st.hands[V], st.trump, st.players)) }) }];
+          // On a short table (a phone on its side) the tray has no room for the hint line above the bids.
+          var m = board && board.metrics();
+          if (!(m && m.H < T.SHORT_TABLE_H)) out.lines = [{ text: TX('ohhell.estimate', { n: Math.round(estimate(st.hands[V], st.trump, st.players)) }) }];
         } else out.text = TX('cards.bidding', { name: nm(st.turn) });
       } else if (st.phase === 'handEnd') { out.text = TX('cards.handEnd'); out.label = TX('cards.nextHand'); out.action = tg.startNextHand; }
       else if (st.phase === 'over') { out.text = TX('shell.end.over'); out.label = TX('shell.menu.new'); out.action = newGame; }

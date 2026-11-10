@@ -1,4 +1,5 @@
-"""A phone on its side (844 x 390): Snap's button does not sit over the status line.
+"""A phone on its side (844 x 390): Snap's button does not sit over the status line, and the tray of choices (Oh Hell's bid, Cheat's
+Pick and Call) does not cover the other players' hands.
 
 Found playing the family card games in landscape: the status pill printed over the Snap button.
 
@@ -104,3 +105,72 @@ def test_snap_button_and_status_do_not_overlap_on_a_phone_on_its_side(browser, s
     assert a[0] >= 0 and a[2] <= rects["width"] and a[3] - a[1] >= 44, rects
     assert not errors
     ctx.close()
+
+
+def boxes_touch(a, b):
+    return a[0] < b[2] and b[0] < a[2] and a[1] < b[3] and b[1] < a[3]
+
+
+TRAY_AND_HANDS = """(ids) => {
+  const p = document.querySelector('.ct-panel');
+  if (!p || p.hidden) return null;
+  const r = e => { const b = e.getBoundingClientRect(); return [b.left, b.top, b.right, b.bottom]; };
+  return { panel: r(p), cards: ids.map(id => { const e = document.querySelector('.zc-card[data-id="' + id + '"]'); return e ? r(e) : null; }).filter(Boolean),
+           status: r(document.querySelector('.ct-status')), height: innerHeight };
+}"""
+
+
+def landscape(browser):
+    ctx = browser.new_context(viewport={"width": 844, "height": 390}, device_scale_factor=2, is_mobile=True, has_touch=True)
+    page = ctx.new_page()
+    page.errors = []
+    page.on("pageerror", lambda e: page.errors.append(str(e)))
+    return ctx, page
+
+
+def other_hands(page, api):
+    st = page.evaluate("() => window.%s.session.state" % api)
+    return [c for h in st["hands"][1:] for c in h]
+
+
+def test_the_bid_tray_of_oh_hell_does_not_cover_a_hand_on_a_phone_on_its_side(browser, site):
+    ctx, page = landscape(browser)
+    open_game(page, site, "ohhell", "() => window.ZimiOhHell && window.ZimiOhHell.session && window.ZimiOhHell.session.state", 4)
+    page.wait_for_function("() => { const p = document.querySelector('.ct-panel'); return p && !p.hidden; }", timeout=8000)
+    got = page.evaluate(TRAY_AND_HANDS, other_hands(page, "ZimiOhHell"))
+    assert got["cards"], "no opponent hand on the table"
+    for c in got["cards"]:
+        assert not boxes_touch(got["panel"], c), "the tray covers a hand: %r" % got
+    assert not boxes_touch(got["panel"], got["status"]), got
+    assert not page.errors
+    ctx.close()
+
+
+def test_the_pick_and_call_tray_of_cheat_does_not_cover_a_hand_on_a_phone_on_its_side(browser, site):
+    ctx, page = landscape(browser)
+    open_game(page, site, "cheat", "() => window.ZimiCheat && window.ZimiCheat.session && window.ZimiCheat.session.state", 4)
+    for _ in range(60):
+        st = page.evaluate("() => window.ZimiCheat.session.state")
+        if st["phase"] == "play" and st["turn"] == 0:
+            break
+        if st["phase"] == "call" and st["callers"] and st["callers"][0] == 0:
+            break
+        page.wait_for_timeout(400)
+    if st["phase"] == "play":
+        tap_card(page, st["hands"][0][0])  # the tray with Pick/Say appears once a card is lifted
+        page.wait_for_timeout(300)
+    page.wait_for_function("() => { const p = document.querySelector('.ct-panel'); return p && !p.hidden; }", timeout=8000)
+    got = page.evaluate(TRAY_AND_HANDS, other_hands(page, "ZimiCheat"))
+    for c in got["cards"]:
+        assert not boxes_touch(got["panel"], c), "the tray covers a hand: %r" % got
+    assert not boxes_touch(got["panel"], got["status"]), got
+    assert not page.errors
+    ctx.close()
+
+
+def test_bridge_win_cascade_skips_cards_the_table_is_not_showing(phone, site):
+    """The win's cascade flies the deal's cards; Bridge names both hands of the side, and the partner's are not on the table."""
+    open_game(phone, site, "bridge", "() => window.ZimiBridge && window.ZimiBridge.session && window.ZimiBridge.session.state", 10)
+    phone.evaluate("() => window.ZimiBridge.session.win(3)")
+    phone.wait_for_function("() => document.querySelector('.gs-sheet, .ar-sheet, .zc-sheet, .gs-end')", timeout=15000)
+    assert not phone.errors, phone.errors
