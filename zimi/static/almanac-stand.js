@@ -175,7 +175,7 @@ function _aeStandEnter(st) {
   _aeFullStepIn();
   S.renderer.setClearColor(0x000000, 1);
   st.prevRatio = S.renderer.getPixelRatio();
-  S.renderer.setPixelRatio(Math.min(S.dpr, _aeStandDprCap));
+  S.renderer.setPixelRatio(Math.min(S.dpr, _aeStandRatioCap()));
   _aeResize();
   var fr = _aeStFrame(st, _aeDisplayMs());
   st.yaw = st.key === 'earth' ? _aeRad(_aeStandDefaultHeading(st.lat)) : fr.sunAlt > AE_STAND_SUN_FACE_DEG ? fr.sunAz : 0;   // on Earth the card's own rule (toward the equator), elsewhere the Sun's side; a hand-off's heading, below, wins
@@ -344,9 +344,16 @@ var AE_STAND_GREY_MAP = { moon: true };   // maps of one channel (the Moon's), r
 // under orange light and a darker ground than it.
 var AE_STAND_TINT = { mars: [1.9, 0.85, 0.34], titan: [4.2, 3.0, 1.6], earth: [2.2, 2.2, 2.2] };
 var AE_STAND_SKY_SCALE = 0.5;              // the sky is drawn at this share of the screen's size and stretched (the ground is not)
+var AE_STAND_SKY_BY_LEVEL = [0.33, 0.5, 0.75];   // ... by capability level's skyQuality (capability.js): a light device draws it smaller, a roomy one sharper
+function _aeStandSkyScale() { return typeof ZimiCap !== 'undefined' ? AE_STAND_SKY_BY_LEVEL[ZimiCap.get('skyQuality')] : AE_STAND_SKY_SCALE; }
+// How much of the instanced detail (grass tufts, trees) this device draws, 0..1, by the level's materialDetail (all of it without capability.js).
+var AE_STAND_DETAIL_BY_LEVEL = [0.3, 0.7, 1];
+function _aeStandDetail() { return typeof ZimiCap !== 'undefined' ? AE_STAND_DETAIL_BY_LEVEL[ZimiCap.get('materialDetail')] : 1; }
 var AE_STAND_DPR_STEPS = [1.5, 1.25, 1, 0.75];   // the pixel ratios the ground view steps down through if frames run long
 var AE_STAND_SLOW_MS = [20, 250], AE_STAND_SLOW_RUN = 3;   // a frame this slow (not an idle gap) three times running drops a step
-var _aeStandDprCap = AE_STAND_DPR_MAX;     // for the rest of the session: it goes down, never back up
+var _aeStandDprCap = AE_STAND_DPR_MAX;     // for the rest of the session: it goes down, never back up (without capability.js)
+// The pixel ratio Stand here draws at: the capability level's, under the one governor (capability.js), else the steps below.
+function _aeStandRatioCap() { return typeof ZimiCap !== 'undefined' ? ZimiCap.dprCap('stand') : _aeStandDprCap; }
 var AE_STAND_STATION_MIN_LIM = 3;           // the station is marked once the sky is dark enough for stars of this magnitude
 var AE_STAND_PROBE_MARKS = false;          // deep-space probes are pinpoints nobody could see: not marked (the station's pass is, near Earth)
 var AE_STAND_SKY_MATCH_SHARE = 0.55;      // and how far (in log) toward it: a view with sunlit ground in it cannot be exposed for the sky alone
@@ -475,7 +482,7 @@ function _aeStandGrass(st, dens, cls, px) {
   if (st.grass) return;
   var THREE = _ae.gl.THREE, R = st.b.km * 1000, lat0 = st.lat, lon0 = st.lon, h0 = st.h0;
   var seed = (Math.round(lat0 * 1e4) * 19349663) ^ (Math.round(lon0 * 1e4) * 83492791), rnd = function () { seed |= 0; seed = seed + 0x6D2B79F5 | 0; var t = Math.imul(seed ^ seed >>> 15, 1 | seed); t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t; return ((t ^ t >>> 14) >>> 0) / 4294967296; };
-  var n = Math.round(AE_STAND_GRASS_COUNT * dens), P = [], N = [], T = [], lo = AE_STAND_GRASS_RANGE_M[0], hi = AE_STAND_GRASS_RANGE_M[1];
+  var n = Math.round(AE_STAND_GRASS_COUNT * dens * _aeStandDetail()), P = [], N = [], T = [], lo = AE_STAND_GRASS_RANGE_M[0], hi = AE_STAND_GRASS_RANGE_M[1];
   for (var i = 0; i < n; i++) {
     var r = lo + (hi - lo) * Math.pow(rnd(), 0.8), th = rnd() * 2 * Math.PI, x0 = r * Math.sin(th), y0 = r * Math.cos(th);
     var fade = 1 - Math.min(1, Math.max(0, (r - 24) / (hi - 24))), tall = (cls === 'tundra' ? 0.1 : 0.14 + 0.3 * rnd()) * fade;   // the tufts shrink away into the texture by the range's end
@@ -525,7 +532,7 @@ function _aeStandTrees(st) {
   var R = st.b.km * 1000, h0 = st.h0, lat0 = st.lat, lon0 = st.lon, THREE = _ae.gl.THREE;
   var seed = (Math.round(lat0 * 1e4) * 73856093) ^ (Math.round(lon0 * 1e4) * 19349663), rnd = function () { seed |= 0; seed = seed + 0x6D2B79F5 | 0; var t = Math.imul(seed ^ seed >>> 15, 1 | seed); t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t; return ((t ^ t >>> 14) >>> 0) / 4294967296; };
   var list = [], ratio = AE_STAND_TREES_RANGE_M[1] / AE_STAND_TREES_RANGE_M[0], thin = AE_STAND_TREES_THIN_M;
-  for (var k = 0; k < AE_STAND_TREES_TRIES && list.length < AE_STAND_TREES_MAX; k++) {
+  for (var k = 0, maxTrees = Math.round(AE_STAND_TREES_MAX * _aeStandDetail()); k < AE_STAND_TREES_TRIES && list.length < maxTrees; k++) {
     var r = AE_STAND_TREES_RANGE_M[0] * Math.pow(ratio, rnd()), th = rnd() * 2 * Math.PI, d = _aeDestination(lat0, lon0, r / R, th);
     var near = Math.max(0, Math.min(1, (r - thin[0]) / (thin[1] - thin[0])));
     if (rnd() > near * near) continue;   // thinner near the viewer: the first frame is not a wall
@@ -853,11 +860,11 @@ function _aeStandPaint(st, now, moving, place) {
 function _aeStandSkyPass(st) {
   _aeStandAirSelect(st);
   _aeStandCloudSelect(st);
-  var S = _ae.gl, r = S.renderer, THREE = S.THREE, use = AE_STAND_SKY_SCALE < 1 && !!st.skyBlit && typeof THREE.WebGLRenderTarget === 'function';
+  var S = _ae.gl, r = S.renderer, THREE = S.THREE, use = _aeStandSkyScale() < 1 && !!st.skyBlit && typeof THREE.WebGLRenderTarget === 'function';
   st.skyMesh.visible = !use; st.skyBlit.visible = use;
   if (!use) return;
   var ratio = r.getPixelRatio(), W = Math.max(1, Math.round(_ae.w * ratio)), H = Math.max(1, Math.round(_ae.h * ratio));
-  var w = Math.max(1, Math.round(W * AE_STAND_SKY_SCALE)), h = Math.max(1, Math.round(H * AE_STAND_SKY_SCALE));
+  var w = Math.max(1, Math.round(W * _aeStandSkyScale())), h = Math.max(1, Math.round(H * _aeStandSkyScale()));
   if (!st.skyRT || st.skyRT.width !== w || st.skyRT.height !== h) {
     if (st.skyRT) st.skyRT.dispose();
     st.skyRT = new THREE.WebGLRenderTarget(w, h, { minFilter: THREE.LinearFilter, magFilter: THREE.LinearFilter, depthBuffer: false, stencilBuffer: false });
@@ -868,6 +875,14 @@ function _aeStandSkyPass(st) {
 }
 // Frames that run long step the pixel ratio down, for good: a phone that cannot keep up is not asked to try again.
 function _aeStandBudget(st, now) {
+  if (typeof ZimiCap !== 'undefined') {   // the governor is shared with every 3D scene; Stand only applies what it decides
+    if (!ZimiCap.frame('stand', now)) return;
+    var S0 = _ae.gl;
+    S0.renderer.setPixelRatio(Math.min(S0.dpr, ZimiCap.dprCap('stand')));
+    st.starUni.uDpr.value = S0.renderer.getPixelRatio();
+    _aeResize();
+    return;
+  }
   var dt = now - (st.paintAt || now);
   st.paintAt = now;
   if (dt > AE_STAND_SLOW_MS[0] && dt < AE_STAND_SLOW_MS[1]) st.slow = (st.slow || 0) + 1; else st.slow = 0;
