@@ -8002,6 +8002,7 @@ function _aeBindCanvas(canvas) {
       var a = _ae.pointers[ids[0]], b = _ae.pointers[ids[1]];
       var span = Math.hypot(a.x - b.x, a.y - b.y);
       if (span > 0 && _ae.pinch.span > 0) _aePinchZoom(_ae.pinch, span);
+      if (!_ae.pinch) return;   // the zoom pulled the Planets view out onto the orrery: the view, and its pinch, are gone
       _ae.pinch.span = span;
       // The midpoint slides the view, whether or not the fingers also spread or close; not mid-flight, where a zoom
       // lets the flight finish (a pan would end it where it stands).
