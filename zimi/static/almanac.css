@@ -711,7 +711,7 @@
 .alm-ck-pop button:focus-visible { outline: 2px solid var(--amber); outline-offset: -2px; }
 .alm-clock[data-v="foot"] .alm-ck-pop { top: auto; bottom: 100%; margin: 0 0 8px; }
 /* The 3D view's foot: the time in a pill beside the date, and no underlines until a part is touched. */
-.alm-ck-pill { display: flex; flex: 0 1 auto; min-width: 0; overflow: hidden; align-items: center; padding: 1px 10px; border: 1px solid var(--border); border-radius: 999px; color: var(--text2); }
+.alm-ck-pill { display: flex; flex: 0 1 auto; min-width: 0; align-items: center; padding: 1px 10px; border: 1px solid var(--border); border-radius: 999px; color: var(--text2); }
 /* At rest (now, 1x, not opened) the clock is the plain date and time: nothing underlined, no slider. */
 .alm-ck-rest .ep { text-decoration-color: transparent; }
 .alm-ck-rest .alm-spd { display: none; }
