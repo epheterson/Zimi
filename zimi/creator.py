@@ -1466,7 +1466,9 @@ def _create_folder_zim(
             publisher=publisher or meta.get("publisher") or _stored_detail("publisher"),
             # The folder's NAME, never its path — see the privacy rule in
             # zimwriter's provenance block.
-            source=base_name,
+            source=meta.get("source") or base_name,
+            long_description=meta.get("longdescription"),
+            license=meta.get("license"),
             # Repackaging the same folder next month is a new EDITION of this
             # ZIM, so the Name comes from the folder, never from the date.
             name=zim_name(base_name, language),

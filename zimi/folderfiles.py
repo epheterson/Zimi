@@ -18,7 +18,7 @@ Families:
 Sidecars, plain ``Key: value`` lines (keys in any case) or a JSON object:
 
 - ``zimi.txt`` / ``zimi.json`` at the folder's root describes the ZIM:
-  Title, Description, Language, Creator, Publisher, Tags, Icon
+  Title, Description, LongDescription, Language, Creator, Publisher, Tags, License, Source, Icon
 - ``<name>.txt`` / ``<name>.json`` beside a file (``talk.mp4`` takes
   ``talk.txt`` or ``talk.mp4.txt``) describes that file: Title, Author, Date,
   Description, Cover
@@ -125,6 +125,9 @@ FOLDER_KEYS = (
     "tags",
     "icon",
     "articles",
+    "longdescription",
+    "license",
+    "source",
 )
 ITEM_KEYS = ("title", "author", "date", "description", "cover")
 SIDECAR_EXTS = (".txt", ".json")
