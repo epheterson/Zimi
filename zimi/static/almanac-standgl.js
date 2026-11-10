@@ -236,6 +236,7 @@ var AE_ST_CLOUDS_GLSL = [
   '  float t = H / d.z;',
   '  vec2 p = (o.xy + d.xy * t + uCloudB.xy * uCloudA.w) / 2600.0;',
   '  float n = cloudFbm(p, uCloudB.zw) * 0.5 + 0.5 * cloudFbm(p * 0.23 + 5.0, uCloudB.wz);',
+  '  n = (n - 0.5) * 1.9 + 0.5;',   // the fbm piles up round its middle: stretched, a coverage of half is half the sky
   '  float cut = 1.0 - uCloudA.x;',
   '  float dens = smoothstep(cut - 0.06, cut + 0.2, n);',
   '  float far = 1.0 - smoothstep(30000.0, 160000.0, t);',
@@ -243,7 +244,7 @@ var AE_ST_CLOUDS_GLSL = [
   '  vec3 sun = sunTrans(vec3(0.0, 0.0, uCloudA.y * 0.001)) * uSunE;',
   '  float thin = 1.0 - smoothstep(0.25, 0.95, dens);',
   '  float lit = mix(0.3, 1.0, thin) * (0.5 + 0.5 * clamp(uSunDir.z * 2.0 + 0.4, 0.0, 1.0));',
-  '  vec3 L = sun * 0.85 * lit / PI + vec3(1.2e-5, 1.5e-5, 2e-5) * (1.0 - thin * 0.5);',
+  '  vec3 L = sun * 0.85 * lit / PI + vec3(0.6, 0.75, 1.0) * (0.012 * max(uSunDir.z + 0.12, 0.0) + 2e-8) * (1.0 - thin * 0.5);',   // the sky's own light on it by day, almost none at night
   '  float a = dens * far * 0.94;',
   '  return vec4(L, a);',
   '}'
