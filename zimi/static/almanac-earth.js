@@ -5832,7 +5832,7 @@ function _aeSatsAllBoot() {
 // The live sky (almanac-sky.js _skyPaintActors): the passes over the place, once the layer is on; it is brought up from
 // here when the sky is shown and the choice was kept.
 function _aeSatsAllSky(ctx, s) {
-  if (typeof _asSkyPaint === 'function') { _asSkyPaint(ctx, s); return; }
+  if (typeof _asSkyPrime === 'function') { _asSkyPrime(s); return; }
   if (!_aeSatsAllKept() || _aeSatsAllPromise) return;
   _aeSatsAllLoad().then(function () { _asSet(true); _skyKickNow(); }).catch(function () {});
 }

@@ -455,7 +455,65 @@ var SG_GLSL_RADIANCE = [
   '}'
 ].join('\n');
 
-var SG_FS_SKY = SG_GLSL_HEAD + '\n' + SG_GLSL_VIEW + '\n' + SG_GLSL_RADIANCE + '\n' + [
+// ── The day's clouds ──
+// One deck of cloud at a height, a field of the place and the day (almanac-onesky.js _osCloudField): the same GLSL draws it on the card
+// and in Stand here. A ray from the viewer meets the deck's base; the density there is a few octaves of noise carried along by the
+// wind, thresholded by the day's cover; its light is the Sun as the cloud itself sees it (the Sun is lower at a cloud far away toward
+// it, and the deck, being high, still catches the light after the ground has lost it: the evening glow), thinned by the air on the Sun's
+// way to it; its underside is dark and takes a little of the ground's light; the far deck is hazed toward the sky behind it.
+// Needs SG_GLSL_LUT_UTIL and SG_GLSL_RADIANCE. cloudDeck(d, o): d the unit direction (east, north, up), o the viewer in metres in the
+// same frame; returns premultiplied radiance (cd/m2) and alpha.
+var SG_CLOUD_SCALE_M = 2800;               // the largest features of the noise
+var SG_CLOUD_FAR_M = 200000;               // the deck is not followed past this distance
+var SG_CLOUD_HAZE_M = 60000;               // the air between thins a cloud this far to 1/e
+var SG_CLOUD_THRESHOLD = [0.72, 0.18];     // the noise's cut for a clear day and a full one
+var SG_CLOUD_EDGE = 0.16;                  // and how soft it is
+var SG_CLOUD_ALBEDO = 0.8;
+var SG_CLOUD_LIT_FROM = -0.25, SG_CLOUD_LIT_TO = 0.6;   // the Sun's height at the cloud over which it goes from in shade to in the light
+var SG_SUN_DEPTH_RGB = 'vec3(0.10, 0.14, 0.22)';          // optical depth per airmass of the sunlight's path (almanac-sky.js SKY_SUN_DEPTH)
+var SG_CLOUD_EARTH_KM = '6371.0';
+var SG_GLSL_CLOUDS = [
+  'uniform vec4 uCloud;',          // cover 0..1, base height (m), thickness (m), the day's offset in the noise
+  'uniform vec3 uCloudWind;',      // wind east and north (m/s), seconds since the day's start
+  'uniform float uCloudSunE, uSunAltDeg;',   // the Sun's illuminance in the open (lux, an eclipse's share in), its geometric height (degrees)
+  'float cloudHash(vec2 p) { p = fract(p * vec2(123.34, 456.21)); p += dot(p, p + 45.32); return fract(p.x * p.y); }',
+  'float cloudNoise(vec2 p) {',
+  '  vec2 i = floor(p), f = fract(p); f = f * f * (3.0 - 2.0 * f);',
+  '  return mix(mix(cloudHash(i), cloudHash(i + vec2(1.0, 0.0)), f.x), mix(cloudHash(i + vec2(0.0, 1.0)), cloudHash(i + vec2(1.0, 1.0)), f.x), f.y);',
+  '}',
+  'float cloudFbm(vec2 p) { float s = 0.0, a = 0.5; for (int i = 0; i < 4; i++) { s += a * cloudNoise(p); p = p * 2.03 + 17.1; a *= 0.5; } return s / 0.9375; }',
+  'float cloudDensity(vec2 xy) {',
+  '  float n = cloudFbm((xy - uCloudWind.xy * uCloudWind.z) / ' + SG_CLOUD_SCALE_M.toFixed(1) + ' + uCloud.w);',
+  '  float th = mix(' + SG_CLOUD_THRESHOLD[0].toFixed(2) + ', ' + SG_CLOUD_THRESHOLD[1].toFixed(2) + ', uCloud.x);',
+  '  return smoothstep(th, th + ' + SG_CLOUD_EDGE.toFixed(2) + ', n);',
+  '}',
+  'vec4 cloudDeck(vec3 d, vec3 o) {',
+  '  if (d.z <= 0.003 || o.z >= uCloud.y || uCloud.x <= 0.0) return vec4(0.0);',
+  '  float t = min((uCloud.y - o.z) / d.z, ' + SG_CLOUD_FAR_M.toFixed(1) + ');',
+  '  vec2 xy = o.xy + d.xy * t;',
+  '  float dens = cloudDensity(xy);',
+  '  if (dens <= 0.002) return vec4(0.0);',
+  // The cloud's own sun: lower by the way round the Earth toward it, higher by the deck's height (the horizon's dip).
+  '  float az = atan(d.x, d.y), rhoKm = t * length(d.xy) * 0.001, baseKm = uCloud.y * 0.001;',
+  '  float dip = degrees(acos(' + SG_CLOUD_EARTH_KM + ' / (' + SG_CLOUD_EARTH_KM + ' + baseKm)));',
+  '  float sunAlt = dip + uSunAltDeg + degrees(rhoKm / ' + SG_CLOUD_EARTH_KM + ') * cos(az - uSunAz);',
+  '  float lit = smoothstep(' + SG_CLOUD_LIT_FROM.toFixed(2) + ', ' + SG_CLOUD_LIT_TO.toFixed(2) + ', sunAlt);',
+  '  vec3 sunE = uCloudSunE * exp(-' + SG_SUN_DEPTH_RGB + ' * airmassDeg(max(sunAlt, -0.5))) * lit;',
+  // Shadowed where the deck toward the Sun is denser; darker underneath where it is thick; bright where thin and near the Sun.
+  '  vec2 toSun = uSunVec.xy / max(uSunVec.z, 0.15) * uCloud.z;',
+  '  float shade = 1.0 - clamp(cloudDensity(xy + toSun) - dens * 0.5, 0.0, 1.0) * 0.6;',
+  '  float under = 1.0 - 0.45 * dens;',
+  '  float silver = 1.0 + 1.5 * pow(max(dot(d, uSunVec), 0.0), 12.0) * (1.0 - dens);',
+  '  vec3 amb = ambientSky(), ground = ' + SG_GROUND_ALBEDO + ' * (amb + vec3(uSunLux * max(uSunVec.z, 0.0) / PI));',
+  '  vec3 Lc = ' + SG_CLOUD_ALBEDO.toFixed(2) + ' * (sunE / PI * shade * under * silver * 0.8 + amb * (0.95 - 0.3 * dens) + 0.5 * ground * dens);',
+  '  float T = exp(-t / ' + SG_CLOUD_HAZE_M.toFixed(1) + ');',
+  '  vec3 Ls = skyLight(az, max(asin(clamp(d.z, 0.0, 1.0)), 0.02));',
+  '  float a = smoothstep(0.0, 0.6, dens) * 0.94 * smoothstep(0.003, 0.03, d.z);',
+  '  return vec4((Lc * T + Ls * (1.0 - T)) * a, a);',
+  '}'
+].join('\n');
+
+var SG_FS_SKY = SG_GLSL_HEAD + '\n' + SG_GLSL_VIEW + '\n' + SG_GLSL_RADIANCE + '\n' + SG_GLSL_CLOUDS + '\n' + [
   'uniform sampler2D uMilky;',
   'uniform float uExposure;',
   'uniform mat3 uGal;',                      // (east, north, up) to galactic
@@ -475,11 +533,13 @@ var SG_FS_SKY = SG_GLSL_HEAD + '\n' + SG_GLSL_VIEW + '\n' + SG_GLSL_RADIANCE + '
   '  vec3 L;',
   '  if (alt >= 0.0) {',
   '    L = skyAbove(d, alt, az);',
+  '    vec4 cl = cloudDeck(d, vec3(0.0));',
+  '    L = L * (1.0 - cl.a) + cl.rgb;',
   '    vec3 g = uGal * d;',
   '    vec2 tc = vec2(0.5 - atan(g.y, g.x) / (2.0 * PI), 0.5 - asin(clamp(g.z, -1.0, 1.0)) / PI);',
   '    vec3 mw = pow(texture(uMilky, tc).rgb, vec3(' + SG_MW_GAMMA + '));',
   '    float grain = 0.75 + 0.5 * hash(floor(px * 0.5) + 7.0);',            // the stars too faint to be catalogued
-  '    L += uMwOn * mw * (uMwScale * skyExt(alt) * mix(1.0, grain, clamp(dot(mw, vec3(1.0)) * 4.0, 0.0, 1.0)));',
+  '    L += (1.0 - cl.a) * uMwOn * mw * (uMwScale * skyExt(alt) * mix(1.0, grain, clamp(dot(mw, vec3(1.0)) * 4.0, 0.0, 1.0)));',
   '  } else {',
   // The ground: what falls on it (the sky's light from above, the Sun's if it is up, the place's own glow) times what it gives back,
   // with a little of the horizon's local light at the horizon; darker the further down. Nothing in it depends on the bearing at the nadir.
@@ -874,6 +934,7 @@ function _sgZodiTable() {
   for (var i = SG_ZODI_S10.length - 1; i >= 0; i--) zt.push(SG_ZODI_S10[i][0] * DEG_TO_RAD, SG_ZODI_S10[i][1]);
   return zt;
 }
+var SG_NO_CLOUDS = { cloud: [0, 2500, 700, 0], wind: [0, 0, 0], sunE: 0 };   // a sky with no cloud field to ask (the clouds' own values: almanac-onesky.js _osCloudValues)
 // One frame. p: { W, H, dpr, view, sunAltGeo, sunAz, moonAlt, moonAz, moonIllum,
 // moonDist, horizon (the 9 numbers of _sgHorizonMatrix), eclPole, sunVec,
 // dial, seed, scint, lm, sunShare, moonShare, moonDisc: {x, y, r} in device px
@@ -905,6 +966,8 @@ function _sgDraw(p) {
   gl.uniform1f(u.uMwScale, SG_MW_LUM); gl.uniform1f(u.uMwOn, sg.mwReady ? 1 : 0);
   gl.uniform1f(u.uZodiScale, 1); gl.uniform1f(u.uAirglow, SG_AIRGLOW_LUM); gl.uniform1f(u.uSeed, p.seed || 0);
   gl.uniform1fv(u['uZodi'], _sgZodiTable());
+  var cv = p.clouds || SG_NO_CLOUDS;
+  gl.uniform4fv(u.uCloud, cv.cloud); gl.uniform3fv(u.uCloudWind, cv.wind); gl.uniform1f(u.uCloudSunE, cv.sunE); gl.uniform1f(u.uSunAltDeg, p.sunAltGeo);
   gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
   // The stars over it, added as light (but not through the Moon's disc: it is in front of them).
   if (sg.starCount) {

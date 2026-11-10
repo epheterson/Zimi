@@ -2174,7 +2174,7 @@ function _skyPaintActors(ctx, s, ts) {
     }
   }
   if (typeof _aeSatsAllSky === 'function') _aeSatsAllSky(ctx, s);   // the all-satellites layer's passes and the GPS overhead (almanac-sats.js)
-  if (typeof _alSkyPaint === 'function') _alSkyPaint(ctx, s);   // a launch's rocket and the satellites it left (almanac-launches.js)
+  if (typeof _osPaintObjects === 'function') _osPaintObjects(ctx, s);   // the satellites, trains and launches in the one registry (almanac-onesky.js)
 }
 // Spawning: each timer adds one and sets the next; nothing while unseen.
 function _skySpawnPlane() { _skySpawn('plane'); }
@@ -2246,7 +2246,8 @@ function _skyLightParams(s) {
     lm: s.lm, sunShare: s.sunShare, moonShare: s.moonShare };
 }
 function _skyGLParams(s) {
-  return Object.assign(_skyLightParams(s), { W: s.W, H: s.H, dpr: s.dpr, view: _skyGLView(s), seed: s.twinkle, scint: !_skyReduceMotion(), moonDisc: s.moonDisc });
+  return Object.assign(_skyLightParams(s), { W: s.W, H: s.H, dpr: s.dpr, view: _skyGLView(s), seed: s.twinkle, scint: !_skyReduceMotion(), moonDisc: s.moonDisc,
+    clouds: _osCloudValues(_osDef({ lat: s.lat, lon: s.lon, tMs: s.nowTime }), s.sunShare) });
 }
 // The page's first sky is held behind the Almanac's veil (almanac.js) until it is the picture that stays: the GPU's,
 // with its stars (and the Milky Way where the sky is dark enough for it), or the Canvas 2D sky where there is no GPU.

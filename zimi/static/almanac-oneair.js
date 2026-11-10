@@ -102,11 +102,28 @@ var _oaAir = {
     return lv.exposure * AE_ST_LUX_PER_UNIT;
   }
 };
+// The day's clouds (almanac-skygl.js SG_GLSL_CLOUDS: the card's own): osClouds(d, o) is the deck seen along d from o (metres, the local
+// frame), premultiplied, in the same units as oaSky; the ground view lays it over the sky.
+var OA_CLOUD_GLSL = [
+  SG_GLSL_CLOUDS,
+  'vec4 osClouds(vec3 d, vec3 o) { vec4 c = cloudDeck(d, o); return vec4(c.rgb / ' + AE_ST_LUX_PER_UNIT.toExponential(3) + ', c.a); }'
+].join('\n');
+_oaAir.clouds = {
+  glsl: OA_CLOUD_GLSL,
+  uniforms: { uCloud: [0, OS_CLOUD_BASE_M, OS_CLOUD_THICK_M, 0], uCloudWind: [0, 0, 0], uCloudSunE: 0, uSunAltDeg: 0 },
+  update: function (st, fr, ph, u) {
+    var def = _oaDef(st, fr), cv = _osCloudValues(def, _osSkyState(def).p.sunShare);
+    if (u.uCloud) u.uCloud.value = cv.cloud;
+    if (u.uCloudWind) u.uCloudWind.value = cv.wind;
+    if (u.uCloudSunE) u.uCloudSunE.value = cv.sunE;
+    if (u.uSunAltDeg) u.uSunAltDeg.value = _osSkyState(def).p.sunAltGeo;
+  }
+};
 _aeStandAir = _oaAir;
 
 // The satellites, trains and launches in the card's sky and in this view's are one registry (almanac-onesky.js _osSkySource):
 // the ground view draws what is in it for the Earth.
-if (typeof _aeStandSkySource === 'function') _aeStandSkySource(function (body, lat, lon, ms) { return _osObjects(body, lat, lon, ms); });
+if (typeof _aeStandSkySource === 'function') _aeStandSkySource(function (body, lat, lon, ms) { return _osObjects(body, lat, lon, ms).filter(function (o) { return o.kind !== 'gps'; }); });
 _osOnChange(function () {   // an answer came in or a source came or went: the ground view draws again
   var st = typeof _ae !== 'undefined' && _ae && _ae.stand;
   if (!st) return;

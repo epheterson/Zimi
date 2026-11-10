@@ -550,39 +550,3 @@ function _alExactPoints(ms, sc, n) {
 // ── The live sky ──
 // Called by almanac-sky.js _skyPaintActors. The rocket while it is up, with the sight it makes from this place, and the
 // released satellites that are lit.
-function _alSkyPaint(ctx, s) {
-  if (!_al.flight || !_al.cur) return;
-  var ms = _skyLive() ? Date.now() : s.nowTime, dpr = s.dpr, drawn = false, L = _al.cur;
-  var r = _lfSkyRocket(_al.flight, L, ms, s.lat, s.lon);
-  if (r && _skyInView(s, _skyX(s, r.az), 40)) {
-    var hx = _skyX(s, r.az), hy = _skyY(s, r.el), px = hx, py = hy;
-    r.trail.forEach(function (q, j) {
-      var qx = _skyX(s, q.az), qy = _skyY(s, q.el);
-      ctx.strokeStyle = 'rgba(255,236,200,' + (0.5 * (1 - j / r.trail.length)).toFixed(3) + ')';
-      ctx.lineWidth = dpr * 1.6;
-      ctx.beginPath(); ctx.moveTo(px, py); ctx.lineTo(qx, qy); ctx.stroke();
-      px = qx; py = qy;
-    });
-    if (r.sight === 'jellyfish') _skyLight(ctx, hx, hy, 9 * dpr, r.rgb, 0.35);
-    _skyLight(ctx, hx, hy, (r.sight === 'dot' || r.sight === 'day' ? 2.2 : 3) * dpr, r.sight === 'flame' ? r.rgb : [255, 244, 225], 0.95);
-    ctx.fillStyle = 'rgba(255,250,235,.85)';
-    ctx.font = (11 * dpr) + 'px sans-serif';
-    ctx.fillText(L.name, hx + 8 * dpr, hy - 8 * dpr);
-    s.bodies.push({ type: 'rocket', name: r.name, x: hx / dpr, y: hy / dpr, r: 5, alt: r.el, az: r.az, km: r.km });
-    drawn = true;
-  }
-  if (_al.dep && _al.depSource === AL_SRC.recon) {
-    var first = true;
-    _lfSkyBatch(_al.dep, ms, s.lat, s.lon).forEach(function (v) {
-      var x = _skyX(s, v.az);
-      if (!_skyInView(s, x, 4)) return;
-      var y = _skyY(s, v.el);
-      ctx.fillStyle = 'rgba(255,240,205,' + (AL_PEARL_ALPHA * v.share).toFixed(3) + ')';   // a pinpoint, no halo: a string of pearls, fading in the Earth's shadow
-      ctx.beginPath(); ctx.arc(x, y, AL_PEARL_PX * dpr, 0, 6.2832); ctx.fill();
-      if (first) s.bodies.push({ type: 'sat', name: _aeT('alm_launch_recon'), x: x / dpr, y: y / dpr, r: 4, alt: v.el, az: v.az, km: v.km });
-      first = false;
-      drawn = true;
-    });
-  }
-  if (drawn) s.issUp = true;
-}
