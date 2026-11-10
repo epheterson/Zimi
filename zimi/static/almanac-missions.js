@@ -385,6 +385,7 @@ function _aeMissionStep(sc) {
   s.follow = follow;
   if (follow) _amCamera(m, s, follow, ph, dt, sc);
   _amHudTick(m, s, follow, t, now);
+  _amDawn(s, follow, sc);
 }
 // After the camera (its matrices are this frame's): the models, flames and dots.
 function _aeMissionDraw() {
@@ -439,6 +440,35 @@ function _aeMissionDraw() {
   });
   _aeCommitPoints(s.dot, nDots);
   if (s.onDraw) s.onDraw();
+}
+
+
+// ── The dawn glow ──
+// Near the Earth with the Sun a few degrees below the horizon, a warm band lies along the horizon the camera sees (the picture's own atmosphere is too thin a glow
+// for twilight): at its strongest with the Sun about AM_DAWN_PEAK_DEG down, gone by AM_DAWN_SPAN_DEG either side of that.
+var AM_DAWN_PEAK_DEG = -4, AM_DAWN_SPAN_DEG = 6, AM_DAWN_MAX = 0.4, AM_DAWN_ALT_KM = 300, AM_DAWN_BAND = 0.35;
+function _amDawn(s, st, sc) {
+  var el = _aeById('am-dawn');
+  if (!el) return;
+  var pose = s.pose, on = false;
+  if (st && pose && st.leg.ref !== 'moon' && st.leg.frame !== 'probe' && st.leg.frame !== 'helio' && !s.fly) {
+    var up = _aeNorm(st.pos), alt = _aeLen(st.pos) * AE_EARTH_RADIUS_KM - AE_EARTH_RADIUS_KM;
+    if (alt < AM_DAWN_ALT_KM) {
+      var elev = _aeDeg(Math.asin(_aeClamp(_aeDot(_aeNorm(sc.sun), up), -1, 1))), z = (elev - AM_DAWN_PEAK_DEG) / AM_DAWN_SPAN_DEG, k = Math.exp(-z * z);
+      if (k > 0.02) {
+        var look = pose.look, right = _aeNorm(_aeCross(look, pose.up)), upc = _aeCross(right, look);
+        var dip = Math.acos(_aeClamp(AE_EARTH_RADIUS_KM / (AE_EARTH_RADIUS_KM + Math.max(alt, 0)), 0, 1)), pitch = Math.asin(_aeClamp(_aeDot(look, up), -1, 1));
+        var a = -dip - pitch, half = Math.tan(_aeRad(pose.fov) / 2), y = _ae.h / 2 - Math.tan(a) / half * _ae.h / 2, hgt = _ae.h * AM_DAWN_BAND;
+        var roll = Math.atan2(_aeDot(up, right), _aeDot(up, upc));
+        el.style.height = hgt + 'px';
+        el.style.top = (y - hgt / 2) + 'px';
+        el.style.transform = 'rotate(' + roll + 'rad)';
+        el.style.opacity = (AM_DAWN_MAX * k).toFixed(3);
+        on = true;
+      }
+    }
+  }
+  if (!on) el.style.opacity = '0';
 }
 
 // ── The hand-off at touchdown ──
@@ -566,6 +596,7 @@ var AM_ICONS = {
   dot: '<svg viewBox="0 0 24 24" width="12" height="12" fill="currentColor" aria-hidden="true"><circle cx="12" cy="12" r="5"/></svg>'
 };
 var AM_CSS = [
+  '.am-dawn{position:absolute;left:-30%;right:-30%;pointer-events:none;opacity:0;background:linear-gradient(to bottom,rgba(255,120,50,0),rgba(255,150,70,.85) 48%,rgba(255,200,120,.55) 52%,rgba(255,120,50,0));mix-blend-mode:screen}',
   '.am-back{position:absolute;left:50%;top:calc(env(safe-area-inset-top,0px) + 64px);transform:translateX(-50%);z-index:60;border:1px solid var(--amber-border);background:rgba(20,20,20,.82);color:var(--amber);border-radius:999px;padding:8px 16px;font:600 13px/1 inherit;cursor:pointer}',
   '.ae-view.ae-mission .ae-top,.ae-view.ae-mission .ae-bottom,.ae-view.ae-mission .ae-labels,.ae-view.ae-mission .ae-lms,.ae-view.ae-mission .ae-mini,.ae-view.ae-mission .ae-info,.ae-view.ae-mission .ae-set{display:none!important}',
   '.am-hud{position:absolute;inset:0;z-index:50;pointer-events:none;display:none;-webkit-user-select:none;user-select:none}',
@@ -613,7 +644,7 @@ function _amHud(on) {
   hud.className = 'am-hud'; hud.id = 'am-hud';
   var lab = function (k) { return _almEsc(_aeT(k)); };
   var w = _amWidths(m);
-  hud.innerHTML = '<div class="am-layer" id="am-layer"></div>' +
+  hud.innerHTML = '<div class="am-dawn" id="am-dawn"></div><div class="am-layer" id="am-layer"></div>' +
     '<div class="am-bar"><button type="button" class="ae-btn ae-round" id="am-exit" aria-label="' + lab('alm_ms_close') + '" title="' + lab('alm_ms_close') + '">' + AM_ICONS.close + '</button>' +
     '<div class="am-title"><b>' + _almEsc(_aeT('alm_ms_' + s.id) === 'alm_ms_' + s.id ? m.name : _aeT('alm_ms_' + s.id)) + '</b><span class="am-met" id="am-met"></span></div>' +
     '<button type="button" class="ae-btn ae-round" id="am-recentre" aria-label="' + lab('alm_ms_recentre') + '" title="' + lab('alm_ms_recentre') + '">' + AM_ICONS.recentre + '</button></div>' +
