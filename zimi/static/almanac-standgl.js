@@ -304,7 +304,7 @@ var AE_ST_BODY_FRAG = [
   '  vec3 nb = uBody * n; vec2 uv = vec2(atan(nb.y, nb.x) / (2.0 * PI) + 0.5, asin(clamp(nb.z, -1.0, 1.0)) / PI + 0.5);',
   '  vec2 dx = dFdx(uv), dy = dFdy(uv); dx.x -= floor(dx.x + 0.5); dy.x -= floor(dy.x + 0.5);',
   '  vec3 m = texture2D(uMap, uv).rgb; if (uGrey > 0.5) m = vec3(m.r);',
-  '  return vec3(uv, uMapped);',
+  '  return vec3(fract(uv * 6.0), 0.5) * 0.3;',
   '}',
   'void main() {',
   '  vec2 o = vUv * uHalf; float a = length(o);',                    // radians from the body's centre
