@@ -1688,8 +1688,15 @@ var AE_SUNFX_MIN_PX = 28;            // the Sun's disc, radius in CSS px, past w
 function _aeSunFxWanted(S, ms) {
   if (typeof _aeSunFxTick === 'function') { _aeSunFxTick(S, ms); return; }
   if (S.sunFxAsked || typeof document === 'undefined') return;
-  var d = _aeLen(_aeSub([S.camera.position.x, S.camera.position.y, S.camera.position.z], [S.sun.position.x, S.sun.position.y, S.sun.position.z]));
+  var to = _aeSub([S.sun.position.x, S.sun.position.y, S.sun.position.z], [S.camera.position.x, S.camera.position.y, S.camera.position.z]), d = _aeLen(to);
   if (AE_SUN_SHOW_R / Math.max(1e-9, d) * _ae.h / 2 / Math.tan(_aeRad(S.camera.fov) / 2) < AE_SUNFX_MIN_PX) return;
+  // Wide on screen is not enough: on a phone the Sun is "wide" from the first frame, looking the other way. It is asked for when
+  // the view is on the Sun, or the Sun is within the picture (the angle to it inside the corner of the frame).
+  if (_ae.target !== 'sun') {
+    var f = S.camera.getWorldDirection(S.sunFxDir || (S.sunFxDir = new S.THREE.Vector3())), cosA = (to[0] * f.x + to[1] * f.y + to[2] * f.z) / Math.max(1e-9, d);
+    var tanV = Math.tan(_aeRad(S.camera.fov) / 2), corner = Math.atan(tanV * Math.hypot(1, _ae.w / Math.max(1, _ae.h)));
+    if (Math.acos(Math.max(-1, Math.min(1, cosA))) > corner + AE_SUN_SHOW_R / Math.max(1e-9, d)) return;
+  }
   S.sunFxAsked = true;
   var el = document.createElement('script');
   el.src = AE_SUNFX_JS;
@@ -2054,6 +2061,21 @@ function _aeSharedHiMoon(S) {
     });
   };
 }
+// The 4096 Moon (730 KB, 43 MB of texture memory once on the GPU) is asked for when the 1024 map can no longer show the Moon: the
+// Moon is what the view is on (opened from Go to, or a flight there), or its disc is wide enough that a texel of the small map
+// is bigger than a pixel (a hemisphere of the map, W / 2 texels, across a disc 2R pixels wide: W / 4R texels to a pixel). Until
+// then the 3D Moon is drawn from the small map, and the Earth opens without this file.
+var AE_MOON_LO_MAP_W = 1024;          // the width of the small map (AE_TEX_MOON)
+function _aeMoonDiscPx(S) {
+  var e = S.moon.matrixWorld.elements, cam = S.camera.position, d = Math.hypot(cam.x - e[12], cam.y - e[13], cam.z - e[14]);
+  return AE_MOON_RADIUS_RE / Math.max(1e-9, d) * _ae.h / 2 / Math.tan(_aeRad(S.camera.fov) / 2) * (typeof window !== 'undefined' && window.devicePixelRatio || 1);
+}
+function _aeMoonHiWanted(S) {
+  if (S.moonHiAsked || !S.moonUni.moonMapped.value) return;
+  if (_ae.target !== 'moon' && _aeMoonDiscPx(S) < AE_MOON_LO_MAP_W / 4) return;
+  S.moonHiAsked = true;
+  _aeLoadMap(S, S.moonUni.moonMap, AE_TEX_MOON_HI, AE_THREE_RED_FORMAT, _aeSharedHiMoon(S));
+}
 // Loads whatever maps are not in yet; resolves with whether the day map is.
 function _aeLoadMaps(S) {
   _aeLoadStars(S);
@@ -2063,7 +2085,7 @@ function _aeLoadMaps(S) {
   _aeLoadMap(S, S.moonUni.moonMap, AE_TEX_MOON).then(function (ok) {
     if (!ok) return;
     S.moonUni.moonMapped.value = 1;
-    _aeLoadMap(S, S.moonUni.moonMap, AE_TEX_MOON_HI, AE_THREE_RED_FORMAT, _aeSharedHiMoon(S));
+    _aeMoonHiWanted(S);   // the 4096 one at once if the Moon is what the view opens on; else when it is wanted (each frame)
   });
   if (_ae.hdInstalled && !S.hdAsked) { S.hdAsked = true; _aeHdLoad(S); }   // a view built again (it gives the GPU back)
   return _aeLoadMap(S, S.earthUni.dayMap, AE_TEX_DAY);
@@ -6650,6 +6672,7 @@ function _aeUpdate(ms) {
   S.sunT.value = (ms / 1000 / AE_GRANULE_LIFE_S) % AE_GRANULE_CYCLE;
   _aeUpdateSpots(S, ms);
   _aeSunFxWanted(S, ms);
+  _aeMoonHiWanted(S);
   _aeUpdateMoonPath(ms);
   _aeUpdateSats(ms, sc);
   // The planets and probes before the camera: a probe framed from tens of metres moves hundreds in a frame (Voyager
