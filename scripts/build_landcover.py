@@ -41,6 +41,8 @@ CONIFER_LAT = (
 TUNDRA_LAT = 58  # bare ground poleward of this is tundra, equatorward shrub
 GRASS_G_OVER_R, FOREST_G_OVER_R = 0.88, 1.1  # the Blue Marble's greens: a pixel at least this green over red
 FOREST_LUM, DESERT_LUM = 0.19, 0.36  # darker than this is forest (if green); brighter than this is desert
+ANTARCTIC_ICE_LAT = -60  # land south of this is ice
+ARID_SHARE, GREEN_WINS = 0.30, 0.65  # a cell with this share of desert pixels is desert unless this share of it is green
 LAND_SHARE = 0.25  # a cell with at least this much land is a land cell (a coast is the person's, not the sea's)
 
 
@@ -147,9 +149,15 @@ def main():
                 int(cx * bw / W) + 1, int((cx + 1) * bw / W)
             )
             block = bm[by0:by1, bx0:bx1].reshape(-1, 3)
-            cells[cy, cx] = (
-                int(np.argmax(np.bincount(classify(block, lat, cx - 180 + 0.5), minlength=7))) | coast
-            )
+            counts = np.bincount(classify(block, lat, cx - 180 + 0.5), minlength=7)
+            cls = int(np.argmax(counts))
+            green = int(counts[BROADLEAF] + counts[CONIFER] + counts[GRASS])
+            # A river through a desert (the Nile) is a thin green line in a wide dry cell: dry wins unless the cell is mostly green.
+            if counts[DESERT] >= ARID_SHARE * counts.sum() and green < GREEN_WINS * counts.sum() and cls != SNOW:
+                cls = DESERT
+            if lat < ANTARCTIC_ICE_LAT:  # the ice sheet and its shore: a rock or a dry valley in it does not make a beach
+                cls = SNOW
+            cells[cy, cx] = cls | coast
             tints.append(tint_byte(block.mean(axis=0)))
     out = bytearray(b"ZCOV" + struct.pack("<BBHH", 1, 0, W, H))
     out += runs(cells.reshape(-1))
@@ -170,6 +178,8 @@ def main():
         ("Greenland", 72.0, -40.0),
         ("Antarctica", -80.0, 0.0),
         ("Honolulu", 21.3, -157.9),
+        ("Cairo", 30.04, 31.24),
+        ("McMurdo", -77.85, 166.67),
         ("Utqiagvik", 71.3, -156.8),
         ("Iqaluit", 63.7, -68.5),
         ("Nuuk coast", 64.5, -50.5),

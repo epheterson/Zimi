@@ -604,6 +604,7 @@ var AE_CSS = [
     '#ae-views .ae-chips{flex-direction:column;align-items:flex-start;overflow:visible;gap:4px}' +
     '.ae-spintools{flex-direction:column;gap:4px}' +
     '.ae-mini,.ae-bottom .ae-note{display:none}' +
+    '.ae-bottom .ae-card{bottom:auto;top:6px;max-height:min(55vh,calc(100vh - 130px))}' +   // the foot row fills the view here, so a card hung from its top edge went up under the bar: it sits just under the bar instead
     '.ae-clock .alm-clock:not(.alm-ck-open) .alm-spd{display:none}' +
   '}',
   '.ae-row{display:flex;gap:6px;flex-wrap:wrap;justify-content:center;pointer-events:auto}',
@@ -858,7 +859,7 @@ function _aeGoGroups() {
   if (!_aeTracks && _aeTracksLoading) craft.push(AE_GO_LOADING);
   if (!_aeLm && _aeLmLoading) landings.push(AE_GO_LOADING);
   var missions = AE_MISSION_IDS.map(function (id) { return AE_GO_MS + id; });
-  return [['alm_go_earth_moon', ['earth', 'moon']], ['alm_go_planets', planets], ['alm_go_moons', moons], ['alm_go_dwarfs', dwarfs], ['alm_go_craft', craft], ['alm_go_landings', landings], ['alm_go_missions', missions]]
+  return [['alm_go_earth_moon', ['earth', 'moon']], ['alm_go_planets', planets], ['alm_go_missions', missions], ['alm_go_moons', moons], ['alm_go_dwarfs', dwarfs], ['alm_go_craft', craft], ['alm_go_landings', landings]]
     .filter(function (g) { return g[1].length; });
 }
 function _aeGoName(key) {
