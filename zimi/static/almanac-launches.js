@@ -370,7 +370,7 @@ function _alBindLaunch() {
   _aeById('al-here').onclick = function () { _alHintDone(); _alStandThen('here'); };
   _aeById('al-frompad').onclick = function () { _alHintDone(); _alStandThen('pad'); };
   var g = _aeById('al-ground');
-  if (g) g.onclick = function () { var L = _al.cur; _alHintDone(); _alHideSheet(); _aeGoTo(L.ms); _aeStandAt('earth', L.lat, L.lon); };   // the sheet gives the view to the ground
+  if (g) g.onclick = function () { var L = _al.cur; _alHintDone(); _alHideSheet(); _aeGoTo(L.ms); var at = _alPlace() || { lat: L.lat, lon: L.lon }; _aeStandAt('earth', at.lat, at.lon); };   // the sheet gives the view to the ground
   var r = _aeById('al-recon'), x = _aeById('al-exact');
   if (r) r.onclick = function () { _al.depSource = AL_SRC.recon; _alRender(); _alKick(); };
   if (x) x.onclick = _alUseExact;
