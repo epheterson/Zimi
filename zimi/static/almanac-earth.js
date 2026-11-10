@@ -8053,9 +8053,8 @@ function _aeBindKeys() {
       if (_ae.site) { var home = _ae.site.body; _aeSiteLeave(); _aePreset(home); return; }
       if (_ae.info) { _aeCloseInfo(true); return; }
       if (_ae.setOpen) { _aeShowSettings(false); _aeById('ae-gear').focus({ preventScroll: true }); return; }
-      if (_ae.stand || _ae.standPending) { _aeStandLeave(); return; }
-      _ae.closedByKey = true;
-      _aeClose();
+      if (!(_ae.stand || _ae.standPending)) _ae.closedByKey = true;
+      _aeBack();
       return;
     }
     if (e.target !== _aeById('ae-canvas') || _ae.spin) return;   // side by side has no camera to move
@@ -8712,6 +8711,12 @@ function _aeBackLabel() {
     return _aeInfoName(st.key || (st.pend && st.pend.key) || 'earth');
   }
   return _aeFrom === 'orrery' ? _aeT('alm_solar_system') : _aeT('almanac');   // opened from the sky card or the hero: the arrow lands on the Almanac page
+}
+// The header's arrow steps out one level: off the ground to the globe of the body stood on (or, when the sky card handed
+// the ground over, back to that card), and from anywhere else out of the view.
+function _aeBack() {
+  if (_ae.stand || _ae.standPending) { _aeStandClose(); return; }
+  _aeClose();
 }
 function _aeClose(toOrrery) {
   if (!_aeIsOpen || (_ae.hand && _ae.hand.dir < 0)) return;

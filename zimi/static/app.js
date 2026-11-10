@@ -4378,7 +4378,7 @@ function goBack() {
   // The Almanac's tables as a PDF, over the Almanac (almanac-tables.js).
   if (typeof _tbPdfBack === 'function' && _tbPdfBack()) return;
   if (_createOpen) { closeCreate(); return; }
-  if (typeof _aeIsOpen !== 'undefined' && _aeIsOpen) { _aeClose(); return; }   // the 3D view over the Almanac first
+  if (typeof _aeIsOpen !== 'undefined' && _aeIsOpen) { _aeBack(); return; }   // the 3D view over the Almanac first, one level at a time
   if (_almanacOpen) { closeAlmanac(); return; }
   if (_isAppPage()) {
     // A thing inside the app is a history step: take it back. Otherwise ask

@@ -103,3 +103,43 @@ def test_leaving_a_mission_puts_back_the_date_the_reader_chose(browser, served):
         assert not errors, errors
     finally:
         ctx.close()
+
+
+STANDING = "() => !!(_ae.stand && _ae.stand.mode === 'ground')"
+
+
+def test_back_from_stand_here_returns_to_the_globe_it_was_entered_from(browser, served):
+    ctx, pg, errors = _page(browser, served)
+    try:
+        for body, lat, lon in (("earth", 34.05, -118.24), ("mars", 18.4, 77.5)):
+            _open_3d(pg, body)
+            pg.evaluate("(a) => _aeStandAt(a[0], a[1], a[2])", [body, lat, lon])
+            pg.wait_for_function(STANDING, timeout=READY_MS, polling=250)
+            pg.click("#back-btn")
+            pg.wait_for_function("() => !_ae.stand && !_ae.standPending", timeout=60_000, polling=200)
+            pg.wait_for_timeout(400)
+            assert pg.evaluate("_aeIsOpen") is True, body  # one level out: the globe, not the Almanac page
+            assert pg.evaluate("_ae.target") == body
+            pg.click("#back-btn")  # and the next one leaves the view
+            pg.wait_for_function("() => !_aeIsOpen", timeout=20_000, polling=100)
+            pg.wait_for_timeout(400)
+        assert pg.evaluate("_almanacOpen") is True
+        assert not errors, errors
+    finally:
+        ctx.close()
+
+
+def test_back_from_stand_here_entered_from_the_sky_card_returns_to_the_card(browser, served):
+    ctx, pg, errors = _page(browser, served)
+    try:
+        pg.wait_for_function("() => typeof _aeStandOpen === 'function'", timeout=60_000)
+        pg.evaluate(
+            "() => { window.__back = 0; _aeStandOpen({ lat: 34.05, lon: -118.24, heading: 180, direct: true, back: function () { window.__back++; } }); }"
+        )
+        pg.wait_for_function(STANDING, timeout=READY_MS, polling=250)
+        pg.click("#back-btn")
+        pg.wait_for_function("() => !_aeIsOpen && window.__back === 1", timeout=60_000, polling=200)
+        assert pg.evaluate("_almanacOpen") is True
+        assert not errors, errors
+    finally:
+        ctx.close()
