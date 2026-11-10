@@ -4311,6 +4311,8 @@ function _aeRefAxesRows() {
   add('ms.a11_land', _aeT('tb_kn_ms_land'), '102:45:39.9 · 0.67408 N 23.473 E', '', MR + ', table 5-I; LROC');
   add('ms.a11_ei', _aeT('tb_kn_ms_ei'), '195:03:05.7 · 3.19 S 171.96 E · 36,194 ft/s · −6.48', 'h:mm:ss · ° · °', MR + ', table 7-VII');
   add('ms.a11_entry_note', _aeT('tb_kn_ms_entry'), _aeT('tb_kn_ms_entry_v'), '', MR + ', table 7-VII');
+  add('ms.a11_tli_time', _aeT('tb_kn_ms_tli'), _aeT('tb_kn_ms_tli_v'), '', MR + ', table 7-II');
+  add('ms.a11_rendezvous', _aeT('tb_kn_ms_rdv'), _aeT('tb_kn_ms_rdv_v'), '', MR + ', table 3-I');
   add('ms.a11_splash', _aeT('tb_kn_ms_splash'), '195:18:35 · 13.30 N 169.15 W', '', MR + ', table 7-VII');
   add('ms.a11_fit', _aeT('tb_kn_ms_fit'), '× 1.055 (first stage), × 0.983 (second and third)', '', 'Zimi (scripts/mission_ascent_fit.py), fitted to the first-stage cut-off of the Saturn V AS-506 flight evaluation (67 km, 2.4 km/s)');
   add('ms.voyager_flybys', _aeT('tb_kn_ms_voyager'), 'Jupiter 348,435 · Saturn 184,030 km (Voyager 1)', 'km', 'NASA/JPL Horizons');
