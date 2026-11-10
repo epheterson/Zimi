@@ -2712,6 +2712,22 @@ function _aeOrbitShow(key) { return _aeOrbitShowRaw(key) * _aeSunLineFade(); }
 // Close to the Sun its disc fills the view and the orbit lines (and the trails) cross it edge-on as thin white strokes:
 // they are a far-view aid, out before the Sun fills the screen, never drawn over its disc.
 var AE_SUN_LINES_GONE = 24, AE_SUN_LINES_FULL = 60;   // the Sun's radii from it: the Sun's own view (about 17) has none, the Planets view (hundreds) all
+// The Moon seen from a few kilometres up: the base sphere's facets (5.6 degrees, 170 km chords) lie up to 2 km inside the true
+// surface, so a camera 1.3 km up is below the plane of the facet under it and sees a flat slab with a hard edge. Near the
+// surface the Moon is drawn from a finer sphere (0.7 degree facets, 130 m inside), built when first needed and put back
+// when the camera goes away; the HD tiles' own meshes are finer still and take over where they are.
+var AE_MOON_FINE_SEGMENTS = [512, 256], AE_MOON_FINE_ALT_KM = 300, AE_MOON_COARSE_ALT_KM = 600;
+function _aeMoonMesh(S, sc) {
+  var e = S.moon.matrixWorld.elements, cam = S.camera.position;
+  var altKm = (Math.hypot(cam.x - e[12], cam.y - e[13], cam.z - e[14]) - AE_MOON_RADIUS_RE) * AE_EARTH_RADIUS_KM;
+  if (!S.moonCoarse) S.moonCoarse = S.moon.geometry;
+  if (altKm < AE_MOON_FINE_ALT_KM && S.moon.geometry === S.moonCoarse) {
+    if (!S.moonFine) S.moonFine = new S.THREE.SphereGeometry(AE_MOON_RADIUS_RE, AE_MOON_FINE_SEGMENTS[0], AE_MOON_FINE_SEGMENTS[1]);
+    S.moon.geometry = S.moonFine;
+  } else if (altKm > AE_MOON_COARSE_ALT_KM && S.moon.geometry !== S.moonCoarse) {
+    S.moon.geometry = S.moonCoarse;
+  }
+}
 function _aeSunLineFade() {
   if (_ae.target !== 'sun') return 1;
   return _aeClamp((_ae.dist / AE_SUN_SHOW_R - AE_SUN_LINES_GONE) / (AE_SUN_LINES_FULL - AE_SUN_LINES_GONE), 0, 1);
@@ -6082,6 +6098,7 @@ function _aeUpdate(ms) {
   // The Moon's phase angle, Sun-Moon-Earth, sets the earthshine.
   S.moonUni.earthshine.value = _moonEarthshine(_aeDot(_aeNorm(_aeSub(sc.sun, sc.moon)), _aeNorm(_aeScale(sc.moon, -1))));
   _aeOrientMoon(sc);
+  _aeMoonMesh(S, sc);
   var sd = _aeSunShown(sc);
   S.sun.position.set(sd[0], sd[1], sd[2]);
   S.sunGlowUni.center.value.set(sd[0], sd[1], sd[2]);

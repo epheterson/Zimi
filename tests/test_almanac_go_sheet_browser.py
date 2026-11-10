@@ -182,9 +182,9 @@ def test_in_short_landscape_the_go_to_list_shows_at_least_six_rows(library):
                     var r = b.getBoundingClientRect();
                     if (r.top >= sheet.top - 1 && r.bottom <= find.top + 1) tops[Math.round(r.top)] = 1;
                 });
-                return Object.keys(tops).length;
+                return { n: Object.keys(tops).length, sheet: [Math.round(sheet.top), Math.round(sheet.bottom)], find: Math.round(find.top), all: document.querySelectorAll('#ae-go .ae-go-row').length };
             }""")
-            assert rows >= 6, rows
+            assert rows['n'] >= 6, rows
             ctx.close()
         finally:
             br.close()
