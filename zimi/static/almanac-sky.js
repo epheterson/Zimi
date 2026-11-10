@@ -1861,6 +1861,7 @@ var SKY_COMPASS_FOOT_PX = 4;   // css px from the bottom edge to the letters' ba
 // The foreground: the sea where the grid says there is a coast, the place's own land (almanac-skyland.js) elsewhere, a plain horizon
 // until the grid is in (almanac-onesky.js _osCardScene).
 var SKY_PLAIN_GROUND = [0.3, 0.29, 0.24];
+var SKY_PALM_MAX_LAT = 40;   // a coast poleward of this has its sea, its boats and its whales, but no palms
 function _skyPaintGround(ctx, s) {
   var scene = _osCardScene(s);
   if (scene === 'beach') _skyPaintSea(ctx, s, s.sea ? s.sea.frac : SKY_CALM_FRAC);
@@ -2563,7 +2564,7 @@ function _skyPaint(ts) {
     if (beach) {
       if (_osCardScene(s) === 'beach') {
         for (var i = 0; i < s.actors.length; i++) if (s.actors[i].type === 'whale') _skyPaintWhale(ctx, s, s.actors[i], ts);
-        _skyPaintPalms(ctx, s, ts);
+        if (Math.abs(s.lat) < SKY_PALM_MAX_LAT) _skyPaintPalms(ctx, s, ts);   // palms grow in the warm latitudes only
       }
       _skyPaintCompassFoot(ctx, s);
     }
