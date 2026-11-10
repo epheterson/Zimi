@@ -478,6 +478,7 @@ function _asCount() {
 // Called by almanac-earth.js after its own satellites.
 function _asSatFrame(ms, sc) {
   if (!_as.on || _as.state !== 'ready') return;
+  if (_asStandSkyOff.registered !== _as.data) _asStandSkySync();   // the ground view's file loads on its first use: joined when it is there
   if (!_as.cloud || _as.scene !== _ae.gl.scene) _asMakeCloud();
   var cloud = _as.cloud, fast = typeof _almRate !== 'undefined' && Math.abs(_almRate) > AS_FAST_RATE;
   cloud.visible = _ae.target === 'earth' && !fast;
@@ -840,7 +841,8 @@ function _asStandSkyObjects(answer, tMs) {
     g = g.filter(function (e) { return Math.abs(e.az - g[0].az) % 360 < AS_TRAIN_SKY_DEG || Math.abs(e.az - g[0].az) % 360 > 360 - AS_TRAIN_SKY_DEG; });
     if (g.length >= AS_TRAIN_SKY_MIN) g.forEach(function (e) { train[e.i] = g.length; });
   });
-  return live.map(function (e) {
+  var stationDrawn = !!(_ae && _ae.sats && _ae.sats.lib && _ae.sats.list.some(function (q) { return q.iss; }));   // the ground view draws the station itself when the Earth's own satellites are loaded
+  return live.filter(function (e) { return !(stationDrawn && d.norad[e.i] === AS_ISS_NORAD); }).map(function (e) {
     var trail = [];
     for (var k = 1; k <= AS_SKY_TRAIL_STEPS; k++) {
       var back = -k * AS_SKY_TRAIL_STEP_S, el = e.el + e.elRate * back;
