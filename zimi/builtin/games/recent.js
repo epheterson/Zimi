@@ -321,8 +321,7 @@
   var WORLD = CLASSICS.concat(['sudoku.html', 'minesweeper.html', 'backgammon.html', 'go.html', 'hearts.html', 'mahjong.html', '2048.html', 'fourinarow.html', 'dominoes.html', 'blackjack.html']);
   function worldSection() {
     var tiles = [];
-    var onTable = doc.querySelector('.ar-table-idle') ? CLASSICS : [];   // an idle table already shows the three classics
-    WORLD.forEach(function (p) { var t = onTable.indexOf(p) < 0 ? tileFor({ path: p }) : null; if (t) tiles.push(ownIds(t)); });
+    WORLD.forEach(function (p) { var t = tileFor({ path: p }); if (t) tiles.push(ownIds(t)); });   // the idle table's three classics are here too: a person looking for chess finds it
     if (!tiles.length) return null;
     var s = section('ar-world', T('shelf.world'), tiles);
     if (root.ZimiShell && root.ZimiShell.localizeTiles) root.ZimiShell.localizeTiles(s);

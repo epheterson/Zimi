@@ -57,7 +57,7 @@ def test_the_row_lists_the_latest_release_only(browser, served):
     assert order[:3] == ["ar-continue", "ar-world", "ar-new"], order
     assert order.index("ar-new") < order.index("ar-daily")
     world = page.eval_on_selector_all(".ar-world a.ar-game", "els => els.map(e => e.getAttribute('href'))")
-    assert world[:3] == ["sudoku.html", "minesweeper.html", "backgammon.html"] and len(world) == 10, world   # the idle table shows the classics
+    assert world[:3] == ["chess.html", "solitaire.html", "checkers.html"] and len(world) == 13, world   # chess is in the row even while the idle table suggests it
     sections = page.eval_on_selector_all(".sh-list > section", "els => els.map(e => e.querySelector('h2').id)")
     assert sections[-1] == "ar-library" and sections[0] != "ar-library", sections
     # Not one picture ten times: the first six are not all one kind.
