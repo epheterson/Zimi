@@ -182,6 +182,58 @@ class TestMissingLastChunk(_Library):
         self.assertTrue(any("missing or cut short" in i for i in row["issues"]))
 
 
+class TestExtensionCase(_Library):
+    """A FAT stick or a Windows copy can leave .ZIM, .Zim or .ZIMAA."""
+
+    def setUp(self):
+        super().setUp()
+        build_fixture_zim(os.path.join(self.zdir, "caps_en_all_2026-01.ZIM"))
+        build_fixture_zim(os.path.join(self.zdir, "mixed_en_all_2026-01.Zim"))
+        for p in _make_split(self.zdir, "upsplit_en_all_2026-01.zim"):
+            os.rename(p, p[: -len(".zimaa")] + p[-len(".zimaa") :].upper())
+        self._rescan()
+
+    def test_whole_files_in_any_case_are_named_as_lower_case_ones(self):
+        rows = {z["name"]: z for z in server.list_zims()}
+        for name, file in (
+            ("caps", "caps_en_all_2026-01.zim"),
+            ("mixed", "mixed_en_all_2026-01.zim"),
+        ):
+            self.assertEqual(server._zim_base_name(file), name)
+            self.assertEqual(rows[name]["file"], file)
+            self.assertEqual(rows[name]["date"], "2026-01")
+            self.assertEqual(rows[name]["entries"], 3)
+
+    def test_upper_case_chunks_are_one_book(self):
+        rows = [z for z in server.list_zims() if z["name"] == "upsplit"]
+        self.assertEqual(len(rows), 1)
+        self.assertEqual(rows[0]["file"], "upsplit_en_all_2026-01.zim")
+        self.assertEqual(rows[0]["parts"], 3)
+        first = server.get_zim_files()["upsplit"]
+        self.assertTrue(first.endswith(".ZIMAA"))
+        # libzim finds later chunks by lower-case names: a filesystem that
+        # ignores case reads the book, one that does not says to rename.
+        if os.path.exists(first[:-2] + "ab"):
+            self.assertIsNotNone(server.get_archive("upsplit"))
+        else:
+            row = health._check_one({"name": "upsplit"}, first, {})
+            self.assertIn("rename them to .zimaa", " ".join(row["issues"]))
+
+    def test_delete_finds_a_book_by_its_lower_case_name(self):
+        self.assertEqual(
+            zimparts.path_of(self.zdir, "caps_en_all_2026-01.zim").lower(),
+            os.path.join(self.zdir, "caps_en_all_2026-01.zim").lower(),
+        )
+        self.assertEqual(
+            zimparts.on_disk(zimparts.path_of(self.zdir, "upsplit_en_all_2026-01.zim")),
+            sorted(
+                p
+                for p in (os.path.join(self.zdir, n) for n in os.listdir(self.zdir))
+                if "upsplit" in p
+            ),
+        )
+
+
 class TestParts(unittest.TestCase):
     def test_book_filename_and_parts(self):
         tmp = tempfile.mkdtemp(prefix="zimi-parts-")
