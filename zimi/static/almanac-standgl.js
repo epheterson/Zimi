@@ -303,7 +303,7 @@ var AE_ST_BODY_FRAG = [
   '  if (uMapped < 0.5) return uTint;',
   '  vec3 nb = uBody * n; vec2 uv = vec2(atan(nb.y, nb.x) / (2.0 * PI) + 0.5, asin(clamp(nb.z, -1.0, 1.0)) / PI + 0.5);',
   '  vec2 dx = dFdx(uv), dy = dFdy(uv); dx.x -= floor(dx.x + 0.5); dy.x -= floor(dy.x + 0.5);',
-  '  vec3 m = textureGrad(uMap, uv, dx, dy).rgb; if (uGrey > 0.5) m = vec3(m.r);',
+  '  vec3 m = texture2D(uMap, uv).rgb; if (uGrey > 0.5) m = vec3(m.r);',
   '  return pow(m, vec3(' + AE_ST_GAMMA + ')) * uMapGain;',
   '}',
   'void main() {',
