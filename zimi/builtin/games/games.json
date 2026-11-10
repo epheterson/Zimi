@@ -141,7 +141,8 @@
   "players": "1",
   "length": "15 min",
   "kind": "cards",
-  "computer": false
+  "computer": false,
+  "added": "1.16"
  },
  {
   "qid": "Q5472990",
@@ -158,7 +159,8 @@
   "players": "1",
   "length": "30 min",
   "kind": "cards",
-  "computer": false
+  "computer": false,
+  "added": "1.16"
  },
  {
   "qid": "Q5032311",
@@ -175,7 +177,8 @@
   "players": "1",
   "length": "10 min",
   "kind": "cards",
-  "computer": false
+  "computer": false,
+  "added": "1.16"
  },
  {
   "qid": "Q7435391",
@@ -192,7 +195,8 @@
   "players": "1",
   "length": "15 min",
   "kind": "cards",
-  "computer": false
+  "computer": false,
+  "added": "1.16"
  },
  {
   "qid": "Q2816947",
@@ -209,7 +213,8 @@
   "players": "1",
   "length": "5 min",
   "kind": "cards",
-  "computer": false
+  "computer": false,
+  "added": "1.16"
  },
  {
   "qid": "Q4672725",
@@ -226,7 +231,8 @@
   "players": "1",
   "length": "5 min",
   "kind": "cards",
-  "computer": false
+  "computer": false,
+  "added": "1.16"
  },
  {
   "qid": "Q5018882",
@@ -243,7 +249,8 @@
   "players": "1",
   "length": "15 min",
   "kind": "cards",
-  "computer": false
+  "computer": false,
+  "added": "1.16"
  },
  {
   "qid": "Q4882140",
@@ -260,7 +267,8 @@
   "players": "1",
   "length": "10 min",
   "kind": "cards",
-  "computer": false
+  "computer": false,
+  "added": "1.16"
  },
  {
   "qid": "Q5349005",
@@ -277,7 +285,8 @@
   "players": "1",
   "length": "15 min",
   "kind": "cards",
-  "computer": false
+  "computer": false,
+  "added": "1.16"
  },
  {
   "qid": "Q6904680",
@@ -294,7 +303,8 @@
   "players": "1",
   "length": "10 min",
   "kind": "cards",
-  "computer": false
+  "computer": false,
+  "added": "1.16"
  },
  {
   "qid": "Q2121032",
@@ -2475,7 +2485,8 @@
   "players": "2",
   "length": "5 min",
   "kind": "kids",
-  "computer": true
+  "computer": true,
+  "added": "1.16"
  },
  {
   "qid": "Q2280396",
@@ -2492,7 +2503,8 @@
   "players": "1 to 2",
   "length": "10 min",
   "kind": "dice",
-  "computer": true
+  "computer": true,
+  "added": "1.16"
  },
  {
   "qid": "Q5435387",
@@ -2509,7 +2521,8 @@
   "players": "2",
   "length": "30 min",
   "kind": "dice",
-  "computer": true
+  "computer": true,
+  "added": "1.16"
  },
  {
   "qid": "Q1099522",
@@ -2526,7 +2539,8 @@
   "players": "2 to 4",
   "length": "10 min",
   "kind": "kids",
-  "computer": true
+  "computer": true,
+  "added": "1.16"
  },
  {
   "qid": "Q302368",
@@ -2543,7 +2557,8 @@
   "players": "2",
   "length": "10 min",
   "kind": "kids",
-  "computer": true
+  "computer": true,
+  "added": "1.16"
  },
  {
   "qid": "Q928584",
@@ -2560,7 +2575,8 @@
   "players": "2 to 4",
   "length": "10 min",
   "kind": "kids",
-  "computer": true
+  "computer": true,
+  "added": "1.16"
  },
  {
   "qid": "Q476996",
@@ -2577,7 +2593,8 @@
   "players": "2 to 4",
   "length": "10 min",
   "kind": "kids",
-  "computer": true
+  "computer": true,
+  "added": "1.16"
  },
  {
   "qid": "Q62001484",
@@ -2594,7 +2611,8 @@
   "players": "2",
   "length": "5 min",
   "kind": "kids",
-  "computer": true
+  "computer": true,
+  "added": "1.16"
  },
  {
   "qid": "Q973596",
@@ -2611,7 +2629,8 @@
   "players": "3 to 5",
   "length": "15 min",
   "kind": "cards",
-  "computer": true
+  "computer": true,
+  "added": "1.16"
  },
  {
   "qid": "Q1004599",
@@ -2628,7 +2647,8 @@
   "players": "2 to 4",
   "length": "15 min",
   "kind": "cards",
-  "computer": true
+  "computer": true,
+  "added": "1.16"
  },
  {
   "qid": "Q959189",
@@ -2645,7 +2665,8 @@
   "players": "2",
   "length": "10 min",
   "kind": "board",
-  "computer": true
+  "computer": true,
+  "added": "1.16"
  },
  {
   "qid": "Q573573",
@@ -2662,7 +2683,8 @@
   "players": "2",
   "length": "10 min",
   "kind": "board",
-  "computer": true
+  "computer": true,
+  "added": "1.16"
  },
  {
   "qid": "Q1144819",
@@ -2679,7 +2701,8 @@
   "players": "2",
   "length": "15 min",
   "kind": "board",
-  "computer": true
+  "computer": true,
+  "added": "1.16"
  },
  {
   "qid": "Q142714",
@@ -2696,7 +2719,8 @@
   "players": "2 to 4",
   "length": "10 min",
   "kind": "cards",
-  "computer": true
+  "computer": true,
+  "added": "1.16"
  },
  {
   "qid": "Q85801811",
@@ -2713,6 +2737,7 @@
   "players": "3 to 8",
   "length": "10 min",
   "kind": "kids",
-  "computer": false
+  "computer": false,
+  "added": "1.16"
  }
 ]

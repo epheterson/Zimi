@@ -5812,6 +5812,7 @@
  "shelf.length.l5": "Environ 5 minutes",
  "shelf.minutes": "{n} min",
  "shelf.minutes.plus": "{n} min+",
+ "shelf.new": "Nouveau",
  "shelf.noMatch": "Aucun jeu ne correspond.",
  "shelf.play": "Jouer",
  "shelf.players.line": {

@@ -307,6 +307,33 @@
       return s;
     });
   }
+  // The release that came last: the highest `added` games.json carries, so a ZIM is its own release's "current".
+  function newer(a, b) {
+    var x = String(a).split('.'), y = String(b).split('.');
+    for (var i = 0; i < Math.max(x.length, y.length); i++) {
+      var d = (parseInt(x[i], 10) || 0) - (parseInt(y[i], 10) || 0);
+      if (d) return d > 0;
+    }
+    return false;
+  }
+  // New: the games that arrived with the release this shelf shipped in, one row under the table. Absent when no row has an `added`.
+  function newSection(rows) {
+    var latest = '';
+    (rows || []).forEach(function (r) { if (r && r.added && (!latest || newer(r.added, latest))) latest = r.added; });
+    if (!latest) return null;
+    // Dealt one kind at a time (ten solitaires in a row would be one picture), the smallest kinds leading.
+    var kinds = {}, tiles = [];
+    uniqueByPath(rows).forEach(function (g) {
+      var t = g.added === latest ? tileFor(g) : null;
+      if (t) (kinds[g.kind || ''] = kinds[g.kind || ''] || []).push(ownIds(t));
+    });
+    var lanes = Object.keys(kinds).map(function (k) { return kinds[k]; }).sort(function (a, b) { return a.length - b.length; });
+    for (var i = 0; lanes.some(function (l) { return i < l.length; }); i++) lanes.forEach(function (l) { if (i < l.length) tiles.push(l[i]); });
+    if (!tiles.length) return null;
+    var s = section('ar-new', T('shelf.new'), tiles);
+    if (root.ZimiShell && root.ZimiShell.localizeTiles) root.ZimiShell.localizeTiles(s);
+    return s;
+  }
   function markDone(t) {
     t.classList.add('ar-done');
     var tick = doc.createElement('span');
@@ -336,6 +363,11 @@
       if (t) first.parentNode.insertBefore(t, first);
       // shelf.js lays the sections out per view; it is told when they are in.
       doc.dispatchEvent(new Event('zimi-shelf-today'));
+      var fresh = newSection(rows);
+      if (fresh) {
+        first.parentNode.insertBefore(fresh, first);
+        doc.dispatchEvent(new Event('zimi-shelf-today'));
+      }
       return dailySection(rows);
     }).then(function (s) {
       if (!s) return;
