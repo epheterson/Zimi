@@ -770,7 +770,7 @@ function _aeStPhoto(st, fr) {
     var P = _aeStandAir, share = _aeStAirCall(P.sunShare, st, fr), lm = _aeStAirCall(P.limitMag, st, fr), ecl = _aeStAirCall(P.eclipse, st, fr);
     var amb = _aeStAirCall(P.ambient, st, fr);   // the provider's own sky light for the ground, at every Sun height (the eclipse is in it already)
     var ownAmb = !(amb && amb.amb && amb.horizon && amb.zenith);
-    if (!ownAmb) { p.amb = amb.amb; p.hor = amb.horizon; p.zen = amb.zenith; }
+    if (!ownAmb) { p.amb = amb.amb; p.hor = amb.horizon; p.zen = amb.zenith; p.provAmb = true; }
     if (share >= 0 && share < 1) {   // the Sun's light; and, with only this view's own march to go by, every term of the light that comes from the sky it lights
       var dim = function (v) { return v ? v.map(function (x) { return x * share; }) : v; };
       p.sunE = dim(p.sunE); p.sunShare = share; e2 *= share;
@@ -947,7 +947,7 @@ function _aeStandApplyGround(st, fr, ph, view, now) {
   g.uCam.value = view.pos; g.uPixAng.value = view.pixAng;
   var hl = Math.hypot(view.e[8], view.e[9]) || 1;
   g.uHead.value = [-view.e[8] / hl, -view.e[9] / hl]; g.uTime.value = now / 1000;
-  g.uAmbient.value = st.key === 'earth' ? ph.amb.map(function (x) { return Math.max(x, AE_STAND_NIGHT_GLOW); }) : ph.amb; g.uSkyHor.value = ph.hor; g.uSkyZen.value = ph.zen; g.uDiffSky.value = ph.diffSky;
+  g.uAmbient.value = st.key === 'earth' && !ph.provAmb ? ph.amb.map(function (x) { return Math.max(x, AE_STAND_NIGHT_GLOW); }) : ph.amb; g.uSkyHor.value = ph.hor; g.uSkyZen.value = ph.zen; g.uDiffSky.value = ph.diffSky;
   if (fr.light2) { g.uDir2.value = fr.light2.dir; g.uE2.value = fr.light2.rgb; }
   else g.uE2.value = [0, 0, 0];
 }
