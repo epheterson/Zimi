@@ -105,6 +105,7 @@ var _oaAir = {
 // The day's clouds (almanac-skygl.js SG_GLSL_CLOUDS: the card's own): osClouds(d, o) is the deck seen along d from o (metres, the local
 // frame), premultiplied, in the same units as oaSky; the ground view lays it over the sky.
 var OA_CLOUD_GLSL = [
+  SG_GLSL_CLOUD_FIELD,
   SG_GLSL_CLOUDS,
   'vec4 osClouds(vec3 d, vec3 o) { vec4 c = cloudDeck(d, o); return vec4(c.rgb / ' + AE_ST_LUX_PER_UNIT.toExponential(3) + ', c.a); }'
 ].join('\n');

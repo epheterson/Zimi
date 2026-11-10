@@ -461,7 +461,7 @@ var SG_GLSL_RADIANCE = [
 // wind, thresholded by the day's cover; its light is the Sun as the cloud itself sees it (the Sun is lower at a cloud far away toward
 // it, and the deck, being high, still catches the light after the ground has lost it: the evening glow), thinned by the air on the Sun's
 // way to it; its underside is dark and takes a little of the ground's light; the far deck is hazed toward the sky behind it.
-// Needs SG_GLSL_LUT_UTIL and SG_GLSL_RADIANCE. cloudDeck(d, o): d the unit direction (east, north, up), o the viewer in metres in the
+// Needs SG_GLSL_LUT_UTIL, SG_GLSL_RADIANCE and SG_GLSL_CLOUD_FIELD. cloudDeck(d, o): d the unit direction (east, north, up), o the viewer in metres in the
 // same frame; returns premultiplied radiance (cd/m2) and alpha.
 var SG_CLOUD_SCALE_M = 2800;               // the largest features of the noise
 var SG_CLOUD_FAR_M = 200000;               // the deck is not followed past this distance
@@ -472,10 +472,10 @@ var SG_CLOUD_ALBEDO = 0.8;
 var SG_CLOUD_LIT_FROM = -0.25, SG_CLOUD_LIT_TO = 0.6;   // the Sun's height at the cloud over which it goes from in shade to in the light
 var SG_SUN_DEPTH_RGB = 'vec3(0.10, 0.14, 0.22)';          // optical depth per airmass of the sunlight's path (almanac-sky.js SKY_SUN_DEPTH)
 var SG_CLOUD_EARTH_KM = '6371.0';
-var SG_GLSL_CLOUDS = [
+// The deck's shape: where a ray meets it and how much cloud is there. Alone it is all the stars need to hide behind it.
+var SG_GLSL_CLOUD_FIELD = [
   'uniform vec4 uCloud;',          // cover 0..1, base height (m), thickness (m), the day's offset in the noise
   'uniform vec3 uCloudWind;',      // wind east and north (m/s), seconds since the day's start
-  'uniform float uCloudSunE, uSunAltDeg;',   // the Sun's illuminance in the open (lux, an eclipse's share in), its geometric height (degrees)
   'float cloudHash(vec2 p) { p = fract(p * vec2(123.34, 456.21)); p += dot(p, p + 45.32); return fract(p.x * p.y); }',
   'float cloudNoise(vec2 p) {',
   '  vec2 i = floor(p), f = fract(p); f = f * f * (3.0 - 2.0 * f);',
@@ -487,12 +487,22 @@ var SG_GLSL_CLOUDS = [
   '  float th = mix(' + SG_CLOUD_THRESHOLD[0].toFixed(2) + ', ' + SG_CLOUD_THRESHOLD[1].toFixed(2) + ', uCloud.x);',
   '  return smoothstep(th, th + ' + SG_CLOUD_EDGE.toFixed(2) + ', n);',
   '}',
+  // The share of the sky the cloud covers along d from o (metres), and where the ray meets the deck.
+  'float cloudHit(vec3 d, vec3 o, out float t, out vec2 xy, out float dens) {',
+  '  t = 0.0; xy = vec2(0.0); dens = 0.0;',
+  '  if (d.z <= 0.003 || o.z >= uCloud.y || uCloud.x <= 0.0) return 0.0;',
+  '  t = min((uCloud.y - o.z) / d.z, ' + SG_CLOUD_FAR_M.toFixed(1) + ');',
+  '  xy = o.xy + d.xy * t;',
+  '  dens = cloudDensity(xy);',
+  '  return smoothstep(0.0, 0.6, dens) * 0.94 * smoothstep(0.003, 0.03, d.z);',
+  '}'
+].join('\n');
+var SG_GLSL_CLOUDS = [
+  'uniform float uCloudSunE, uSunAltDeg;',   // the Sun's illuminance in the open (lux, an eclipse's share in), its geometric height (degrees)
   'vec4 cloudDeck(vec3 d, vec3 o) {',
-  '  if (d.z <= 0.003 || o.z >= uCloud.y || uCloud.x <= 0.0) return vec4(0.0);',
-  '  float t = min((uCloud.y - o.z) / d.z, ' + SG_CLOUD_FAR_M.toFixed(1) + ');',
-  '  vec2 xy = o.xy + d.xy * t;',
-  '  float dens = cloudDensity(xy);',
-  '  if (dens <= 0.002) return vec4(0.0);',
+  '  float t, dens; vec2 xy;',
+  '  float a = cloudHit(d, o, t, xy, dens);',
+  '  if (a <= 0.002) return vec4(0.0);',
   // The cloud's own sun: lower by the way round the Earth toward it, higher by the deck's height (the horizon's dip).
   '  float az = atan(d.x, d.y), rhoKm = t * length(d.xy) * 0.001, baseKm = uCloud.y * 0.001;',
   '  float dip = degrees(acos(' + SG_CLOUD_EARTH_KM + ' / (' + SG_CLOUD_EARTH_KM + ' + baseKm)));',
@@ -508,12 +518,11 @@ var SG_GLSL_CLOUDS = [
   '  vec3 Lc = ' + SG_CLOUD_ALBEDO.toFixed(2) + ' * (sunE / PI * shade * under * silver * 0.8 + amb * (0.95 - 0.3 * dens) + 0.5 * ground * dens);',
   '  float T = exp(-t / ' + SG_CLOUD_HAZE_M.toFixed(1) + ');',
   '  vec3 Ls = skyLight(az, max(asin(clamp(d.z, 0.0, 1.0)), 0.02));',
-  '  float a = smoothstep(0.0, 0.6, dens) * 0.94 * smoothstep(0.003, 0.03, d.z);',
   '  return vec4((Lc * T + Ls * (1.0 - T)) * a, a);',
   '}'
 ].join('\n');
 
-var SG_FS_SKY = SG_GLSL_HEAD + '\n' + SG_GLSL_VIEW + '\n' + SG_GLSL_RADIANCE + '\n' + SG_GLSL_CLOUDS + '\n' + [
+var SG_FS_SKY = SG_GLSL_HEAD + '\n' + SG_GLSL_VIEW + '\n' + SG_GLSL_RADIANCE + '\n' + SG_GLSL_CLOUD_FIELD + '\n' + SG_GLSL_CLOUDS + '\n' + [
   'uniform sampler2D uMilky;',
   'uniform float uExposure;',
   'uniform mat3 uGal;',                      // (east, north, up) to galactic
@@ -554,7 +563,7 @@ var SG_FS_SKY = SG_GLSL_HEAD + '\n' + SG_GLSL_VIEW + '\n' + SG_GLSL_RADIANCE + '
 // The stars: one instanced quad each, placed by the rotation to the
 // observer's frame, sized and lit by magnitude against the sky's own light,
 // reddened and thinned by the air they come through.
-var SG_VS_STARS = SG_GLSL_HEAD + '\n' + SG_GLSL_VIEW + '\n' + [
+var SG_VS_STARS = SG_GLSL_HEAD + '\n' + SG_GLSL_VIEW + '\n' + SG_GLSL_CLOUD_FIELD + '\n' + [
   'in vec3 aVec; in vec4 aInfo; in vec3 aCol;',      // J2000 unit vector; magnitude, radius (CSS px), seed; colour
   'uniform mat3 uM;', 'uniform float uLm, uDpr, uScint, uSeed, uSat;', 'uniform vec3 uMoon;',   // the Moon's disc: centre and radius, device px
   'out vec2 vLocal; out vec4 vColor; out float vRad; out float vBloom;',
@@ -577,6 +586,8 @@ var SG_VS_STARS = SG_GLSL_HEAD + '\n' + SG_GLSL_VIEW + '\n' + [
   '  float d = uLm - (mag + ' + SG_EXTINCTION_MAG + ' * (X - 1.0));',
   '  float amp = min(' + SG_SCINT_MAX.toFixed(2) + ', ' + SG_SCINT_ZENITH.toFixed(2) + ' * pow(X, 1.5)) * uScint;',
   '  float vis = smoothstep(0.0, ' + SG_STAR_FADE_MAG.toFixed(2) + ', d) * min(1.0, ' + SG_STAR_FLOOR.toFixed(2) + ' * pow(10.0, ' + SG_STAR_PER_MAG.toFixed(2) + ' * d));',
+  '  float ct; vec2 cxy; float cd;',
+  '  vis *= 1.0 - cloudHit(h, vec3(0.0), ct, cxy, cd);',   // a cloud is in front of a star
   '  float rDev = max(' + '0.65' + ', rCss * uDpr);',
   '  float half_ = rDev * 5.0 + 1.5;',
   '  vec2 corner = vec2(float(gl_VertexID & 1), float((gl_VertexID >> 1) & 1)) * 2.0 - 1.0;',
@@ -981,6 +992,7 @@ function _sgDraw(p) {
     gl.uniform1f(us.uLm, p.lm); gl.uniform1f(us.uDpr, p.dpr); gl.uniform1f(us.uScint, p.scint ? 1 : 0);
     gl.uniform1f(us.uSeed, p.seed || 0); gl.uniform1f(us.uSat, SG_STAR_SATURATION);
     gl.uniform3f(us.uMoon, md ? md.x : 0, md ? md.y : 0, md ? md.r : 0);
+    gl.uniform4fv(us.uCloud, cv.cloud); gl.uniform3fv(us.uCloudWind, cv.wind);
     gl.drawArraysInstanced(gl.TRIANGLE_STRIP, 0, 4, sg.starCount);
     gl.disable(gl.BLEND);
   }
