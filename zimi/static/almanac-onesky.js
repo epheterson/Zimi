@@ -232,6 +232,7 @@ function _osStandClouds(mode) {
 
 // Look's way down to the ground: the same place, instant and facing, and the phone still turning the view if it was (Stand here reads the
 // phone through the same sensors, and the person's choice is the one Look kept); its way back opens Look again where it was.
+var OS_LOOK_BACK_MS = 700;   // the longest Look waits for the browser's step back before it opens anyway
 var OS_MOTION_KEY = 'zimi_ae_stand_motion';   // almanac-standlook.js AE_MOTION_KEY: whether the phone turns the ground view
 function _osStandFromLook() {
   var S = typeof _look !== 'undefined' ? _look : null;
@@ -240,7 +241,16 @@ function _osStandFromLook() {
   _lookClose();
   if (sensing) { try { localStorage.setItem(OS_MOTION_KEY, '1'); } catch (e) { /* private window */ } }
   var def = _osDef({ lat: place.lat, lon: place.lon, tMs: ms, heading: view.az, pitch: Math.max(0, view.alt) });
-  return _osStandOpen(def, function () { if (typeof _lookOpen === 'function') _lookOpen({ lat: place.lat, lon: place.lon, name: place.name }); });
+  // Closing the 3D view takes the browser a step back; Look opens after that step has landed, or its own would be taken back with it.
+  return _osStandOpen(def, function () {
+    var done = false, open = function () {
+      if (done) return;
+      done = true;
+      if (typeof _lookOpen === 'function') _lookOpen({ lat: place.lat, lon: place.lon, name: place.name });
+    }, onPop = function () { window.removeEventListener('popstate', onPop); setTimeout(open, 0); };
+    window.addEventListener('popstate', onPop);
+    setTimeout(function () { window.removeEventListener('popstate', onPop); open(); }, OS_LOOK_BACK_MS);
+  });
 }
 
 // ── What the card stands on ──

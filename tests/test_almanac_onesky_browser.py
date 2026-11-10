@@ -572,7 +572,7 @@ def test_look_goes_down_to_the_ground_facing_the_same_way_and_comes_back(
     pg.on("pageerror", lambda e: errors.append(str(e)))
     pg.goto(served + "/#almanac", wait_until="load")
     pg.wait_for_function(
-        "() => typeof openAlmanacLook === 'function' && _skyState && _skyState.eph && typeof _jdToJulianCentury === 'function'",
+        "() => typeof openAlmanacLook === 'function' && typeof _skyState !== 'undefined' && _skyState && _skyState.eph && typeof _jdToJulianCentury === 'function'",
         timeout=120_000,
     )
     pg.evaluate("() => openAlmanacLook()")
