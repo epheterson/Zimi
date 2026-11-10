@@ -44,6 +44,7 @@ def build_apollo11():
     ref = np.hstack([moon.t[:, None], moon.p, moon.v])
     return {
         "name": "Apollo 11",
+        "handoff": {"site": "Apollo 11", "phase": "alm_ms_ph_surface"},
         "zeroMs": mission_ms(ZERO_JD),
         "start": -3.0,
         "end": EVENTS["splash"] + 60.0,
