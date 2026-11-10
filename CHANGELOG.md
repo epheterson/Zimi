@@ -40,6 +40,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 - Place search handles long place words, and small holes in region outlines are kept.
 - Almanac: the solar system is sized by its box, so a phone's tables page no longer scrolls sideways.
 - Almanac clock: picking today returns it to live time.
+- Almanac clock: back to 1x by touch is easier: the speed slider's thumb is grabbed in a fingertip-tall band, and let go within a fingertip of the middle it lands on real time.
 
 ## [1.15.4]
 
