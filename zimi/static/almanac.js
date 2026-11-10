@@ -312,6 +312,7 @@ function _almLoadEarth() {
 var ALM_LOW_MEMORY_GB = 2;
 var ALM_LOW_CORES = 2;
 function _almLowPower() {
+  if (typeof ZimiCap !== 'undefined') return ZimiCap.lowPower();   // the one decision (capability.js); the test below is for its absence
   var n = navigator, c = n.connection;
   return !!((c && c.saveData) || (n.deviceMemory && n.deviceMemory <= ALM_LOW_MEMORY_GB) || (n.hardwareConcurrency && n.hardwareConcurrency <= ALM_LOW_CORES));
 }

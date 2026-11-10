@@ -89,6 +89,18 @@ check(load({ mem: 0, cores: 8, gl: GL(), benchMs: 20 }).cap.level() === 'low', '
   check(load(sw, { zimi_cap: 'auto' }).cap.view3d() === 'static', 'a test of the levels says Auto in so many words');
 }
 
+// ── One decision about what a low machine is (the page's gate to hold the 3D files back) ──
+check(load({ mem: 1, cores: 4, gl: GL() }).cap.lowPower() === true, 'a one-gigabyte device is low power');
+check(load({ mem: 8, cores: 8, gl: GL(), saveData: true }).cap.lowPower() === true, 'Save-Data holds the 3D files back though the level is standard');
+check(load({ mem: 8, cores: 10, gl: GL() }).cap.lowPower() === false, 'a big machine is not');
+{
+  const r = load({ mem: 1, cores: 2, gl: GL() });
+  r.cap.set('full');
+  check(r.cap.lowPower() === false, 'Full overrides: the files come ahead of the tap');
+  r.cap.set('light');
+  check(load({ mem: 16, cores: 16, gl: GL() }, { zimi_cap: 'light' }).cap.lowPower() === true, 'Light is low power on any machine');
+}
+
 // ── The 3D view opens, or gives a plain line ──
 check(load({ mem: 8, cores: 8, gl: GL({ renderer: 'SwiftShader' }) }).cap.view3d() === 'static', 'Auto on software GL: the plain line, not a tab crash');
 check(load({ mem: 8, cores: 8, gl: null }).cap.view3d() === 'static', 'no WebGL: the plain line');

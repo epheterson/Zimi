@@ -159,6 +159,16 @@ var ZimiCap = window.ZimiCap || (function () {
     return 'open';
   }
 
+  // A low machine, for the page's own gates (the 3D view's files are not fetched ahead of the tap): the person's Light, or
+  // an Auto that found the level low, or a request to save data. One decision, here; the page keeps an inline test only for
+  // when this file is absent.
+  function lowPower() {
+    var st = setting();
+    if (st === 'light') return true;
+    if (st === 'full') return false;
+    return level() === 'low' || probe().saveData;
+  }
+
   // ── The governor ──
   // Every 3D scene calls frame(scene, now) once per painted frame. Slow frames (not idle gaps) three in a row step the
   // pixel ratio down; the third step also drops the level a notch (fewer satellites, no HD tiles, ...); at the last step a
@@ -301,6 +311,7 @@ var ZimiCap = window.ZimiCap || (function () {
     row: row,
     dprCap: dprCap,
     view3d: view3d,
+    lowPower: lowPower,
     frame: frame,
     resetFrames: resetFrames,
     watchContext: watchContext,
