@@ -1046,6 +1046,7 @@ var SKY_SUN_DEPTH = [0.10, 0.14, 0.22];   // optical depth per airmass, red/gree
 var SKY_SUN_EXPOSURE = [3.5, 9];          // the face's exposure on the horizon and from 4 degrees up: through the air it is still the brightest thing in the sky
 var SKY_SUN_FULL_EXPOSURE_ALT = 4;        // degrees
 var SKY_SUN_FEATHER = 0.85, SKY_SUN_FEATHER_FROM = 0.9;   // a high Sun's face fades out over its last tenth
+var SKY_SUN_VEIL_GLARE = 0.9, SKY_SUN_VEIL_FACE = 0.92, SKY_SUN_PATCH_RADII = 4, SKY_SUN_PATCH_ALPHA = 0.3;   // how much a cloud in front takes of the Sun's glare and face, and the soft patch it leaves
 var SKY_SUN_STOPS = [0, 0.35, 0.6, 0.8, 0.92, 0.98, 1];   // radii where the face's gradient is sampled
 
 // Airmass at an apparent altitude (degrees), Kasten & Young (1989): the
@@ -1076,13 +1077,14 @@ function _skyPaintSun(ctx, s) {
   var pt = _skyScreen(s, sun.az, sun.alt), R = _skyBodyRadius(s, SKY_SUN_SEMI_DEG), x = pt.x, y = pt.y;
   if (!(x >= -R * 8 && x <= s.W + R * 8 && y >= -R * 8 && y <= s.H + R * 8)) return;
   var tint = _skySunTint(sun.alt), flat = _skySunFlattening(s.eph.sunGeoAlt);
+  var veil = _osCloudAlphaAt(_osCloudValues(_osDef({ lat: s.lat, lon: s.lon, tMs: s.nowTime }), s.sunShare), sun.az, sun.alt);   // the day's deck in front of the Sun
   var expo = _skyLerp(SKY_SUN_EXPOSURE[0], SKY_SUN_EXPOSURE[1], _skyClamp(sun.alt / SKY_SUN_FULL_EXPOSURE_ALT, 0, 1));
   var c255 = tint.map(function (v) { return 255 * v; }), high = _skyClamp(sun.alt / SKY_SUN_FULL_EXPOSURE_ALT, 0, 1);
   // The bloom: a wide soft light and a bright close halo, added to the sky.
   ctx.save();
   ctx.globalCompositeOperation = 'lighter';
   var wide = ctx.createRadialGradient(x, y, R, x, y, R * 8);
-  var glare = _skyClamp(1 - s.obsc, 0.02, 1);   // the Moon in front of it takes the glare, and leaves the corona
+  var glare = _skyClamp(1 - s.obsc, 0.02, 1) * (1 - SKY_SUN_VEIL_GLARE * veil);   // the Moon in front of it takes the glare, and leaves the corona; a cloud in front of it too
   wide.addColorStop(0, _skyRgb(c255, 0.32 * glare));
   wide.addColorStop(0.3, _skyRgb(c255, 0.08 * glare));
   wide.addColorStop(1, _skyRgb(c255, 0));
@@ -1094,8 +1096,14 @@ function _skyPaintSun(ctx, s) {
   ctx.fillStyle = halo;
   ctx.beginPath(); ctx.arc(x, y, R * 2.2, 0, Math.PI * 2); ctx.fill();
   ctx.restore();
+  if (veil > 0.05) {   // behind cloud it is a soft bright patch
+    var patch = ctx.createRadialGradient(x, y, 0, x, y, R * SKY_SUN_PATCH_RADII);
+    patch.addColorStop(0, _skyRgb(c255, SKY_SUN_PATCH_ALPHA * veil)); patch.addColorStop(1, _skyRgb(c255, 0));
+    ctx.fillStyle = patch; ctx.beginPath(); ctx.arc(x, y, R * SKY_SUN_PATCH_RADII, 0, Math.PI * 2); ctx.fill();
+  }
   // The face: limb-darkened in each colour, through the air's tint, flattened.
   ctx.save();
+  ctx.globalAlpha = 1 - SKY_SUN_VEIL_FACE * veil;
   ctx.translate(x, y);
   ctx.scale(1, flat);
   var face = ctx.createRadialGradient(0, 0, 0, 0, 0, R);
@@ -1861,6 +1869,7 @@ var SKY_COMPASS_FOOT_PX = 4;   // css px from the bottom edge to the letters' ba
 // The foreground: the sea where the grid says there is a coast, the place's own land (almanac-skyland.js) elsewhere, a plain horizon
 // until the grid is in (almanac-onesky.js _osCardScene).
 var SKY_PLAIN_GROUND = [0.3, 0.29, 0.24];
+var SKY_COMPASS_LUMA = 0.42;   // ground brighter than this takes dark compass letters, darker takes light ones
 var SKY_PALM_MAX_LAT = 40;   // a coast poleward of this has its sea, its boats and its whales, but no palms
 function _skyPaintGround(ctx, s) {
   var scene = _osCardScene(s);
@@ -1878,10 +1887,15 @@ function _skyPaintCompassFoot(ctx, s) {
   ctx.font = '600 ' + Math.round(9 * dpr) + 'px ' + SKY_FONT;
   ctx.textAlign = 'center';
   ctx.textBaseline = 'alphabetic';
-  ctx.fillStyle = light > 0.5 ? 'rgba(60,45,25,0.42)' : 'rgba(210,215,230,0.32)';
+  // On the land's ground the letters take the side of the ground's own brightness that reads, with a thin halo of the other; on the beach, as ever.
+  var onLand = s.footLuma != null && _osCardScene(s) !== 'beach', dark = onLand && s.footLuma > SKY_COMPASS_LUMA;
+  ctx.fillStyle = onLand ? (dark ? 'rgba(35,28,18,0.78)' : 'rgba(240,243,250,0.82)') : light > 0.5 ? 'rgba(60,45,25,0.42)' : 'rgba(210,215,230,0.32)';
+  ctx.strokeStyle = dark ? 'rgba(255,255,255,0.28)' : 'rgba(0,0,0,0.32)';
+  ctx.lineWidth = 2.2 * dpr; ctx.lineJoin = 'round';
   for (var az = 0; az < 360; az += 45) {
     var cx = _skyX(s, az);
     if (!_skyInView(s, cx, -6 * dpr)) continue;
+    if (onLand) ctx.strokeText(_azCompass(az), cx, y);
     ctx.fillText(_azCompass(az), cx, y);
   }
 }

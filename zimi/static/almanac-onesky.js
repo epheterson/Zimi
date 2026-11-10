@@ -89,6 +89,35 @@ function _osEclipse(def) {
     corona: S.obsc > OS_CORONA_FROM ? Math.pow((S.obsc - OS_CORONA_FROM) / (1 - OS_CORONA_FROM), 3) : 0 };
 }
 
+// The same field on the CPU, for what is drawn over the sky by the canvas (the Sun's disc): the sum of almanac-skygl.js SG_GLSL_CLOUD_FIELD,
+// integer hash included, so a lattice point has the same value on the GPU and here. How much of the sky the deck covers at a bearing and height
+// (degrees), from _osCloudValues' numbers: 0 clear to about 1 solid.
+function _osCloudHash(ix, iy) {
+  var h = (Math.imul(ix | 0, 1597334673) ^ Math.imul(iy | 0, 3812015801)) >>> 0;
+  h = Math.imul(h ^ (h >>> 16), 2246822519) >>> 0;
+  h = Math.imul(h ^ (h >>> 13), 3266489917) >>> 0;
+  return ((h ^ (h >>> 16)) >>> 0) / 4294967295;
+}
+function _osCloudNoise(x, y) {
+  var ix = Math.floor(x), iy = Math.floor(y), fx = x - ix, fy = y - iy;
+  fx = fx * fx * (3 - 2 * fx); fy = fy * fy * (3 - 2 * fy);
+  var a = _osCloudHash(ix, iy), b = _osCloudHash(ix + 1, iy), c = _osCloudHash(ix, iy + 1), d = _osCloudHash(ix + 1, iy + 1);
+  return (a + (b - a) * fx) * (1 - fy) + (c + (d - c) * fx) * fy;
+}
+function _osSmoothstep(a, b, x) { var t = Math.max(0, Math.min(1, (x - a) / (b - a))); return t * t * (3 - 2 * t); }
+function _osCloudDensity(v, x, y) {
+  var px = (x - v.wind[0] * v.wind[2]) / SG_CLOUD_SCALE_M + v.cloud[3], py = (y - v.wind[1] * v.wind[2]) / SG_CLOUD_SCALE_M + v.cloud[3], s = 0, a = 0.5;
+  for (var i = 0; i < 4; i++) { s += a * _osCloudNoise(px, py); px = px * 2.03 + 17.1; py = py * 2.03 + 17.1; a *= 0.5; }
+  var th = SG_CLOUD_THRESHOLD[0] + (SG_CLOUD_THRESHOLD[1] - SG_CLOUD_THRESHOLD[0]) * v.cloud[0];
+  return _osSmoothstep(th, th + SG_CLOUD_EDGE, s / 0.9375);
+}
+function _osCloudAlphaAt(v, azDeg, altDeg) {
+  var az = azDeg * Math.PI / 180, alt = altDeg * Math.PI / 180, dz = Math.sin(alt);
+  if (dz <= 0.003 || v.cloud[0] <= 0) return 0;
+  var t = Math.min(v.cloud[1] / dz, SG_CLOUD_FAR_M), c = Math.cos(alt);
+  return _osSmoothstep(0, 0.6, _osCloudDensity(v, Math.sin(az) * c * t, Math.cos(az) * c * t)) * 0.94 * _osSmoothstep(0.003, 0.03, dz);
+}
+
 // ── The sky's objects ──
 // One registry for what things put in the sky (satellites, trains, rockets, plumes): the card paints them, Stand here draws them.
 // A source is either

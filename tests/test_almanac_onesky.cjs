@@ -54,6 +54,15 @@ check(fast === n, 'the wind is always between 4 and 16 m/s');
 const cv = run('_osCloudValues(_osDef({ lat: 40.71, lon: -74, tMs: __nowMs }), 1)');
 check(cv.cloud.length === 4 && cv.cloud[1] === 2500 && cv.wind.length === 3 && cv.wind[2] >= 0 && cv.wind[2] < 86400 && cv.sunE === 130000, 'the shaders take cover, base, thickness, offset, wind, the day\'s seconds and the Sun\'s lux');
 
+// The field on the CPU (the Sun's veil): an integer hash, the same lattice on every machine; clear days veil nothing, heavy ones nearly everything.
+const hashes = run('Array.from({ length: 2000 }, (_, i) => _osCloudHash(i - 1000, (i * 7) % 311 - 150))');
+check(hashes.every((h) => h >= 0 && h <= 1) && new Set(hashes.map((h) => h.toFixed(6))).size > 1900, 'the lattice hash is in 0..1 and does not repeat');
+check(run('_osCloudHash(3, -4)') === run('_osCloudHash(3, -4)') && run('_osCloudHash(3, -4)') !== run('_osCloudHash(-4, 3)'), 'and is the same for a point every time, and not symmetric');
+const meanAlpha = (cover) => run('(function () { var v = { cloud: [' + cover + ', 2500, 700, 123], wind: [3, 4, 1000], sunE: 1 }, s = 0, n = 0; for (var az = 0; az < 360; az += 7) for (var alt = 15; alt < 90; alt += 5) { s += _osCloudAlphaAt(v, az, alt); n++; } return s / n; })()');
+const a0 = meanAlpha(0), a5 = meanAlpha(0.5), a10 = meanAlpha(1);
+check(a0 === 0 && a5 > 0.15 && a5 < 0.85 && a10 > 0.8 && a5 < a10, 'a clear day veils nothing (' + a0 + '), half cover about half (' + a5.toFixed(2) + '), a full one nearly all (' + a10.toFixed(2) + ')');
+check(run('_osCloudAlphaAt({ cloud: [1, 2500, 700, 5], wind: [0, 0, 0], sunE: 1 }, 90, -5)') === 0, 'a Sun under the horizon is not behind a deck');
+
 // ── What is in the sky: one registry ──
 run(`var __log = [], __seen = 0;
   var __offA = _osSkySource({ ask: function (la, lo, t) { __log.push('ask'); return Promise.resolve({ t: t }); }, at: function (a, t) { return [{ az: 10, el: 20, mag: 1, kind: 'sat', name: 'A' }]; } });

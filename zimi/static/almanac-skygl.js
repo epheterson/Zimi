@@ -471,6 +471,7 @@ var SG_CLOUD_HAZE_M = 60000;               // the air between thins a cloud this
 var SG_CLOUD_THRESHOLD = [0.72, 0.18];     // the noise's cut for a clear day and a full one
 var SG_CLOUD_EDGE = 0.16;                  // and how soft it is
 var SG_CLOUD_ALBEDO = 0.8;
+var SG_CLOUD_THICK_FROM = 0.15, SG_CLOUD_THICK_TO = 0.9, SG_CLOUD_THICK_LIGHT = 0.08;   // a thick deck's underside gets this share of the Sun's light through it
 var SG_CLOUD_LIT_FROM = -0.25, SG_CLOUD_LIT_TO = 0.6;   // the Sun's height at the cloud over which it goes from in shade to in the light
 var SG_SUN_DEPTH_RGB = 'vec3(0.10, 0.14, 0.22)';          // optical depth per airmass of the sunlight's path (almanac-sky.js SKY_SUN_DEPTH)
 var SG_CLOUD_EARTH_KM = '6371.0';
@@ -478,7 +479,13 @@ var SG_CLOUD_EARTH_KM = '6371.0';
 var SG_GLSL_CLOUD_FIELD = [
   'uniform vec4 uCloud;',          // cover 0..1, base height (m), thickness (m), the day's offset in the noise
   'uniform vec3 uCloudWind;',      // wind east and north (m/s), seconds since the day's start
-  'float cloudHash(vec2 p) { p = fract(p * vec2(123.34, 456.21)); p += dot(p, p + 45.32); return fract(p.x * p.y); }',
+  // An integer hash of the lattice point (almanac-onesky.js _osCloudHash is the same sum): a float one differs between a GPU and a CPU.
+  'float cloudHash(vec2 p) {',
+  '  uvec2 q = uvec2(ivec2(p));',
+  '  uint h = q.x * 1597334673u ^ q.y * 3812015801u;',
+  '  h = (h ^ (h >> 16u)) * 2246822519u; h = (h ^ (h >> 13u)) * 3266489917u; h ^= h >> 16u;',
+  '  return float(h) / 4294967295.0;',
+  '}',
   'float cloudNoise(vec2 p) {',
   '  vec2 i = floor(p), f = fract(p); f = f * f * (3.0 - 2.0 * f);',
   '  return mix(mix(cloudHash(i), cloudHash(i + vec2(1.0, 0.0)), f.x), mix(cloudHash(i + vec2(0.0, 1.0)), cloudHash(i + vec2(1.0, 1.0)), f.x), f.y);',
@@ -514,7 +521,8 @@ var SG_GLSL_CLOUDS = [
   // Shadowed where the deck toward the Sun is denser; darker underneath where it is thick; bright where thin and near the Sun.
   '  vec2 toSun = uSunVec.xy / max(uSunVec.z, 0.15) * uCloud.z;',
   '  float shade = 1.0 - clamp(cloudDensity(xy + toSun) - dens * 0.5, 0.0, 1.0) * 0.6;',
-  '  float under = 1.0 - 0.45 * dens;',
+  '  float thick = smoothstep(' + SG_CLOUD_THICK_FROM.toFixed(2) + ', ' + SG_CLOUD_THICK_TO.toFixed(2) + ', dens * (0.5 + 0.5 * uCloud.x));',
+  '  float under = mix(1.0, ' + SG_CLOUD_THICK_LIGHT.toFixed(2) + ', thick);',
   '  float silver = 1.0 + 1.5 * pow(max(dot(d, uSunVec), 0.0), 12.0) * (1.0 - dens);',
   '  vec3 amb = ambientSky(), ground = ' + SG_GROUND_ALBEDO + ' * (amb + vec3(uSunLux * max(uSunVec.z, 0.0) / PI));',
   '  vec3 Lc = ' + SG_CLOUD_ALBEDO.toFixed(2) + ' * (sunE / PI * shade * under * silver * 0.8 + amb * (0.95 - 0.3 * dens) + 0.5 * ground * dens);',

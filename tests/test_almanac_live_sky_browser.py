@@ -87,8 +87,12 @@ def _almanac(browser, served, reduced=False, place=PLACE, horizon=False):
         "localStorage.setItem('zimi_almanac_place', %s);"
         % json.dumps(json.dumps(place))
     )
-    if horizon:   # the beach with its life is the default; the true horizon is a choice that is kept
-        ctx.add_init_script("localStorage.setItem('zimi_sky_settings', '{\"skin\":\"horizon\"}');")
+    if (
+        horizon
+    ):  # the beach with its life is the default; the true horizon is a choice that is kept
+        ctx.add_init_script(
+            "localStorage.setItem('zimi_sky_settings', '{\"skin\":\"horizon\"}');"
+        )
     pg = ctx.new_page()
     errors = []
     pg.on("pageerror", lambda e: errors.append(str(e)))
@@ -97,7 +101,7 @@ def _almanac(browser, served, reduced=False, place=PLACE, horizon=False):
         "() => typeof _skyState !== 'undefined' && _skyState && _skyState.eph",
         polling=POLL_MS,
     )
-    pg.wait_for_function(   # the panels under the calendar, drawn after the first paint
+    pg.wait_for_function(  # the panels under the calendar, drawn after the first paint
         "() => typeof _almSecBar !== 'undefined' && _almSecBar && _almSecBar.sections",
         polling=POLL_MS,
     )
@@ -109,7 +113,9 @@ def _almanac(browser, served, reduced=False, place=PLACE, horizon=False):
 
 
 def _settle(pg, iso):
-    pg.evaluate("(iso) => { _almClockSetRate(0); _almScrubSettle(new Date(iso)); }", iso)   # paused there: a jump keeps the pace
+    pg.evaluate(
+        "(iso) => { _almClockSetRate(0); _almScrubSettle(new Date(iso)); }", iso
+    )  # paused there: a jump keeps the pace
     pg.wait_for_function(
         "(t) => _skyState && _skyState.nowTime === t && !_skyState.moonAnim && _skyState.bodies.length",
         arg=_ms(iso),
@@ -168,9 +174,7 @@ def test_the_sun_and_the_moon_open_the_3d_view_on_themselves(browser, served):
         _settle(pg, DAY)
         _tap_body(pg, "sun")
         _wait_view(pg, "sun")
-        assert pg.evaluate(
-            "_aeBackLabel()"
-        ) == pg.evaluate("t('almanac')")
+        assert pg.evaluate("_aeBackLabel()") == pg.evaluate("t('almanac')")
         # The view keeps the page's clock: it shows the sky's instant.
         assert abs(pg.evaluate("_aeDisplayMs()") - _ms(DAY)) < 60000
         pg.evaluate("_aeClose()")
@@ -195,8 +199,12 @@ def test_a_planet_is_named_and_found_in_the_solar_system(browser, served):
         assert pg.evaluate("_tp('Saturn')") in tip.inner_text()
         btn = tip.locator("[data-sky-orrery]")
         assert btn.inner_text() == pg.evaluate("t('alm_solar_system')")
-        assert btn.get_attribute("aria-label") == pg.evaluate("t('alm_sky_find_orrery')")
-        assert btn.bounding_box()["height"] < 40  # a word in the facts row, not a pill across the tip
+        assert btn.get_attribute("aria-label") == pg.evaluate(
+            "t('alm_sky_find_orrery')"
+        )
+        assert (
+            btn.bounding_box()["height"] < 40
+        )  # a word in the facts row, not a pill across the tip
         box = tip.bounding_box()
         assert box["x"] >= 0 and box["x"] + box["width"] <= VIEW["width"]
         btn.tap()
@@ -239,18 +247,27 @@ def test_the_section_bar_is_there_when_a_jump_lands(browser, served):
     ctx, pg, errors = _almanac(browser, served)
     try:
         _settle(pg, NIGHT)
-        pg.evaluate("() => { document.getElementById('almanac-content').scrollTop = 0; }")
+        pg.evaluate(
+            "() => { document.getElementById('almanac-content').scrollTop = 0; }"
+        )
         pg.wait_for_timeout(300)
         assert pg.evaluate(SECBAR_STATE)["hidden"] is True
         y = pg.evaluate(GAP_SCROLL)
         assert y > 0, "the page has a place between two sections"
         # The scroll event goes out with a frame; a headless page can sit without one for a while.
-        pg.evaluate("() => new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r)))")
+        pg.evaluate(
+            "() => new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r)))"
+        )
         pg.wait_for_timeout(400)
         got = pg.evaluate(SECBAR_STATE)
-        assert got["hidden"] is False and got["active"] and got["active"] != "today", (y, got)
+        assert got["hidden"] is False and got["active"] and got["active"] != "today", (
+            y,
+            got,
+        )
         # And the flight itself: the sky's planet, its link, the bar named at once.
-        pg.evaluate("() => { document.getElementById('almanac-content').scrollTop = 0; }")
+        pg.evaluate(
+            "() => { document.getElementById('almanac-content').scrollTop = 0; }"
+        )
         pg.wait_for_timeout(300)
         pg.evaluate("() => _orreryShowBody('Saturn')")
         pg.wait_for_timeout(400)
@@ -282,9 +299,7 @@ def test_the_orrery_sun_opens_the_3d_view_on_the_sun(browser, served):
         )
         pg.touchscreen.tap(sun["x"], sun["y"])
         _wait_view(pg, "sun")
-        assert pg.evaluate(
-            "_aeBackLabel()"
-        ) == pg.evaluate("t('alm_solar_system')")
+        assert pg.evaluate("_aeBackLabel()") == pg.evaluate("t('alm_solar_system')")
         assert not errors, errors
     finally:
         ctx.close()
@@ -295,7 +310,9 @@ def test_one_clock(browser, served):
     try:
         # Live: the sky is at now, kept there by a timer.
         assert abs(pg.evaluate("_skyState.nowTime") - pg.evaluate("Date.now()")) < 60000
-        pg.wait_for_function("!!_skyTimers.live", polling=POLL_MS)   # armed once the sky is seen (an observer, after the scroll)
+        pg.wait_for_function(
+            "!!_skyTimers.live", polling=POLL_MS
+        )  # armed once the sky is seen (an observer, after the scroll)
         # Scrubbed: the sky is at the focus, and no live timer runs.
         _settle(pg, NIGHT)
         assert pg.evaluate("_skyState.nowTime") == _ms(NIGHT)
@@ -431,7 +448,7 @@ def test_life_on_the_horizon(browser, served):
             "() => { const b = _skyState.bodies.find((x) => x.type === 'sea'); const r = _skyState.canvas.getBoundingClientRect();"
             " const boats = _skyState.bodies.filter((x) => x.type === 'boat'); let best = 0, gap = -1;"
             " for (let x = b.box[0] + 20; x < b.box[2] - 20; x += 5) { const g = Math.min(...boats.map((o) => Math.abs(o.x - x)), 1e9); if (g > gap) { gap = g; best = x; } }"
-            " return { x: r.left + best, y: r.top + (b.box[1] + b.box[3]) / 2 }; }"   # a tap on open water, clear of the boats on the horizon
+            " return { x: r.left + best, y: r.top + (b.box[1] + b.box[3]) / 2 }; }"  # a tap on open water, clear of the boats on the horizon
         )
         pg.touchscreen.tap(box["x"], box["y"])
         tip = pg.locator("#almanac-sky-tip")
@@ -475,7 +492,7 @@ def test_life_on_the_horizon(browser, served):
         assert not errors, errors
     finally:
         ctx.close()
-    # Inland: the same beach and palms, the sea at half tide, and no tide claimed.
+    # Inland: the place's own land, no sea, and no tide claimed.
     ctx, pg, errors = _almanac(browser, served, place=DENVER)
     try:
         _settle(pg, DAY)
@@ -485,12 +502,20 @@ def test_life_on_the_horizon(browser, served):
             polling=POLL_MS,
             timeout=60000,
         )
-        assert pg.evaluate("() => document.querySelector('#almanac-place .at-tides')") is None
+        assert (
+            pg.evaluate("() => document.querySelector('#almanac-place .at-tides')")
+            is None
+        )
         pg.evaluate("_skyKick()")
         pg.wait_for_timeout(300)
         assert pg.evaluate("_skyState.sea") is None
         assert not pg.evaluate("_skyState.bodies.some((b) => b.type === 'sea')")
-        assert pg.evaluate("(_skyState.palmCache || []).some(Boolean)")
+        # The foreground is the place's own land (almanac-skyland.js): grass on the plains, not a beach, and no palms.
+        pg.wait_for_function("() => !!_skyState.land", polling=POLL_MS, timeout=60000)
+        pg.evaluate("_skyKick()")
+        pg.wait_for_timeout(300)
+        assert pg.evaluate("_osCardScene(_skyState)") in ("grass", "desert")
+        assert not pg.evaluate("(_skyState.palmCache || []).some(Boolean)")
         assert not errors, errors
     finally:
         ctx.close()
@@ -570,7 +595,9 @@ def test_the_iss_is_drawn_when_it_is_overhead_and_lit(browser, served):
             timeout=90000,
         )
         iss_pass = pg.evaluate(ISS_PASS_SCAN)
-        assert iss_pass, "the shipped elements hold no dark-sky pass in their 2.5 days either side of their epoch"
+        assert (
+            iss_pass
+        ), "the shipped elements hold no dark-sky pass in their 2.5 days either side of their epoch"
         _settle(pg, iss_pass)
         pg.wait_for_function(
             "() => _skyState.bodies.some((b) => b.type === 'iss')",
@@ -580,14 +607,23 @@ def test_the_iss_is_drawn_when_it_is_overhead_and_lit(browser, served):
         iss = pg.evaluate("_skyState.bodies.find((b) => b.type === 'iss')")
         assert iss["alt"] > 8 and 300 < iss["km"] < 500, iss
         # An hour on the same orbit's ground track it is not over this sky: nothing is drawn.
-        _settle(pg, (datetime.datetime.fromisoformat(iss_pass.replace("Z", "+00:00")) + datetime.timedelta(hours=1)).isoformat())
+        _settle(
+            pg,
+            (
+                datetime.datetime.fromisoformat(iss_pass.replace("Z", "+00:00"))
+                + datetime.timedelta(hours=1)
+            ).isoformat(),
+        )
         assert not pg.evaluate("_skyState.bodies.some((b) => b.type === 'iss')")
         assert not errors, errors
     finally:
         ctx.close()
+
+
 def test_the_iss_needs_no_3d_view_and_no_beach(browser, served):
     """The live sky asks for the satellite elements itself, on the true horizon as on the beach, without the 3D view
-    being opened (or anything calling the watch): its pass is drawn when it is overhead and lit."""
+    being opened (or anything calling the watch): its pass is drawn when it is overhead and lit.
+    """
     ctx, pg, errors = _almanac(browser, served, horizon=True)
     try:
         assert pg.evaluate("_skySetting('skin')") == "horizon"
@@ -597,7 +633,9 @@ def test_the_iss_needs_no_3d_view_and_no_beach(browser, served):
             timeout=90000,
         )
         iss_pass = pg.evaluate(ISS_PASS_SCAN)
-        assert iss_pass, "the shipped elements hold no dark-sky pass in their 2.5 days either side of their epoch"
+        assert (
+            iss_pass
+        ), "the shipped elements hold no dark-sky pass in their 2.5 days either side of their epoch"
         _settle(pg, iss_pass)
         pg.wait_for_function(
             "() => _skyState.bodies.some((b) => b.type === 'iss')",
@@ -712,7 +750,8 @@ def test_the_light_clock_on_a_ride(browser, served):
 
 def test_the_caption_under_the_sky_is_two_lines_at_most(browser, served):
     """The light of the hour with the Sun and the facing on one line, the season under it. The place
-    is named once, in the Almanac's place line, never again under the sky (it was a third line)."""
+    is named once, in the Almanac's place line, never again under the sky (it was a third line).
+    """
     ctx, pg, errors = _almanac(browser, served, place={"lat": 37.8, "lon": -122.0})
     try:
         _settle(pg, NIGHT)
