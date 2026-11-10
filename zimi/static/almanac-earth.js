@@ -2302,7 +2302,9 @@ function _aeHdCanSplit(b, z, x, y) {
 function _aeHdKeepAbove(S, b) {
   var inv = new S.THREE.Matrix4().copy(b.parent.matrixWorld).invert();
   var c = S.camera.position.clone().applyMatrix4(inv), r = Math.hypot(c.x, c.y, c.z);
-  var min = _aeHdMinOver(b, _aeDeg(Math.asin(c.z / r)), _aeDeg(Math.atan2(c.y, c.x)));
+  if (!(r > 0)) return;   // the camera has no place yet (the first frames): there is no point below it
+  var min = _aeHdMinOver(b, _aeDeg(Math.asin(_aeClamp(c.z / r, -1, 1))), _aeDeg(Math.atan2(c.y, c.x)));
+  if (!isFinite(min)) return;
   AE_TARGETS[b.key].min = min;
   if (_ae.dist < min) { _ae.dist = min; _ae.dirty = true; }
 }
@@ -4733,7 +4735,7 @@ var AE_TARGETS = {
   moon: { min: AE_MIN_DIST_MOON, max: AE_MAX_DIST, surface: AE_MOON_RADIUS_RE },
   sun: { min: AE_MIN_DIST_SUN, max: AE_MAX_DIST_SUN, surface: AE_SUN_SHOW_R }
 };
-function _aeClampDist(d) { var t = AE_TARGETS[_ae.target]; return _aeClamp(d, t.min, t.max); }
+function _aeClampDist(d) { var t = AE_TARGETS[_ae.target]; return _aeClamp(d, isFinite(t.min) ? t.min : 0, t.max); }
 function _aeTargetPos() { return _aeBodyPos(_ae.target) || [0, 0, 0]; }
 // Whose sky the Moon is shown in: the device's place once asked for (the
 // crosshair), else the place chosen for the Almanac; null for neither, and
