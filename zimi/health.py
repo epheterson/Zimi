@@ -384,7 +384,16 @@ def _run(deep=False):
             try:
                 report.append(_check_one(entry, zim_files[name], catalog_sizes, deep, _count_bytes))
             except zimcheck.CheckStopped:
-                _set(phase="cancelled", report=report, current=None, finished_at=time.time())
+                # The books read whole before the stop, failures and all, and
+                # how many of the library they were.
+                ok = sum(1 for r in report if r["status"] == "ok")
+                _set(
+                    phase="cancelled",
+                    report=report,
+                    summary={"total": len(report), "healthy": ok, "warnings": len(report) - ok, "of": total},
+                    current=None,
+                    finished_at=time.time(),
+                )
                 return
             # Exact after each book, whatever the blocks added up to.
             _set(done=i + 1, total=total, bytes_done=sum(sizes[n] for n in names[: i + 1]) if deep else 0)

@@ -1637,7 +1637,7 @@
   "library_health": "Verificar integridade da biblioteca",
   "library_health_deep": "Verificação completa",
   "library_health_deep_start": "Cerca de {time}. Começar?",
-  "library_health_deep_stopped": "Verificação completa interrompida",
+  "library_health_deep_stopped": "Verificação completa interrompida após {done} de {total}",
   "library_health_failed": "Falha na verificação",
   "library_health_progress": "{done} de {total} verificados",
   "library_health_running": "Verificando a biblioteca…",

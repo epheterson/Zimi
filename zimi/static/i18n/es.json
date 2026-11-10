@@ -1637,7 +1637,7 @@
   "library_health": "Verificar integridad de la biblioteca",
   "library_health_deep": "Revisión a fondo",
   "library_health_deep_start": "Unos {time}. ¿Empezar?",
-  "library_health_deep_stopped": "Revisión a fondo detenida",
+  "library_health_deep_stopped": "Revisión a fondo detenida tras {done} de {total}",
   "library_health_failed": "Error en la comprobación",
   "library_health_progress": "{done} de {total} comprobados",
   "library_health_running": "Comprobando la biblioteca…",

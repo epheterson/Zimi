@@ -132,7 +132,12 @@ def test_a_running_check_is_picked_up_with_bytes_book_and_cancel(served, phone):
     assert "Wikipedia" in text and "12" in text and "40" in text
     assert pg.inner_text("#library-deep-btn") == pg.evaluate("() => t('cancel')")
     _shot(pg, "deep_running")
-    pg.on("request", lambda r: r.method == "POST" and r.url.endswith("/manage/health-check") and posts.append(r.post_data))
+    pg.on(
+        "request",
+        lambda r: r.method == "POST"
+        and r.url.endswith("/manage/health-check")
+        and posts.append(r.post_data),
+    )
     pg.click("#library-deep-btn")
     pg.wait_for_timeout(1000)
     assert any(json.loads(p or "{}").get("cancel") is True for p in posts), posts
@@ -154,3 +159,43 @@ def test_a_long_check_says_how_long_before_it_starts(served, phone):
     pg.click("#library-deep-btn")
     label = pg.inner_text("#library-deep-btn")
     assert "h" in label and not posts, (label, posts)
+
+
+STOPPED = {
+    "phase": "cancelled",
+    "deep": True,
+    "done": 1,
+    "total": 12,
+    "bytes_done": 3 * GB,
+    "bytes_total": 40 * GB,
+    "current": None,
+    "summary": {"total": 1, "healthy": 0, "warnings": 1, "of": 12},
+    "report": [
+        {
+            "name": "bad",
+            "title": "Bad Book",
+            "status": "warn",
+            "issues": ["the file does not match its own checksum"],
+            "entries": 3,
+        }
+    ],
+}
+
+
+def test_a_stopped_check_still_lists_what_failed_and_how_far_it_got(served, phone):
+    pg = phone
+    pg.route(
+        "**/manage/health",
+        lambda r: r.fulfill(
+            status=200, content_type="application/json", body=json.dumps(STOPPED)
+        ),
+    )
+    _open_library(pg, served)
+    pg.evaluate("() => _pollLibraryHealth()")
+    pg.wait_for_selector("#library-health-section .health-warn", timeout=15000)
+    text = pg.inner_text("#library-health-section")
+    assert (
+        pg.evaluate("() => t('library_health_deep_stopped', {done: 1, total: 12})")
+        in text
+    )
+    assert "Bad Book" in text and "checksum" in text

@@ -4051,10 +4051,9 @@ function _pollLibraryHealth() {
       return;
     }
     _healthButtons(null);
-    if (st.phase === 'done') _renderHealthReport(st);
-    else if (st.phase === 'cancelled') {
-      sec.innerHTML = '<div class="mc-row"><span class="mc-value" style="color:var(--text2)">' + tH('library_health_deep_stopped') + '</span></div>';
-    } else {
+    // Stopped, the books read before the stop are still the report.
+    if (st.phase === 'done' || st.phase === 'cancelled') _renderHealthReport(st);
+    else {
       sec.innerHTML = '<div class="mc-row"><span class="mc-value" style="color:var(--amber)">' + tH('library_health_failed') + '</span></div>';
     }
   }).catch(function() { _healthButtons(null); });
@@ -4110,6 +4109,10 @@ function _renderHealthReport(st) {
   var summaryLine = s.warnings
     ? t('library_health_summary_warn', { healthy: s.healthy, warnings: s.warnings })
     : t('library_health_summary_ok', { total: s.total });
+  if (st.phase === 'cancelled') {
+    summaryLine = t('library_health_deep_stopped', { done: s.total, total: s.of }) +
+      (s.warnings ? ' · ' + summaryLine : '');
+  }
   if (s.torrent_files) summaryLine += ' · ' + t('health_torrent_files', { n: s.torrent_files });
   var rank = { warn: 0, ok: 1, info: 2 };  // warnings first, torrent-metadata last
   var rows = (st.report || []).slice().sort(function(a, b) {

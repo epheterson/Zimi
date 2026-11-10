@@ -109,6 +109,32 @@ class TestDeepRun(_Lib):
         )
         self.assertTrue(health.start_check()[0])  # the lock was let go
 
+    def test_a_stopped_check_keeps_the_failed_books_and_how_far_it_got(self):
+        self._big()  # read after "bad" and before "good"
+        real = health._count_bytes
+
+        def slow(n):
+            time.sleep(0.05)
+            real(n)
+
+        health._count_bytes = slow
+        try:
+            health.start_check(deep=True)
+            self.assertTrue(_wait(lambda: health.get_state().get("current") == "big"))
+            health.cancel_check()
+            self.assertTrue(
+                _wait(lambda: health.get_state()["phase"] == "cancelled", 10)
+            )
+        finally:
+            health._count_bytes = real
+        st = health.get_state()
+        rows = {r["name"]: r for r in st["report"]}
+        self.assertEqual(list(rows), ["bad"])
+        self.assertIn(zimcheck.CHECKSUM_MISMATCH, rows["bad"]["issues"])
+        self.assertEqual(
+            st["summary"], {"total": 1, "healthy": 0, "warnings": 1, "of": 3}
+        )
+
     def test_a_running_check_says_which_book_and_how_long_is_left(self):
         self._big()
         health.start_check(deep=True)

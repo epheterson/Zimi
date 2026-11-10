@@ -1637,7 +1637,7 @@
   "library_health": "Проверить целостность библиотеки",
   "library_health_deep": "Полная проверка",
   "library_health_deep_start": "Около {time}. Начать?",
-  "library_health_deep_stopped": "Полная проверка остановлена",
+  "library_health_deep_stopped": "Полная проверка остановлена после {done} из {total}",
   "library_health_failed": "Ошибка проверки",
   "library_health_progress": "Проверено {done} из {total}",
   "library_health_running": "Проверка библиотеки…",

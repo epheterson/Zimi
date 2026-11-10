@@ -1637,7 +1637,7 @@
   "library_health": "Check library integrity",
   "library_health_deep": "Deep check",
   "library_health_deep_start": "About {time}. Start?",
-  "library_health_deep_stopped": "Deep check stopped",
+  "library_health_deep_stopped": "Deep check stopped after {done} of {total}",
   "library_health_failed": "Health check failed",
   "library_health_progress": "Checked {done} of {total}",
   "library_health_running": "Checking library…",

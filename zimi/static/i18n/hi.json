@@ -1637,7 +1637,7 @@
   "library_health": "लाइब्रेरी अखंडता जांचें",
   "library_health_deep": "गहरी जाँच",
   "library_health_deep_start": "लगभग {time}। शुरू करें?",
-  "library_health_deep_stopped": "गहरी जाँच रोकी गई",
+  "library_health_deep_stopped": "गहरी जाँच {total} में से {done} के बाद रोकी गई",
   "library_health_failed": "स्वास्थ्य जाँच विफल",
   "library_health_progress": "{total} में से {done} जाँचे गए",
   "library_health_running": "लाइब्रेरी जाँच रहे हैं…",
