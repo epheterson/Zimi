@@ -39,6 +39,32 @@ check(lmOut < lm2 - 0.5, 'and the sky brightens again as the shadow leaves (' + 
 const zen = run('_sgSkyLum(68, -90, 0, 0, _sgSkyShare(1, 68), 1)');
 check(zen > 0.1 && zen < 0.35, 'the zenith at totality is deep twilight (' + zen.toFixed(2) + ' cd/m2)');
 
+// ── The device's capability (ZimiCap), when it is there ──
+{
+  const cover = () => run('_osCloudValues(_osDef({ lat: 40.71, lon: -74, tMs: Date.parse("2026-09-11T20:00:00Z") }), 1).cloud[0]');
+  const oct = () => run('_osCloudValues(_osDef({ lat: 40, lon: -74, tMs: __nowMs }), 1).oct');
+  check(run('typeof ZimiCap') === 'undefined' && oct() === 4, 'without ZimiCap the sky is as designed (4 octaves)');
+  const full = cover();
+  S.__dprCap = 1.5; S.__frames = [];
+  run('var __q = 2; var ZimiCap = { get: function (k) { return k === "skyQuality" ? __q : 2; }, dprCap: function () { return __dprCap; }, frame: function (k, t) { __frames.push([k, t]); } };');
+  check(oct() === 4 && cover() === full, 'at skyQuality 2 the deck is whole');
+  run('__q = 1');
+  check(oct() === 1 && cover() === full, 'at 1 it is the cheap deck: one octave, the same cover');
+  const a1 = run('_osCloudAlphaAt(_osCloudValues(_osDef({ lat: 40, lon: -74, tMs: __nowMs }), 1), 40, 50)');
+  check(a1 >= 0 && a1 <= 1, 'and its CPU port still answers (' + a1.toFixed(2) + ')');
+  run('__q = 0');
+  check(cover() === 0, 'at 0 there is no deck at all');
+  run('__q = 7');
+  check(oct() === 4, 'a level out of range is the full sky');
+  S.window.devicePixelRatio = 3;
+  check(run('_osDpr()') === 1.5, 'the canvas pixel ratio is capped: min(devicePixelRatio, dprCap)');
+  S.window.devicePixelRatio = 1;
+  check(run('_osDpr()') === 1, 'and never raised');
+  run('_osFrame(123)');
+  check(S.__frames.length === 1 && S.__frames[0][0] === 'sky' && S.__frames[0][1] === 123, 'each drawn frame is handed to the governor as "sky"');
+  run('ZimiCap = undefined');
+}
+
 // ── Where a view faces, and the clouds a visit asks for ──
 check(run('_osDefaultHeading(40)') === 180 && run('_osDefaultHeading(-33)') === 0 && run('_osDefaultHeading(0)') === 180, 'a view faces south in the north and north in the south, from one function');
 check(run('_osHandoffFrom(_osDef({}), null).clouds') === 'auto' && run('_osHandoffFrom(_osDef({}), null, { clouds: "clear" }).clouds') === 'clear', 'a hand-off asks for the day\'s clouds unless it asks for a clear sky');

@@ -198,14 +198,14 @@ var OA_CLOUD_GLSL = [
   SG_GLSL_CLOUDS,
   'vec4 osClouds(vec3 d, vec3 o) { vec4 c = cloudDeck(d, o); return vec4(c.rgb / ' + AE_ST_LUX_PER_UNIT.toExponential(3) + ', c.a); }'
 ].join('\n');
-var OA_CLOUD_UNIFORMS = { uCloud: [0, OS_CLOUD_BASE_M, OS_CLOUD_THICK_M, 0], uCloudWind: [0, 0, 0], uCloudSunE: 0, uSunAltDeg: 0, uMoonVec: [0, 0, -1] };
+var OA_CLOUD_UNIFORMS = { uCloud: [0, OS_CLOUD_BASE_M, OS_CLOUD_THICK_M, 0], uCloudWind: [0, 0, 0], uCloudOct: 4, uCloudSunE: 0, uSunAltDeg: 0, uMoonVec: [0, 0, -1] };
 _oaAir.clouds = {
   glsl: OA_CLOUD_GLSL,
   uniforms: OA_CLOUD_UNIFORMS,   // joined by the air's own once the tables exist (wants)
   update: function (st, fr, ph, u) {
     _oaAir.update(st, fr, ph, u);
     var def = _oaDef(st, fr), S = _osSkyState(def), cv = _osCloudValues(def, S.p.sunShare, st.handoff && st.handoff.clouds);
-    u.uCloud.value = cv.cloud; u.uCloudWind.value = cv.wind; u.uCloudSunE.value = cv.sunE; u.uSunAltDeg.value = S.p.sunAltGeo; u.uMoonVec.value = S.lv.moonVec;
+    u.uCloud.value = cv.cloud; u.uCloudWind.value = cv.wind; u.uCloudOct.value = cv.oct; u.uCloudSunE.value = cv.sunE; u.uSunAltDeg.value = S.p.sunAltGeo; u.uMoonVec.value = S.lv.moonVec;
   }
 };
 _aeStandAir = _oaAir;

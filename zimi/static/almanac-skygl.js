@@ -492,6 +492,7 @@ var SG_CLOUD_EARTH_KM = '6371.0';
 var SG_GLSL_CLOUD_FIELD = [
   'uniform vec4 uCloud;',          // cover 0..1, base height (m), thickness (m), the day's offset in the noise
   'uniform vec3 uCloudWind;',      // wind east and north (m/s), seconds since the day's start
+  'uniform float uCloudOct;',      // octaves of the field's noise: 4, or 1 on the cheap deck (ZimiCap skyQuality 1)
   // An integer hash of the lattice point (almanac-onesky.js _osCloudHash is the same sum): a float one differs between a GPU and a CPU.
   'float cloudHash(vec2 p) {',
   '  uvec2 q = uvec2(ivec2(p));',
@@ -506,8 +507,8 @@ var SG_GLSL_CLOUD_FIELD = [
   // Each octave fades to its mean once its cells are smaller than the ground a pixel covers there (size, fp in metres).
   'float cloudFbm(vec2 p, float size, float fp) {',
   '  float s = 0.0, a = 0.5;',
-  '  for (int i = 0; i < 4; i++) { s += a * mix(0.5, cloudNoise(p), 1.0 - smoothstep(0.25, 1.0, fp / size)); p = p * 2.03 + 17.1; a *= 0.5; size /= 2.03; }',
-  '  return s / 0.9375;',
+  '  for (int i = 0; i < 4; i++) { if (float(i) >= uCloudOct) break; s += a * mix(0.5, cloudNoise(p), 1.0 - smoothstep(0.25, 1.0, fp / size)); p = p * 2.03 + 17.1; a *= 0.5; size /= 2.03; }',
+  '  return s / (1.0 - exp2(-uCloudOct));',
   '}',
   // How far past the cut the noise is: 0 at a cloud's edge, rising into its body (mottled by the finer octave inside it).
   'float cloudMargin(vec2 xy, float fp) {',
@@ -1025,7 +1026,7 @@ function _sgDraw(p) {
   gl.uniform1f(u.uZodiScale, 1); gl.uniform1f(u.uAirglow, SG_AIRGLOW_LUM); gl.uniform1f(u.uSeed, p.seed || 0);
   gl.uniform1fv(u['uZodi'], _sgZodiTable());
   var cv = p.clouds || SG_NO_CLOUDS;
-  gl.uniform4fv(u.uCloud, cv.cloud); gl.uniform3fv(u.uCloudWind, cv.wind); gl.uniform3fv(u.uMoonVec, lv.moonVec); gl.uniform1f(u.uCloudSunE, cv.sunE); gl.uniform1f(u.uSunAltDeg, p.sunAltGeo);
+  gl.uniform4fv(u.uCloud, cv.cloud); gl.uniform3fv(u.uCloudWind, cv.wind); gl.uniform1f(u.uCloudOct, cv.oct); gl.uniform3fv(u.uMoonVec, lv.moonVec); gl.uniform1f(u.uCloudSunE, cv.sunE); gl.uniform1f(u.uSunAltDeg, p.sunAltGeo);
   gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
   // The stars over it, added as light (but not through the Moon's disc: it is in front of them).
   if (sg.starCount) {
@@ -1039,7 +1040,7 @@ function _sgDraw(p) {
     gl.uniform1f(us.uLm, p.lm); gl.uniform1f(us.uDpr, p.dpr); gl.uniform1f(us.uScint, p.scint ? 1 : 0);
     gl.uniform1f(us.uSeed, p.seed || 0); gl.uniform1f(us.uSat, SG_STAR_SATURATION);
     gl.uniform3f(us.uMoon, md ? md.x : 0, md ? md.y : 0, md ? md.r : 0);
-    gl.uniform4fv(us.uCloud, cv.cloud); gl.uniform3fv(us.uCloudWind, cv.wind);
+    gl.uniform4fv(us.uCloud, cv.cloud); gl.uniform3fv(us.uCloudWind, cv.wind); gl.uniform1f(us.uCloudOct, cv.oct);
     gl.drawArraysInstanced(gl.TRIANGLE_STRIP, 0, 4, sg.starCount);
     gl.disable(gl.BLEND);
   }

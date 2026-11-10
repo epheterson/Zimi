@@ -2565,6 +2565,7 @@ function _skyPaintBase(s, ts) {
 }
 function _skyPaint(ts) {
   var s = _skyState;
+  _osFrame(typeof ts === 'number' ? ts : performance.now());   // the governor counts each drawn frame
   if (!s || !s.eph || !s.canvas.isConnected) return;
   if (!(s.W > 0 && s.H > 0)) return;   // not laid out (hidden, or 0 tall): a 0-sized canvas cannot be drawn from
   if (_skyAwaitingGPU(s)) return;      // the GPU's sky is on its way and the page waits for it (_skyFirstSight): its kick paints
@@ -2635,7 +2636,7 @@ function _skyViewChanged() {
 var SKY_HOST_FRESH_MS = 1000;       // a turn within this of the last sums reuses them
 var _skyHost = null, _skyHostFrame = 0;
 function _skyHostSize(h) {
-  var dpr = window.devicePixelRatio || 1, w = Math.max(1, h.host.clientWidth), ht = Math.max(1, h.host.clientHeight);
+  var dpr = _osDpr(), w = Math.max(1, h.host.clientWidth), ht = Math.max(1, h.host.clientHeight);
   h.canvas.width = Math.round(w * dpr); h.canvas.height = Math.round(ht * dpr);
   var s = h.s;
   s.dpr = dpr; s.W = h.canvas.width; s.H = h.canvas.height; s.cssW = w; s.scale = _skyClamp(w / 600, 0.85, 1.15);
@@ -3086,7 +3087,7 @@ function _initSkyScene(now, lat, lon, animateMoon) {
   var canvas = document.getElementById('almanac-sky-canvas');
   if (!canvas) return;
   var wrap = canvas.parentElement;
-  var dpr = window.devicePixelRatio || 1;
+  var dpr = _osDpr();
   var w = wrap.clientWidth, h = Math.round(w / (_skyAspectReq || (w < SKY_PHONE_MAX_W ? SKY_ASPECT_PHONE : SKY_ASPECT)));
   if (canvas.width !== Math.round(w * dpr) || canvas.height !== Math.round(h * dpr)) {
     canvas.width = Math.round(w * dpr);
@@ -3618,7 +3619,7 @@ function _drawStarChart(now) {
   var canvas = document.getElementById('almanac-starchart');
   if (!canvas) return;
   var wrap = canvas.parentElement;
-  var dpr = window.devicePixelRatio || 1;
+  var dpr = _osDpr();
   var size = Math.min(wrap.clientWidth, 360);
   canvas.width = size * dpr;
   canvas.height = size * dpr;

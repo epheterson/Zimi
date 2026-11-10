@@ -72,9 +72,35 @@ function _osCloudField(def) {
 }
 // The field as the shaders take it (almanac-skygl.js SG_GLSL_CLOUDS' uniforms); sunShare is the Sun's light that reaches the place (an eclipse).
 // mode 'clear' draws none (a visit to see something in the sky is not left to the day's deck); 'auto' (or nothing) is the day's own.
+// The device's capability for the sky (ZimiCap, js/capability: skyQuality 0 none, 1 the cheap deck, 2 as designed). Without it, the full sky.
+var OS_QUALITY_MAX = 2, OS_CHEAP_OCTAVES = 1, OS_FULL_OCTAVES = 4;
+function _osSkyQuality() {
+  if (typeof ZimiCap === 'undefined' || !ZimiCap || typeof ZimiCap.get !== 'function') return OS_QUALITY_MAX;
+  var q = ZimiCap.get('skyQuality');
+  return typeof q === 'number' && q >= 0 && q <= OS_QUALITY_MAX ? q : OS_QUALITY_MAX;
+}
+// A canvas's pixel ratio under the device's cap (the card's and Look's).
+function _osDpr() {
+  var d = window.devicePixelRatio || 1;
+  if (typeof ZimiCap !== 'undefined' && ZimiCap && typeof ZimiCap.dprCap === 'function') { var c = ZimiCap.dprCap('earth'); if (c > 0) d = Math.min(d, c); }
+  return d;
+}
+// A drawn frame, for the governor that steps quality down when frames run long.
+function _osFrame(now) { if (typeof ZimiCap !== 'undefined' && ZimiCap && typeof ZimiCap.frame === 'function') ZimiCap.frame('sky', now); }
+// When the governor steps, or the person changes the setting, the card draws again with the new level (once; ZimiCap may arrive late or never).
+var _osCapListening = false;
+function _osCapListen() {
+  if (_osCapListening || typeof ZimiCap === 'undefined' || !ZimiCap || typeof ZimiCap.on !== 'function') return;
+  _osCapListening = true;
+  ZimiCap.on(function (evt) {
+    var st = typeof _skyState !== 'undefined' ? _skyState : null;
+    if (st) { st.baseDirty = true; if (typeof _skyKick === 'function') _skyKick(); }
+    if (typeof _ae !== 'undefined' && _ae && _ae.stand) { _ae.stand.dirty = true; _ae.dirty = true; }
+  });
+}
 function _osCloudValues(def, sunShare, mode) {
-  var f = _osCloudField(def), day = _osSolarDay(def.tMs, def.lon);
-  return { cloud: [mode === 'clear' ? 0 : f.coverage, f.base, f.thickness, f.seed[0]], wind: [f.wind[0], f.wind[1], (day - Math.floor(day)) * OS_DAY_S], sunE: SG_SUN_LUX * (sunShare == null ? 1 : sunShare) };
+  var f = _osCloudField(def), day = _osSolarDay(def.tMs, def.lon), q = _osSkyQuality();
+  return { oct: q === 1 ? OS_CHEAP_OCTAVES : OS_FULL_OCTAVES, cloud: [mode === 'clear' || q === 0 ? 0 : f.coverage, f.base, f.thickness, f.seed[0]], wind: [f.wind[0], f.wind[1], (day - Math.floor(day)) * OS_DAY_S], sunE: SG_SUN_LUX * (sunShare == null ? 1 : sunShare) };
 }
 
 // ── An eclipse of the Sun ──
@@ -105,14 +131,14 @@ function _osCloudNoise(x, y) {
   return (a + (b - a) * fx) * (1 - fy) + (c + (d - c) * fx) * fy;
 }
 function _osSmoothstep(a, b, x) { var t = Math.max(0, Math.min(1, (x - a) / (b - a))); return t * t * (3 - 2 * t); }
-function _osCloudFbm(px, py, size, fp) {   // each octave fades to its mean once its cells are smaller than the ground a pixel covers (the GLSL's sum)
-  var s = 0, a = 0.5;
-  for (var i = 0; i < 4; i++) { s += a * (0.5 + (_osCloudNoise(px, py) - 0.5) * (1 - _osSmoothstep(0.25, 1, fp / size))); px = px * 2.03 + 17.1; py = py * 2.03 + 17.1; a *= 0.5; size /= 2.03; }
-  return s / 0.9375;
+function _osCloudFbm(px, py, size, fp, oct) {   // each octave fades to its mean once its cells are smaller than the ground a pixel covers (the GLSL's sum)
+  var s = 0, a = 0.5, n = oct || OS_FULL_OCTAVES;
+  for (var i = 0; i < n; i++) { s += a * (0.5 + (_osCloudNoise(px, py) - 0.5) * (1 - _osSmoothstep(0.25, 1, fp / size))); px = px * 2.03 + 17.1; py = py * 2.03 + 17.1; a *= 0.5; size /= 2.03; }
+  return s / (1 - Math.pow(2, -n));
 }
 function _osCloudMargin(v, x, y, t) {
   var D = SG_CLOUD_DETAIL, qx = (x - v.wind[0] * v.wind[2]) / SG_CLOUD_SCALE_M + v.cloud[3], qy = (y - v.wind[1] * v.wind[2]) / SG_CLOUD_SCALE_M + v.cloud[3];
-  var n = (1 - D.share) * _osCloudFbm(qx, qy, SG_CLOUD_SCALE_M, t * SG_CLOUD_FOOTPRINT) + D.share * _osCloudFbm(qx * D.scale + D.offset, qy * D.scale + D.offset, SG_CLOUD_SCALE_M / D.scale, t * SG_CLOUD_FOOTPRINT);
+  var n = (1 - D.share) * _osCloudFbm(qx, qy, SG_CLOUD_SCALE_M, t * SG_CLOUD_FOOTPRINT, v.oct) + D.share * _osCloudFbm(qx * D.scale + D.offset, qy * D.scale + D.offset, SG_CLOUD_SCALE_M / D.scale, t * SG_CLOUD_FOOTPRINT, v.oct);
   n = (n - 0.47) * D.stretch + 0.47;
   var th = SG_CLOUD_THRESHOLD[0] + (SG_CLOUD_THRESHOLD[1] - SG_CLOUD_THRESHOLD[0]) * v.cloud[0];
   return n - th;
@@ -377,6 +403,7 @@ function _osLandKick(s, key) {
   var go = function () {
     _osSync3DButtons();
     _osNightLoad();
+    _osCapListen();
     Promise.all(OS_LAND_SRCS.map(function (src) { return _loadScript(src); })).then(function (ok) {
       if (!ok.every(Boolean) || typeof _osLandCoverLoad !== 'function') return false;
       return _osLandCoverLoad();
