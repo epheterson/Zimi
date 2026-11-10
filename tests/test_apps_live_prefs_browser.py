@@ -133,6 +133,9 @@ def test_pdf_reader_follows_dark_pages(served, browser_ctx):
 def test_manage_maps_pane_redraws_when_the_source_changes(served, browser_ctx):
     pg = browser_ctx.new_page()
     pg.goto(served + "/", wait_until="load")
+    # The boot paints "Loading library" over #output before it asks for the list (init); Manage opened before that
+    # point is wiped with it, and drillCategory finds no #catalog-results. Open it once the list is in.
+    pg.wait_for_function("() => zimsCache !== null", timeout=WAIT_MS)
     pg.evaluate("enterManage()")
     pg.wait_for_function(
         "() => typeof drillCategory === 'function' && !!document.getElementById('catalog-results')",

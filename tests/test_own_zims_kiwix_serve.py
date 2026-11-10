@@ -39,6 +39,16 @@ MONTH = "2026-11"
 RANDOM_TRIES = 12
 #: Games pages opened in Kiwix: one of each kind the shelf has (cards, board, a Logic puzzle).
 GAME_PAGES = ("solitaire.html", "chess.html", "puzzles/net.html")
+#: Errors Kiwix's own viewer throws (kiwix-tools 3.8.2), never a book's page: it names its iframe's onload handler
+#: before its script defines it ("on_content_load is not defined" on a fast frame load), and reads the framed page's
+#: body for its scroll position before the frame has one ("Cannot read properties of null (reading 'scrollTop')").
+#: Either can happen on any viewer load, so every viewer step drops both, and only those.
+VIEWER_ERRORS = ("on_content_load is not defined", "(reading 'scrollTop')")
+
+
+def _not_viewer(errors):
+    """The page errors that are not Kiwix's viewer's own (VIEWER_ERRORS)."""
+    return [e for e in errors if not any(v in e for v in VIEWER_ERRORS)]
 
 
 def _kiwix_serve():
@@ -197,9 +207,7 @@ def test_the_almanac_starts_in_kiwix_and_its_3d_view_opens(browser, kiwix, kind)
             and "/random" not in u
         ]
         assert not stray, stray[:5]
-        # Kiwix's viewer names its iframe's onload handler before its script defines it; a fast frame load throws
-        # "on_content_load is not defined" in the viewer (kiwix-tools 3.8.2), not in the Almanac.
-        assert [e for e in errors if "on_content_load" not in e] == [], errors
+        assert _not_viewer(errors) == [], errors
     finally:
         ctx.close()
 
@@ -222,10 +230,8 @@ def test_the_games_shelf_and_a_game_of_each_kind_start_in_kiwix(browser, kiwix):
             arg=[want, book],
             timeout=60_000,
         )
-        # The viewer's own script reads the framed page's body for its scroll position and throws "Cannot read properties of
-        # null (reading 'scrollTop')" when the frame has no body yet (kiwix-tools 3.8.2, viewer, not a game page): only that
-        # error is dropped, and only from the viewer step; every game page below is opened bare, on its own.
-        assert [e for e in errors if "'scrollTop'" not in e] == [], errors
+        # Only the viewer step drops the viewer's own errors; every game page below is opened bare, on its own.
+        assert _not_viewer(errors) == [], errors
         del errors[:]
         for page in GAME_PAGES:
             pg.goto(kiwix["base"] + "/content/%s/%s" % (book, page), wait_until="load")
