@@ -862,3 +862,67 @@ def test_the_land_files_wait_for_the_sky_card_to_be_seen_not_for_the_almanac_or_
     pg.wait_for_timeout(3000)
     assert any("landcover-v1.bin" in u for u in seen), seen[-5:]
     ctx.close()
+
+
+def _card_at_dsf3(browser, served, init=""):
+    ctx = browser.new_context(
+        viewport=VIEW, device_scale_factor=3, has_touch=True, is_mobile=True, service_workers="block"
+    )
+    ctx.add_init_script(
+        "try { localStorage.setItem('zimi_almanac_place', %r); sessionStorage.setItem('zimi_almanac_location', %r); } catch (e) {}"
+        % (PLACE, PLACE) + init
+    )
+    pg = ctx.new_page()
+    pg.goto(served + "/#almanac", wait_until="load")
+    pg.wait_for_function(
+        "() => typeof _skyState !== 'undefined' && _skyState && _skyState.eph && typeof _almScrubSettle === 'function'",
+        timeout=120_000,
+    )
+    pg.evaluate(
+        "() => { _almClockSetRate(0); _almScrubSettle(new Date('2026-06-21T18:00:00Z')); document.querySelector('.almanac-sky-wrap').scrollIntoView({ behavior: 'instant', block: 'center' }); }"
+    )
+    pg.wait_for_timeout(4000)
+    return ctx, pg
+
+
+def _canvas_png(pg):
+    import base64
+
+    url = pg.evaluate("() => _skyState.canvas.toDataURL('image/png')")
+    return base64.b64decode(url.split(",", 1)[1])
+
+
+@pytest.mark.parametrize(
+    "init",
+    [
+        "",
+        # a phone-class capability at the 'standard' level and a governor already stepped down: the card is not the 3D view's to cap
+        "window.ZimiCap = { get: function (k) { return k === 'skyQuality' ? 1 : 2; }, dprCap: function () { return 1; }, frame: function () {}, on: function () {} };",
+    ],
+    ids=["no-capability", "capped-3d-view"],
+)
+def test_on_a_device_ratio_3_phone_the_card_is_drawn_at_three_device_pixels_a_css_pixel_and_its_horizon_is_crisp(
+    browser, served, init
+):
+    """The card canvas's backing store is its CSS size times 3 (Auto on a capable machine), and the sky/sea horizon is a line, not a smear: its
+    transition is no wider than 2 device pixels."""
+    import numpy as np
+    from PIL import Image
+
+    ctx, pg = _card_at_dsf3(browser, served, init)
+    size = pg.evaluate(
+        "() => { const c = _skyState.canvas, r = c.getBoundingClientRect(); return { w: c.width, h: c.height, cw: r.width, ch: r.height, dpr: devicePixelRatio }; }"
+    )
+    assert size["dpr"] == 3
+    assert abs(size["w"] - size["cw"] * 3) <= 1 and abs(size["h"] - size["ch"] * 3) <= 1, size
+    img = np.asarray(Image.open(io.BytesIO(_canvas_png(pg))).convert("L")).astype(float)
+    h, w = img.shape
+    cols = img[:, int(w * 0.35) : int(w * 0.65)]
+    prof = np.median(cols, axis=1)
+    step = np.abs(np.diff(prof))
+    y = int(np.argmax(step[int(h * 0.3) : int(h * 0.9)])) + int(h * 0.3)
+    total = abs(prof[min(h - 1, y + 7)] - prof[max(0, y - 6)])
+    two_px = max(abs(prof[k + 2] - prof[k]) for k in range(max(0, y - 2), min(h - 2, y + 2)))
+    assert total > 6, ("no horizon found", y, total)
+    assert two_px >= 0.7 * total, ("the horizon is wider than 2 device pixels", y, total, two_px)
+    ctx.close()

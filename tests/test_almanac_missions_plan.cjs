@@ -22,6 +22,7 @@ function extractFn(src, name) {
 }
 const S = { Math, Date, Object, JSON, console, String, Number, Array, isNaN, isFinite };
 vm.createContext(S);
+S._almAsset = (p) => p;
 vm.runInContext(require('./sk.cjs')(), S);
 vm.runInContext('var JD_UNIX_EPOCH = 2440587.5; var JD_J2000 = 2451545.0; var MS_PER_DAY = 86400000; var JULIAN_CENTURY = 36525; var DEG_TO_RAD = Math.PI / 180;', S);
 for (const fn of ['_dateToJD', '_jdToJulianCentury', '_solveKepler', '_jdnToGregorian', '_cnDeltaTdays']) vm.runInContext(extractFn(almSrc, fn), S);
