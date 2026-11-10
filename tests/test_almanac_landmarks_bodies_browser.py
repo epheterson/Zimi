@@ -158,8 +158,10 @@ def test_landmarks_on_every_body_and_a_flight_to_a_rover(served):
                 ]
             )
             pg.evaluate("_aePreset('mars')")
+            # Pluto's place comes from the probes' table, fetched once the view is among the planets (not on the Earth
+            # it opened on): the frame after the table is in places it.
             pg.wait_for_function(
-                "() => { _ae.dirty = true; _aeKick(); return !_ae.fly && !!_ae.gl.planets.mars.pos; }",
+                "() => { _ae.dirty = true; _aeKick(); return !_ae.fly && !!_ae.gl.planets.mars.pos && !!_ae.gl.planets.pluto.pos; }",
                 timeout=60_000,
                 polling=200,
             )
