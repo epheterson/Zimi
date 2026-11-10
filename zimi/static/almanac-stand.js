@@ -453,7 +453,7 @@ function _aeStandTrees(st) {
   list.forEach(function (t) {
     var K = AE_STAND_TREE_KINDS, c0 = [t.x, t.y, t.z], lean = t.lean, cx = function (f) { return t.x + lean * t.h * f; }, sd = t.seed;
     // the trunk: a dark sliver
-    var tr = Math.max(0.18, t.h * 0.012), tz = t.z + t.h * (t.kind === 'palm' ? 0.85 : 0.22);
+    var tr = Math.max(0.18, t.h * 0.012), tz = t.z + t.h * (t.kind === 'palm' ? 0.85 : t.kind === 'broadleaf' ? 0.55 : 0.22);
     var tk = [[cx(0) - tr, t.y - tr], [cx(0) + tr, t.y - tr], [cx(0) + tr, t.y + tr], [cx(0) - tr, t.y + tr]];
     for (var e = 0; e < 4; e++) { var A = tk[e], B = tk[(e + 1) % 4]; tri([A[0], A[1], t.z], [B[0], B[1], t.z], [B[0] + lean * t.h * 0.2, B[1], tz], c0, K.trunk, sd, 0, 0, 0.2); }
     if (t.kind === 'conifer') {
