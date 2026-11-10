@@ -45,7 +45,8 @@
   html .ae-spin-full, html .almanac-look, html .tk-pop.tk-sheet, html .tk-scrim, html .gr-lightbox { bottom: var(--host-bottom); }
   /* The line naming Zimi (_almHomeLine), over the footer's own sentence. */
   .alm-home { display: flex; flex-wrap: wrap; justify-content: center; align-items: center; gap: 2px 8px; min-height: 44px; margin: 0 auto 8px; font-size: 13px; color: var(--text2); text-decoration: none; }
-  .alm-home img { flex: none; width: 20px; height: 20px; }
+  /* The pebble is dark: on the night ground it gets the thin ring the Games give it in dark mode. */
+  .alm-home img { flex: none; width: 20px; height: 20px; --mark-ring: rgba(232, 232, 237, 0.28); filter: drop-shadow(1px 0 0 var(--mark-ring)) drop-shadow(-1px 0 0 var(--mark-ring)) drop-shadow(0 1px 0 var(--mark-ring)) drop-shadow(0 -1px 0 var(--mark-ring)); }
   .alm-home span { font-weight: 650; color: var(--text); }
   .alm-home-addr { color: var(--amber); text-decoration: underline; text-underline-offset: 2px; }
   .alm-home:focus-visible { outline: 2px solid var(--amber); outline-offset: 2px; border-radius: 6px; }
