@@ -1687,7 +1687,7 @@ var AE_SUNFX_JS = '/static/almanac-sun.js?v=45';
 var AE_SUNFX_MIN_PX = 28;            // the Sun's disc, radius in CSS px, past which its close-up is asked for
 function _aeSunFxWanted(S, ms) {
   if (typeof _aeSunFxTick === 'function') { _aeSunFxTick(S, ms); return; }
-  if (S.sunFxAsked || typeof document === 'undefined') return;
+  if (S.sunFxAsked || typeof document === 'undefined' || !_ae.ready || !_aeIsOpen) return;   // nor while the scene is being built (the default camera has the Sun in frame)
   var to = _aeSub([S.sun.position.x, S.sun.position.y, S.sun.position.z], [S.camera.position.x, S.camera.position.y, S.camera.position.z]), d = _aeLen(to);
   if (AE_SUN_SHOW_R / Math.max(1e-9, d) * _ae.h / 2 / Math.tan(_aeRad(S.camera.fov) / 2) < AE_SUNFX_MIN_PX) return;
   // Wide on screen is not enough: on a phone the Sun is "wide" from the first frame, looking the other way. It is asked for when
@@ -2076,7 +2076,8 @@ function _aeMoonDiscPx(S) {
   return AE_MOON_RADIUS_RE / Math.max(1e-9, d) * _ae.h / 2 / Math.tan(_aeRad(S.camera.fov) / 2) * (typeof window !== 'undefined' && window.devicePixelRatio || 1);
 }
 function _aeMoonHiWanted(S) {
-  if (S.moonHiAsked || !S.moonUni.moonMapped.value) return;
+  // Not while the scene is being built: until the view is ready and open the camera sits at its default distance, where the Moon's disc is wide.
+  if (S.moonHiAsked || !S.moonUni.moonMapped.value || !_ae.ready || !_aeIsOpen) return;
   if (_ae.target !== 'moon' && _aeMoonDiscPx(S) < AE_MOON_LO_MAP_W / 4) return;
   S.moonHiAsked = true;
   _aeLoadMap(S, S.moonUni.moonMap, AE_TEX_MOON_HI, AE_THREE_RED_FORMAT, _aeSharedHiMoon(S));
