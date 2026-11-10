@@ -1481,8 +1481,15 @@
   }
   // The page's fixed parts, by the ids every game page uses.
   function pageEls() {
-    var g = function (id) { return root.document.getElementById(id); };
-    return { table: g('zc-table'), sub: g('zc-sub'), undo: g('zc-undo'), newBtn: g('zc-new'), menu: g('zc-menu'), stat: g('zc-stat') };
+    var g = function (id) { return root.document.getElementById(id); }, undo = g('zc-undo');
+    // The page's Undo is plain English in the markup; it speaks the player's language (and follows it when the words arrive late).
+    if (undo && !undo.dataset.words && root.ZimiText) {
+      undo.dataset.words = '1';
+      var say = function () { undo.textContent = root.ZimiText.T('board.undo'); };
+      say();
+      if (root.ZimiText.onChange) root.ZimiText.onChange(say);
+    }
+    return { table: g('zc-table'), sub: g('zc-sub'), undo: undo, newBtn: g('zc-new'), menu: g('zc-menu'), stat: g('zc-stat') };
   }
   // A pile's cards as plain ids (for games whose piles hold {id, up}).
   function idsOf(pile) { return pile.map(function (c) { return c.id; }); }
