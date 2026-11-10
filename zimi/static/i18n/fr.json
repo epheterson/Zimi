@@ -4001,5 +4001,17 @@
   "tb_kn_ms_tli_v": "Décalée d'environ deux minutes par rapport au rapport, à l'heure où l'orbite de parking ajustée atteint la latitude du rapport (8,03 S)",
   "tb_kn_ms_rdv": "Apollo 11 : rendez-vous",
   "tb_kn_ms_rdv_v": "Une réduction lissée de l'écart du module lunaire avec Columbia jusqu'à l'amarrage ; pas la séquence coelliptique du rapport",
-  "alm_hd_ultra": "Ultra"
+  "alm_hd_ultra": "Ultra",
+  "alm_ms_ph_separation": "Séparation de l'étage de croisière",
+  "alm_ms_ph_touchdown": "Atterrissage",
+  "alm_ms_ev_cruise_sep": "Séparation de l'étage de croisière",
+  "alm_ms_ev_m20_entry": "Entrée atmosphérique",
+  "alm_ms_ev_peak_heat": "Pic de chauffe",
+  "alm_ms_ev_chute": "Parachute déployé",
+  "alm_ms_ev_hs_sep": "Séparation du bouclier thermique",
+  "alm_ms_ev_bs_sep": "Séparation de la coque arrière",
+  "alm_ms_ev_skycrane": "Grue céleste",
+  "alm_ms_ev_m20_touchdown": "Atterrissage",
+  "tb_kn_ms_m20": "Perseverance : entrée et atterrissage",
+  "tb_kn_ms_m20_v": "Suit les événements publiés de l'atterrissage et finit au repère de Perseverance ; le cap d'entrée et l'altitude et la vitesse entre les événements sont supposés, non simulés"
 }

@@ -4430,6 +4430,7 @@ function _aeRefAxesRows() {
   add('ms.a11_land', _aeT('tb_kn_ms_land'), '102:45:39.9 · 0.67408 N 23.473 E', '', MR + ', table 5-I; LROC');
   add('ms.a11_ei', _aeT('tb_kn_ms_ei'), '195:03:05.7 · 3.19 S 171.96 E · 36,194 ft/s · −6.48', 'h:mm:ss · ° · °', MR + ', table 7-VII');
   add('ms.a11_entry_note', _aeT('tb_kn_ms_entry'), _aeT('tb_kn_ms_entry_v'), '', MR + ', table 7-VII');
+  add('ms.m20_edl', _aeT('tb_kn_ms_m20'), _aeT('tb_kn_ms_m20_v'), '', 'NASA/JPL Mars 2020 press kit; JPL Horizons -168');
   add('ms.a11_tli_time', _aeT('tb_kn_ms_tli'), _aeT('tb_kn_ms_tli_v'), '', MR + ', table 7-II');
   add('ms.a11_rendezvous', _aeT('tb_kn_ms_rdv'), _aeT('tb_kn_ms_rdv_v'), '', MR + ', table 3-I');
   add('ms.a11_splash', _aeT('tb_kn_ms_splash'), '195:18:35 · 13.30 N 169.15 W', '', MR + ', table 7-VII');
@@ -4571,7 +4572,7 @@ var AE_SITE_FACTS = { solSeconds: 88775.244, marsSolDays: 1.0274912517, msdEpoch
 var AE_SITES_JS = ['/static/almanac-sites.js', '/static/almanac-sites-ground.js'];
 // Missions flown end to end (almanac-missions.js): fetched the first time one is asked for, never with the view. The
 // ids are in the order of the Go to list; their names are alm_ms_<id>.
-var AE_MISSIONS_JS = '/static/almanac-missions.js', AE_MISSION_IDS = ['apollo11', 'voyager1', 'voyager2', 'plan'], AE_GO_MS = 'ms:', _aeMissionsLoading = false;
+var AE_MISSIONS_JS = '/static/almanac-missions.js', AE_MISSION_IDS = ['apollo11', 'perseverance', 'voyager1', 'voyager2', 'plan'], AE_GO_MS = 'ms:', _aeMissionsLoading = false;
 function _aeMissionStart(id) {
   if (typeof _aeMissionOpen === 'function') { _aeMissionOpen(id); return; }
   if (_aeMissionsLoading) return;
@@ -5053,7 +5054,7 @@ var AE_FLY_OVERVIEW_MS = 2000, AE_FLY_OVERVIEW_STRETCH = 1.25, AE_FLY_OVERVIEW_K
 //   _aeStandAt(body, lat, lon)         enter the view: a promise of whether it started
 //   _aeGroundHeight(body, lat, lon)    metres above the body's mean radius; 0 until the body's terrain is loaded
 var AE_STAND_KEYS = ['earth', 'moon', 'mercury', 'venus', 'mars', 'io', 'europa', 'ganymede', 'callisto', 'titan', 'pluto'];
-var AE_STAND_SRCS = ['/static/almanac-terrain.js', '/static/almanac-terrainshade.js', '/static/almanac-standlook.js', '/static/almanac-standgl.js', '/static/almanac-stand.js', '/static/almanac-standhost.js'];
+var AE_STAND_SRCS = ['/static/almanac-terrain.js', '/static/almanac-terrainshade.js', '/static/almanac-standlook.js', '/static/almanac-standgl.js', '/static/almanac-oneland.js', '/static/almanac-stand.js', '/static/almanac-standhost.js'];
 var AE_STAND_FIGURE_SVG = '<svg class="ae-tool-svg" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="5.5" r="2.3"/><path d="M12 8.5v6M8.5 11.5l3.5-1 3.5 1M12 14.5l-2.5 5.5M12 14.5l2.5 5.5"/></svg>';
 var AE_STAND_EYE_M = 1.7;                      // an eye above the ground
 var AE_STAND_AIRLESS_DAY_MU = [-0.05, 0.12], AE_STAND_AIRLESS_DAY_LIM = 0.5;   // the Sun's sine of height where the stars go (-3 to 7 degrees), and the faintest star left
@@ -5084,8 +5085,8 @@ function _aeStandAt(key, lat, lon) {
   return _aeStandReady().then(function () { return _aeStandStart(key, lat, lon); }, function () { return false; });
 }
 // The 2D sky's hand-off (almanac-stand.js has the real ones, which replace these once it is loaded): open Stand here from a card, and the way back.
-function _aeStandOpen(h) { return _aeStandReady().then(function () { return typeof _aeStandStart === 'function' ? _aeStandOpen(h) : false; }, function () { return false; }); }
-function _aeStandClose() { /* nothing of Stand is loaded, so nothing of it is open */ }
+function _aeStandOpen(h) { return _aeStandReady().then(function () { return _aeStandOpenNow(h); }, function () { return false; }); }
+function _aeStandClose() { if (typeof _aeStandCloseNow === 'function') _aeStandCloseNow(); }   // nothing of Stand loaded: nothing of it open
 function _aeGroundHeight(key, lat, lon) {
   if (typeof _aeStandHeight !== 'function') { _aeStandReady().catch(function () {}); return 0; }
   return _aeStandHeight(key, lat, lon);
