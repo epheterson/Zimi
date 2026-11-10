@@ -270,6 +270,7 @@ def _snippet_thumbnail(archive, zim, path, text):
 def result_snippet(zim, path):
     """{"snippet", "thumbnail"?} for a result card, or None when the ZIM is not
     there (or not this user's). Read once, then kept."""
+    from zimi import docindex
     from zimi.previews import article_position, lead_text
 
     _ensure_server_refs()
@@ -286,7 +287,11 @@ def result_snippet(zim, path):
         out = {"snippet": ""}
         try:
             item = archive.get_entry_by_path(path).get_item()
-            if item.size <= _srv.MAX_CONTENT_BYTES:
+            if (item.mimetype or "").lower() == docindex.PDF_MIME:
+                # A PDF has no markup to read a summary from: its listing's
+                # words, never the file's own bytes.
+                out["snippet"] = docindex.listed_note(archive, path)
+            elif item.size <= _srv.MAX_CONTENT_BYTES:
                 text = lead_text(item)
                 # The page's own summary, then its meta description, then body
                 # prose, past boilerplate some ZIMs put on every page.
