@@ -3851,5 +3851,17 @@
   "tb_kn_ms_tli_v": "Movida unos dos minutos respecto al informe, a la hora en que la órbita de aparcamiento ajustada alcanza la latitud del informe (8,03 S)",
   "tb_kn_ms_rdv": "Apolo 11: encuentro orbital",
   "tb_kn_ms_rdv_v": "Un cierre suavizado de la distancia del módulo lunar a Columbia hasta el acoplamiento; no la secuencia coelíptica del informe",
-  "alm_hd_ultra": "Ultra"
+  "alm_hd_ultra": "Ultra",
+  "alm_ms_ph_separation": "Separación de la etapa de crucero",
+  "alm_ms_ph_touchdown": "Aterrizaje",
+  "alm_ms_ev_cruise_sep": "Separación de la etapa de crucero",
+  "alm_ms_ev_m20_entry": "Entrada atmosférica",
+  "alm_ms_ev_peak_heat": "Máximo calentamiento",
+  "alm_ms_ev_chute": "Paracaídas desplegado",
+  "alm_ms_ev_hs_sep": "Separación del escudo térmico",
+  "alm_ms_ev_bs_sep": "Separación de la cubierta trasera",
+  "alm_ms_ev_skycrane": "Grúa celeste",
+  "alm_ms_ev_m20_touchdown": "Aterrizaje",
+  "tb_kn_ms_m20": "Perseverance: entrada y aterrizaje",
+  "tb_kn_ms_m20_v": "Sigue los eventos publicados del aterrizaje y termina en el punto de Perseverance; el rumbo de entrada y la altitud y velocidad entre eventos son supuestos, no simulados"
 }
