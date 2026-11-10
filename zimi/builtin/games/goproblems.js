@@ -96,6 +96,10 @@
     $('gp-next').classList.add('gs-primary');
     say(T(P.k === 'kill' ? 'gp.solved.kill' : 'gp.solved.live'));
     showStats(); drawBoard();
+    showEnd();
+  }
+  // The solved sheet, shown again when a solved problem comes back after a reload.
+  function showEnd() {
     UI.end({ result: 'win', text: T(P.k === 'kill' ? 'gp.solved.kill' : 'gp.solved.live'), newLabel: T('board.next'), onNew: next });
   }
 
@@ -244,7 +248,7 @@
       if (over) say(T(P.k === 'kill' ? 'gp.solved.kill' : 'gp.solved.live'));
       showStats(); drawBoard();
     },
-    resume: function () { if (thinking) { say(T('gp.whiteAnswers'), true); clearTimeout(replyTimer); replyTimer = setTimeout(whiteReplies, REPLY_DELAY_MS); } }
+    resume: function () { if (over) { showEnd(); return; } if (thinking) { say(T('gp.whiteAnswers'), true); clearTimeout(replyTimer); replyTimer = setTimeout(whiteReplies, REPLY_DELAY_MS); } }
   });
 
   if (new URLSearchParams(location.search).has('debug')) {
