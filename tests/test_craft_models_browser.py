@@ -241,3 +241,39 @@ def test_craft_without_hd_stays_stock(browser, served):
             assert errors == []
         finally:
             ctx.close()
+
+
+# A site model's clone asks for its HD model: the clone keeps its stock meshes, hidden, and gets the full one.
+SITE_HD = """async (key) => {
+  var S = _ae.gl, I = _aeCraftBuild(S, key), root = I.root.clone();
+  _aeCraftSiteHd(I, root);
+  for (var i = 0; i < 200 && !(I.siteHd && I.siteHd.state >= 2); i++) await new Promise(function (r) { setTimeout(r, 50); });
+  S.scene.add(root); root.visible = true;
+  S.renderer.render(S.scene, S.camera);
+  var meshes = root.children.filter(function (c) { return c.isMesh || c.isGroup; });
+  return { state: I.siteHd.state, stockHidden: root.children.filter(function (c) { return c.isMesh; }).every(function (c) { return !c.visible; }),
+    added: root.children.some(function (c) { return c.isGroup && c.children.length > 0; }), glError: S.renderer.getContext().getError() };
+}"""
+
+
+def test_site_model_clone_takes_the_hd_model(browser, served):
+    ctx, pg, errors = _open(browser, served, hd=_hd_assets())
+    try:
+        pg.evaluate("() => _aeCraftLoad('voyager')")
+        pg.wait_for_function("() => !!_aeCraftData('voyager')", timeout=60_000)
+        out = pg.evaluate(SITE_HD, "voyager")
+        assert out["state"] == 3 and out["stockHidden"] and out["added"] and out["glError"] == 0
+        assert errors == []
+    finally:
+        ctx.close()
+
+
+def test_site_model_clone_without_hd_is_untouched(browser, served):
+    ctx, pg, errors = _open(browser, served, hd={})
+    try:
+        pg.evaluate("() => _aeCraftLoad('voyager')")
+        pg.wait_for_function("() => !!_aeCraftData('voyager')", timeout=60_000)
+        out = pg.evaluate(SITE_HD, "voyager")
+        assert out["state"] == 2 and not out["stockHidden"] and not out["added"]
+    finally:
+        ctx.close()
