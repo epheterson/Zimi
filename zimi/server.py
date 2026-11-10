@@ -396,7 +396,8 @@ LAST_REQUEST_AT = 0.0
 
 def _wait_until_idle(max_wait=None):
     """Block until nobody has asked the server for anything recently, or for ``max_wait`` seconds when given (a
-    worker with one cheap read to make, which a busy server must not starve). True when it is quiet."""
+    worker with one cheap read to make, which a busy server must not starve). True when it is quiet.
+    """
     deadline = None if max_wait is None else time.time() + max_wait
     while time.time() - LAST_REQUEST_AT < _SHAPE_IDLE_SECONDS:
         if deadline is not None and time.time() >= deadline:
@@ -806,7 +807,8 @@ def portable_root(env=None):
     ``--portable`` sets) is portable. State then lives in ``<folder>/zimi-data`` and the ZIMs are read from
     ``<folder>/zims`` when it exists, so the folder can sit on a USB disk and move between machines. The
     folder is the executable's; a source run has none, so there ZIMI_PORTABLE=1 means the working directory.
-    It is a default, not an order: a flag, an environment variable or a config file still wins."""
+    It is a default, not an order: a flag, an environment variable or a config file still wins.
+    """
     env = os.environ if env is None else env
     forced = env.get("ZIMI_PORTABLE", "").strip().lower() in ("1", "true", "yes", "on")
     if getattr(sys, "frozen", False):
@@ -1211,7 +1213,11 @@ def resolve_settings(
     # A portable folder's own `zims`, below every explicit source and above discovery.
     portable = portable_root(env)
     portable_zims = portable and os.path.join(portable, PORTABLE_ZIMS_NAME)
-    if portable_zims and zim_dir_src.startswith("default") and os.path.isdir(portable_zims):
+    if (
+        portable_zims
+        and zim_dir_src.startswith("default")
+        and os.path.isdir(portable_zims)
+    ):
         zim_dir, zim_dir_src = portable_zims, f"portable: {portable_zims}"
     # Discovery fills in ONLY what was the hardcoded fallback: `pick` says
     # "default" exactly when no flag, env or config named a zim_dir. Applied
@@ -1233,7 +1239,10 @@ def resolve_settings(
     if portable and data_dir_src.startswith("default"):
         # Not "default": a stick that cannot be written is an error to read, not a reason to keep
         # the settings in ~/.cache where they would never travel with it.
-        data_dir, data_dir_src = os.path.join(portable, PORTABLE_DATA_NAME), f"portable: {portable}"
+        data_dir, data_dir_src = (
+            os.path.join(portable, PORTABLE_DATA_NAME),
+            f"portable: {portable}",
+        )
     host, host_src = pick(host_flag, "--host", "ZIMI_HOST", "host", DEFAULT_HOST)
     port, port_src = pick(port_flag, "--port", "ZIMI_PORT", "port", DEFAULT_PORT)
     if not isinstance(port, int) or isinstance(port, bool):
@@ -2395,10 +2404,25 @@ FIELDGUIDE_ENV = "ZIMI_FIELDGUIDE"
 def fieldguide_enabled():
     """Whether the Field Guide, Help now and their search card are offered.
     Read on every call, so a server and its tests agree on what is on."""
-    return os.environ.get(FIELDGUIDE_ENV, "").strip().lower() in ("1", "true", "yes", "on")
+    return os.environ.get(FIELDGUIDE_ENV, "").strip().lower() in (
+        "1",
+        "true",
+        "yes",
+        "on",
+    )
 
 
-APP_NAMES = ("maps", "tube", "exchange", "reddot", "wiki", "books", "dictionary", "games", "almanac")
+APP_NAMES = (
+    "maps",
+    "tube",
+    "exchange",
+    "reddot",
+    "wiki",
+    "books",
+    "dictionary",
+    "games",
+    "almanac",
+)
 # Apps offered only when named: a comma list in ZIMI_APPS (or a saved list)
 # that names one turns it on; "1", "all", the default and a saved True leave
 # it off. None now: Reddot was one from 1.13.1 to 1.14.0, and home shows an
@@ -2535,7 +2559,11 @@ def set_own_zim_removed(name, gone):
             # Done only if the package's file now holds the name: a same-name copy in the library can outrank it (the scan's rules decide)
             done = (_zim_files_cache or {}).get(name) == path
     except Exception as e:
-        log.warning("Incremental change of %s failed (%s), rescanning the library", str(name).replace("\r", "").replace("\n", ""), e)
+        log.warning(
+            "Incremental change of %s failed (%s), rescanning the library",
+            str(name).replace("\r", "").replace("\n", ""),
+            e,
+        )
     if not done:
         with _zim_lock:
             load_cache(force=True)
@@ -2793,7 +2821,9 @@ _CACHE_VERSION = 2  # bumped for language metadata
 _MASS_STAMP_WINDOW = 120.0  # seconds
 _MASS_STAMP_MTIME_TOL = 3600.0  # first_seen must be within 1h of file mtime to be real
 _zim_list_cache = None
-_auto_update_skips = frozenset()  # ZIMs the auto-updater leaves alone; library.py owns the file
+_auto_update_skips = (
+    frozenset()
+)  # ZIMs the auto-updater leaves alone; library.py owns the file
 _zim_files_cache = None  # {name: path} — cached at startup, ZIM dir is read-only
 _listing_seen = None  # what _set_listing last saw in the listing
 
@@ -3415,7 +3445,9 @@ def get_archive(name):
             try:
                 archive = open_archive(zims[name])
             except (RuntimeError, Exception) as e:
-                log.warning("Skipping corrupt ZIM '%s': %s", loggable(name), loggable(e))
+                log.warning(
+                    "Skipping corrupt ZIM '%s': %s", loggable(name), loggable(e)
+                )
                 return None
             _archive_pool[name] = archive
             return archive
@@ -3491,7 +3523,12 @@ def _read_faces(archive):
 def _own_display_title(title, tags):
     """Zimi's own ZIMs show their short name inside Zimi (the file's Title keeps " · Zimi" for other readers)."""
     from zimi import ownzims
-    return ownzims.display_title(title) if ownzims.OWN_TAG in (tags or "").split(";") else title
+
+    return (
+        ownzims.display_title(title)
+        if ownzims.OWN_TAG in (tags or "").split(";")
+        else title
+    )
 
 
 def _extract_zim_metadata(name, path):
@@ -3555,7 +3592,12 @@ def _extract_zim_metadata(name, path):
                 elif key.startswith("Illustration_48x48"):
                     has_icon = True
             except Exception as e:
-                log.debug("Failed to read metadata key %s for %s: %s", loggable(repr(key)), loggable(name), loggable(e))
+                log.debug(
+                    "Failed to read metadata key %s for %s: %s",
+                    loggable(repr(key)),
+                    loggable(name),
+                    loggable(e),
+                )
                 pass
         try:
             me = archive.main_entry
@@ -3563,7 +3605,9 @@ def _extract_zim_metadata(name, path):
                 me = me.get_redirect_entry()
             main_path = me.path
         except Exception as e:
-            log.debug("Failed to read main entry for %s: %s", loggable(name), loggable(e))
+            log.debug(
+                "Failed to read main entry for %s: %s", loggable(name), loggable(e)
+            )
             pass
         cold_kind = _zim_kind(meta_scraper, meta_tags, meta_name)
         if cold_kind == "map":
@@ -3571,7 +3615,11 @@ def _extract_zim_metadata(name, path):
         elif cold_kind == "reddit":
             map_facts = _reddit_facts(archive)
     except Exception as e:
-        log.debug("Failed to open archive for metadata extraction %s: %s", loggable(name), loggable(e))
+        log.debug(
+            "Failed to open archive for metadata extraction %s: %s",
+            loggable(name),
+            loggable(e),
+        )
         entry_count = "?"
     # Fall back to date from filename if not in metadata
     if not meta_date:
@@ -3666,8 +3714,17 @@ def _own_zim_update(path, prior):
     prior = prior or {}
     was = prior.get("own") or {}
     # The releases that changed it, newest first: what its Updated dot and About say.
-    own = {"v": ZIMI_VERSION, "src": src, "h": list(was.get("h") or [])[:_OWN_HISTORY_MAX]}
-    if src and was.get("src") and was.get("v") != ZIMI_VERSION and was.get("src") != src:
+    own = {
+        "v": ZIMI_VERSION,
+        "src": src,
+        "h": list(was.get("h") or [])[:_OWN_HISTORY_MAX],
+    }
+    if (
+        src
+        and was.get("src")
+        and was.get("v") != ZIMI_VERSION
+        and was.get("src") != src
+    ):
         now = time.time()
         own["h"] = ([{"v": ZIMI_VERSION, "ts": now}] + own["h"])[:_OWN_HISTORY_MAX]
         return now, own
@@ -3684,7 +3741,14 @@ def _whatsnew_lines(version, own_name):
     global _whatsnew
     if _whatsnew is None:
         try:
-            with open(os.path.join(os.path.dirname(os.path.abspath(__file__)), "assets", "whatsnew.json"), encoding="utf-8") as f:
+            with open(
+                os.path.join(
+                    os.path.dirname(os.path.abspath(__file__)),
+                    "assets",
+                    "whatsnew.json",
+                ),
+                encoding="utf-8",
+            ) as f:
                 _whatsnew = json.load(f)
         except (OSError, ValueError):
             _whatsnew = {}
@@ -3695,16 +3759,31 @@ def zim_updates(name, history=None):
     """How ``name`` came to be what it is, newest first: each arrival and update of a library ZIM from
     the event history (its file, so its edition, and its size), or for one of Zimi's own ZIMs, each Zimi
     release that changed it with that release's highlights. For a dot that explains itself and About.
-    ``history``: the event history when the caller already read it (several ZIMs in one request)."""
+    ``history``: the event history when the caller already read it (several ZIMs in one request).
+    """
     out = []
     for z in _zim_list_cache or []:
         if z.get("name") == name and z.get("own_h"):
             for h in z["own_h"]:
-                out.append({"event": "release", "ts": h.get("ts"), "version": h.get("v"), "notes": _whatsnew_lines(h.get("v"), name)})
+                out.append(
+                    {
+                        "event": "release",
+                        "ts": h.get("ts"),
+                        "version": h.get("v"),
+                        "notes": _whatsnew_lines(h.get("v"), name),
+                    }
+                )
             return out
     for ev in _load_history() if history is None else history:
         if ev.get("name") == name and ev.get("event") in ("download", "updated"):
-            out.append({"event": ev["event"], "ts": ev.get("ts"), "file": ev.get("filename", ""), "size_bytes": ev.get("size_bytes") or 0})
+            out.append(
+                {
+                    "event": ev["event"],
+                    "ts": ev.get("ts"),
+                    "file": ev.get("filename", ""),
+                    "size_bytes": ev.get("size_bytes") or 0,
+                }
+            )
             if len(out) >= _ZIM_UPDATES_MAX:
                 break
     return out
@@ -4280,7 +4359,12 @@ def _domain_map_entries_for_zim(name, filename, source_meta, main_path=""):
             else:
                 _add(source_meta.split("/")[0])
         except Exception as e:
-            log.debug("Failed to parse Source %s for %s: %s", loggable(repr(source_meta)), loggable(name), loggable(e))
+            log.debug(
+                "Failed to parse Source %s for %s: %s",
+                loggable(repr(source_meta)),
+                loggable(name),
+                loggable(e),
+            )
     elif main_path:
         # A capture's main entry path IS the site's address
         # ("draculatheme.com/contribute"), which is the discovery interlang
@@ -4324,7 +4408,9 @@ def _zim_tier(path):
 
     if libfolders.owner(path) is not None:
         return 2
-    return 0 if os.path.dirname(os.path.realpath(path)) == os.path.realpath(ZIM_DIR) else 1
+    return (
+        0 if os.path.dirname(os.path.realpath(path)) == os.path.realpath(ZIM_DIR) else 1
+    )
 
 
 def _zim_holder_keeps(held, path):
@@ -4383,7 +4469,9 @@ def register_zim_file(path, removed_files=(), removed_paths=()):
     try:
         st = os.stat(path)
     except OSError as e:
-        log.warning("register_zim_file: cannot stat %s: %s", loggable(path), loggable(e))
+        log.warning(
+            "register_zim_file: cannot stat %s: %s", loggable(path), loggable(e)
+        )
         return False
 
     # Mirror _scan_zim_files' collision rule: a root-level file always beats a
@@ -4514,9 +4602,7 @@ def register_zim_file(path, removed_files=(), removed_paths=()):
         replaced = name in files  # a file already served this name
         # Names whose registered file was one of the swapped-out editions.
         left = {
-            n
-            for n, p in files.items()
-            if n != name and os.path.normpath(p) in swapped
+            n for n, p in files.items() if n != name and os.path.normpath(p) in swapped
         }
         for n in left:
             del files[n]
@@ -4954,7 +5040,21 @@ def _resolve_boot(args):
     # getattr with a default: only `serve` and `config` carry these flags, and
     # the rest of the subcommands still want the file's zim_dir/data_dir.
     if getattr(args, "portable", False):
-        os.environ["ZIMI_PORTABLE"] = "1"  # one switch, read by portable_root() wherever paths resolve
+        os.environ["ZIMI_PORTABLE"] = (
+            "1"  # one switch, read by portable_root() wherever paths resolve
+        )
+    # `zimi serve /path/to/zims` is `--zim-dir /path/to/zims` (as `zimi mcp DIR` is).
+    given = getattr(args, "dir_arg", None)
+    if given:
+        if getattr(args, "zim_dir", None) and os.path.abspath(
+            args.zim_dir
+        ) != os.path.abspath(given):
+            print(
+                f"zimi: {given} and --zim-dir {args.zim_dir} name different folders; give one",
+                file=sys.stderr,
+            )
+            sys.exit(2)
+        args.zim_dir = given
     flags = {
         k: getattr(args, k, None)
         for k in ("zim_dir", "data_dir", "host", "port", "config")
@@ -5121,6 +5221,13 @@ def main():
         )
 
     p_serve = sub.add_parser("serve", help="Start HTTP API server")
+    p_serve.add_argument(
+        "dir_arg",
+        metavar="DIR",
+        nargs="?",
+        default=None,
+        help="Directory containing *.zim files, the same as --zim-dir: `zimi serve /path/to/zims`",
+    )
     add_boot_flags(p_serve)
     p_serve.add_argument(
         "--ui",
@@ -5375,7 +5482,7 @@ def main():
         default=None,
         metavar="COOKIES",
         help="Cookies to send, as a Cookie header copied from your browser's "
-        "developer tools: \"a=1; b=2\". Sent only to the page's own host and its "
+        'developer tools: "a=1; b=2". Sent only to the page\'s own host and its '
         "subdomains, never stored or written down (--site only; not zimit or "
         "singlefile)",
     )
@@ -5491,19 +5598,33 @@ def main():
     )
 
     p_doctor = sub.add_parser(
-        "doctor", help="Which optional features this install has, and how to get the rest"
+        "doctor",
+        help="Which optional features this install has, and how to get the rest",
     )
     p_doctor.add_argument(
         "--check",
         action="store_true",
         help="Exit 1 when a feature this kind of install should include is missing",
     )
-    p_doctor.add_argument("--kind", choices=("docker", "desktop", "portable", "pip"), help=argparse.SUPPRESS)
+    p_doctor.add_argument(
+        "--kind",
+        choices=("docker", "desktop", "portable", "pip"),
+        help=argparse.SUPPRESS,
+    )
     add_boot_flags(p_doctor)
 
-    p_service = sub.add_parser("service", help="The systemd unit that runs Zimi at boot (Linux)")
-    p_service.add_argument("action", choices=("print", "install"), help="print the unit, or install it for systemd")
-    p_service.add_argument("--to", help="where install writes it (default /etc/systemd/system/zimi.service)")
+    p_service = sub.add_parser(
+        "service", help="The systemd unit that runs Zimi at boot (Linux)"
+    )
+    p_service.add_argument(
+        "action",
+        choices=("print", "install"),
+        help="print the unit, or install it for systemd",
+    )
+    p_service.add_argument(
+        "--to",
+        help="where install writes it (default /etc/systemd/system/zimi.service)",
+    )
 
     args = parser.parse_args()
 
