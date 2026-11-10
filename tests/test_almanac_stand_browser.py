@@ -491,7 +491,7 @@ def test_a_direct_handoff_is_on_the_ground_at_once_and_says_when_its_first_frame
     hud = page.evaluate("() => document.getElementById('ae-stand-text').innerText")
     import re
 
-    assert re.search(r"☀ -?\d+°( ↓)? · [NESW]+\s+\d+° [NESW]+", hud), hud  # the Sun's height is degrees, its bearing the letter
+    assert re.search(r"☀ -?\d+°( ↓)? [NESW]+\s+⌖ \d+° [NESW]+", hud), hud  # the Sun's height is degrees, its bearing the letter
     page.evaluate("() => _aeStandClose()")
     page.wait_for_function("() => !_ae.stand && window.__back === 1", timeout=60_000, polling=250)
     assert not page.errors, page.errors
@@ -510,6 +510,44 @@ def test_a_night_on_the_moon_offers_the_way_to_the_next_sunrise(page):
     page.wait_for_function("() => _ae.stand.fr && _ae.stand.fr.sunAlt >= -0.5", timeout=60_000, polling=250)
     _leave(page)
     assert not page.errors, page.errors
+
+
+@pytest.mark.parametrize("dsf", [2, 3])
+def test_a_real_touch_on_the_sun_goes_in_on_it_at_any_pixel_ratio(page, dsf):
+    """A finger, not a call: Playwright's touchscreen on the Sun (CSS pixels) at device scale 2 and 3 zooms to the 6 degree field; a second tap comes back."""
+    browser = page.context.browser
+    ctx = browser.new_context(viewport=VIEW, device_scale_factor=dsf, has_touch=True, is_mobile=True, service_workers="block")
+    ctx.add_init_script(
+        "try { localStorage.setItem('zimi_almanac_place', %r); sessionStorage.setItem('zimi_almanac_location', %r); } catch (e) {}" % (PLACE, PLACE)
+    )
+    pg = ctx.new_page()
+    pg.errors = []
+    pg.on("pageerror", lambda e: pg.errors.append(str(e)))
+    pg.goto(page.url.split("#")[0] + "#almanac", wait_until="load")
+    pg.wait_for_function("() => typeof openAlmanacEarth === 'function' && typeof _aeLoadThree === 'function'", timeout=120_000)
+    pg.evaluate("openAlmanacEarth({ target: 'earth' })")
+    pg.wait_for_function("() => typeof _aeReady === 'function' && _aeReady() && _aeIsOpen && !_ae.fly", timeout=READY_MS, polling=200)
+    _stand_anywhere(pg, "earth", 40.0, -105.0)
+    where = pg.evaluate(
+        """() => { var st = _ae.stand; _aeGoTo(Date.UTC(2026, 5, 20, 18, 0, 0)); st.fr = null; st.dirty = true; _ae.dirty = true; _aeKick(); return true; }"""
+    )
+    pg.wait_for_function("() => _ae.stand.fr && _ae.stand.fr.sunAlt > 50", timeout=60_000, polling=250)
+    xy = pg.evaluate(
+        """() => { var st = _ae.stand; st.userYaw = st.fr.sunAz - st.yaw; st.userPitch = st.fr.sunAlt * Math.PI / 180 - AE_STAND_PITCH_DEG * Math.PI / 180; st.zoom = 1; st.zf = null; st.dirty = true; _ae.dirty = true; _aeKick();
+          return new Promise(function (r) { setTimeout(function () { var V = _ae.gl.THREE.Vector3, d = st.fr.sun, p = new V(d[0] * 10, d[1] * 10, d[2] * 10).project(st.camera);
+            var rect = document.getElementById('ae-canvas').getBoundingClientRect(); r([rect.left + (p.x + 1) / 2 * _ae.w, rect.top + (1 - p.y) / 2 * _ae.h]); }, 800); }); }"""
+    )
+    pg.touchscreen.tap(xy[0], xy[1])
+    pg.wait_for_function("() => _ae.stand.zoom < 0.3", timeout=15_000, polling=200)
+    pg.wait_for_timeout(1200)
+    xy2 = pg.evaluate(
+        """() => { var st = _ae.stand, V = _ae.gl.THREE.Vector3, d = st.fr.sun, p = new V(d[0] * 10, d[1] * 10, d[2] * 10).project(st.camera), rect = document.getElementById('ae-canvas').getBoundingClientRect();
+          return [rect.left + (p.x + 1) / 2 * _ae.w, rect.top + (1 - p.y) / 2 * _ae.h]; }"""
+    )
+    pg.touchscreen.tap(xy2[0], xy2[1])
+    pg.wait_for_function("() => _ae.stand.zoom > 0.9", timeout=15_000, polling=200)
+    assert not pg.errors, pg.errors
+    ctx.close()
 
 
 def test_the_live_sky_cards_handoff_opens_stand_facing_its_way_and_close_goes_back(

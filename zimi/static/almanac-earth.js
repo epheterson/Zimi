@@ -7146,7 +7146,10 @@ function _aeSatShortName(s) {
 
 // ── Taps ──
 function _aeTap(x, y) {
-  if (_ae.stand && _ae.stand.live && typeof _aeStandSkyTap === 'function' && (_aeStandSkyTap(x, y) || _aeStandBodyTap(x, y))) return;   // an object other lanes put in the sky
+  if (_ae.stand) {   // on the ground a tap is for what hangs in the sky (other lanes' objects, the Sun and the Moon), and for nothing of the orbit view
+    if (_ae.stand.live && typeof _aeStandSkyTap === 'function') (_aeStandSkyTap(x, y) || _aeStandBodyTap(x, y));
+    return;
+  }   // an object other lanes put in the sky
   if (_aeRecordTap(x, y)) return;
   var best = null, bestD = AE_TAP_RADIUS_PX;
   // Satellites are picked at the Earth; from the Moon or the Sun they are a
@@ -7683,7 +7686,7 @@ function _aeBindCanvas(canvas) {
     if (!_ae.pointers[e.pointerId]) return;
     delete _ae.pointers[e.pointerId];
     var left = Object.keys(_ae.pointers).length;
-    if (_ae.drag && !_ae.drag.moved && left === 0 && e.type === 'pointerup' && !_ae.stand) {
+    if (_ae.drag && !_ae.drag.moved && left === 0 && e.type === 'pointerup') {
       var r = canvas.getBoundingClientRect();
       _aeTap(e.clientX - r.left, e.clientY - r.top);
     }

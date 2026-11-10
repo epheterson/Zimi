@@ -302,6 +302,10 @@ function _aeStandSpriteMeshes(st, mat) {
   quad.setAttribute('position', new THREE.BufferAttribute(new Float32Array([-1, -1, 0, 1, -1, 0, 1, 1, 0, -1, -1, 0, 1, 1, 0, -1, 1, 0]), 3));
   st.geo.push(quad);
   st.sprites = [];
+  var ouni = { uDir: { value: [0, 1, 0] }, uRight: { value: [1, 0, 0] }, uUp: { value: [0, 0, 1] }, uHalf: { value: 0.01 }, uRho: { value: 0.001 }, uPix: { value: 0.001 }, uDark: { value: 0 } };
+  st.moonOcc = new THREE.Mesh(quad, new THREE.ShaderMaterial({ uniforms: ouni, vertexShader: AE_ST_BODY_VERT, fragmentShader: AE_ST_OCC_FRAG, transparent: true, depthTest: false, depthWrite: false }));
+  st.moonOcc.frustumCulled = false; st.moonOcc.renderOrder = -1.2; st.moonOcc.visible = false; st.moonOccUni = ouni;
+  out.push(st.moonOcc); st.mats.push(st.moonOcc.material);
   for (var i = 0; i < AE_STAND_SPRITES; i++) {
     var uni = { uDir: { value: [0, 1, 0] }, uRight: { value: [1, 0, 0] }, uUp: { value: [0, 0, 1] }, uSunFrom: { value: [0, 0, 1] }, uTint: { value: [1, 1, 1] }, uTrans: { value: [1, 1, 1] },
       uHalf: { value: 0.01 }, uRho: { value: 0.001 }, uPix: { value: 0.001 }, uE: { value: 1 }, uK: { value: 1 }, uEmit: { value: 0 }, uVis: { value: 0 }, uGlow: { value: 0 }, uSkyLit: { value: 1 },
@@ -1034,6 +1038,7 @@ function _aeStandSprites(st, fr, ph, pixAng, alt) {
     uni.uOcc.value = [0, 0, 0];   // the Moon's disc over the Sun's: its centre in the Sun's frame (radians) and its radius
     uni.uCorona.value = 0; uni.uSeed.value = (Math.floor(_aeDisplayMs() / 86400000) % 997) / 997;   // the streamers are the day's own
     if (ecl && o.sun && moonO) uni.uOcc.value = [_aeDot(moonO.dir, right) , _aeDot(moonO.dir, up), moonO.rho];
+    if (ecl && o === moonO) _aeStandMoonDark(st, ecl, uni, o);
     if (ecl && o === moonO && ecl.corona > 0) { uni.uCorona.value = ecl.corona; uni.uHalf.value = Math.max(uni.uHalf.value, o.rho * AE_STAND_CORONA_RADII * 1.05); }
     uni.uSkyLit.value = 1;
     // The body's own map, once it has been looked at long enough to ask for it (a disc of a few pixels is its tint).
@@ -1047,7 +1052,29 @@ function _aeStandSprites(st, fr, ph, pixAng, alt) {
       uni.uCen.value = [o.dir[0] * o.dist, o.dir[1] * o.dist, o.dir[2] * o.dist]; uni.uRing.value = AE_STAND_SATURN_RINGS;
     }
   });
+  _aeStandEclipseLabel(st, ecl);
   for (var j = list.length; j < st.sprites.length; j++) st.sprites[j].mesh.visible = false;
+}
+// In a total eclipse the Moon's disc is darker than the sky round it (the sky's glow is bright, the Moon near black with a trace of earthshine): a dark disc between the sky and the corona.
+var AE_STAND_MOON_DARK = [0.9, 0.995];   // the obscuration over which it comes in
+function _aeStandMoonDark(st, ecl, uni, o) {
+  var k = _smoothstep(AE_STAND_MOON_DARK[0], AE_STAND_MOON_DARK[1], ecl.obsc || 0), u = st.moonOccUni;
+  st.moonOcc.visible = k > 0;
+  if (!(k > 0)) return;
+  u.uDir.value = uni.uDir.value; u.uRight.value = uni.uRight.value; u.uUp.value = uni.uUp.value;
+  u.uHalf.value = o.rho * 1.2; u.uRho.value = o.rho; u.uPix.value = uni.uPix.value; u.uDark.value = k * 0.985;
+}
+// The Sun's name over the ring while an eclipse is total and the view is wide (the ring is 7 px across): the tap on it goes in.
+function _aeStandEclipseLabel(st, ecl) {
+  var el = st.eclLabel, show = !!(ecl && ecl.obsc > 0.95 && st.zoom > AE_STAND_ZOOMED_IN && st.camera && st.fr && st.fr.sun[2] > 0);
+  if (!show) { if (el) el.hidden = true; return; }
+  if (!el) {
+    el = st.eclLabel = document.createElement('span'); el.className = 'ae-stand-craft'; el.style.pointerEvents = 'none'; el.innerHTML = '<i></i>';
+    el.appendChild(document.createTextNode(_aeInfoName('sun'))); _ae.el.appendChild(el);
+  }
+  var p = new _ae.gl.THREE.Vector3(st.fr.sun[0] * 10, st.fr.sun[1] * 10, st.fr.sun[2] * 10).project(st.camera);
+  el.hidden = p.z < -1 || p.z > 1;
+  el.style.transform = 'translate(' + ((p.x + 1) / 2 * _ae.w).toFixed(1) + 'px,' + ((1 - p.y) / 2 * _ae.h).toFixed(1) + 'px)';
 }
 var AE_STAND_CORONA_RADII = 3.4;   // the corona's reach in Moon radii (almanac-sky.js SKY_CORONA_RADII)
 var AE_STAND_MAP_PX = 3;                       // a disc this many pixels across (radius) or more is drawn from its map
@@ -1457,7 +1484,7 @@ function _aeStandHudText(st) {
   var el = _aeById('ae-stand-text'), fr = st.fr;
   if (!el) return;
   var head = ((st.yaw + st.userYaw) * 180 / Math.PI % 360 + 360) % 360;   // where the view faces; the Sun's own bearing follows its height
-  var line2 = (fr ? '☀ ' + Math.round(fr.sunAlt) + '°' + (fr.sunAlt < 0 ? ' ↓' : '') + ' · ' + _aeCompassPoint(_aeDeg(fr.sunAz)) + '    ' : '') + Math.round(head) + '° ' + _aeCompassPoint(head);
+  var line2 = (fr ? '☀ ' + Math.round(fr.sunAlt) + '°' + (fr.sunAlt < 0 ? ' ↓' : '') + ' ' + _aeCompassPoint(_aeDeg(fr.sunAz)) + '    ' : '') + '⌖ ' + Math.round(head) + '° ' + _aeCompassPoint(head);   // the Sun: its height and where it stands; the glyph: which way the view faces
   var local = _aeStPlaceTime(st), html = '<b>' + _almEsc(_aeInfoName(st.key)) + '</b><span>' + _almEsc(_aeFmtLatLon({ lat: st.lat, lon: st.lon })) + ' · ' + _almEsc(_aeStHeightText(st.h0)) + '</span><span>' + _almEsc(line2) + '</span>' + (local ? '<span>' + _almEsc(local) + '</span>' : '');
   var rise = fr && fr.sunAlt < -AE_STAND_RISE_OFFER_DEG && st.key !== 'earth' ? _aeStNextSunrise(st, _aeDisplayMs()) : null;
   if (rise) html += '<span><a href="#" class="ae-stand-sunrise" data-ae-sunrise>' + _almEsc(_aeT('alm_lm_night_until', { date: _aeFmtWhen(rise) })) + '</a></span>';

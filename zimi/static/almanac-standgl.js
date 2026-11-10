@@ -311,6 +311,15 @@ var AE_ST_BODY_VERT = [
   '  gl_Position = projectionMatrix * vec4(mat3(viewMatrix) * l * 10.0, 1.0);',
   '}'
 ].join('\n');
+// The Moon's dark disc in a total eclipse: near black with a trace of earthshine, over the sky's glow.
+var AE_ST_OCC_FRAG = [
+  'precision highp float; uniform float uHalf, uRho, uPix, uDark; varying vec2 vUv;',
+  'void main() {',
+  '  float a = length(vUv * uHalf), cov = 1.0 - smoothstep(uRho - max(uPix * 0.75, 1e-7), uRho + max(uPix * 0.75, 1e-7), a);',
+  '  if (cov <= 0.002) discard;',
+  '  gl_FragColor = vec4(0.012, 0.014, 0.019, cov * uDark);',
+  '}'
+].join('\n');
 var AE_ST_BODY_FRAG = [
   'precision highp float;', AE_ST_GLSL_TONE,
   'uniform vec3 uDir, uRight, uUp, uSunFrom, uTint, uTrans; uniform float uHalf, uRho, uPix, uE, uK, uEmit, uVis, uGlow, uSkyLit;',
@@ -378,18 +387,27 @@ var AE_ST_BODY_FRAG = [
   // The corona: a ring round the Moon's black disc, pearly white at the edge, thinning to nothing at 3.4 radii (almanac-sky.js _skyPaintCorona).
   '  if (uCorona > 0.0 && uRho > 0.0) {',
   '    float x = a / uRho, t = (x - 0.98) / (3.4 - 0.98);',
+  // Radial: a thin bright ring hugging the limb, a steep fall (r^-2.5 and beyond), fine streamers along the radius, longer near the Sun's equator (the
+  // sprite's horizontal), and small pink prominences ON the limb. Seeded by the day: the same eclipse is the same corona.
+  '    float phi = atan(o.y, o.x);',
   '    if (t > 0.0 && t < 1.0) {',
-  // Bright and close in, thin and far out: a fast falloff and a slow one, and a few streamers (the day's own, seeded) that reach farther than the rest.
-  '      float phi = atan(o.y, o.x), streak = 0.0;',
-  '      for (int i = 0; i < 8; i++) {',
+  '      float streak = 0.0;',
+  '      for (int i = 0; i < 28; i++) {',
   '        float fi = float(i), h1 = fract(sin((uSeed * 91.7 + fi) * 12.9898) * 43758.5453), h2 = fract(sin((uSeed * 53.1 + fi) * 78.233) * 24634.6345), h3 = fract(sin((uSeed * 17.3 + fi) * 39.425) * 51375.2154);',
-  '        float dp = abs(mod(phi - h1 * 6.2832 + 3.1416, 6.2832) - 3.1416), sg = 0.12 + 0.2 * h2;',
-  '        streak += (0.4 + 0.6 * h3) * exp(-dp * dp / (2.0 * sg * sg)) * exp(-(x - 1.0) / (0.7 + 2.0 * h3));',
+  '        float dp = abs(mod(phi - h1 * 6.2832 + 3.1416, 6.2832) - 3.1416), sg = 0.025 + 0.035 * h2;',
+  '        float ln = (0.45 + 1.1 * h3) * (0.65 + 0.9 * pow(abs(cos(h1 * 6.2832)), 2.0));',
+  '        streak += (0.25 + 0.6 * h3) * exp(-dp * dp / (2.0 * sg * sg)) * exp(-(x - 1.0) / ln);',
   '      }',
-  '      float w = 0.85 * (0.6 * exp(-(x - 0.98) * 1.5) + 0.4 * pow(0.98 / x, 2.2)) + 0.45 * streak * smoothstep(1.0, 1.35, x);',
-  '      w *= 1.0 - smoothstep(2.5, 3.4, x);',
+  '      float ring = 0.55 * exp(-pow((x - 1.0) / 0.03, 2.0));',
+  '      float w = 0.85 * pow(0.98 / x, 2.6) + ring + 0.3 * streak * smoothstep(1.02, 1.2, x);',
+  '      w *= 1.0 - smoothstep(2.6, 3.4, x);',
   '      vec3 cc = mix(vec3(250.0, 246.0, 236.0), vec3(235.0, 236.0, 244.0), clamp(t * 1.6, 0.0, 1.0)) / 255.0;',
-  '      col += cc * w * uCorona; alpha = max(alpha, w * uCorona);',
+  '      col += cc * w * uCorona; alpha = max(alpha, clamp(w, 0.0, 1.0) * uCorona);',
+  '    }',
+  '    for (int b = 0; b < 4; b++) {',
+  '      float fb = float(b), ang = 6.2832 * fract(sin((uSeed * 37.1 + fb) * 12.9898) * 43758.5453), sz = 0.035 + 0.04 * fract(sin((uSeed * 11.3 + fb) * 78.233) * 24634.6345);',
+  '      float d = length(o / uRho - vec2(cos(ang), sin(ang)) * (1.0 + sz * 0.4)), bead = smoothstep(sz, sz * 0.35, d);',
+  '      col += vec3(0.95, 0.32, 0.45) * bead * uCorona; alpha = max(alpha, bead * uCorona);',
   '    }',
   '  }',
   '  if (uGlow > 0.0) {',
