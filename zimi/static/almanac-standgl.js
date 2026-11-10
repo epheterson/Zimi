@@ -11,6 +11,7 @@ var AE_ST_PI = '3.14159265';
 var AE_ST_SNOW_LINE_M = 5000, AE_ST_SNOW_LINE_POW = 2.2, AE_ST_TREE_BELOW_M = 600;   // the snow line over the equator and how it falls with latitude (about 2,250 m at 46 N), the trees stop this far below it
 var AE_ST_COVER_WOBBLE_M = 160, AE_ST_SLOPE_GAIN = 1.6;   // how far the lines wander, and the DEM's slopes made steeper (its cells smooth them)
 var AE_ST_GLARE = [0.3, 0.04];   // the glare round the Sun: its peak (a share of the Sun's light) and the angle (radians) where it has halved twice
+var AE_ST_DISC_K_PER_E = 40;   // the exposure a lit disc is held under, over its sunlight: a mean lunar albedo (0.12) comes out about three quarters bright
 var AE_ST_SUN_DISC_GAIN = 6e4;     // the Sun's disc against the sky's glow: stays a distinct disc where thick dust dims and blues it (Mars at sunset)
 var AE_ST_FINE_SLOPE = 0.045;   // the ground's fine relief: its height over its own wavelength (about 3 degrees), at every scale
 var AE_ST_FILL = 0.12;   // a slope turned from the Sun keeps this share of the flat ground's light (backscatter off the regolith round it)
@@ -209,7 +210,7 @@ function _aeStTreeFrag(albLines, uniforms) {
   'precision highp float;',
   AE_ST_GLSL_ATMO, AE_ST_GLSL_TONE,
   _aeStInscatterGlsl('inscatterGround', AE_ST_STEPS_GROUND),
-  'uniform vec3 uCam, uAmbient; uniform float uK, uCloudDim;' + uniforms,
+  'uniform vec3 uCam, uAmbient; uniform float uKg, uCloudDim;' + uniforms,
   'varying vec3 vP, vN, vTree;',
   'void main() {',
   '  gJit = fract(52.9829189 * fract(dot(gl_FragCoord.xy, vec2(0.06711056, 0.00583715))));',
@@ -221,7 +222,7 @@ function _aeStTreeFrag(albLines, uniforms) {
   '    vec3 o = uCam * 0.001, d = -V, Tt, ins; float t0, t1;',
   '    if (airSpan(o, d, t0, t1)) { t1 = min(t1, dist * 0.001); if (t1 > t0) { ins = inscatterGround(o + d * t0, d, t1 - t0, Tt); L = L * Tt + ins; } }',
   '  }',
-  '  gl_FragColor = vec4(tone(L, uK), 1.0);',
+  '  gl_FragColor = vec4(tone(L, uKg), 1.0);',
   '}'
   ].join('\n');
 }
@@ -240,7 +241,7 @@ var AE_ST_GRASS_VERT = [
   '}'
 ].join('\n');
 var AE_ST_GRASS_FRAG = _aeStTreeFrag([
-  '  vec3 alb = uGrassAlb * (0.65 + 0.7 * vTree.y) * (0.5 + 0.5 * min(vTree.x, 1.0)); alb = mix(alb, alb * vec3(1.5, 1.35, 0.7), smoothstep(0.55, 1.0, vTree.x) * vTree.y);'
+  '  vec3 alb = uGrassAlb * (0.85 + 0.5 * vTree.y) * (0.75 + 0.45 * min(vTree.x, 1.0)); alb = mix(alb, alb * vec3(1.6, 1.45, 0.8), smoothstep(0.4, 1.0, vTree.x) * (0.5 + 0.5 * vTree.y));'
 ].join('\n'), ' uniform vec3 uGrassAlb;');
 // Clouds: one deck over the Earth, from a field of (place, day): a plane `base` metres over the ground, fbm density thresholded by the
 // coverage, lit by the Sun through the air up to the deck, thin edges bright and thick bodies dark. `osClouds(d, o)` (d: unit view
@@ -342,7 +343,7 @@ var AE_ST_BODY_FRAG = [
   '        if (uOcc.z > 0.0) col *= smoothstep(uOcc.z - edge, uOcc.z + edge, length(o - uOcc.xy));',   // the Moon in front: its disc takes the Sun's, a crescent is what is left
   '      } else {',
   '        float lam = smoothstep(-0.02, 0.1, dot(n, uSunFrom)) * max(dot(n, uSunFrom), 0.0);',
-  '        col = tone(discAlbedo(n) * uE * lam / PI * uTrans, uK);',
+  '        col = tone(discAlbedo(n) * uE * lam / PI * uTrans, min(uK, ' + AE_ST_DISC_K_PER_E.toFixed(1) + ' / max(uE, 1e-12)));',   // a lit disc is exposed for itself: the dark-adapted night exposure would blow the Moon out white, maria and all
   '      }',
   '      alpha = cov;',
   '    }',
@@ -424,7 +425,7 @@ var AE_ST_GROUND_FRAG = [
   'precision highp float;',
   AE_ST_GLSL_ATMO, AE_ST_GLSL_TONE, AE_ST_GLSL_NOISE,
   _aeStInscatterGlsl('inscatterGround', AE_ST_STEPS_GROUND),
-  'uniform vec3 uCam; uniform float uK, uPixAng, uTime;',
+  'uniform vec3 uCam; uniform float uKg, uPixAng, uTime;',
   'uniform sampler2D uMap; uniform float uMapped, uGrey; uniform vec3 uBase, uGain;',
   'uniform vec3 uAmbient, uSkyHor, uSkyZen, uE2, uDir2;',
   'uniform vec2 uHead; uniform float uCloudDim; uniform float uGrass, uCanopy; uniform float uLommel, uRough, uRock, uDetail, uCover, uDiffuse, uVis, uDirect; uniform vec3 uDiffSky;',
@@ -487,8 +488,8 @@ var AE_ST_GROUND_FRAG = [
   '  }',
   // Grass cells (the land-cover grid's): a dry season's Blue Marble is tan, but the ground is still grass: its brightness kept, its hue pulled green where the map is not.
   '  if (uDetail > 0.5 && vSea < 0.5 && uGrass > 0.0) {',
-  '    float lg = dot(alb, vec3(0.3, 0.59, 0.11)), dull = 1.0 - smoothstep(0.0, 0.06, alb.g - max(alb.r, alb.b));',
-  '    alb = mix(alb, vec3(0.72, 1.0, 0.42) * lg * 0.7, uGrass * (0.3 + 0.5 * dull));',
+  '    float lg = min(dot(alb, vec3(0.3, 0.59, 0.11)), 0.2), dull = 1.0 - smoothstep(0.0, 0.06, alb.g - max(alb.r, alb.b));',
+  '    alb = mix(alb, vec3(0.72, 1.0, 0.42) * lg * 0.7, uGrass * (0.55 + 0.4 * dull));',
   '  }',
   // Ground cover by height, slope and latitude (the Earth's): snow above the snow line, bare rock on steep ground and above the
   // trees, the Blue Marble's own tint elsewhere; the lines wander with a slow noise so no height is a ruled edge.
@@ -542,7 +543,7 @@ var AE_ST_GROUND_FRAG = [
   '    vec3 o = uCam * 0.001, d = -V, Tt, ins; float t0, t1;',
   '    if (airSpan(o, d, t0, t1)) { t1 = min(t1, dist * 0.001); if (t1 > t0) { ins = inscatterGround(o + d * t0, d, t1 - t0, Tt); L = L * Tt + ins; } }',
   '  }',
-  '  gl_FragColor = vec4(tone(L, uK), 1.0);',
+  '  gl_FragColor = vec4(tone(L, uKg), 1.0);',
   '}'
 ].join('\n');
 
