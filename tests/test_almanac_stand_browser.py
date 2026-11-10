@@ -358,6 +358,66 @@ def test_other_lanes_put_objects_in_the_sky_and_a_tap_names_them(page):
     assert not page.errors, page.errors
 
 
+def test_a_provider_atmosphere_takes_over_the_sky_and_the_exposure(page):
+    """_aeStandAir: while it wants the stand, its chunk is the sky and its exposureK the one exposure; taken away, the own march."""
+    _stand_anywhere(page, "earth", 37.77, -122.42)
+    own_k = page.evaluate(
+        "() => { _ae.stand.dirty = true; _aeStandDraw(performance.now()); return _ae.stand.photo.k; }"
+    )
+    page.evaluate(
+        """() => { window.__upd = 0; _aeStandAir = { wants: function (st) { return st.key === 'earth'; },
+          glsl: 'uniform vec3 uTest; vec3 oaSky(vec3 d) { return uTest; }', uniforms: { uTest: [0.2, 0.1, 0.05] },
+          update: function (st, fr, ph, u) { window.__upd++; u.uTest.value = [0.2, 0.1, 0.05]; }, exposureK: function () { return 1234; } };
+          _ae.stand.fr = null; _ae.stand.dirty = true; _ae.dirty = true; _aeKick(); }"""
+    )
+    page.wait_for_function(
+        "() => _ae.stand.airOn === true && _ae.stand.photo && _ae.stand.photo.k === 1234",
+        timeout=30_000,
+        polling=250,
+    )
+    assert page.evaluate("() => window.__upd") > 0
+    page.evaluate(
+        "() => { _aeStandAir = null; _ae.stand.fr = null; _ae.stand.dirty = true; _ae.dirty = true; _aeKick(); }"
+    )
+    page.wait_for_function(
+        "() => _ae.stand.airOn === false && _ae.stand.photo && _ae.stand.photo.k !== 1234",
+        timeout=30_000,
+        polling=250,
+    )
+    assert abs(page.evaluate("() => _ae.stand.photo.k") / own_k - 1) < 0.5
+    _leave(page)
+    assert not page.errors, page.errors
+
+
+def test_the_live_sky_cards_handoff_opens_stand_facing_its_way_and_close_goes_back(
+    page,
+):
+    """window._osHandoff -> _aeStandOpen: the card's place, instant and facing; _aeStandClose: down again, then back()."""
+    page.evaluate(
+        "() => { window.__back = 0; window._osHandoff = { lat: 46.0, lon: 6.85, ms: Date.UTC(2026, 5, 21, 10, 0), heading: 123, pitch: 17, back: function () { window.__back++; } }; }"
+    )
+    assert page.evaluate("() => _aeStandOpen()") is True
+    page.wait_for_function(
+        "() => _ae.stand && _ae.stand.live && _ae.stand.mode === 'ground'",
+        timeout=GROUND_MS,
+        polling=250,
+    )
+    got = page.evaluate(
+        "() => ({ head: ((_ae.stand.yaw + _ae.stand.userYaw) * 180 / Math.PI % 360 + 360) % 360, pitch: (_ae.stand.pitch + _ae.stand.userPitch) * 180 / Math.PI, ms: _aeDisplayMs(), handoff: window._osHandoff, lat: _ae.stand.lat })"
+    )
+    assert (
+        abs(got["head"] - 123) < 1
+        and got["handoff"] is None
+        and abs(got["lat"] - 46.0) < 1e-6
+    ), got
+    assert abs(got["ms"] - 1_782_036_000_000) < 3_600_000, got
+    page.evaluate("() => _aeStandClose()")
+    page.wait_for_function(
+        "() => !_ae.stand && window.__back === 1", timeout=60_000, polling=250
+    )
+    assert not page.errors, page.errors
+
+
 def test_the_earths_coast_is_where_natural_earth_puts_it(page):
     page.evaluate("() => _aeStandReady()")
     page.evaluate("() => _aeTerrainLoad('earth')")
