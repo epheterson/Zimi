@@ -1730,7 +1730,8 @@
     var hostStyle = d.createElement('style'); hostStyle.textContent = HOST_CSS + hostMarkCss(HOME + 'mark.svg'); d.head.appendChild(hostStyle);
   }
   // ── where this came from ──
-  // Outside Zimi (Kiwix, a browser tab) one credit line: the mark, then "© <year> Zimi", the name a link to Zimi's address.
+  // Outside Zimi (Kiwix, a browser tab) one credit line: "© <year> [mark] Zimi", the mark and the name one link to Zimi's
+  // address (zimihome.js's ZIMI_HOME_MARK puts the mark after the name, or leaves it out).
   // Inside Zimi it is noise and is never drawn. The address is zimihome.js's (written once there); the year is the build's
   // (zimibuild.js, which ownzims writes into the ZIM; never the reader's clock; a page read from its folder has none and says
   // "© Zimi"). Both load only out here. Under the shelf's title, and at the foot of a game's Menu.
@@ -1738,11 +1739,10 @@
   function homeLine() {
     var url = root.ZIMI_HOME;
     if (hosted || !url) return null;
-    var year = root.ZIMI_BUILT_YEAR;
-    return h('div', { class: 'gs-home' }, [
-      h('img', { src: HOME + 'mark.svg', alt: '', width: '14', height: '14' }),
-      h('span', {}, [COPYRIGHT + ' ' + (year ? year + ' ' : ''), h('a', { href: url, target: '_blank', rel: 'noopener', text: 'Zimi' })])
-    ]);
+    var year = root.ZIMI_BUILT_YEAR, at = root.ZIMI_HOME_MARK;
+    var mark = at === 'before' || at === 'after' ? h('img', { src: HOME + 'mark.svg', alt: '', width: '13', height: '13', class: at === 'after' ? 'gs-mark-end' : '' }) : null;
+    var link = h('a', { href: url, target: '_blank', rel: 'noopener' }, at === 'after' ? ['Zimi', mark] : [mark, 'Zimi']);
+    return h('div', { class: 'gs-home' }, [h('span', {}, [COPYRIGHT + ' ' + (year ? year + ' ' : ''), link])]);
   }
   Shell.homeLine = homeLine;
   function loadScript(name, then) {
