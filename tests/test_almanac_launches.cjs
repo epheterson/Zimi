@@ -311,6 +311,7 @@ const flight = S._lfAscent(SLC40);
   check(Math.abs(sep(rocket, { az: p.axisAz, el: p.axisEl }) - p.sizeDeg[0]) < 1e-6, 'the long axis points at a place back along the track, one length from the rocket (' + p.axisAz.toFixed(0) + ', ' + p.axisEl.toFixed(0) + ')');
   check(Math.abs(sep(p, rocket) - p.sizeDeg[0] / 2) < 0.01, 'and the plume is centred half a length behind the rocket');
   check(p.rgb.every((c) => c >= 0 && c <= 1) && p.rgb[2] >= p.rgb[0] && p.lum === 1 && JSON.stringify(q) === JSON.stringify(p), 'a cool white, fully lit (the Sun is ' + S._lfSunAlt(L.ms + 180000, 34.05, -118.24).toFixed(1) + ' deg), the same every time');
+  check(Array.isArray(p.rgbBase) && p.rgbBase.length === 3 && p.rgbBase.every((c) => c >= 0 && c <= 1) && p.rgbBase[0] > p.rgbBase[2], 'the plume carries rgbBase, a warm base for Stand to read from the object: ' + JSON.stringify(p.rgbBase));
   const near = plumeAt(270, 33, -118);
   check(near && near.sizeDeg[0] === 60 && near.sizeDeg[1] === 20, 'over a long stretch of sky the clamp holds, 60 by 20: ' + (near && JSON.stringify(near.sizeDeg.map((v) => +v.toFixed(1)))));
   check(S._lfPlumeSunFactor(-1) === 1 && S._lfPlumeSunFactor(-12) === 1 && S._lfPlumeSunFactor(-30) === 0 && S._lfPlumeSunFactor(10) === 0 && S._lfPlumeSunFactor(-14) > 0 && S._lfPlumeSunFactor(-14) < 1, 'the plume glows with the Sun between -1 and -12 degrees and fades to nothing outside');
