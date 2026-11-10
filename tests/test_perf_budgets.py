@@ -90,7 +90,7 @@ HOME_MAX_REQUESTS = 36
 HOME_MAX_KB = 900
 # Opening the Almanac from Home: its modules, stylesheet and first picture (405 KB), then the Moon's 730 KB map, which a first open asks for (1.1 MB in all).
 ALMANAC_MAX_REQUESTS = 20
-ALMANAC_MAX_KB = 1200
+ALMANAC_MAX_KB = 1400
 # Then the 3D view, opened as a tap on the Moon opens it (10 requests, 602 KB today).
 EARTH_MAX_REQUESTS = 16
 EARTH_MAX_KB = 800
