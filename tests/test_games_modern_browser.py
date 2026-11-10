@@ -165,10 +165,13 @@ def test_fourfold_a_whole_game_by_touch(browser, site):
                 page.tap('#ff-board button[data-s="%d"]' % cell)
                 if ended(page):
                     break
-            safe = page.locator("#ff-tray .ff-slot:not(.gone):not(.danger)")
-            (
-                safe if safe.count() else page.locator("#ff-tray .ff-slot:not(.gone)")
-            ).first.tap()
+            if ended(page):
+                break
+            # After placing the given piece the tray is locked until the move settles: tap only a slot that is open.
+            page.wait_for_selector("#ff-tray .ff-slot:not(.gone)[aria-disabled=false]", timeout=10000)
+            open_slots = "#ff-tray .ff-slot:not(.gone)[aria-disabled=false]"
+            safe = page.locator(open_slots + ":not(.danger)")
+            (safe if safe.count() else page.locator(open_slots)).first.tap()
             page.tap("#ff-give")
             if turn == 2:  # leave and come back mid-game
                 wait_my_turn_or_end(page, "__fourfold.pos().turn === 0")
