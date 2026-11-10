@@ -1204,8 +1204,11 @@ def _catalog_copies():
         names = os.listdir(tdir)
     except OSError:
         names = []
+    # Installed anywhere the library reads (subfolders, other folders), not only at the top of ZIM_DIR.
+    installed = {os.path.basename(p) for p in _srv.get_zim_files().values()}
     for name in names:
-        if name.endswith(".torrent") and not os.path.exists(os.path.join(_srv.ZIM_DIR, name[: -len(".torrent")])):
+        zim = name[: -len(".torrent")]
+        if name.endswith(".torrent") and zim not in installed and not os.path.exists(os.path.join(_srv.ZIM_DIR, zim)):
             paths.append(os.path.join(tdir, name))
     return [p for p in paths if os.path.isfile(p)]
 
@@ -7718,6 +7721,14 @@ def handle_manage_post(handler, parsed, data):
             return handler._json(409, {"error": "Voices cannot be downloaded here"})
         if err == "busy":
             return handler._json(409, {"error": "Another voice is downloading"})
+        if err == "blocked":
+            return handler._json(
+                409,
+                {
+                    "error": "Voices cannot be set up here",
+                    "detail": _voices.setup_problem(),
+                },
+            )
         return handler._json(200, _voices.manage_payload())
 
     elif parsed.path == "/manage/voices/cancel":

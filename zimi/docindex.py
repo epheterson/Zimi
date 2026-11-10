@@ -28,6 +28,7 @@ from zimi import nautilus
 from zimi import server as _srv
 from zimi.details import DetailsBuilder
 from zimi.libzimcompat import entry_by_id
+from zimi.safety import loggable
 
 log = logging.getLogger("zimi")
 
@@ -252,7 +253,7 @@ def build_docs(zim_name, zim_path):
                 )
                 body = text or ""
             except Exception as e:  # one bad PDF costs its text, not the build
-                log.debug("pdf text of %s/%s: %s", zim_name, path, e)
+                log.debug("pdf text of %s/%s: %s", loggable(zim_name), loggable(path), e)
         rows.append((path, ti, dsc, aut, body, pages, blank))
     # Only entries the ZIM holds: a listed file it lacks is not a hit that opens.
     return _builder.write(zim_name, zim_path, archive, rows, setup=_fts_setup)
@@ -371,7 +372,7 @@ def search(name, query, limit=10, body=True):
             loose = " OR ".join(q.split(" "))
             rows = conn.execute(sql, (cols + loose, limit)).fetchall()
     except sqlite3.Error as e:
-        log.debug("document index %s: %s", name, e)
+        log.debug("document index %s: %s", loggable(name), e)
         return []
     finally:
         if conn is not None:
