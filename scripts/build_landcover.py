@@ -44,6 +44,29 @@ FOREST_LUM, DESERT_LUM = 0.19, 0.36  # darker than this is forest (if green); br
 LAND_SHARE = 0.25  # a cell with at least this much land is a land cell (a coast is the person's, not the sea's)
 
 
+# The Arctic tree line, latitude by longitude (degrees east, wrapping): the northern limit of forest, from the circumpolar maps of the
+# Arctic's vegetation zones (CAVM Team 2003, Circumpolar Arctic Vegetation Map, CAFF; Callaghan et al. 2002, Ambio 31). A coarse
+# table good to a couple of degrees: colour alone cannot tell tundra from the taiga's last greens. Greenland and Iceland, where no
+# forest grows, take a line so far south that all their ground is tundra. South of 55 S, with no trees at all, is tundra too.
+TREE_LINE = [(-180, 66), (-170, 66), (-165, 60), (-160, 64), (-155, 68), (-145, 69), (-135, 68.5), (-125, 67), (-115, 64), (-105, 60), (-95, 58),
+             (-85, 58), (-75, 58), (-68, 57), (-62, 57), (-55, 52), (-40, 52), (-25, 52), (-15, 52), (-10, 66), (0, 70), (10, 71), (20, 69.5),
+             (30, 68.5), (40, 67), (50, 67.5), (60, 67), (70, 67), (80, 67.5), (90, 70.5), (100, 72), (110, 71), (120, 70), (130, 70),
+             (140, 69), (150, 68.5), (160, 67), (170, 66), (180, 66)]
+ANTARCTIC_TREE_FREE_LAT = -55
+
+
+def tree_line(lon):
+    """The latitude north of which no forest grows, at a longitude (degrees east)."""
+    for (x0, y0), (x1, y1) in zip(TREE_LINE, TREE_LINE[1:]):
+        if x0 <= lon <= x1:
+            return y0 + (y1 - y0) * (lon - x0) / (x1 - x0)
+    return 66.0
+
+
+def treeless(lat, lon):
+    return lat >= tree_line(lon) or lat <= ANTARCTIC_TREE_FREE_LAT
+
+
 def land_bits():
     """The Natural Earth mask as a 2-D array of 0 and 1, rows from the north (see build_landmask.py for the format)."""
     buf = open(os.path.join(EARTH, "land-v1.bin"), "rb").read()
@@ -64,7 +87,7 @@ def land_bits():
     return out
 
 
-def classify(px, lat):
+def classify(px, lat, lon):
     """Per Blue Marble pixel (float rgb 0..1, n x 3) at a latitude: a land class from its colour."""
     r, g, b = px[:, 0], px[:, 1], px[:, 2]
     lum = 0.3 * r + 0.59 * g + 0.11 * b
@@ -74,6 +97,8 @@ def classify(px, lat):
     cls[(g >= r * GRASS_G_OVER_R) & (lum < DESERT_LUM)] = GRASS   # olive and green: crops, prairie, steppe
     cls[(g > r * FOREST_G_OVER_R) & (lum < FOREST_LUM)] = forest   # dark green
     cls[(lum >= DESERT_LUM) | ((r > g * 1.25) & (lum > 0.28))] = DESERT   # bright tan
+    if treeless(lat, lon):  # past the tree line, whatever the colour says: ground that is not snow is tundra
+        cls[:] = TUNDRA
     cls[(np.minimum(np.minimum(r, g), b) > 0.62) & (spread < 0.16)] = SNOW
     return cls
 
@@ -123,7 +148,7 @@ def main():
             )
             block = bm[by0:by1, bx0:bx1].reshape(-1, 3)
             cells[cy, cx] = (
-                int(np.argmax(np.bincount(classify(block, lat), minlength=7))) | coast
+                int(np.argmax(np.bincount(classify(block, lat, cx - 180 + 0.5), minlength=7))) | coast
             )
             tints.append(tint_byte(block.mean(axis=0)))
     out = bytearray(b"ZCOV" + struct.pack("<BBHH", 1, 0, W, H))
@@ -145,6 +170,13 @@ def main():
         ("Greenland", 72.0, -40.0),
         ("Antarctica", -80.0, 0.0),
         ("Honolulu", 21.3, -157.9),
+        ("Utqiagvik", 71.3, -156.8),
+        ("Iqaluit", 63.7, -68.5),
+        ("Nuuk coast", 64.5, -50.5),
+        ("Tiksi", 71.6, 128.9),
+        ("Svalbard coast", 78.2, 15.6),
+        ("Svalbard interior", 78.5, 17.0),
+        ("Tierra del Fuego", -54.8, -68.3),
     ):
         c = cells[int(90 - lat), int(lon + 180)]
         print("%-12s %s%s" % (name, NAMES[c & 7], " coast" if c & COAST else ""))
