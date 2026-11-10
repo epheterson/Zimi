@@ -133,6 +133,8 @@ def footprint_origin(v):
 
 # ── Writing ZCR2 in the view's frame ──
 FLAT_ROUGH_REF, FLAT_ROUGH_MIN, FLAT_ROUGH_MAX = 110.0, 0.15, 0.8  # the palettes below give (specular strength, sharpness):
+HD_OUT, TRI_SCALE, HD_INDEX = None, 1.0, {}  # --hd: where the Almanac HD craft folder is, how many more triangles, what was written
+HD_TRI_SCALE = 12.0
 SITE_CREASE_DEG = 58.0  # wider than the probes' 38: lander parts are boxy and a split at every edge doubles the vertices
 FLAT_METAL_FROM, FLAT_METAL_SPAN = 0.5, 1.5  # the viewer's roughness and metalness are those, the way _aeCraftParse reads an old ZCRF
 
@@ -159,9 +161,11 @@ def write_zcrf(name, v, f, cls, entries, origin=None):
     lo, hi = v.min(0), v.max(0)
     looks = [e if len(e) >= 7 else _flat_look(*e) for e in entries]
     data = cm.pack(1.0, lo, hi, (0, 0, 1), (1, 0, 0), looks, v, n, cls, f)
-    path = os.path.join(EARTH, "craft-site-%s-v1.bin" % name)
+    path = os.path.join(HD_OUT, "site-%s.zcr2" % name) if HD_OUT else os.path.join(EARTH, "craft-site-%s-v1.bin" % name)
     with open(path, "wb") as fh:
         fh.write(data)
+    if HD_OUT:
+        HD_INDEX["site-" + name] = {"file": "site-%s.zcr2" % name, "tris": len(f), "bytes": len(data), "credit": "NASA 3D Resources"}
     print(
         "  %-22s %6d triangles %4.1f x %4.1f x %4.1f m  %5.1f KB"
         % (name, len(f), *(hi - lo), len(data) / 1024)
@@ -217,7 +221,7 @@ def nasa_model_parts(j, blob, ps, tris, forward, recolour=None, scale=1.0, min_d
     area = sum(c[3] for c in cooked) or 1.0
     verts, faces, cls = [], [], []
     for k, v, f, ar in cooked:
-        want = max(12, int(tris * ar / area))
+        want = max(12, int(tris * TRI_SCALE * ar / area))
         if len(f) > want * 1.3:
             v, f = fast_simplification.simplify(v, f, target_reduction=1 - want / len(f))
         if len(f) == 0:
@@ -986,13 +990,25 @@ def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--only", default="")
     ap.add_argument("--src", default="")
+    ap.add_argument("--hd", default="", help="write the Almanac HD versions (NASA's models with HD_TRI_SCALE times the triangles) into this craft folder")
     a = ap.parse_args()
     want = set(filter(None, a.only.split(",")))
     meta = {}
+    if a.hd:
+        global HD_OUT, TRI_SCALE
+        HD_OUT, TRI_SCALE = a.hd, HD_TRI_SCALE
+        os.makedirs(HD_OUT, exist_ok=True)
     for key in NASA:
         if not want or key in want or any(w.startswith(key) for w in want):
             print(key)
             meta.update(build_nasa(key, a.src, want))
+    if a.hd:
+        idx_path = os.path.join(HD_OUT, "index.json")
+        models = json.load(open(idx_path))["models"] if os.path.exists(idx_path) else {}
+        models.update(HD_INDEX)
+        with open(idx_path, "w") as fh:
+            json.dump({"models": models}, fh, indent=1, sort_keys=True)
+        return
     for key, fn in PROCEDURAL.items():
         if not want or key in want:
             print(key)

@@ -326,6 +326,7 @@ function _asPartAdd(st, model, x, y, hdgDeg, opts) {
   var holder = new THREE.Group();
   holder.rotation.order = 'ZXY';
   var root = I.root.clone();
+  if (typeof _aeCraftSiteHd === 'function') _aeCraftSiteHd(I, root);   // the HD ZIM's full model, when it has one (almanac-earth.js)
   root.scale.setScalar(d.metres);
   root.position.set(d.mid[0], d.mid[1], d.mid[2]);
   holder.add(root);
