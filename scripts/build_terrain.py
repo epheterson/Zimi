@@ -7,7 +7,7 @@ ground's large shape is real: a global height map of the body, public-domain dat
 (plate carree, longitude -180..180 eastward, latitude +90 at the top, metres above the body's mean radius). Two things
 come from that one master per body:
 
-  * zimi/static/earth/terrain-<body>-v1.bin, 256 x 128, shipped with Zimi (about 64 KB each). Format: "ZTRN", u8
+  * zimi/static/earth/terrain-<body>-v1.bin, 1024 x 512, shipped with Zimi (about 1 MB each, a fifth of that compressed). Format: "ZTRN", u8
     version, u8 flags (0), u16 width, u16 height, then width x height little-endian int16 metres, rows from the north.
   * the Almanac HD tiles ``terrain/<body>/<z>/<x>/<y>.webp`` (build_almanac_hd.py calls ``terrain_tiles``): 256 px
     tiles on the same plate carree grid as the HD maps (level z holds 2^(z+1) x 2^z tiles), a height as a 16-bit
@@ -42,7 +42,7 @@ ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 EARTH_DIR = os.path.join(ROOT, "zimi", "static", "earth")
 
 MASTER_W, MASTER_H = 4096, 2048
-COARSE_W, COARSE_H = 256, 128
+COARSE_W, COARSE_H = 1024, 512   # the shipped map: about 20 km a cell (it was 256 x 128, 156 km: most mountains were not there)
 TILE = 256
 TERRAIN_MAX = 3  # the deepest HD level: the master holds 256 * 2^3 = 2048 rows
 TILE_OFFSET = 32768
