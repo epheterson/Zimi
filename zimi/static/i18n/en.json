@@ -2278,7 +2278,7 @@
   "alm_earth_sat_ask_hint": "Nothing is fetched until asked",
   "alm_earth_sat_auto": "Automatically",
   "alm_earth_sat_auto_hint": "Accurate data from {src}",
-  "alm_earth_sat_never": "Approximate with offline data",
+  "alm_earth_sat_never": "Never",
   "alm_earth_sat_never_hint": "Positions from the data this Zimi already has, less exact as it ages",
   "alm_earth_sat_admin_only": "Only an admin can change this",
   "alm_earth_sat_offline": "Zimi is offline (ZIMI_OFFLINE), so it never fetches",
@@ -3740,5 +3740,7 @@
   "alm_earth_webb_lit": "The mirror side is always in the sunshield's shade: it is shown lit.",
   "tb_kn_craft_models": "Spacecraft models",
   "tb_kn_craft_sun": "Sun's light on a spacecraft (irradiance)",
-  "tb_kn_craft_shine": "Planetshine on a spacecraft (share of a facing surface)"
+  "tb_kn_craft_shine": "Planetshine on a spacecraft (share of a facing surface)",
+  "alm_craft_loading": "Loading the spacecraft",
+  "alm_craft_failed": "No model of it here: shown as a dot"
 }
