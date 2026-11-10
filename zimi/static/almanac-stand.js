@@ -362,8 +362,8 @@ function _aeStandDispose(st) {
   if (st.craftHost && st.craftHost.parentNode) st.craftHost.parentNode.removeChild(st.craftHost);
   if (st.stars) st.stars.geometry.dispose();
   if (st.skyRT) st.skyRT.dispose();
-  if (st.skyPts) st.skyPts.geometry.dispose();
-  if (st.skyLines) st.skyLines.geometry.dispose();
+  if (st.skyPts) st.skyPts.mesh.geometry.dispose();
+  if (st.skyLines) st.skyLines.mesh.geometry.dispose();
   if (st.skyTag && st.skyTag.parentNode) st.skyTag.parentNode.removeChild(st.skyTag);
   clearTimeout(st.skyTagTimer);
   st.geo = st.mats = null; st.scene = st.camera = null;
@@ -558,7 +558,7 @@ function _aeStandPaint(st, now, moving, place) {
   var stale = !st.fr || Math.abs(ms - st.fr.at) >= (fast ? 1 : AE_STAND_FRAME_MS);
   if (!(moving || st.dirty || stale || st.size !== _ae.w + 'x' + _ae.h)) return;   // nothing changed: the last picture stands
   st.size = _ae.w + 'x' + _ae.h;
-  if (stale) { st.fr = _aeStFrame(st, ms); st.fr.at = ms; st.photo = _aeStPhoto(st, st.fr); st.skyDirty = true; }
+  if (stale) { st.fr = _aeStFrame(st, ms); st.fr.at = ms; st.photo = _aeStPhoto(st, st.fr); }
   _aeStandSkyUpdate(st, ms, now);
   var view = place(st);
   _aeStandApplyAir(st, st.fr, st.photo, view);
@@ -744,38 +744,54 @@ function _aeStandCraftMarks(st, fr, view) {
 }
 
 // ── Objects in the sky from other lanes ──
-// One hook: _aeStandSkySource(fn) puts things in the sky Stand here draws (satellites, the station, a train of them, a rocket, a
-// plume) and returns a function that takes fn out again. Once a second, and whenever the clock jumps, every fn is called as
-//     fn(body, lat, lon, tMs)     body: 'earth' | 'moon' | ...; lat, lon: geodetic degrees of the place; tMs: the displayed instant
-// and returns an array (or nothing) of
-//     { az, el,                   degrees: azimuth from north clockwise, elevation over the horizon
-//       mag,                      apparent magnitude (smaller is brighter; a plume may be -6 or less)
-//       kind,                     'sat' | 'train' | 'rocket' | 'plume': a point, a point, a point with its trail, a soft large glow
-//       rgb,                      optional [r, g, b] 0..1 (white by default)
-//       trail,                    optional [[az, el], ...]: a short path behind it (a rocket's, a pass's)
-//       name }                    optional: what a tap on it says (shown while the sky is dark enough to see it)
-// They are drawn as stars are: dimmed by the air mass, gone once the sky is brighter than their magnitude (so by day they
-// are hidden, and under the horizon), the same on a phone's small canvas. Nothing is drawn, and nothing costs, with no source.
+// One hook: _aeStandSkySource(src) puts things in the sky Stand here draws (satellites, the station, a train of them, a rocket, a
+// plume) and returns a function that takes the source out again. A source is either
+//     { ask(lat, lon, tMs) -> Promise | answer,   called about once a second (and when the clock jumps), never overlapping itself:
+//                                                 lat, lon are the place's geodetic degrees, tMs the displayed instant;
+//       at(answer, tMs) -> [object] }             called at every picture with the latest answer: move things by their rates,
+//                                                 drop what has set (cheap; no I/O)
+// or, for something that is cheap to work out anywhere, a plain function  fn(body, lat, lon, tMs) -> [object]  called at every picture.
+// An object is
+//     { az, el,                  degrees: azimuth from north clockwise, elevation over the horizon
+//       mag,                     apparent magnitude (smaller is brighter; a plume may be -6 or less)
+//       kind,                    'sat' | 'train' | 'rocket' | 'plume': points, a point with its trail, a large soft glow
+//       rgb,                     optional [r, g, b] 0..1 (white by default)
+//       trail,                   optional path behind it, [[az, el], ...] or [{az, el}, ...]
+//       name }                   optional: what a tap on it says (while the sky is dark enough to see it)
+// They are drawn as stars are: dimmed by the air mass, gone once the sky is brighter than their magnitude (so by day they are
+// hidden), gone under the horizon, the same on a phone's small canvas. With no source nothing is drawn and nothing costs.
 var AE_STAND_SKY_EVERY_MS = 1000, AE_STAND_SKY_TAP_PX = 30, AE_STAND_SKY_TAG_MS = 4000;
 var AE_STAND_SKYOBJ_SIZE = { sat: 1, train: 1.2, rocket: 1.6, plume: 7 };   // a point's size by kind
 var _aeStandSkySources = [];
-function _aeStandSkySource(fn) {
-  _aeStandSkySources.push(fn);
+function _aeStandSkySource(src) {
+  var entry = typeof src === 'function' ? { fn: src } : { ask: src.ask, at: src.at, answer: null, pending: false, askedAt: 0 };
+  _aeStandSkySources.push(entry);
   var st = _ae && _ae.stand;
-  if (st) { st.skyAt = 0; st.dirty = true; _ae.dirty = true; if (typeof _aeKick === 'function') _aeKick(); }
-  return function () { var i = _aeStandSkySources.indexOf(fn); if (i >= 0) _aeStandSkySources.splice(i, 1); };
+  if (st) { st.skyDirty = true; st.dirty = true; _ae.dirty = true; if (typeof _aeKick === 'function') _aeKick(); }
+  return function () { var k = _aeStandSkySources.indexOf(entry); if (k >= 0) _aeStandSkySources.splice(k, 1); if (_ae && _ae.stand) { _ae.stand.skyDirty = true; _ae.stand.dirty = true; _ae.dirty = true; } };
 }
 function _aeStandSkyDir(az, el) {   // the local frame: x east, y north, z up
   var a = _aeRad(az), e = _aeRad(el), c = Math.cos(e);
   return [Math.sin(a) * c, Math.cos(a) * c, Math.sin(e)];
 }
+function _aeStandSkyAsk(st, ms, now) {
+  _aeStandSkySources.forEach(function (e) {
+    if (!e.ask || e.pending || (now - e.askedAt < AE_STAND_SKY_EVERY_MS && !st.skyJump)) return;
+    e.pending = true; e.askedAt = now;
+    var done = function (a) { e.answer = a; e.pending = false; st.dirty = true; if (_ae) { _ae.dirty = true; if (typeof _aeKick === 'function') _aeKick(); } };
+    try { Promise.resolve(e.ask(st.lat, st.lon, ms)).then(done, function () { e.pending = false; }); } catch (x) { e.pending = false; }
+  });
+  st.skyJump = false;
+}
 function _aeStandSkyUpdate(st, ms, now) {
   if (!_aeStandSkySources.length && !st.skyObjs) return;
-  if (st.skyAt && now - st.skyAt < AE_STAND_SKY_EVERY_MS && !st.skyDirty) return;
-  st.skyAt = now; st.skyDirty = false;
+  _aeStandSkyAsk(st, ms, now);
   var list = [];
-  _aeStandSkySources.forEach(function (fn) {
-    try { var r = fn(st.key, st.lat, st.lon, ms); if (r && r.length) for (var i = 0; i < r.length; i++) list.push(r[i]); } catch (e) {}
+  _aeStandSkySources.forEach(function (e) {
+    try {
+      var r = e.fn ? e.fn(st.key, st.lat, st.lon, ms) : (e.at && e.answer ? e.at(e.answer, ms) : null);
+      if (r && r.length) for (var i = 0; i < r.length; i++) list.push(r[i]);
+    } catch (x) {}
   });
   st.skyObjs = list.length ? list : null;
   var THREE = _ae.gl.THREE, n = list.length, pos = new Float32Array(3 * n), mag = new Float32Array(n), scl = new Float32Array(n), col = new Float32Array(3 * n), tr = [];
@@ -785,31 +801,31 @@ function _aeStandSkyUpdate(st, ms, now) {
     pos.set(d, 3 * i); mag[i] = o.mag === undefined ? 3 : o.mag; scl[i] = AE_STAND_SKYOBJ_SIZE[o.kind] || 1; col.set(c, 3 * i);
     if (o.trail && o.trail.length) {
       var prev = d;
-      o.trail.forEach(function (p) { var q = _aeStandSkyDir(p[0], p[1]); tr.push([prev, q, c, mag[i]]); prev = q; });
+      o.trail.forEach(function (q) { var az = q.az !== undefined ? q.az : q[0], el = q.el !== undefined ? q.el : q[1], v = _aeStandSkyDir(az, el); tr.push([prev, v, c, mag[i]]); prev = v; });
     }
   });
-  var set = function (key, mesh, build) {
-    if (st[key]) { st.scene.remove(st[key]); st[key].geometry.dispose(); st[key] = null; }
-    if (build) { st[key] = mesh(); st.scene.add(st[key]); }
-  };
-  set('skyPts', function () {
-    var g = new THREE.BufferGeometry();
-    g.setAttribute('position', new THREE.BufferAttribute(pos, 3)); g.setAttribute('aMag', new THREE.BufferAttribute(mag, 1));
-    g.setAttribute('aScale', new THREE.BufferAttribute(scl, 1)); g.setAttribute('aColor', new THREE.BufferAttribute(col, 3));
-    var p = new THREE.Points(g, st.skyPtMat); p.frustumCulled = false; p.renderOrder = -1;
-    return p;
-  }, n > 0);
   var m = tr.length, lp = new Float32Array(6 * m), lm = new Float32Array(2 * m), ls = new Float32Array(2 * m).fill(1), lc = new Float32Array(6 * m);
-  tr.forEach(function (t, i) {
-    lp.set(t[0], 6 * i); lp.set(t[1], 6 * i + 3); lm[2 * i] = lm[2 * i + 1] = t[3]; lc.set(t[2], 6 * i); lc.set(t[2], 6 * i + 3);
-  });
-  set('skyLines', function () {
+  tr.forEach(function (t, i) { lp.set(t[0], 6 * i); lp.set(t[1], 6 * i + 3); lm[2 * i] = lm[2 * i + 1] = t[3]; lc.set(t[2], 6 * i); lc.set(t[2], 6 * i + 3); });
+  // The same count as the picture before: the buffers are filled in place; a different one makes new geometry.
+  var put = function (key, make, arrays, count) {
+    var cur = st[key];
+    if (cur && cur.count === count && count > 0) {
+      var at = cur.mesh.geometry.attributes;
+      Object.keys(arrays).forEach(function (a) { at[a].array.set(arrays[a]); at[a].needsUpdate = true; });
+      return;
+    }
+    if (cur) { st.scene.remove(cur.mesh); cur.mesh.geometry.dispose(); st[key] = null; }
+    if (count > 0) { var mesh = make(); st.scene.add(mesh); st[key] = { mesh: mesh, count: count }; }
+  };
+  var geo = function (a) {
     var g = new THREE.BufferGeometry();
-    g.setAttribute('position', new THREE.BufferAttribute(lp, 3)); g.setAttribute('aMag', new THREE.BufferAttribute(lm, 1));
-    g.setAttribute('aScale', new THREE.BufferAttribute(ls, 1)); g.setAttribute('aColor', new THREE.BufferAttribute(lc, 3));
-    var l = new THREE.LineSegments(g, st.skyLineMat); l.frustumCulled = false; l.renderOrder = -1;
-    return l;
-  }, m > 0);
+    g.setAttribute('position', new THREE.BufferAttribute(a.position, 3)); g.setAttribute('aMag', new THREE.BufferAttribute(a.aMag, 1));
+    g.setAttribute('aScale', new THREE.BufferAttribute(a.aScale, 1)); g.setAttribute('aColor', new THREE.BufferAttribute(a.aColor, 3));
+    return g;
+  };
+  var pa = { position: pos, aMag: mag, aScale: scl, aColor: col }, la = { position: lp, aMag: lm, aScale: ls, aColor: lc };
+  put('skyPts', function () { var p = new THREE.Points(geo(pa), st.skyPtMat); p.frustumCulled = false; p.renderOrder = -1; return p; }, pa, n);
+  put('skyLines', function () { var l = new THREE.LineSegments(geo(la), st.skyLineMat); l.frustumCulled = false; l.renderOrder = -1; return l; }, la, m);
 }
 // A tap on one of them names it (while it can be seen): true if the tap was theirs.
 function _aeStandSkyTap(x, y) {

@@ -324,8 +324,9 @@ def test_other_lanes_put_objects_in_the_sky_and_a_tap_names_them(page):
     """_aeStandSkySource: what a source returns is drawn in the sky and named on a tap, hidden by day, gone once taken out."""
     _stand_anywhere(page, "earth", 37.77, -122.42)
     seen = page.evaluate(
-        """() => { window.__calls = []; window.__off = _aeStandSkySource(function (body, lat, lon, ms) { window.__calls.push([body, lat, lon, typeof ms]);
-          return [{ az: 180, el: 40, mag: -3, kind: 'sat', name: 'Test one', trail: [[190, 38], [200, 36]] }, { az: 90, el: 10, mag: 1, kind: 'plume', name: 'Glow' }]; }); return 1; }"""
+        """() => { window.__calls = []; window.__ats = 0; window.__off = _aeStandSkySource({
+          ask: function (lat, lon, ms) { window.__calls.push(['earth', lat, lon, typeof ms]); return Promise.resolve({ t: ms }); },
+          at: function (answer, ms) { window.__ats++; return [{ az: 180, el: 40, mag: -3, kind: 'sat', name: 'Test one', trail: [{ az: 190, el: 38 }, { az: 200, el: 36 }] }, { az: 90, el: 10, mag: 1, kind: 'plume', name: 'Glow' }]; } }); return 1; }"""
     )
     page.wait_for_function(
         "() => !!_ae.stand.skyPts && !!_ae.stand.skyLines", timeout=30_000, polling=250
