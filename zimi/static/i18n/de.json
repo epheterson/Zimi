@@ -4124,7 +4124,7 @@
   "alm_pad_ignition": "Zündung",
   "alm_pad_cleared": "Turm überwunden",
   "tb_kn_pv_view": "Am Startplatz: wo Sie stehen",
-  "tb_kn_pv_view_v": "5 km von LC-39A in Richtung 200° und 4 km von SLC-41 in Richtung 215°, Augenhöhe 1,7 m, dem Startplatz zugewandt. Die Entfernungen sind angenommen (die eines Pressebereichs für diese Fahrzeugklasse), keine vermessenen Orte. Der Countdown beginnt bei T−30 s auf der eigenen Uhr der Mission.",
+  "tb_kn_pv_view_v": "2.5 km von LC-39A in Richtung 200° und 4 km von SLC-41 in Richtung 215°, Augenhöhe 1,7 m, dem Startplatz zugewandt. Die Entfernungen sind angenommen (die eines Pressebereichs für diese Fahrzeugklasse), keine vermessenen Orte. Der Countdown beginnt bei T−30 s auf der eigenen Uhr der Mission.",
   "tb_kn_pv_climb": "Am Startplatz: die ersten Sekunden des Steigflugs",
   "tb_kn_pv_climb_v": "Die Tabelle der Mission hat alle 10 bis 20 s eine Zeile, zu grob für den Start. Vom Abheben bis zur ersten Zeile 15 s später (T+25 s bei Apollo 11, T+22 s bei Mars 2020) ist der Steigflug an diese Zeile angepasst: senkrecht mit konstantem Ruck, die Abdrift als Potenz der Zeit, die an die Tabelle anschließt. Bis zum Abheben (T+0,6 s bei Apollo 11) steht das Fahrzeug still und überwindet den Turm, wenn sein Fuß 122 m passiert (etwa T+10 s).",
   "tb_kn_pv_pad": "Am Startplatz: die Startanlagen",

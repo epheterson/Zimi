@@ -4124,7 +4124,7 @@
   "alm_pad_ignition": "Ignição",
   "alm_pad_cleared": "Torre livre",
   "tb_kn_pv_view": "Na plataforma: onde você fica",
-  "tb_kn_pv_view_v": "A 5 km de LC-39A no rumo 200° e a 4 km de SLC-41 no 215°, olhos a 1,7 m do chão, de frente para a plataforma. As distâncias são supostas (as de uma área de imprensa para essa classe de veículo), não pontos medidos. A contagem começa em T−30 s no relógio próprio da missão.",
+  "tb_kn_pv_view_v": "A 2.5 km de LC-39A no rumo 200° e a 4 km de SLC-41 no 215°, olhos a 1,7 m do chão, de frente para a plataforma. As distâncias são supostas (as de uma área de imprensa para essa classe de veículo), não pontos medidos. A contagem começa em T−30 s no relógio próprio da missão.",
   "tb_kn_pv_climb": "Na plataforma: os primeiros segundos da subida",
   "tb_kn_pv_climb_v": "A tabela da missão tem uma linha a cada 10 a 20 s, grossa demais para a decolagem. Da decolagem até a primeira linha 15 s depois (T+25 s na Apollo 11, T+22 s na Mars 2020) a subida é ajustada a essa linha: vertical com arranque constante, e a deriva horizontal como uma potência do tempo que se junta à tabela. O veículo fica parado até a decolagem (T+0,6 s na Apollo 11) e passa a torre quando a base ultrapassa 122 m (cerca de T+10 s).",
   "tb_kn_pv_pad": "Na plataforma: as estruturas de lançamento",

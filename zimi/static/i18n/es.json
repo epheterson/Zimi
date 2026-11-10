@@ -4124,7 +4124,7 @@
   "alm_pad_ignition": "Encendido",
   "alm_pad_cleared": "Torre superada",
   "tb_kn_pv_view": "En la plataforma: dónde te pones",
-  "tb_kn_pv_view_v": "A 5 km de LC-39A en el rumbo 200° y a 4 km de SLC-41 en el 215°, ojos a 1,7 m del suelo, mirando a la plataforma. Las distancias son supuestas (las de una zona de prensa para esa clase de vehículo), no puntos medidos. La cuenta atrás empieza en T−30 s con el reloj propio de la misión.",
+  "tb_kn_pv_view_v": "A 2.5 km de LC-39A en el rumbo 200° y a 4 km de SLC-41 en el 215°, ojos a 1,7 m del suelo, mirando a la plataforma. Las distancias son supuestas (las de una zona de prensa para esa clase de vehículo), no puntos medidos. La cuenta atrás empieza en T−30 s con el reloj propio de la misión.",
   "tb_kn_pv_climb": "En la plataforma: los primeros segundos del ascenso",
   "tb_kn_pv_climb_v": "La tabla de la misión tiene una fila cada 10 a 20 s, demasiado gruesa para el despegue. Desde el despegue hasta la primera fila 15 s después (T+25 s en Apolo 11, T+22 s en Mars 2020) el ascenso se ajusta a esa fila: vertical con sacudida constante, y la deriva horizontal como una potencia del tiempo que enlaza con la tabla. El vehículo está quieto hasta el despegue (T+0,6 s en Apolo 11) y supera la torre cuando su base pasa de 122 m (hacia T+10 s).",
   "tb_kn_pv_pad": "En la plataforma: las estructuras de lanzamiento",

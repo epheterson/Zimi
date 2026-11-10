@@ -4124,7 +4124,7 @@
   "alm_pad_ignition": "Ignition",
   "alm_pad_cleared": "Tower cleared",
   "tb_kn_pv_view": "Stand at the pad: where you stand",
-  "tb_kn_pv_view_v": "5 km from LC-39A on bearing 200° and 4 km from SLC-41 on 215°, eye 1.7 m over the ground, facing the pad. The distances are assumed (a press site's for that class of vehicle), not surveyed spots. The count starts at T−30 s on the mission's own clock.",
+  "tb_kn_pv_view_v": "2.5 km from LC-39A on bearing 200° and 4 km from SLC-41 on 215°, eye 1.7 m over the ground, facing the pad. The distances are assumed (a press site's for that class of vehicle), not surveyed spots. The count starts at T−30 s on the mission's own clock.",
   "tb_kn_pv_climb": "Stand at the pad: the first seconds of the climb",
   "tb_kn_pv_climb_v": "The mission's table has a row every 10 to 20 s, too coarse for lift-off. From lift-off to the first row 15 s later (T+25 s for Apollo 11, T+22 s for Mars 2020) the climb is fitted to that row: straight up with a constant jerk, and the downrange drift a power of the time that meets the table's. The vehicle stands still until lift-off (T+0.6 s for Apollo 11) and clears the tower when its foot passes 122 m (about T+10 s).",
   "tb_kn_pv_pad": "Stand at the pad: the launch structures",
