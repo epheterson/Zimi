@@ -1148,7 +1148,7 @@ def _insert_tile(cache, stage, layer, z, x, y, base_level):
         tile_path(stage, "moon/albedo", base_level, x >> up, y >> up)
     ) as parent:
         n = 2**up
-        cell = TILE / n
+        cell = parent.size[0] / n   # the global map's deepest level may be stored at its own size (native_px)
         ox, oy = (x % n) * cell, (y % n) * cell
         base = parent.convert("L").resize(
             (TILE, TILE), Image.BICUBIC, box=(ox, oy, ox + cell, oy + cell)
