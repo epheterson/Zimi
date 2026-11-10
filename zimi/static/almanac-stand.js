@@ -329,6 +329,7 @@ var AE_STAND_SLOW_MS = [20, 250], AE_STAND_SLOW_RUN = 3;   // a frame this slow 
 var _aeStandDprCap = AE_STAND_DPR_MAX;     // for the rest of the session: it goes down, never back up
 var AE_STAND_STATION_MIN_LIM = 3;           // the station is marked once the sky is dark enough for stars of this magnitude
 var AE_STAND_PROBE_MARKS = false;          // deep-space probes are pinpoints nobody could see: not marked (the station's pass is, near Earth)
+var AE_STAND_SKY_MATCH_SHARE = 0.55;      // and how far (in log) toward it: a view with sunlit ground in it cannot be exposed for the sky alone
 var AE_STAND_SKY_MATCH_DEG = [-6, 6];     // the Sun's height over which the Earth's exposure goes from this view's own to the 2D sky's
 var AE_STAND_SLICE_MS = 8;                 // a slice of building between breaths of the page
 var AE_STAND_SHADE_LOD = 1.5;              // the shadow grids hold wavelengths down to this many cells
@@ -509,7 +510,7 @@ function _aeStPhoto(st, fr) {
   // The Earth's sky is the 2D sky's, and so is its exposure there by day (the same eye: almanac-skygl.js _sgExposure, converted to this
   // view's units); through twilight it hands over to this view's own, which sets the exposure by the ground.
   if (a && st.key === 'earth' && typeof _sgExposure === 'function') {
-    var w = _smoothstep(AE_STAND_SKY_MATCH_DEG[0], AE_STAND_SKY_MATCH_DEG[1], fr.sunAlt), k2 = _sgExposure(fr.sunAlt, -90, 0, 0, 1, 1) * AE_ST_LUX_PER_UNIT;
+    var w = AE_STAND_SKY_MATCH_SHARE * _smoothstep(AE_STAND_SKY_MATCH_DEG[0], AE_STAND_SKY_MATCH_DEG[1], fr.sunAlt), k2 = _sgExposure(fr.sunAlt, -90, 0, 0, 1, 1) * AE_ST_LUX_PER_UNIT;
     if (w > 0 && k2 > 0) p.k = Math.exp(Math.log(p.k) * (1 - w) + Math.log(k2) * w);
   }
   p.e2 = e2;
