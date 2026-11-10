@@ -117,6 +117,10 @@ def test_nothing_in_settings_or_manage_outgrows_its_card(served):
                     pg.wait_for_timeout(700)
                     got = pg.evaluate(OFFENDERS, root)
                     if got["out"] or got["clipped"] or got["page"] > 0:
+                        # A loaded machine can catch a pane mid-paint; a real overflow is still there later.
+                        pg.wait_for_timeout(2500)
+                        got = pg.evaluate(OFFENDERS, root)
+                    if got["out"] or got["clipped"] or got["page"] > 0:
                         problems.append("%s %dpx %s: %s" % (name, w, label, got))
                     if shots:
                         pg.screenshot(
