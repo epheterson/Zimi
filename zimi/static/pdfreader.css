@@ -170,8 +170,15 @@ html.zp-finding .zp-title, html.zp-finding .zp-head > .zp-hide-finding { display
   .zp-one .zp-pagebox { grid-column: 3 / 9; }
 }
 
-/* A word in the middle of the ground: loading failed. */
-.zp-msg { position: fixed; inset: 0; display: flex; align-items: center; justify-content: center; padding: 24px; text-align: center; color: var(--text2); font: 15px/1.5 var(--zp-font); z-index: 5; pointer-events: none; }
+/* A document that would not open: the missing-page card (what, why, the file, the way back). */
+.zp-msg { position: fixed; inset: 0; display: flex; align-items: center; justify-content: center; padding: 24px; color: var(--text2); font: 15px/1.6 var(--zp-font); z-index: 5; background: var(--bg); }
+.zp-msg main { max-width: 36rem; width: 100%; }
+.zp-msg h1 { margin: 0 0 12px; font-size: 1.4rem; font-weight: 600; color: var(--text); }
+.zp-msg p { margin: 0 0 20px; }
+.zp-msg-label { display: block; margin: 0 0 6px; font-size: 11px; letter-spacing: .08em; text-transform: uppercase; }
+.zp-msg code { display: block; margin: 0 0 20px; padding: 12px 14px; background: var(--surface); border: 1px solid var(--border); border-radius: 10px; font: 13px/1.5 ui-monospace, SFMono-Regular, Menlo, monospace; color: var(--text); word-break: break-all; }
+.zp-msg-back { padding: 9px 16px; border-radius: 999px; border: 1px solid var(--amber); background: var(--amber); color: var(--on-amber); font: inherit; font-size: .95rem; cursor: pointer; }
+.zp-msg-back:focus-visible { outline: 2px solid var(--amber); outline-offset: 2px; }
 
 /* ── the sheets: contents and pages, and the ⋯ menu ── */
 .zp-scrim { position: fixed; inset: 0; z-index: 40; background: rgba(0, 0, 0, .28); opacity: 0; pointer-events: none; transition: opacity .2s; }
