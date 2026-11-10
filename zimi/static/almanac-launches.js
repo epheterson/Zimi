@@ -77,6 +77,7 @@ function _alDeployKm(L) {
 function _alHasBatch(L) { return L.n >= AL_BATCH_MIN && L.sepMin != null && L.incDeg != null && L.ok; }
 function _alSelect(i) {
   var L = _alLaunch(i);
+  _alStandWatchStart();
   _al.sel = i; _al.cur = L; _al.windows = null; _al.sight = null; _al.exact = null; _al.depSource = AL_SRC.recon;
   _al.flight = _lfAscent({ name: L.name, lat: L.lat, lon: L.lon, siteName: L.siteName, incDeg: L.incDeg, perigeeKm: L.perigeeKm, ok: L.ok });
   _al.dep = null;
@@ -149,6 +150,9 @@ var AL_CSS = [
   '.al-dot{width:8px;height:8px;border-radius:50%;background:#7bd88f;align-self:center}',
   '.al-dot.bad{background:#ff7d6e}',
   '.al-note{margin:6px 0 0;font-size:11.5px;opacity:.8}',
+  '.at-group{margin:10px 0 2px;font-size:11px;font-weight:600;letter-spacing:.06em;text-transform:uppercase;color:var(--text2)}',
+  '.al-sheet a{color:var(--amber)}',
+  '.al-filters input{flex:1 1 0;min-width:0;font:inherit;font-size:12.5px;color:var(--text);background:var(--surface,rgba(255,255,255,.06));border:1px solid var(--border);border-radius:8px;padding:5px 8px}',
   '.al-facts{margin:0 0 8px;padding:0;list-style:none}',
   '.al-facts li{display:flex;gap:8px;align-items:baseline;padding:2px 0}',
   '.al-facts svg{flex:none;opacity:.7;transform:translateY(3px)}',
@@ -162,6 +166,8 @@ var AL_CSS = [
   '.al-win b{color:var(--text);font-weight:600}',
   '.al-st{display:grid;gap:6px;margin:6px 0}',
   '.al-st input{font:inherit;color:var(--text);background:var(--surface,rgba(255,255,255,.06));border:1px solid var(--border);border-radius:8px;padding:6px 8px;min-width:0}',
+  '.al-chip{position:absolute;left:50%;transform:translateX(-50%);bottom:calc(112px + env(safe-area-inset-bottom));max-width:calc(100% - 32px);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font:inherit;font-size:12.5px;color:var(--text);background:rgba(18,18,20,.85);border:1px solid var(--border);border-radius:999px;padding:6px 14px;cursor:pointer;pointer-events:auto}',
+  '.al-chip[hidden]{display:none}',
   '@media (orientation:landscape) and (max-height:500px){.al-sheet{bottom:calc(56px + env(safe-area-inset-bottom));max-height:70vh}}'
 ].join('');
 var AL_ICON = {
@@ -173,11 +179,19 @@ var AL_ICON = {
   eye: '<path d="M2 12s3.600-6.500 10-6.500S22 12 22 12s-3.600 6.500-10 6.500S2 12 2 12z"/><circle cx="12" cy="12" r="2.800"/>',
   stand: '<circle cx="12" cy="5" r="2.200"/><path d="M12 8v7M8 11l4-1 4 1M9.500 21l2.500-6 2.500 6"/>',
   dots: '<circle cx="5" cy="15" r="1.600" fill="currentColor" stroke="none"/><circle cx="10" cy="12" r="1.600" fill="currentColor" stroke="none"/><circle cx="15" cy="9" r="1.600" fill="currentColor" stroke="none"/><circle cx="20" cy="6" r="1.600" fill="currentColor" stroke="none"/>',
-  path: '<path d="M4 20c1-9 6-14 16-16"/><circle cx="20" cy="4" r="1.500" fill="currentColor" stroke="none"/>'
+  path: '<path d="M4 20c1-9 6-14 16-16"/><circle cx="20" cy="4" r="1.500" fill="currentColor" stroke="none"/>',
+  then: '<path d="M12 3l2.4 5.6 6.1.5-4.6 4 1.4 6-5.3-3.2L6.7 19l1.4-6-4.6-4 6.1-.5z"/>'
 };
 function _alSvg(name, size) {
   var s = size || 16;
   return '<svg viewBox="0 0 24 24" width="' + s + '" height="' + s + '" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">' + AL_ICON[name] + '</svg>';
+}
+// The there-and-then list (almanac-thens.js) takes the sheet's place: opened from the list's star, or from the live sky.
+function _alOpenThens() {
+  if (!_al.sheet) _alOpenSheet();
+  _al.view = 'thens';
+  _alRender();
+  Promise.all([_alLoad(), _atLoad()]).then(_alRender).catch(_alRender);
 }
 function _alToggle() { if (_al.sheet) _alCloseSheet(); else _alOpenSheet(); }
 function _alOpenSheet() {
@@ -199,9 +213,46 @@ function _alOpenSheet() {
   }
   _al.sheet = true;
   _al.sheetEl.hidden = false;
+  _alStandWatchStart();
   if (!_al.filter.year) _al.filter.year = String(new Date(_aeDisplayMs()).getUTCFullYear());
   _alRender();
   _alLoad().then(_alRender).catch(_alRender);
+}
+// Whenever the ground view is open the launch card gives way to a small title chip (a tap brings the card back), whichever way the
+// view was entered: this button, a body card's, a there-and-then, a script. A rule of state, so it is watched, not wired to a button.
+var AL_STAND_WATCH_MS = 300;
+function _alStandIsOpen() { return typeof _ae !== 'undefined' && !!_ae && !!_ae.stand; }
+function _alChipEl() {
+  if (_al.chipEl && _al.chipEl.isConnected) return _al.chipEl;
+  var host = _aeById('ae-view') || (_ae && _ae.el);
+  if (!host) return null;
+  var c = document.createElement('button');
+  c.type = 'button';
+  c.className = 'al-chip';
+  c.hidden = true;
+  c.onclick = function () { _al.expanded = true; _al.sheet = true; if (_al.sheetEl) _al.sheetEl.hidden = false; _alRender(); _alStandWatchTick(); };
+  host.appendChild(c);
+  _al.chipEl = c;
+  return c;
+}
+function _alStandWatchTick() {
+  var standing = _alStandIsOpen(), chip = _alChipEl();
+  if (!standing) _al.expanded = false;
+  var collapsed = standing && !_al.expanded;
+  if (_al.sheetEl) _al.sheetEl.hidden = !_al.sheet || collapsed;
+  if (chip) {
+    var show = collapsed && !!_al.cur;
+    if (chip.hidden === show) chip.hidden = !show;
+    if (show && chip.getAttribute('data-i') !== String(_al.cur.i)) {
+      chip.setAttribute('data-i', String(_al.cur.i));
+      chip.textContent = _al.cur.name + (_al.cur.mission ? ' · ' + _al.cur.mission : '');
+      chip.setAttribute('aria-label', _aeT('alm_launches'));
+    }
+  }
+}
+function _alStandWatchStart() {
+  if (!document.getElementById('al-style')) { var st = document.createElement('style'); st.id = 'al-style'; st.textContent = AL_CSS; document.head.appendChild(st); }
+  if (!_al.watch) _al.watch = setInterval(_alStandWatchTick, AL_STAND_WATCH_MS);
 }
 // Out of the way, the launch kept: the ground view still shows it.
 function _alHideSheet() {
@@ -232,6 +283,7 @@ function _alRender() {
   var html = '<button type="button" class="al-x" id="al-x" aria-label="' + _almEsc(_aeT('alm_tm_close')) + '">×</button>';
   if (_al.state === 'failed') html += '<p>' + _almEsc(_aeT('alm_launch_unavailable')) + '</p>';
   else if (_al.state !== 'ready') html += '<h3>' + _almEsc(_aeT('alm_launches')) + '</h3><p class="al-note" aria-busy="true">…</p>';
+  else if (_al.view === 'thens' && typeof _atHtml === 'function') html += _atHtml();
   else if (_al.view === 'launch' && _al.cur) html += _alLaunchHtml();
   else html += _alListHtml();
   el.innerHTML = html;
@@ -239,7 +291,8 @@ function _alRender() {
   setTimeout(_alPlaceSheet, AL_SETTLE_MS);   // the view's stack settles after a flight and a clock jump
   _aeById('al-x').onclick = _alCloseSheet;
   if (_al.state !== 'ready') return;
-  if (_al.view === 'launch' && _al.cur) _alBindLaunch(); else _alBindList();
+  if (_al.view === 'thens' && typeof _atBind === 'function') _atBind();
+  else if (_al.view === 'launch' && _al.cur) _alBindLaunch(); else _alBindList();
 }
 
 // ── The list ──
@@ -264,7 +317,7 @@ function _alListHtml() {
     var from = Math.max(0, Math.min(rows.length - AL_ROWS_MAX, nearest - AL_ROWS_MAX / 2));
     shown = rows.slice(from, from + AL_ROWS_MAX);
   }
-  var html = '<h3>' + _almEsc(_aeT('alm_launches')) + ' · ' + _orrNum(rows.length, null, 0) + '</h3><div class="al-filters">' +
+  var html = '<button type="button" class="al-back" id="al-thens" aria-label="' + _almEsc(_aeT('then_title')) + '" title="' + _almEsc(_aeT('then_title')) + '">' + _alSvg(AL_ICON.then, 18) + '</button><h3>' + _almEsc(_aeT('alm_launches')) + ' · ' + _orrNum(rows.length, null, 0) + '</h3><div class="al-filters">' +
     _alSelectHtml('al-year', 'year', _aeT('alm_launch_year'), _al.years.map(function (y) { return [y, String(y)]; }), f.year) +
     _alSelectHtml('al-site', 'site', _aeT('alm_launch_site'), _al.sites.slice(0, 80).map(function (s) { return [s, s]; }), f.site) +
     _alSelectHtml('al-veh', 'veh', _aeT('alm_launch_vehicle'), _al.vehs.slice(0, 120).map(function (v) { return [v, d.veh[v]]; }), f.veh) + '</div>';
@@ -282,7 +335,8 @@ function _alListHtml() {
   return html;
 }
 function _alBindList() {
-  var el = _al.sheetEl;
+  var el = _al.sheetEl, th = _aeById('al-thens');
+  if (th) th.onclick = _alOpenThens;
   [['al-year', 'year'], ['al-site', 'site'], ['al-veh', 'veh']].forEach(function (p) {
     _aeById(p[0]).onchange = function () { _al.filter[p[1]] = this.value; _alRender(); };
   });

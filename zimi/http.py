@@ -1277,6 +1277,7 @@ if os.path.isdir(_STATIC_DIR):
             + _static_hash("almanac-missions-plan.js")
             + _static_hash("almanac-sats.js")
             + _static_hash("almanac-launches.js")
+            + _static_hash("almanac-thens.js")
             + _static_hash("almanac-launchflight.js")
             + _static_hash("almanac-gamesky.js")
             + _static_hash("fieldguide.html")
