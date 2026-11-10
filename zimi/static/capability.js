@@ -272,6 +272,18 @@ var ZimiCap = window.ZimiCap || (function () {
     var b = box.querySelector('.ae-msg-try');
     if (b) b.onclick = function () { choose('full'); };
   }
+  // ── The GPU budget ──
+  // A scene that uploads a texture or a buffer says so (gpuTrack(key, bytes): true when it fits the level's gpuMB, false when
+  // it would pass it: then it keeps the smaller map) and says so again when it lets it go (gpuFree(key)).
+  var gpuHeld = {}, gpuTotal = 0;
+  function gpuFits(bytes) { return gpuTotal + bytes <= row().gpuMB * 1048576; }
+  function gpuTrack(key, bytes) {
+    if (gpuHeld[key]) gpuTotal -= gpuHeld[key];
+    if (!gpuFits(bytes)) { delete gpuHeld[key]; return false; }
+    gpuHeld[key] = bytes; gpuTotal += bytes;
+    return true;
+  }
+  function gpuFree(key) { if (gpuHeld[key]) { gpuTotal -= gpuHeld[key]; delete gpuHeld[key]; } }
   function choose(v) {
     if (SETTINGS.indexOf(v) < 0) return;
     store('local', SETTING_KEY, v);
@@ -295,6 +307,8 @@ var ZimiCap = window.ZimiCap || (function () {
     on: function (fn) { listeners.push(fn); },
     gearHtml: gearHtml,
     gearBind: gearBind,
+    gpuFits: gpuFits, gpuTrack: gpuTrack, gpuFree: gpuFree,
+    gpuUsedMB: function () { return +(gpuTotal / 1048576).toFixed(1); },
     staticLine: staticLine,
     // Whether a map of this size may be asked for at this level (and the device's own limit).
     textureOk: function (px) { return px <= row().textureMax && (!sig || !sig.maxTex || px <= sig.maxTex); },

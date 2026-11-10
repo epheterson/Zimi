@@ -179,6 +179,17 @@ check(load({ mem: 4, cores: 4, gl: GL({ renderer: 'V3D 4.2' }) }).cap.view3d() =
   check(lost[3] === 'restored', 'a restored context is reported');
 }
 
+// ── The GPU budget ──
+{
+  const c = load({ mem: 4, cores: 4, gl: GL({ renderer: 'V3D 4.2' }) }).cap;   // low: 96 MB
+  const MB = 1048576;
+  check(c.gpuTrack('earth-day', 40 * MB) && c.gpuTrack('earth-night', 40 * MB), 'two maps within the budget are tracked');
+  check(c.gpuTrack('moon-4k', 40 * MB) === false && c.gpuUsedMB() === 80, 'a map that would pass the budget is refused and not counted');
+  c.gpuFree('earth-night');
+  check(c.gpuFits(40 * MB) && c.gpuUsedMB() === 40, 'freeing a map makes room');
+  check(c.gpuTrack('earth-day', 10 * MB) && c.gpuUsedMB() === 10, 'tracking a key again replaces its size');
+}
+
 // ── The table ──
 {
   const T = load({ mem: 8, cores: 10, gl: GL() }).cap.TABLE, keys = Object.keys(T.standard).sort().join();
