@@ -4122,5 +4122,13 @@
   "alm_pad_closer": "Walk closer",
   "alm_pad_follow": "Follow the flight",
   "alm_pad_ignition": "Ignition",
-  "alm_pad_cleared": "Tower cleared"
+  "alm_pad_cleared": "Tower cleared",
+  "tb_kn_pv_view": "Stand at the pad: where you stand",
+  "tb_kn_pv_view_v": "5 km from LC-39A on bearing 200° and 4 km from SLC-41 on 215°, eye 1.7 m over the ground, facing the pad. The distances are assumed (a press site's for that class of vehicle), not surveyed spots. The count starts at T−30 s on the mission's own clock.",
+  "tb_kn_pv_climb": "Stand at the pad: the first seconds of the climb",
+  "tb_kn_pv_climb_v": "The mission's table has a row every 10 to 20 s, too coarse for lift-off. From lift-off to the first row 15 s later (T+25 s for Apollo 11, T+22 s for Mars 2020) the climb is fitted to that row: straight up with a constant jerk, and the downrange drift a power of the time that meets the table's. The vehicle stands still until lift-off (T+0.6 s for Apollo 11) and clears the tower when its foot passes 122 m (about T+10 s).",
+  "tb_kn_pv_pad": "Stand at the pad: the launch structures",
+  "tb_kn_pv_pad_v": "LC-39A is the site model of the mobile launcher and umbilical tower (122 m, lightning mast to 134 m); its swing arms do not move. SLC-41 is boxes: a 48 × 40 × 9 m apron, a platform deck, a 56 m umbilical tower and four 100 m lightning masts. The proportions are approximate, not a replica.",
+  "tb_kn_pv_exhaust": "Stand at the pad: flame, cloud and trail",
+  "tb_kn_pv_exhaust_v": "The flame lengths are the mission's own (60 m for the Saturn V's first stage, longer as the air thins). The cloud at the pad, the sparks and the trail are puffs of assumed size, speed and life, not a fluid simulation: a trail puff every 12 m of the way, up to 30 km high. No weather is drawn: the sky is the clear one."
 }

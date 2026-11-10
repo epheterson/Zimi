@@ -4122,5 +4122,13 @@
   "alm_pad_closer": "Näher herangehen",
   "alm_pad_follow": "Dem Flug folgen",
   "alm_pad_ignition": "Zündung",
-  "alm_pad_cleared": "Turm überwunden"
+  "alm_pad_cleared": "Turm überwunden",
+  "tb_kn_pv_view": "Am Startplatz: wo Sie stehen",
+  "tb_kn_pv_view_v": "5 km von LC-39A in Richtung 200° und 4 km von SLC-41 in Richtung 215°, Augenhöhe 1,7 m, dem Startplatz zugewandt. Die Entfernungen sind angenommen (die eines Pressebereichs für diese Fahrzeugklasse), keine vermessenen Orte. Der Countdown beginnt bei T−30 s auf der eigenen Uhr der Mission.",
+  "tb_kn_pv_climb": "Am Startplatz: die ersten Sekunden des Steigflugs",
+  "tb_kn_pv_climb_v": "Die Tabelle der Mission hat alle 10 bis 20 s eine Zeile, zu grob für den Start. Vom Abheben bis zur ersten Zeile 15 s später (T+25 s bei Apollo 11, T+22 s bei Mars 2020) ist der Steigflug an diese Zeile angepasst: senkrecht mit konstantem Ruck, die Abdrift als Potenz der Zeit, die an die Tabelle anschließt. Bis zum Abheben (T+0,6 s bei Apollo 11) steht das Fahrzeug still und überwindet den Turm, wenn sein Fuß 122 m passiert (etwa T+10 s).",
+  "tb_kn_pv_pad": "Am Startplatz: die Startanlagen",
+  "tb_kn_pv_pad_v": "LC-39A ist das Standortmodell aus mobilem Starttisch und Nabelschnurturm (122 m, Blitzableiter bis 134 m); seine Schwenkarme bewegen sich nicht. SLC-41 besteht aus Quadern: ein Vorfeld von 48 × 40 × 9 m, ein Plattformdeck, ein 56 m hoher Nabelschnurturm und vier 100 m hohe Blitzschutzmasten. Die Proportionen sind angenähert, kein Nachbau.",
+  "tb_kn_pv_exhaust": "Am Startplatz: Flamme, Wolke und Spur",
+  "tb_kn_pv_exhaust_v": "Die Flammenlängen stammen aus der Mission selbst (60 m bei der ersten Stufe der Saturn V, länger in dünnerer Luft). Die Wolke am Startplatz, die Funken und die Spur sind Wölkchen von angenommener Größe, Geschwindigkeit und Lebensdauer, keine Strömungssimulation: alle 12 m Weg ein Spurwölkchen, bis 30 km Höhe. Wetter wird nicht gezeichnet: der Himmel ist der klare."
 }
