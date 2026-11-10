@@ -8415,11 +8415,10 @@ function _grCredit(idx) {
   var im = _grImages[idx];
   return im.pd ? im.by + ' \u00b7 ' + t('alm_gr_pd') : '\u00a9 ' + im.by;
 }
-// A copyrighted picture this edition does not carry: its caption and credit, drawn.
-function _grPlaceholderHtml(idx, cls) {
-  return '<div class="' + cls + '"><span class="gr-ph-t">' + _almEsc(_grCap(idx)) + '</span>' +
-    '<span class="gr-ph-by">' + _almEsc(_grCredit(idx)) + '</span>' +
-    '<span class="gr-ph-note">' + _almEsc(t('alm_gr_omitted')) + '</span></div>';
+// A copyrighted picture this edition does not carry: a drawn card in its place (its caption and
+// credit stand under it, as under every picture).
+function _grPlaceholderHtml(cls) {
+  return '<div class="' + cls + '"><span class="gr-ph-note">' + _almEsc(t('alm_gr_omitted')) + '</span></div>';
 }
 
 var _grLightboxIdx = -1;
@@ -8561,7 +8560,7 @@ function _renderGoldenRecordGallery() {
     var cap = _almEsc(_grCap(i));
     html += '<figure class="gr-item" onclick="_openGrLightbox(' + i + ')">' +
       (_grImages[i].omitted
-        ? _grPlaceholderHtml(i, 'gr-thumb gr-ph')
+        ? _grPlaceholderHtml('gr-thumb gr-ph')
         : '<div class="gr-thumb"><img src="' + _GR_DIR + _grImages[i].file + '" alt="' + cap + '" loading="lazy"></div>') +
       '<figcaption><span class="gr-cap">' + cap + '</span><span class="gr-by">' + _almEsc(_grCredit(i)) + '</span></figcaption>' +
       '</figure>';
@@ -8621,7 +8620,7 @@ function _renderGrLightbox() {
     '<button class="gr-lb-close" onclick="_closeGrLightbox()">&times;</button>' +
     '<button class="gr-lb-arrow gr-lb-prev" onclick="event.stopPropagation();_grNav(-1)"><svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="10,2 4,8 10,14"/></svg></button>' +
     '<div class="gr-lb-main" onclick="event.stopPropagation()">' +
-      (im.omitted ? _grPlaceholderHtml(_grLightboxIdx, 'gr-lb-ph gr-ph') : '<img src="' + _GR_DIR + im.file + '" alt="' + cap + '">') +
+      (im.omitted ? _grPlaceholderHtml('gr-lb-ph gr-ph') : '<img src="' + _GR_DIR + im.file + '" alt="' + cap + '">') +
       '<div class="gr-lb-cap">' + cap + '</div>' +
       '<div class="gr-lb-by">' + _almEsc(_grCredit(_grLightboxIdx)) + '</div>' +
       '<div class="gr-lb-num">' + (_grLightboxIdx + 1) + ' / ' + _grImages.length + '</div>' +
