@@ -13,9 +13,8 @@
 .po-board button.p1 { background: var(--po-1); box-shadow: inset 0 0 0 1px var(--po-1-hi), inset 0 0 0 0.5px var(--po-line); }
 .po-board button.p1::before { content: ""; position: absolute; left: 36%; top: 36%; width: 28%; height: 28%; border-radius: 50%; background: rgba(0, 0, 0, 0.32); pointer-events: none; }
 .po-board button.last { box-shadow: inset 0 0 0 2px #fff, inset 0 0 0 3px rgba(0, 0, 0, 0.4); }
-.po-board button.start::after { content: ""; position: absolute; left: 22%; top: 22%; width: 56%; height: 56%; border-radius: 50%; border: 2px dashed var(--po-start); box-sizing: border-box; pointer-events: none; }
-.po-board button.s0::after { border-color: var(--po-0); } .po-board button.s1::after { border-color: var(--po-1); }
-.po-board button.corner::after { content: ""; position: absolute; left: 36%; top: 36%; width: 28%; height: 28%; border-radius: 50%; background: var(--hint); pointer-events: none; }
+.po-board button.s0 { --ring: var(--po-0); } .po-board button.s1 { --ring: var(--po-1); }
+.po-board button.corner:not(.start)::after { content: ""; position: absolute; left: 36%; top: 36%; width: 28%; height: 28%; border-radius: 50%; background: var(--hint); pointer-events: none; }
 .po-board button.ghost { z-index: 2; }
 .po-board button.ghost.ok { background: color-mix(in srgb, var(--po-ok) 55%, transparent); box-shadow: inset 0 0 0 2px var(--po-ok); }
 .po-board button.ghost.bad { background: color-mix(in srgb, var(--po-bad) 50%, transparent); box-shadow: inset 0 0 0 2px var(--po-bad); }

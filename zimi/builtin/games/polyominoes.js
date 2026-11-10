@@ -62,7 +62,7 @@
     for (s = 0; s < SQ; s++) {
       var v = pos.board[s], cls = v ? 'p' + (v - 1) : '';
       if (lastCells[s]) cls += ' last';
-      if (!v && (s === E.STARTS[0] && pos.placed[0] === 0 || s === E.STARTS[1] && pos.placed[1] === 0)) cls += ' start s' + (s === E.STARTS[0] ? 0 : 1);
+      if (!v && (s === E.STARTS[0] && pos.placed[0] === 0 || s === E.STARTS[1] && pos.placed[1] === 0)) cls += ' start bg-ring s' + (s === E.STARTS[0] ? 0 : 1);
       if (show && !v && corners[s] && sel < 0) cls += ' corner';
       if (gset[s]) cls += ghostReason ? ' ghost bad' : ' ghost ok';
       if (cells[s].className !== cls) cells[s].className = cls;

@@ -105,6 +105,17 @@ button { font: inherit; color: inherit; }
 @media (min-width: 700px) { .pl-main, .bg-main, .ms-main, .mj-main { justify-content: center; } }
 body:has(> main:is(.pl-main, .bg-main, .ms-main, .mj-main)) { display: flex; flex-direction: column; min-height: 100vh; min-height: 100svh; height: auto; }
 body.zc-game { padding-bottom: var(--safe-b); }
+/* The primary action is where the thumb is: a page whose own children include a row holding a .gs-primary button (or one marked
+   .gs-dock) docks that row at the bottom safe area, and everything above it is centred in the space left (two equal spacers).
+   Taller than the screen, the row stays pinned over the content on a ground-coloured fade. Touch screens at phone height and up:
+   a mouse is near the board, and a landscape phone has no room to spare. */
+@media (pointer: coarse) and (min-height: 560px) {
+  :is(.pl-main, .bg-main):is(:has(> .gs-dock), :has(> * > .gs-primary)) { padding-bottom: 0; }
+  :is(.pl-main, .bg-main):is(:has(> .gs-dock), :has(> * > .gs-primary))::before,
+  :is(.pl-main, .bg-main):is(:has(> .gs-dock), :has(> * > .gs-primary))::after { content: ""; flex: 1 1 0; min-height: 0; }
+  :is(.pl-main, .bg-main):is(:has(> .gs-dock), :has(> * > .gs-primary))::after { order: 1; }
+  :is(.pl-main, .bg-main) > :is(.gs-dock, :has(> .gs-primary)) { order: 2; align-self: stretch; position: sticky; bottom: 0; z-index: 3; padding: var(--sp-4) 0 max(var(--sp-4), var(--safe-b)); background: linear-gradient(to bottom, transparent, var(--ground) var(--sp-4)); }
+}
 /* Bare grids (2048, Sudoku, Minesweeper, Sokoban) sit in one frame: radius 14, a 1px line, surface2, 12px padding.
    A wood board is its own frame and gets no card around it; felt tables stay full bleed. */
 .gs-frame, .pl-main :is(.tf-board, .su-board, .sk-board), .ms-main .ms-box { padding: var(--sp-3); border: 1px solid var(--line); border-radius: var(--r-sheet); background: var(--surface2); }
@@ -169,6 +180,16 @@ body:not(:has(> .ar-bar)) .ar-sheet-card h2::before { content: ""; display: inli
 @media (max-width: 360px) { .gs-setup .gs-row { flex-wrap: wrap; } .gs-setup .gs-seg { flex: 1 1 100%; } .gs-setup .gs-seg .ar-btn { flex: 1 1 0; } }
 .ar-sheet-card:has(.gs-setup) .ar-sheet-actions { position: sticky; z-index: 2; bottom: -20px; margin: var(--sp-3) -20px -20px; padding: var(--sp-2) 20px 20px; background: var(--surface2); box-shadow: 0 -12px 10px -2px var(--surface2); }
 .ar-sheet-card:has(.gs-setup) { max-height: calc(100vh - var(--bar-h, 0px) - 2 * var(--gutter, 16px)); }
+/* A setup sheet whose options outgrow the screen (Odd One Out, Courtier): Start stays at the card's foot on a fade, so what scrolls under it reads
+   as more. A short landscape screen gives the options the room: the blurb goes, the padding shrinks, the scrollbar shows. */
+:is(#oo-sheet, #cr-sheet) .ar-sheet-card { padding-bottom: 0; scrollbar-width: thin; }
+:is(#oo-sheet, #cr-sheet) .ar-sheet-actions { position: sticky; bottom: 0; z-index: 2; padding: var(--sp-4) 0 20px; background: linear-gradient(to bottom, transparent, var(--surface2) var(--sp-4)); }   /* above the chosen segments (z-index 1) that scroll under it */
+@media (orientation: landscape) and (max-height: 500px) {
+  :is(#oo-sheet, #cr-sheet) { padding-block: var(--sp-2); }
+  :is(#oo-sheet, #cr-sheet) .ar-sheet-card { padding-top: var(--sp-3); max-height: calc(100dvh - var(--bar-h, 0px) - 2 * var(--sp-2)); }
+  :is(#oo-sheet, #cr-sheet) .ar-sheet-card > p { display: none; }
+  :is(#oo-sheet, #cr-sheet) .ar-sheet-actions { padding: var(--sp-3) 0 var(--sp-3); }
+}
 
 /* The player chip: 13px, 28px tall, a pill with a dot, the name and a number. The current player has an amber outline and
    glow with the name in ink, never white on amber. D marks the dealer; a suit chip marks trump. */

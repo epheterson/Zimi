@@ -12,7 +12,6 @@
 .wl-board button:focus-visible { outline: 3px solid var(--accent); outline-offset: -2px; z-index: 3; }
 .wl-board button.last::before, .wl-board button.tip::before { content: ""; position: absolute; inset: 0; border-radius: inherit; background: var(--last); pointer-events: none; }
 .wl-board button.tip::before { background: var(--sel); }
-.wl-board button.hint::after { content: ""; position: absolute; width: 30%; height: 30%; border-radius: 50%; background: var(--hint); pointer-events: none; }
 .wl-board.is-walling > button { cursor: default; }
 
 .wl-pc { position: relative; z-index: 1; width: 76%; height: 76%; border-radius: 50%; pointer-events: none; box-shadow: 0 2px 3px rgba(0, 0, 0, 0.5), inset 0 -2px 3px rgba(0, 0, 0, 0.22), inset 0 2px 2px rgba(255, 255, 255, 0.25); }

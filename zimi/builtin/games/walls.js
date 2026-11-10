@@ -73,7 +73,7 @@
     for (s = 0; s < SQ; s++) {
       var c = cells[s], cls = (c.classList.contains('goal0') ? 'goal0 ' : '') + (c.classList.contains('goal1') ? 'goal1 ' : '');
       if (pos.pawn[0] === s || pos.pawn[1] === s) cls += 'has ';
-      if (hintsOn() && !wallMode && open && targets.hasOwnProperty(s)) cls += 'hint ';
+      if (hintsOn() && !wallMode && open && targets.hasOwnProperty(s)) cls += 'hint bg-ring ';
       if (s === tip) cls += 'tip ';
       if (lastMove >= 0 && !E.isWall(lastMove) && s === lastMove) cls += 'last ';
       c.className = cls.trim();
