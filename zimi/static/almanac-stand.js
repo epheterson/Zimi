@@ -49,7 +49,7 @@ function _aeStandStart(key, lat, lon, handoff) {
     // A body with no place for this date (a dwarf planet whose table does not reach it) has no sky to stand under.
     var frame = _aeStBodyNow(key);
     if (!frame) return false;
-    var pend = _ae.standPending = { key: key, lat: lat, lon: lon, ready: false, t0: performance.now(), builder: null, mesh: null, tex: null, handoff: handoff || null };
+    var pend = _ae.standPending = { key: key, lat: lat, lon: lon, ready: false, t0: performance.now(), builder: null, mesh: null, tex: null, handoff: handoff || null, prev: _aeStandViewNow() };
     _ae.pick = null; _ae.lm = null; _ae.place = null; _ae.selected = null;
     _aeRenderCard();
     var body = AE_STAND_BODIES[key];
@@ -76,6 +76,18 @@ function _aeStandViewUp() {
       setTimeout(wait, 100);
     })();
   });
+}
+// The 3D view's camera as the person left it (where it is flying to, if it is flying): Back from the ground returns to it.
+function _aeStandViewNow() {
+  var f = _ae.fly;
+  return { target: _ae.target, dist: f ? f.toDist : _ae.dist, az: f ? f.toAz : _ae.az, el: f ? f.toEl : _ae.el_, preset: _ae.preset, arrived: _ae.arrived };
+}
+function _aeStandRestoreView(prev) {
+  if (!prev || !_aeIsOpen || !_ae.gl || _ae.stand || _ae.standPending) return;
+  _ae.fly = null; _ae.pan = null;
+  _ae.target = prev.target; _ae.dist = prev.dist; _ae.az = prev.az; _ae.el_ = prev.el; _ae.preset = prev.preset; _ae.arrived = prev.arrived;
+  _aeMarkViews();
+  _ae.dirty = true; _aeKick();
 }
 // The terrain and the mesh, built in slices behind the flight.
 // A pending ground is wanted while it is the view's own, or a site's (almanac-standhost.js) that has not been dropped.
@@ -208,7 +220,9 @@ function _aeStandLeave(history) {
 }
 function _aeStandFinishLeave(st) {
   var canvas = _aeById('ae-canvas'), done = function () {
+    var prev = st.pend && st.pend.prev && !st.handoff ? st.pend.prev : null;   // a card's hand-off goes back to the card (_aeStandAfterClose), not to a view
     _aeStandDrop();
+    _aeStandRestoreView(prev);   // under the fade: the view is where it was, its chip lit
     if (canvas) { canvas.style.opacity = ''; setTimeout(function () { canvas.style.transition = ''; }, AE_STAND_FADE_MS + 40); }
   };
   st.fading = true;
@@ -1466,6 +1480,7 @@ var AE_STAND_CSS = [
   '.ae-standing .ae-canvas{cursor:grab}',
   '.ae-stand-hud{position:absolute;top:0;left:0;right:0;display:flex;align-items:flex-start;gap:10px;padding:12px 16px 24px;background:linear-gradient(rgba(0,0,0,.5),transparent);pointer-events:none;z-index:2}',
   '.ae-stand-hud>*{pointer-events:auto}',
+  '.ae-stand-hud .ae-stand-motion{margin-inline-start:auto;flex:none}',   // the phone: the top right, with the rest of the controls
   '.ae-stand-text{display:flex;flex-direction:column;gap:2px;min-width:0;padding-top:6px;font-size:13px;line-height:1.3;color:#fff;text-shadow:0 0 4px #000,0 1px 3px #000;pointer-events:none}',
   '.ae-stand-text b{font-weight:600}',
   '.ae-stand-text .ae-stand-sunrise{color:var(--amber);text-decoration:underline;pointer-events:auto;font-weight:600}',
@@ -1495,7 +1510,7 @@ function _aeStandHud(st) {
     '<div class="ae-stand-text" id="ae-stand-text" aria-live="off"></div>';
   _ae.el.appendChild(hud);
   st.hud = hud;
-  _aeById('ae-stand-back').onclick = function () { _aeStandLeave(); };
+  _aeById('ae-stand-back').onclick = function () { _aeStandClose(); };   // the one way back: the card that handed the ground over, else the view as it was
   _aeById('ae-stand-text').addEventListener('click', function (e) {
     var a = e.target && e.target.closest && e.target.closest('[data-ae-sunrise]');
     if (!a) return;
@@ -1534,7 +1549,7 @@ function _aeStandHudText(st) {
   var el = _aeById('ae-stand-text'), fr = st.fr;
   if (!el) return;
   var head = ((st.yaw + st.userYaw) * 180 / Math.PI % 360 + 360) % 360;   // where the view faces; the Sun's own bearing follows its height
-  var line2 = (fr ? '☀ ' + Math.round(fr.sunAlt) + '°' + (fr.sunAlt < 0 ? ' ↓' : '') + ' ' + _aeCompassPoint(_aeDeg(fr.sunAz)) + '    ' : '') + '⌖ ' + Math.round(head) + '° ' + _aeCompassPoint(head);   // the Sun: its height and where it stands; the glyph: which way the view faces
+  var line2 = (fr ? '☀ ' + Math.abs(Math.round(fr.sunAlt)) + '°' + (fr.sunAlt < 0 ? ' ↓' : ' ↑') + ' · ' + _aeCompassPoint(_aeDeg(fr.sunAz)) + '    ' : '') + '⌖ ' + Math.round(head) + '° ' + _aeCompassPoint(head);   // the Sun: its height (an arrow, no compass letter) and then its bearing (the letter); the glyph: which way the view faces
   var local = _aeStPlaceTime(st), html = '<b>' + _almEsc(_aeInfoName(st.key)) + '</b><span>' + _almEsc(_aeFmtLatLon({ lat: st.lat, lon: st.lon })) + ' · ' + _almEsc(_aeStHeightText(st.h0)) + '</span><span>' + _almEsc(line2) + '</span>' + (local ? '<span>' + _almEsc(local) + '</span>' : '');
   var rise = fr && fr.sunAlt < -AE_STAND_RISE_OFFER_DEG && st.key !== 'earth' ? _aeStNextSunrise(st, _aeDisplayMs()) : null;
   if (rise) html += '<span><a href="#" class="ae-stand-sunrise" data-ae-sunrise>' + _almEsc(_aeT('alm_lm_night_until', { date: _aeFmtWhen(rise) })) + '</a></span>';
