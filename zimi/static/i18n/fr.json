@@ -3248,6 +3248,7 @@
   "show_lang_chooser": "Afficher les langues",
   "languages_all": "Toutes les langues ({n})",
   "voices_get_mb": "Obtenir ({mb} Mo)",
+  "voices_set_up_mb": "Installer ({mb} Mo)",
   "show_langs_desc": "Les pastilles de langue au-dessus de la bibliothèque et du catalogue, et le menu des langues de la barre du haut.",
   "languages_line": "Langues : {langs}",
   "languages_hint": "Les langues cochées figurent dans le menu des langues de la barre du haut et passent en premier dans le catalogue, la recherche, Découvrir, le Dictionnaire et Zimipédia. La langue de Zimi est toujours cochée.",

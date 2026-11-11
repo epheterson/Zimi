@@ -1303,7 +1303,7 @@ function _voiceRowHtml(x, isOn, last) {
   if (busy && admin) act += _voiceAction('/manage/voices/cancel', nat.tag, tH('cancel'));
   else if (nat && (!here || nat.newer) && _voicesMayFetch() && nat.runnable) {
     act += _voiceAction('/manage/voices/download', nat.tag,
-      !dl.tag && dl.error === nat.tag ? tH('retry') : tH('voices_get_mb', { mb: _voiceMb(nat.bytes) }),
+      !dl.tag && dl.error === nat.tag ? tH('retry') : tH(nat.needs_setup ? 'voices_set_up_mb' : 'voices_get_mb', { mb: _voiceMb(nat.bytes) }),
       ' data-primary' + (dl.tag ? ' disabled' : ''));
   }
   // Clear: Get for the language Zimi is in, and a ▾ for any other checked
@@ -1391,7 +1391,7 @@ function _voiceCell(lang, e) {
     return { s: 'on' };
   }
   var offer = null, nat = e === 'kokoro' && _voiceNatural();
-  if (nat && nat.runnable && !nat.installed && _naturalLangs(nat).indexOf(lang) >= 0) offer = nat;
+  if (nat && nat.runnable && (!nat.installed || nat.needs_setup) && _naturalLangs(nat).indexOf(lang) >= 0) offer = nat;
   if (e === 'piper' && row && row.piper && !row.piper.newer) offer = row.piper;
   if (offer && dl.tag === offer.tag) return { s: 'busy', tag: offer.tag };
   if (offer && _voicesMayFetch()) return { s: 'get', tag: offer.tag, bytes: offer.bytes };

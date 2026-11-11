@@ -3248,6 +3248,7 @@
   "show_lang_chooser": "显示语言",
   "languages_all": "所有语言（{n}）",
   "voices_get_mb": "获取（{mb} MB）",
+  "voices_set_up_mb": "设置（{mb} MB）",
   "show_langs_desc": "图书馆和目录上方的语言标签，以及顶栏的语言菜单。",
   "languages_line": "语言：{langs}",
   "languages_hint": "勾选的语言会出现在顶栏的语言菜单中，并在目录、搜索、发现、词典和 Zimipedia 中优先显示。Zimi 当前的语言始终勾选。",

@@ -3248,6 +3248,7 @@
   "show_lang_chooser": "Sprachen anzeigen",
   "languages_all": "Alle Sprachen ({n})",
   "voices_get_mb": "Laden ({mb} MB)",
+  "voices_set_up_mb": "Einrichten ({mb} MB)",
   "show_langs_desc": "Sprach-Pillen über Bibliothek und Katalog und das Sprachmenü in der oberen Leiste.",
   "languages_line": "Sprachen: {langs}",
   "languages_hint": "Angehakte Sprachen stehen im Sprachmenü der oberen Leiste und kommen zuerst in Katalog, Suche, Entdecken, Wörterbuch und Zimipedia. Zimis eigene Sprache ist immer angehakt.",

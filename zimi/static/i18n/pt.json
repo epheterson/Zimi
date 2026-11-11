@@ -3248,6 +3248,7 @@
   "show_lang_chooser": "Mostrar idiomas",
   "languages_all": "Todos os idiomas ({n})",
   "voices_get_mb": "Obter ({mb} MB)",
+  "voices_set_up_mb": "Configurar ({mb} MB)",
   "show_langs_desc": "As pílulas de idioma sobre a biblioteca e o catálogo, e o menu de idiomas da barra superior.",
   "languages_line": "Idiomas: {langs}",
   "languages_hint": "Os idiomas marcados estão no menu de idiomas da barra superior e vêm primeiro no catálogo, na pesquisa, em Descobrir, no Dicionário e na Zimipédia. O idioma do Zimi está sempre marcado.",

@@ -3248,6 +3248,7 @@
   "show_lang_chooser": "Show languages",
   "languages_all": "All languages ({n})",
   "voices_get_mb": "Get ({mb} MB)",
+  "voices_set_up_mb": "Set up ({mb} MB)",
   "show_langs_desc": "Language pills over the library and the catalog, and the language menu in the top bar.",
   "languages_line": "Languages: {langs}",
   "languages_hint": "Checked languages are in the top bar's language menu and lead the catalog, search, Discover, the Dictionary and Zimipedia. Zimi's own language is always checked.",
