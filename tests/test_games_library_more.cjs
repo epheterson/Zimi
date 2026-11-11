@@ -257,6 +257,7 @@ const rng = seed => load(['librarykit.js']).GamesLib.rng(seed);
     const longClue = E.clueFrom('A very long definition that goes on and on past the eighty character limit for a crossword clue indeed.', 'house');
     check(longClue.length <= 82 && longClue.endsWith('…'), 'crossword: a long definition is cut to a line');
     check(Lib.firstDefinition('<ol><li>A fruit that is <b>red</b>.<ul><li>An example sentence.</li></ul></li><li>Second.</li></ol>') === 'A fruit that is red.' && Lib.firstDefinition('<p>none</p>') === '', 'crossword: the first definition of a Wiktionary page');
+    check(Lib.firstDefinition('<ol><li>Rudeness, insolence. <style>.mw-parser-output .defdate{font-size:smaller}</style><span class="defdate">[16th\u201319th c.]</span></li></ol>') === 'Rudeness, insolence.', 'kit: a definition loses the style block and the date a real Wiktionary puts in it');
   }
 
   {

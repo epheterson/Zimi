@@ -234,6 +234,7 @@
 
   // A page's lead: its title, its first real paragraph's first sentences, and its first picture (an address).
   var STRIP = /<(script|style|table|sup|figure)[\s\S]*?<\/\1>/gi;
+  var DEFDATE = /<span[^>]*class="[^"]*\bdefdate\b[^"]*"[^>]*>[\s\S]*?<\/span>/gi;
   function plain(html) {
     return sweep(html, /<[^>]*>/g).replace(/&nbsp;/g, ' ').replace(/&#160;/g, ' ').replace(/&lt;/g, '<').replace(/&gt;/g, '>')
       .replace(/&quot;/g, '"').replace(/&#39;|&apos;/g, "'").replace(/&amp;/g, '&').replace(/\[\d+\]/g, '').replace(/\s+/g, ' ').trim();
@@ -291,7 +292,8 @@
   // The first definition on a Wiktionary page: the first numbered line, without the examples nested under it. '' if none.
   Lib.firstDefinition = function (html) {
     var m = /<ol[^>]*>\s*<li[^>]*>([\s\S]*?)(?:<ul|<ol|<dl|<\/li>)/i.exec(String(html || ''));
-    return m ? plain(m[1]) : '';
+    // A real Wiktionary puts a style block and a date ("[16th–19th c.]") inside some definitions: neither is the meaning.
+    return m ? plain(sweep(sweep(m[1], STRIP), DEFDATE)).replace(/\s+([.,;:])/g, '$1').trim() : '';
   };
 
   // ── tables ───────────────────────────────────────────────────────────────

@@ -227,7 +227,6 @@
  "bj.soft1": "soft {total}",
  "bj.split": "Split",
  "bj.stand": "Stand",
- "bl.choosing": "Choosing words from your Wiktionary…",
  "bl.counter": "{n} of {max}",
  "bl.fakeLabel": "Your fake meaning",
  "bl.fakePlaceholder": "What might {word} mean? Make it sound real",

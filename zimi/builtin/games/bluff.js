@@ -79,7 +79,7 @@
   // ── the page ─────────────────────────────────────────────────────────────
   var Play = root.ArcadePlay, $ = Play.$, T = Play.T, Pass = root.GamesPass;
   Play.applyTheme();
-  var STATS_KEY = 'zimi.games.bluff.stats', ASK_BATCH = 6, ASK_ROUNDS = 8, ASK_MS = 15000;
+  var STATS_KEY = 'zimi.games.bluff.stats', ASK_MS = 15000;
   var els = { n: $('bl-n'), card: $('bl-card'), msg: $('bl-msg'), actions: $('bl-actions'), newBtn: $('bl-new') };
   var status = Play.status(els.msg);
   var dict = '', g = null, pendingPlayers = null, building = false, done = false;
@@ -95,29 +95,78 @@
   function paint() { Lib.englishNote(T, 'lang.enWords', true); els.n.textContent = g ? T('bl.round', { n: Math.min(g.round + 1, g.rounds), total: g.rounds }) : ''; }
 
   // ── words ──
-  // A batch of candidates from the Wiktionary: Zimi's random words, or random English pages of kiwix-serve's.
+  // Words from the library's English Wiktionary come through a small pool kept for the session, filled in the idle time:
+  // one burst when the page opens and one as each round starts (while the players write). A deal never waits for it: it takes
+  // what the pool holds and fills up with built-in words, and a later round of the same game takes a library word in place of a
+  // built-in one as the pool fills. A burst asks the server at most BURST_ASKS times: one list of candidates, then their pages
+  // one at a time until the pool holds POOL_WANT. The list is Zimi's /dictionary/random (English words) inside Zimi; in
+  // kiwix-serve its title suggestions for a prefix that starts many long English words (a random page of a Wiktionary is
+  // seldom an English word of seven letters with a meaning of its own: 67 of them gave fewer than three).
+  var POOL_WANT = 6, BURST_ASKS = 12, SUGGEST_COUNT = 40, POOL_KEY = 'zimi.games.bluff.pool:';
+  // Stems of rare English words: a suggestion list for one starts mostly with real English words and their kin (measured on
+  // the full English Wiktionary: about one candidate in four had an English meaning of its own; four-letter prefixes gave one in eight).
+  var PREFIXES = ['perspic', 'loquac', 'querul', 'garrul', 'recalci', 'sycoph', 'obsequ', 'pusilla', 'magnani', 'perfidi', 'pelluc',
+    'ebulli', 'effulg', 'evanesc', 'fastidi', 'grandil', 'hirsut', 'impecun', 'imperturb', 'incorrig', 'indefat', 'ineffab', 'inexor',
+    'insouc', 'irasc', 'laconi', 'lachrym', 'lugubr', 'mendaci', 'mellifl', 'nefari', 'obfusc', 'obstrep', 'ostenta', 'parsimon',
+    'pernici', 'petulan', 'platitud', 'prevaric', 'propinq', 'pugnaci', 'quixot', 'recondit', 'refulg', 'sagaci', 'soporif',
+    'supercil', 'taciturn', 'temerit', 'truculen', 'unctuo', 'vacill', 'veraci', 'vicissit', 'vitupera', 'voraci', 'zealot'];
+  var ENGLISH_END = /(?:ous|ity|ness|ive|ant|ent|ance|ence|ancy|ency|ion|ism|ist|ize|ise|ate|ful|less|ly|ic|al|ary|ory)$/;
+  var STEM = 6;   // two words of one pool never share their first STEM letters (garrulous and garrulity are one word to a player)
+  var pool = [], seen = {}, filling = false;
+  function poolKey() { return POOL_KEY + dict; }
+  function loadPool() { try { var p = JSON.parse(root.sessionStorage.getItem(poolKey())); pool = Array.isArray(p) ? p : []; } catch (e) { pool = []; } }
+  function savePool() { try { root.sessionStorage.setItem(poolKey(), JSON.stringify(pool)); } catch (e) { /* no storage: the pool lives for the page */ } }
+  function kin(word) {
+    var stem = word.slice(0, STEM), near = function (w) { return w.word.slice(0, STEM) === stem; };
+    return pool.some(near) || !!(g && g.words && g.words.some(near));
+  }
+  function builtIn(word) { return (root.BLUFF_WORDS || []).some(function (w) { return w[0] === word; }); }
+  // One list of candidates, {word, path}: words that could be a game's (seven letters or more, lower case, not built in, not seen).
   function candidates() {
+    var fresh = function (c) { return plausibleWord(c.word) && !seen[c.word] && !builtIn(c.word) && !kin(c.word); };
     if (Lib.modeNow() === 'zimi') {
       return Lib.json('/dictionary/random?langs=en', ASK_MS).then(function (r) {
-        return ((r && r.words) || []).filter(function (x) { return x.zim === dict && plausibleWord(x.w); }).map(function (x) { return { word: x.w, path: x.w }; });
+        return ((r && r.words) || []).filter(function (x) { return x.zim === dict; }).map(function (x) { return { word: x.w, path: x.w }; }).filter(fresh);
       }, function () { return []; });
     }
-    var asks = [];
-    for (var i = 0; i < ASK_BATCH; i++) asks.push(Lib.random(dict).then(function (r) { return plausibleWord(r.title) ? { word: r.title, path: r.path } : null; }, function () { return null; }));
-    return Promise.all(asks).then(function (l) { return l.filter(Boolean); });
+    var prefix = PREFIXES[Math.floor(Math.random() * PREFIXES.length)];
+    return Lib.search(dict, prefix, SUGGEST_COUNT).then(function (rows) {
+      // The suggestions mix languages (perspicacia, perspicaz): an English ending is tried first, the rest after, in a random order.
+      var list = Lib.shuffle(rows.map(function (r) { return { word: r.title, path: r.path }; }).filter(fresh), Math.random);
+      return list.filter(function (c) { return ENGLISH_END.test(c.word); }).concat(list.filter(function (c) { return !ENGLISH_END.test(c.word); }));
+    });
   }
-  function drawWords(count) {
-    var out = [], seen = {}, rounds = 0;
-    return (function next() {
-      if (out.length >= count || rounds++ >= ASK_ROUNDS) return Promise.resolve(out);
+  // One burst: a list, its pages one at a time, then another list while asks remain: BURST_ASKS asks in all, lists included.
+  function fillPool() {
+    if (!dict || filling || pool.length >= POOL_WANT) return Promise.resolve();
+    filling = true;
+    var asks = 0;
+    function more() {
+      if (asks >= BURST_ASKS || pool.length >= POOL_WANT) return null;
+      asks++;
       return candidates().then(function (list) {
-        return Promise.all(list.map(function (c) {
-          if (seen[c.word]) return null;
-          seen[c.word] = true;
-          return Lib.article(dict, c.path, ASK_MS).then(function (html) { var def = realDefinition(html, c.word); return def ? { word: c.word, real: def, path: c.path } : null; }, function () { return null; });
-        })).then(function (found) { found.filter(Boolean).forEach(function (w) { if (out.length < count) out.push(w); }); return next(); });
+        return (function next(i) {
+          if (asks >= BURST_ASKS || pool.length >= POOL_WANT) return null;
+          if (i >= list.length) return list.length ? more() : null;   // an empty list ends the burst: the library has no more
+          var c = list[i]; seen[c.word] = true;
+          if (kin(c.word)) return next(i + 1);
+          asks++;
+          return Lib.article(dict, c.path, ASK_MS).then(function (html) {
+            var def = realDefinition(html, c.word);
+            if (def) { pool.push({ word: c.word, real: def, path: c.path }); savePool(); swapIn(); }
+          }, function () { /* a page that does not come is skipped */ }).then(function () { return next(i + 1); });
+        })(0);
       });
-    })();
+    }
+    return Promise.resolve(more()).then(function () { filling = false; }, function () { filling = false; });
+  }
+  // A built-in word of a round not yet begun gives way to a library word from the pool.
+  function swapIn() {
+    if (!g || done || !g.words.length) return;
+    for (var i = g.round + 1; i < g.words.length && pool.length; i++) {
+      if (!g.words[i].path) { g.words[i] = pool.shift(); g.zim = dict; }
+    }
+    savePool();
   }
   function builtInWords(count) {
     return Lib.sample(root.BLUFF_WORDS, count, Math.random).map(function (w) { return { word: w[0], real: w[1], path: '' }; });
@@ -126,7 +175,7 @@
   // ── phases ──
   function cover(p, next) { Pass.cover({ name: who(p), text: T('pass.only', { name: who(p) }), onReady: next }); }
 
-  function startWriting() { g.phase = 'write'; g.turn = 0; g.fakes = []; g.options = null; g.votes = []; cover(0, renderWrite); }
+  function startWriting() { g.phase = 'write'; g.turn = 0; g.fakes = []; g.options = null; g.votes = []; cover(0, renderWrite); fillPool(); }
   function renderWrite() {
     reset(); paint();
     var p = g.turn, w = g.words[g.round], c = els.card;
@@ -213,12 +262,14 @@
     if (building) return; building = true; done = false;
     g = { zim: dict, players: players, rounds: ROUNDS, round: 0, phase: 'load', turn: 0, words: [], fakes: [], options: null, votes: [], totals: [], voters: [], round_points: null };
     for (var i = 0; i < players; i++) g.totals.push(0);
-    reset(); els.card.appendChild(el('p', 'bl-label', T('bl.choosing'))); els.card.classList.add('gl-loading');
-    (dict ? drawWords(ROUNDS) : Promise.resolve([])).then(function (words) {
-      if (words.length < ROUNDS) { dict = ''; g.zim = ''; words = builtInWords(ROUNDS); }
-      g.words = words; building = false; els.card.classList.remove('gl-loading');
-      reset(); startWriting();
-    });
+    // The deal does not wait: the pool's words first, built-in ones for the rest (swapped for library words as they come).
+    var words = pool.splice(0, ROUNDS);
+    words.forEach(function (w) { seen[w.word] = true; });
+    savePool();
+    var mine = builtInWords(ROUNDS).filter(function (w) { return !words.some(function (x) { return x.word === w.word; }); });
+    while (words.length < ROUNDS) words.push(mine.shift());
+    g.words = words; g.zim = words.some(function (w) { return w.path; }) ? dict : '';
+    building = false; reset(); startWriting();
   }
 
   els.newBtn.addEventListener('click', function () { var n = pendingPlayers || (g ? g.players : 3); pendingPlayers = null; start(n); });
@@ -234,6 +285,7 @@
   Lib.library().then(function (list) {
     var w = Lib.englishWiktionary(list);
     dict = w ? w.name : '';
+    loadPool();
     var kept = ZimiShell.saved();
     // Back from leaving: a secret is never left on the screen for the wrong person, so every phase starts behind its cover.
     if (kept && kept.g && kept.g.words && kept.g.words.length && kept.g.phase !== 'done' && kept.g.phase !== 'load') {
@@ -242,5 +294,5 @@
     } else { if (kept) ZimiShell.forget(); start(3); }
   });
   ZimiShell.persist({ save: function () { return g && !done && g.words.length && g.phase !== 'load' ? { g: g } : null; } });
-  root.__bluff = { get g() { return g; }, get dict() { return dict; } };
+  root.__bluff = { get g() { return g; }, get dict() { return dict; }, get pool() { return pool; }, fill: fillPool };
 })(this);
