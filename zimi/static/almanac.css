@@ -133,16 +133,16 @@ body.alm-moon-wait .almanac-moon-sprite { opacity: 0; }
 @media (prefers-reduced-motion: reduce) { .almanac-moon-sprite { transition: none; } }
 /* The first frame (app.js _almFirstFrame): the disc is a clear square, the values the page works out are quiet dashes,
    the sky is its place with the hour's colour; almanac.js draws the same head over it in the same boxes. */
-.alm-first .almanac-moon-sprite { visibility: hidden; }
+.alm-first .almanac-moon-sprite, .alm-first .almanac-moon-glow { visibility: hidden; }   /* nothing, then the Moon */
 .alm-first .alm-ph { opacity: 0.3; }
 .alm-first .alm-sky-cap { min-height: 57px; }
 .alm-first .alm-ph-invite { min-height: 68px; }   /* the ask for a place, under the tiles, when none is chosen */
 @keyframes almFadeIn { from { opacity: 0; } to { opacity: 1; } }
 .alm-first #almanac-sky-canvas { background: #0b1226; }
-.almanac-moon-sprite.alm-in { animation: almFadeIn 0.35s ease; }
+.almanac-moon-sprite.alm-in, .almanac-moon-glow.alm-in { animation: almFadeIn 0.35s ease; }
 @keyframes almFadeOut { from { opacity: 1; } to { opacity: 0; } }
 .almanac-sky-wrap.alm-sky-in::after { content: ""; position: absolute; inset: 0; border-radius: 12px; background: var(--sky-pre); pointer-events: none; animation: almFadeOut 0.45s ease forwards; }
-@media (prefers-reduced-motion: reduce) { .almanac-moon-sprite.alm-in { animation: none; } .almanac-sky-wrap.alm-sky-in::after { display: none; } }
+@media (prefers-reduced-motion: reduce) { .almanac-moon-sprite.alm-in, .almanac-moon-glow.alm-in { animation: none; } .almanac-sky-wrap.alm-sky-in::after { display: none; } }
 .almanac-moon-glow { position: absolute; width: 280px; height: 280px; border-radius: 50%; top: 50%; left: 50%; transform: translate(-50%, -50%); pointer-events: none; z-index: -1; }
 .almanac-moon-name { margin-top: 16px; font-size: 18px; font-weight: 500; color: var(--text); }
 /* Said only when the disc stands celestial north up (no place chosen). */
