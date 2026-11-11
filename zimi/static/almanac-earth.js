@@ -398,8 +398,17 @@ var AE_ATMO_SEGMENTS = [96, 48];
 var AE_MOON_SEGMENTS = [64, 32];
 var AE_ATMOSPHERE_SCALE = 1.018;      // the glow's shell, ~115 km above the surface
 var AE_ANISOTROPY = 8;
-var AE_IDLE_RENDER_MS = 250;          // at real-time speed nothing moves faster than this shows
-var AE_TEXT_TICK_MS = 100;            // readouts and the GPS counter
+var AE_TEXT_TICK_MS = 100;            // readouts and the GPS counter, while frames are drawn
+// Nothing moving, the view asks for no frames: a timer this often (no animation frame) keeps the readouts on time and
+// asks for a picture only when something changed or the clock has moved something on screen by AE_IDLE_MOVE_PX.
+var AE_IDLE_TICK_MS = 1000;
+var AE_IDLE_MOVE_PX = 0.5;
+// The fastest thing the view draws near a body at real time, in Earth radii a second: Jupiter's equator (12.6 km/s;
+// the ISS, 7.7 km/s, is next). Seen from `dist` it crosses this many px a second; the clock at a faster pace, faster.
+var AE_IDLE_FASTEST_RE_S = 12.6 / 6371;
+var AE_IDLE_SKY_RAD_S = 7.292e-5;      // on the ground (Stand here, side by side), the sky's turn: the Earth's rate
+var AE_IDLE_NEAR_RE = 1e-4;           // the nearest a surface is taken to be (Earth radii), so a close-up is not infinite
+var AE_IDLE_SMOOTH_PX_S = 4;           // the clock moving the picture this fast is drawn every frame, as any motion is
 var AE_SAT_CAPACITY = 80;
 var AE_GPS_RING_POINTS = 72;
 var AE_ISS_RING_POINTS = 180;   // 2 degrees apart: a chord stands 0.4 km off its arc at most (the station is always one of the vertices)
@@ -1031,6 +1040,7 @@ function _aeGoRender() {
     html = '<div class="ae-go-list">' + keys.map(_aeGoRow).join('') + '</div>';
   }
   host.innerHTML = html;
+  _aeGoNone();
   Array.prototype.forEach.call(sheet.querySelectorAll('[data-ae-pill]'), function (b) {
     var on = b.getAttribute('data-ae-pill') === _aeGoFilter && !typed;
     b.classList.toggle('active', on);
@@ -1097,6 +1107,18 @@ function _aePlaceLandmarks(typed) {
   });
   return out;
 }
+// The world's big cities the Almanac carries for its place picker (almanac.js _MAP_CITIES), as places: found with no map
+// installed ("Los Angeles, California, United States" answers "Los Angeles").
+function _aePlaceCities(typed) {
+  var out = [];
+  (typeof _MAP_CITIES !== 'undefined' ? _MAP_CITIES : []).forEach(function (c, i) {
+    var name = c.name.split(',')[0], m = _aePlaceMatch(typed, name);
+    if (m >= 0) out.push({ name: name, label: c.name, lat: c.lat, lon: c.lon, kind: 'town', match: m, at: i });
+  });
+  return out;
+}
+// What answers `typed` without asking the server: the Earth's landmarks, then the big cities.
+function _aePlaceLocal(typed) { return _aePlaceLandmarks(typed).concat(_aePlaceCities(typed)); }
 // A town the server offered, as a place. A name the typed words reach through where it is ("Springfield, IL") has no
 // match of its own: the server's answer stands for it as a prefix.
 function _aePlaceTown(typed, p, i) {
@@ -1128,20 +1150,24 @@ function _aePlaceSearch(typed) {
   if (_ae.placeAbort) _ae.placeAbort.abort();
   typed = typed.replace(/\s+/g, ' ').trim();
   if (!typed) { _aePlaceShow([]); return; }
-  _aePlaceShow(_aePlaceMerge(typed, _aePlaceLandmarks(typed), []));
+  _aePlaceShow(_aePlaceMerge(typed, _aePlaceLocal(typed), []));
   _ae.placeAbort = typeof AbortController === 'function' ? new AbortController() : null;
   _aeFetch(AE_PLACE_SUGGEST_URL + '?q=' + encodeURIComponent(typed) + '&limit=' + AE_PLACE_MAX, _ae.placeAbort ? { signal: _ae.placeAbort.signal } : undefined)
     .then(_aeJson).then(function (d) {
       if (seq !== _ae.placeSeq) return;
       _ae.placeTowns = (d.places || []).filter(function (p) { return _almValidLatLon(p.lat, p.lng); });
       _aePlaceRefresh();
-    }).catch(function () {});
+    }).catch(function (e) {
+      if (seq !== _ae.placeSeq || (e && e.name === 'AbortError')) return;
+      _ae.placeTowns = [];   // no answer (offline, no maps): what was found here is all there is
+      _aePlaceRefresh();
+    });
 }
 // What is found for what is in the field now, from the landmarks and the towns last offered (the landmarks' file may
 // arrive after the first keys).
 function _aePlaceRefresh() {
   var q = _aeById('ae-go-q'), typed = q ? q.value.trim() : '';
-  if (typed) _aePlaceShow(_aePlaceMerge(typed, _aePlaceLandmarks(typed), _ae.placeTowns || []));
+  if (typed) _aePlaceShow(_aePlaceMerge(typed, _aePlaceLocal(typed), _ae.placeTowns || []));
 }
 function _aePlaceShow(list) {
   _ae.placeFound = list;
@@ -1152,6 +1178,13 @@ function _aePlaceShow(list) {
     var dot = '<i class="ae-go-dot ae-go-probe' + (p.kind === 'landmark' ? '' : ' ae-go-town') + '"></i>';
     return '<span class="ae-go-item"><button type="button" class="ae-go-row" data-ae-place="' + i + '">' + dot + '<span>' + _almEsc(p.label) + '</span></button>' + _aeGoMapBtn(i) + '</span>';
   }).join('');
+  _aeGoNone();
+}
+// Nothing by that name, once the towns have answered too (no body, landmark, city or town): one line says so, not a
+// blank sheet. While something is typed the groups give way to what it finds (_aeGoRender).
+function _aeGoNone() {
+  var none = _aeById('ae-go-none'), q = _aeById('ae-go-q'), typed = q ? q.value.trim() : '';
+  if (none) none.hidden = !typed || !_ae.placeTowns || !!(_ae.placeFound && _ae.placeFound.length) || !!(_ae.goHits && _ae.goHits.length);
 }
 // A place's map (mapflow.js through the app shell: its installed map, or the one worth downloading), as an icon beside
 // the row; absent where the shell is (the Almanac ZIM on its own).
@@ -1183,7 +1216,7 @@ function _aeGoShell(sheet) {
   sheet.innerHTML = '<div class="ae-go-head"><div class="ae-go-find">' + AE_SEARCH_SVG + '<input type="search" id="ae-go-q" autocomplete="off" autocapitalize="off" ' +
     'spellcheck="false" enterkeyhint="go" placeholder="' + _almEsc(_aeT('search')) + '" aria-label="' + _almEsc(_aeT('search')) + '"><div class="ae-go-seg" role="group">' + seg + '</div></div>' +
     '<div class="pills-row ae-go-pills">' + pills + '</div></div>' +
-    '<div class="ae-go-body"><div id="ae-go-groups"></div><div class="ae-go-list ae-go-found" id="ae-go-found" hidden></div></div>';
+    '<div class="ae-go-body"><div class="ae-go-wait" id="ae-go-none" role="status" hidden>' + _almEsc(_aeT('no_results')) + '</div><div id="ae-go-groups"></div><div class="ae-go-list ae-go-found" id="ae-go-found" hidden></div></div>';
   var q = _aeById('ae-go-q'), timer = 0;
   q.oninput = function () {
     clearTimeout(timer);
@@ -1193,7 +1226,7 @@ function _aeGoShell(sheet) {
     _ae.placeTowns = null;
     _ae.placeSeq = (_ae.placeSeq || 0) + 1;
     if (_ae.placeAbort) _ae.placeAbort.abort();
-    _aePlaceShow(_aePlaceMerge(typed, _aePlaceLandmarks(typed), []));
+    _aePlaceShow(_aePlaceMerge(typed, _aePlaceLocal(typed), []));
     _aeGoRender();
     timer = setTimeout(function () { _aePlaceSearch(typed); }, AE_PLACE_DELAY_MS);
   };
@@ -1578,6 +1611,7 @@ var AE_EARTH_VERT = [
   '}'
 ].join('\n');
 
+var AE_HAZE_AIRMASS_MAX = 4;   // the most air the Earth's haze is thickened by toward its limb (the rim glow is the rest)
 var AE_EARTH_FRAG = [
   'precision highp float;',
   'uniform sampler2D dayMap; uniform sampler2D nightMap;',
@@ -1601,7 +1635,10 @@ var AE_EARTH_FRAG = [
   '  float glint = pow(max(dot(N, H), 0.0), 80.0) * 0.35 * ocean;',
   // The air's own blue glow (sunlight scattered toward us) lies over the
   // day side; it is what makes the Moon's shadow show over dark ocean too.
-  '  vec3 haze = vec3(0.05, 0.09, 0.16);',
+  // It grows with the air looked through: one air mass straight down (the
+  // ground clear from orbit, as from the ISS), more toward the horizon.
+  '  float airmass = min(1.0 / max(dot(N, V), 0.01), ' + AE_HAZE_AIRMASS_MAX.toFixed(1) + ');',
+  '  vec3 haze = vec3(0.05, 0.09, 0.16) * airmass;',
   '  vec3 col = day * (0.035 + 1.05 * sun) + haze * sun + vec3(1.0, 0.92, 0.8) * glint * sun;',
   '  col += vec3(1.0, 0.78, 0.45) * pow(lights, 1.6) * 1.25 * night;',
   // Dimmed in Red (AE_RED_EARTH_LIGHT): the ground, not the air's glow at the limb, which keeps its edge.
@@ -2380,6 +2417,8 @@ function _aeHdManifest() {
     return man;
   });
 }
+// The set's list, read once per view: the tiles and the craft (hd.json "craft") both go by it.
+function _aeHdManifestOnce() { return _ae.hdManP || (_ae.hdManP = _aeHdManifest()); }
 var AE_HD_TILE_PX = 512;
 var AE_HD_SPLIT = 1.0;           // a tile gives way to its four once it covers more device pixels than it has
 // What the tiles may hold on the GPU, in bytes (a tile of 512 px: 1.4 MB with mipmaps, a one-channel one a quarter of
@@ -2435,7 +2474,7 @@ function _aeHdLoad(S) {
   if (S.hd) return;
   S.hd = null;
   if (typeof fetch !== 'function') return;
-  _aeHdManifest().then(function (man) {
+  _aeHdManifestOnce().then(function (man) {
     if (_ae.gl !== S || !man || !man.layers) return;
     var bodies = _aeHdBodies(S).filter(function (b) {
       b.maps = b.maps.filter(function (m) { return man.layers[m.layer] || !m.optional; });
@@ -7042,13 +7081,17 @@ function _aeCraftHdBuild(I, d2, textures) {
   if (turning) I.pivot = pivot;
   if (_ae) { _ae.dirty = true; _aeKick(); }
 }
-// craft/index.json once (null: the HD ZIM is not there, or has no craft).
+// craft/index.json once (null: the HD ZIM is not there, or has no craft). Asked only when the set's list says it carries
+// craft (hd.json "craft", scripts/build_almanac_maxi.py): a set without them, or none, asks nothing (it was a 404 on
+// every open). Callers wait for the server to say the set is installed (_ae.hdInstalled).
 function _aeCraftHdIndexLoad() {
   var H = _aeCraftHd;
   if (H.index !== undefined) return Promise.resolve();
   if (!H.promise) {
-    H.promise = fetch(_aeCraftHdUrl('index.json')).then(function (r) { if (!r.ok) throw new Error('hd'); return r.json(); })
-      .then(function (j) { H.index = j && j.models ? j.models : null; }, function () { H.index = null; });
+    H.promise = (_ae.hdInstalled ? _aeHdManifestOnce() : Promise.resolve(null)).then(function (man) {
+      if (!man || !man.craft) return null;
+      return fetch(_aeCraftHdUrl('index.json')).then(function (r) { if (!r.ok) throw new Error('hd'); return r.json(); });
+    }).then(function (j) { H.index = j && j.models ? j.models : null; }, function () { H.index = null; });
   }
   return H.promise;
 }
@@ -7059,7 +7102,7 @@ function _aeCraftSiteHd(I, root) {
   var c = I.siteHd = I.siteHd || { roots: [], group: null, state: 0 };
   c.roots.push(root);
   if (c.group) { _aeCraftSiteHdAttach(c, root); return; }
-  if (c.state || typeof fetch !== 'function') return;
+  if (c.state || typeof fetch !== 'function' || !_ae.hdInstalled) return;   // no set (yet): a clone made later asks again
   c.state = 1;
   var S = _ae.gl;
   _aeCraftHdIndexLoad().then(function () {
@@ -7081,7 +7124,7 @@ function _aeCraftSiteHdAttach(c, root) {
   root.add(c.group.clone());
 }
 function _aeCraftHdRequest(I, pos) {
-  if (I.hd !== undefined || I.hdLoading || typeof fetch !== 'function') return;
+  if (I.hd !== undefined || I.hdLoading || typeof fetch !== 'function' || !_ae.hdInstalled) return;
   if (_aeCraftPx(I.d.span * I.d.metres / 1000 / AE_EARTH_RADIUS_KM, pos) < AE_CRAFT_HD_PX) return;
   var H = _aeCraftHd;
   if (H.index === undefined) {
@@ -7609,18 +7652,38 @@ function _aeNameSlots(m, w, sides, wideNamed) {
   });
   return slots;
 }
-// Whether the leader from a dot to its name passes clear of every other body (a line through Venus read as Venus's).
-var AE_LEADER_CLEAR_PX = 10;
-function _aeLeaderClear(m, box, rings) {
-  var e = _aeLeaderEnd(m, box), dx = e[0] - m.x, dy = e[1] - m.y, len2 = dx * dx + dy * dy || 1;
-  return rings.every(function (rb) {
-    if (rb.x === m.x && rb.y === m.y) return true;
-    var t = Math.min(1, Math.max(0, ((rb.x - m.x) * dx + (rb.y - m.y) * dy) / len2));
-    return Math.hypot(m.x + t * dx - rb.x, m.y + t * dy - rb.y) > AE_LEADER_CLEAR_PX;
+// How near the leader from a dot to its name comes to any other body's centre (px): a line through Venus read as
+// Venus's. The line is the one drawn, from the dot's edge, so a probe beside the dot does not bar every way out of it.
+var AE_LEADER_CLEAR_PX = 6;   // px between a leader and the edge of any other body's disc
+function _aeLeaderClearance(m, box, rings) {
+  var seg = _aeLeaderSeg(m, box), dx = seg[2] - seg[0], dy = seg[3] - seg[1], len2 = dx * dx + dy * dy || 1, near = Infinity;
+  rings.forEach(function (rb) {
+    if (rb.x === m.x && rb.y === m.y) return;
+    var t = Math.min(1, Math.max(0, ((rb.x - seg[0]) * dx + (rb.y - seg[1]) * dy) / len2));
+    near = Math.min(near, Math.hypot(seg[0] + t * dx - rb.x, seg[1] + t * dy - rb.y) - (rb.r || 0));
   });
+  return near;
 }
+function _aeLeaderClear(m, box, rings) { return _aeLeaderClearance(m, box, rings) > AE_LEADER_CLEAR_PX; }
 // The point of a name's box nearest the dot: where its leader ends.
 function _aeLeaderEnd(m, box) { return [Math.min(Math.max(m.x, box[0]), box[2]), Math.min(Math.max(m.y, box[1]), box[3])]; }
+// The leader as drawn: from the dot's edge to its name, [x0, y0, x1, y1].
+function _aeLeaderSeg(m, box) {
+  var end = _aeLeaderEnd(m, box), lx = end[0] - m.x, ly = end[1] - m.y, ll = Math.hypot(lx, ly) || 1, r = m.r - AE_MARK_NAME_PAD;
+  return [m.x + lx / ll * r, m.y + ly / ll * r, end[0], end[1]];
+}
+// Whether a line [x0, y0, x1, y1] passes through a box (Liang-Barsky): a leader through another body's name.
+function _aeSegMeetsBox(seg, box) {
+  var t0 = 0, t1 = 1, dx = seg[2] - seg[0], dy = seg[3] - seg[1];
+  var p = [-dx, dx, -dy, dy], q = [seg[0] - box[0], box[2] - seg[0], seg[1] - box[1], box[3] - seg[1]];
+  for (var i = 0; i < 4; i++) {
+    if (p[i] === 0) { if (q[i] <= 0) return false; continue; }
+    var r = q[i] / p[i];
+    if (p[i] < 0) t0 = Math.max(t0, r); else t1 = Math.min(t1, r);
+    if (t0 >= t1) return false;
+  }
+  return true;
+}
 // The order names are placed in: the body in view or in flight first, then the bigger discs (Venus before Mercury), so
 // the crowded inner planets lose the smaller name, not the brighter.
 function _aeNameOrder(shown) {
@@ -7633,13 +7696,13 @@ function _aePlaceMarkNames(shown) {
   shown.forEach(function (m, i) {
     (m.pts || [m]).forEach(function (q) {
       var r = q === m ? m.r : _aeMarkDiscR(q.body) + AE_MARK_NAME_PAD;
-      rings.push({ i: i, own: q === m, box: [q.x - r, q.y - r, q.x + r, q.y + r], x: q.x, y: q.y });
+      rings.push({ i: i, own: q === m, box: [q.x - r, q.y - r, q.x + r, q.y + r], x: q.x, y: q.y, r: q === m ? m.r : _aeMarkDiscR(q.body) });
     });
   });
   // In the Planets view the Sun's disc is drawn on the planets' scale: no name on it either.
   var sunAt = _aeSunAsMark() && _ae.scene ? _aeProject(_aeSunShown(_ae.scene)) : null;
-  if (sunAt) { var sr = _aeMarkDiscR('sun') + AE_MARK_NAME_PAD; rings.push({ i: -1, own: false, box: [sunAt.x - sr, sunAt.y - sr, sunAt.x + sr, sunAt.y + sr], x: sunAt.x, y: sunAt.y }); }
-  var names = [];
+  if (sunAt) { var sr = _aeMarkDiscR('sun') + AE_MARK_NAME_PAD; rings.push({ i: -1, own: false, box: [sunAt.x - sr, sunAt.y - sr, sunAt.x + sr, sunAt.y + sr], x: sunAt.x, y: sunAt.y, r: _aeMarkDiscR('sun') }); }
+  var names = [], leaders = [];   // the names placed so far, and the leader lines drawn to them
   _aeNameOrder(shown).forEach(function (i) {
     var m = shown[i];
     var el = m.el, label = el.querySelector ? el.querySelector('b') : null;
@@ -7655,27 +7718,41 @@ function _aePlaceMarkNames(shown) {
     var wideNamed = !m.ringed && _aeWideView() && _aeNamedPlanet(m.body), chosen = null;
     var slots = _aeNameSlots(m, w, sides, wideNamed);
     var onScreen = function (box) { return box[0] >= AE_NAME_EDGE && box[2] <= _ae.w - AE_NAME_EDGE && box[1] >= 0 && box[3] <= _ae.h; };
-    var onName = function (box) { return names.some(function (n) { return _aeBoxesMeet(n, box); }); };
+    // A name meets no name and no leader already placed; a leader of its own crosses no name.
+    var onName = function (box) {
+      return names.some(function (n) { return _aeBoxesMeet(n, box); }) || leaders.some(function (l) { return _aeSegMeetsBox(l, box); });
+    };
+    var leaderFree = function (t) { var sg = _aeLeaderSeg(m, t.box); return !names.some(function (n) { return _aeSegMeetsBox(sg, n); }); };
     var onDisc = function (box) { return rings.some(function (rb) { return !(rb.i === i && rb.own) && _aeBoxesMeet(rb.box, box); }); };
     var tie = wideNamed ? AE_NAME_TIE_WIDE_PX : AE_NAME_TIE_PX;
     // Never across the screen's edge: a name that would be is tried on the inward side, then above and below.
     var passes = m.ringed ? [function () { return true; }] : [
       function (t) { return !t.leader && onScreen(t.box) && !onName(t.box) && !onDisc(t.box) && _aeNameIsItsOwn(t.box, m, rings, tie, wideNamed ? AE_NAME_TIE_WIDE_RATIO : 1); },
-      function (t) { return wideNamed && t.leader && onScreen(t.box) && !onName(t.box) && !onDisc(t.box) && _aeLeaderClear(m, t.box, rings); },
+      function (t) { return wideNamed && t.leader && onScreen(t.box) && !onName(t.box) && !onDisc(t.box) && leaderFree(t) && _aeLeaderClear(m, t.box, rings); },
       // Two dots close together (Venus beside the Earth near conjunction): a leader that grazes the other is still drawn
-      // from its own dot, where a name merely beside it would read as the nearer one's.
-      function (t) { return wideNamed && t.leader && onScreen(t.box) && !onName(t.box) && !onDisc(t.box); },
+      // from its own dot, where a name merely beside it would read as the nearer one's; of those, the one that keeps
+      // farthest from every other dot (never the first that came, which ran through Venus).
+      'widest',
       function (t) { return wideNamed && !t.leader && onScreen(t.box) && !onName(t.box); },
       function (t) { return wideNamed && onScreen(t.box) && !onName(t.box); },
       function () { return wideNamed; }
     ];
-    for (var pi = 0; pi < passes.length && !chosen; pi++) chosen = slots.filter(passes[pi])[0] || null;
+    for (var pi = 0; pi < passes.length && !chosen; pi++) {
+      if (passes[pi] === 'widest') {
+        var best = -Infinity;
+        slots.forEach(function (t) {
+          if (!(wideNamed && t.leader && onScreen(t.box) && !onName(t.box) && !onDisc(t.box) && leaderFree(t))) return;
+          var c = _aeLeaderClearance(m, t.box, rings);
+          if (c > best + 0.5) { best = c; chosen = t; }
+        });
+      } else chosen = slots.filter(passes[pi])[0] || null;
+    }
     if (m.ringed && !chosen) chosen = slots[0];
     if (chosen) names.push(chosen.box);
     var far = !!chosen && chosen.leader;
     if (far) {
-      var end = _aeLeaderEnd(m, chosen.box), lx = end[0] - m.x, ly = end[1] - m.y, ll = Math.hypot(lx, ly) || 1;
-      m.leader = [m.x + lx / ll * (m.r - AE_MARK_NAME_PAD), m.y + ly / ll * (m.r - AE_MARK_NAME_PAD), end[0], end[1]];
+      m.leader = _aeLeaderSeg(m, chosen.box);
+      leaders.push(m.leader);
       el.style.setProperty('--ae-bx', (chosen.box[0] - m.x).toFixed(1) + 'px');
       el.style.setProperty('--ae-by', ((chosen.box[1] + chosen.box[3]) / 2 - m.y).toFixed(1) + 'px');
     }
@@ -8003,9 +8080,10 @@ function _aeUpdateText(ms) {
 var AE_ARRIVAL_REFRESH_MS = 10000;   // display time between refreshes of the sheet's "now" rows
 
 // ── The loop ──
-// Renders every frame while something moves (a drag, a flight, a faster
-// clock), otherwise a few times a second: at real time the fastest thing on
-// screen, the ISS, crosses a pixel in several seconds.
+// Renders every frame while something moves (a drag, a flight, a clock fast
+// enough to move the picture visibly); otherwise no frame at all until input,
+// a tile or a model arriving (dirty), or the clock has moved something on
+// screen by half a pixel, and then at most one a second.
 function _aeKick() {
   if (!_aeIsOpen) return;
   if (_ae.idleTimer) { clearTimeout(_ae.idleTimer); _ae.idleTimer = 0; }
@@ -8013,7 +8091,32 @@ function _aeKick() {
 }
 function _aeBusy() {
   var fading = !!_ae.orbitFly && !!_ae.orbitFly.endAt && performance.now() - _ae.orbitFly.endAt < AE_ORBITS_FADE_MS;   // orbits going out
-  return !!(_ae.fly || _ae.drag || _ae.pinch || _ae.hand || fading || _aeStationMoves() || _ae.site || _ae.mission || _aeStandBusy());
+  return !!(_ae.fly || _ae.drag || _ae.pinch || _ae.hand || fading || _aeStationMoves() || _ae.site || _ae.mission || _aeStandBusy() ||
+    _aeClockPxPerS() >= AE_IDLE_SMOOTH_PX_S);
+}
+// How many px a second the clock moves the fastest thing on screen (0 when it is stopped).
+function _aeClockPxPerS() {
+  var rate = typeof _almRate === 'number' ? Math.abs(_almRate) : 1, t = AE_TARGETS[_ae.target];
+  if (!rate || !t) return 0;
+  var focal = _aeFocalPx();
+  if (_ae.stand || _ae.spin) return rate * AE_IDLE_SKY_RAD_S * focal;
+  return rate * AE_IDLE_FASTEST_RE_S * focal / Math.max(_ae.dist - t.surface, AE_IDLE_NEAR_RE);
+}
+// Whether the clock has moved something on screen by half a pixel since the last picture (and a second has passed).
+function _aeClockMoved(now) {
+  var since = now - (_ae.lastRender || 0);
+  return since >= AE_IDLE_TICK_MS && since / 1000 * _aeClockPxPerS() >= AE_IDLE_MOVE_PX;
+}
+// Idle: a timer, not a frame. It keeps the readouts on time while the clock runs and asks for a frame only when one
+// would show something new.
+function _aeIdleWait() {
+  _ae.idleTimer = setTimeout(function () {
+    _ae.idleTimer = 0;
+    if (!_aeIsOpen || document.hidden) return;   // shown again, the view is kicked (visibilitychange)
+    var now = performance.now();
+    if (typeof _almRate !== 'number' || _almRate !== 0) { _aeUpdateText(_aeDisplayMs()); _ae.lastText = now; }
+    if (_ae.dirty || _aeBusy() || _aeClockMoved(now)) _aeKick(); else _aeIdleWait();
+  }, AE_IDLE_TICK_MS);
 }
 // The camera rides the station (7.7 km/s, the Earth turning under it) while the clock is not stopped: drawn every frame,
 // not at the idle interval. A paused clock leaves it as still as any other view.
@@ -8023,7 +8126,7 @@ function _aeStationMoves() {
 // Draw the scene at the clock's instant when something changed, something
 // moves, or the idle interval has passed.
 function _aeDraw(now, busy) {
-  if (!_ae.gl || !(_ae.dirty || busy || now - _ae.lastRender >= AE_IDLE_RENDER_MS)) return;
+  if (!_ae.gl || !(_ae.dirty || busy || _aeClockMoved(now))) return;
   if (_ae.spin) {   // Planets side by side: its own scene, nothing of the main one moves
     _aeSpinDraw();
     _ae.lastRender = now;
@@ -8070,7 +8173,7 @@ function _aeFrame() {
   if (busy) _ae.raf = requestAnimationFrame(_aeFrame);
   else {
     _ae.lastTs = 0;
-    _ae.idleTimer = setTimeout(function () { _ae.idleTimer = 0; _aeKick(); }, AE_TEXT_TICK_MS);
+    _aeIdleWait();
   }
 }
 
@@ -8245,6 +8348,7 @@ function _aeBindCanvas(canvas) {
       var a = _ae.pointers[ids[0]], b = _ae.pointers[ids[1]];
       var span = Math.hypot(a.x - b.x, a.y - b.y);
       if (span > 0 && _ae.pinch.span > 0) _aePinchZoom(_ae.pinch, span);
+      if (!_ae.pinch) return;   // the zoom pulled the Planets view out onto the orrery: the view, and its pinch, are gone
       _ae.pinch.span = span;
       // The midpoint slides the view, whether or not the fingers also spread or close; not mid-flight, where a zoom
       // lets the flight finish (a pan would end it where it stands).
@@ -8295,9 +8399,8 @@ function _aeBindKeys() {
       if (_ae.site) { var home = _ae.site.body; _aeSiteLeave(); _aePreset(home); return; }
       if (_ae.info) { _aeCloseInfo(true); return; }
       if (_ae.setOpen) { _aeShowSettings(false); _aeById('ae-gear').focus({ preventScroll: true }); return; }
-      if (_ae.stand || _ae.standPending) { _aeStandLeave(); return; }
-      _ae.closedByKey = true;
-      _aeClose();
+      if (!(_ae.stand || _ae.standPending)) _ae.closedByKey = true;
+      _aeBack();
       return;
     }
     if (e.target !== _aeById('ae-canvas') || _ae.spin) return;   // side by side has no camera to move
@@ -8965,10 +9068,17 @@ function _aeBackLabel() {
   return _aeFrom === 'orrery' ? _aeT('alm_solar_system') : _aeT('almanac');   // opened from the sky card or the hero: the arrow lands on the Almanac page
 }
 // `toOrrery`: settle onto the page's orrery whatever the view was opened from (the Planets view pulled out far enough).
+// The header's arrow steps out one level: off the ground to the globe of the body stood on (or, when the sky card handed
+// the ground over, back to that card), and from anywhere else out of the view.
+function _aeBack() {
+  if (_ae.stand || _ae.standPending) { _aeStandClose(); return; }
+  _aeClose();
+}
 function _aeClose(toOrrery) {
   if (!_aeIsOpen || (_ae.hand && _ae.hand.dir < 0)) return;
   if (_ae.site) _aeSiteLeave(true);   // the ground's camera gives way before the view is handed back to the page
   if (_ae.mission) _amStop(true);
+  if (typeof _amRestoreTime === 'function') _amRestoreTime();   // the page goes back to the moment it had before a mission, not the mission's
   _aeLeaveSpin();
   var frame = _ae.fromHero && toOrrery !== true && _aeReady() && !_ae.el.classList.contains('ae-blank') &&
     (typeof _almanacOpen === 'undefined' || _almanacOpen) ? _aeHeroFrame() : null;
@@ -8984,6 +9094,7 @@ function _aeFinishClose() {
   if (window.AlmanacMaps) AlmanacMaps.release();
   if (_ae.site) _aeSiteLeave(true);
   if (_ae.mission) _amStop(true);
+  if (typeof _amRestoreTime === 'function') _amRestoreTime();
   if (typeof updateTopbar === 'function') updateTopbar();   // the header's arrow is the Almanac's own again
   if (typeof _almClockUncover === 'function') _almClockUncover();   // the page lands on the moment the clock reached
   _aeStepOut();

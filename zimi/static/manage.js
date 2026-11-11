@@ -6677,14 +6677,15 @@ function _tidyLoad(force) {
     _renderOlderCopies();
   }).catch(function() { _tidyAsked = false; });
 }
-// The Almanac HD row: every pack and part of its data under one title, with sizes; chosen in the Almanac's settings.
-function _almanacHdRowHtml(row) {
+// The Almanac HD row: every pack and part of its data under one title, with sizes; chosen in the Almanac's settings. It
+// stands beside the Almanac, under its icon (`alm`, the Almanac's own row); the row opens to the files it is made of.
+function _almanacHdRowHtml(row, alm) {
   var parts = row.packs.map(function(p) {
     return '<div class="ci-hd-part"><span dir="ltr">' + esc(p.file) + '</span><span>' + esc(fmtSize(p.size_bytes / 1073741824)) + '</span></div>';
   }).join('');
-  return '<div class="manage-installed-group ci-hd-group">' + _zimCardHtml({ title: t('net_almanac_hd'), name: '' }, {
+  return '<details class="ci-hd-group"><summary>' + _zimCardHtml({ title: t('net_almanac_hd'), name: alm ? alm.name : '', has_icon: !!(alm && alm.has_icon) }, {
     metaHtml: '<span>' + esc(t('lib_hd_meta', { n: fmtNum(row.packs.length), size: fmtSize(row.size_bytes / 1073741824) })) + '</span> &middot; <span>' + esc(t('lib_hd_where')) + '</span>'
-  }) + '<div class="ci-hd-parts">' + parts + '</div></div>';
+  }) + '</summary><div class="ci-hd-parts">' + parts + '</div></details>';
 }
 // Manage > Storage: the files no name serves any more, each with what replaced it and the usual remove.
 function _renderOlderCopies() {
@@ -6743,17 +6744,21 @@ function renderInstalled(filterText) {
     catOrder.unshift('__updates__');
     groups['__updates__'] = pendingUpdates;
   }
+  // The Almanac HD row goes in the Almanac's group, after it, and is counted there; with no Almanac listed, in a group of its own.
+  const hdRow = _tidy && _tidy.almanac_hd && !installedParsed && !manageCategoryFilter && !manageLangFilter ? _tidy.almanac_hd : null;
+  const hdAlm = hdRow ? zims.find(z => z.name === _ALMANAC_ZIM && Object.values(groups).some(g => g.includes(z))) : null;
   let items_h = '';
   for (const cat of catOrder) {
     const items = groups[cat];
     if (!items || !items.length) continue;
     items.sort(cmpTitle);
+    const hdHere = !!hdAlm && items.includes(hdAlm);
     items_h += '<div class="manage-installed-group' + (cat === '__updates__' ? ' mig-updates' : '') + '">';
     const groupLabel = cat === '__updates__' ? t('updates_available_section') : _catDisplayName(cat);
     // Real-category headers are drop targets for the row DnD (#37) — data-cat
     // names the destination; the Updates pseudo-group is never a target.
     const dropAttr = cat === '__updates__' ? '' : ' data-cat="' + escAttr(cat) + '"';
-    items_h += '<div class="ci-section-label"' + dropAttr + '>' + _countedLabelHtml(groupLabel, items.length) + '</div>';
+    items_h += '<div class="ci-section-label"' + dropAttr + '>' + _countedLabelHtml(groupLabel, items.length + (hdHere ? 1 : 0)) + '</div>';
     for (const z of items) {
       const meta = [];
       const countHtml = _zimCountHtml(z);
@@ -6810,10 +6815,11 @@ function renderInstalled(filterText) {
         actionsHtml: gearHtml + actionsHtml,
         dragZim: manageEnabled ? z.name : null,
       });
+      if (hdHere && z === hdAlm) items_h += _almanacHdRowHtml(hdRow, hdAlm);
     }
     items_h += '</div>';
   }
-  if (_tidy && _tidy.almanac_hd && !installedParsed && !manageCategoryFilter && !manageLangFilter) items_h += _almanacHdRowHtml(_tidy.almanac_hd);
+  if (hdRow && !hdAlm) items_h += '<div class="manage-installed-group"><div class="ci-section-label">' + _countedLabelHtml(t('net_almanac_hd'), 1) + '</div>' + _almanacHdRowHtml(hdRow, null) + '</div>';
   if (!items_h) items_h = '<div class="empty"><p>' + tH('no_matching_zims') + '</p></div>';
 
   el.innerHTML = getInstalledPillsHtml() + items_h;

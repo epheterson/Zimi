@@ -122,11 +122,24 @@ def test_no_head_label_is_cut_off_at_360(base, lang):
             ".filter(r => r[1] > 0 || r[2] > 0 || r[3] === 'ellipsis' || r[4] === 'nowrap')"
         )
         assert not cut, cut
-        # Every tile is as tall as the others in its row.
-        heights = pg.evaluate(
-            "() => [...document.querySelectorAll('#almanac-head .alm-card')].filter(e => e.offsetParent).map(e => Math.round(e.getBoundingClientRect().height))"
+        # Every tile is as tall as the others in its row, and its value sits on the same line as theirs.
+        rows = pg.evaluate(
+            "() => { const by = {}; [...document.querySelectorAll('#almanac-head .alm-card')].filter(e => e.offsetParent).forEach(e => {"
+            " const r = e.getBoundingClientRect(), v = e.querySelector('.alm-card-val').getBoundingClientRect();"
+            " (by[Math.round(r.top)] = by[Math.round(r.top)] || []).push([Math.round(r.height), Math.round(v.top)]); }); return Object.values(by); }"
         )
-        assert len(heights) >= 5 and max(heights) - min(heights) <= 1, heights
+        assert sum(len(r) for r in rows) >= 5, rows
+        for row in rows:
+            assert max(h for h, _ in row) - min(h for h, _ in row) <= 1, rows
+            assert max(v for _, v in row) - min(v for _, v in row) <= 1, rows
+        # A row whose labels all fit on one line has no empty line above them.
+        gaps = pg.evaluate(
+            "() => { const by = {}; [...document.querySelectorAll('#almanac-head .alm-card')].filter(e => e.offsetParent).forEach(e => {"
+            " const l = e.querySelector('.alm-card-lbl'); if (!l) return; const rg = document.createRange(); rg.selectNodeContents(l);"
+            " const t = rg.getBoundingClientRect(), c = e.getBoundingClientRect();"
+            " (by[Math.round(c.top)] = by[Math.round(c.top)] || []).push(Math.round(t.top - c.top)); }); return Object.values(by).map(r => Math.min(...r)); }"
+        )
+        assert gaps and max(gaps) <= 13, gaps
         br.close()
 
 

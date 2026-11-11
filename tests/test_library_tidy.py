@@ -130,7 +130,10 @@ def test_the_name_comes_from_the_metadata_cache_once_it_is_there(lib, monkeypatc
     build_fixture_zim(str(copy), dict(ALMANAC_META, Date="2026-11"))
     _scan()  # reads it, and the cache keeps its Name
     ownzims._ident_cache.clear()
-    assert srv.cached_identity(str(copy), os.stat(copy)) == ("zimi_eng_zimi_almanac", "2026-11")
+    assert srv.cached_identity(str(copy), os.stat(copy)) == (
+        "zimi_eng_zimi_almanac",
+        "2026-11",
+    )
     # A scan now opens no archive for it: the cache answers.
     import libzim.reader
 
@@ -186,10 +189,14 @@ def test_data_packs_are_one_almanac_hd_row_with_their_parts(lib):
 
 def test_almanac_hd_carries_the_almanacs_name_and_is_still_served(lib):
     # The real file: the HD flavour has the Almanac's own Name metadata (almanachd), and the 3D view reads its tiles.
-    build_fixture_zim(str(lib / "zimi_almanac_maxi_2026-11b.zim"), dict(ALMANAC_META, Flavour="maxi"))
+    build_fixture_zim(
+        str(lib / "zimi_almanac_maxi_2026-11b.zim"), dict(ALMANAC_META, Flavour="maxi")
+    )
     zims = _scan()
     assert zims["zimi_almanac"] == _own_path()
-    assert os.path.basename(zims["zimi_almanac_maxi"]) == "zimi_almanac_maxi_2026-11b.zim"
+    assert (
+        os.path.basename(zims["zimi_almanac_maxi"]) == "zimi_almanac_maxi_2026-11b.zim"
+    )
     assert srv.older_copies() == []
     assert almanachd.status()["installed"] is True
 
@@ -298,13 +305,49 @@ def test_the_library_at_390_lists_one_almanac_and_one_almanac_hd_row(lib):
             titles = pg.evaluate(
                 "() => [...document.querySelectorAll('#manage-installed .ci-title')].map(e => e.innerText)"
             )
-            assert len([t for t in titles if t.startswith("Almanac") and t != "Almanac HD"]) == 1, titles
+            assert (
+                len(
+                    [t for t in titles if t.startswith("Almanac") and t != "Almanac HD"]
+                )
+                == 1
+            ), titles
             assert titles.count("Almanac HD") == 1, titles
             assert not [t for t in titles if "zimi_" in t], titles
+            # The HD row is the Almanac's: in its group, under its icon; every header counts the rows it shows.
+            groups = pg.evaluate(
+                """() => [...document.querySelectorAll('#manage-installed .manage-installed-group')].map(g => ({
+                  label: (g.querySelector('.ci-section-label') || {}).innerText || '',
+                  rows: [...g.querySelectorAll('.catalog-item')].map(r => ({ title: r.querySelector('.ci-title').innerText,
+                    icon: r.querySelector('.ci-icon').innerHTML })) }))"""
+            )
+            home = [
+                g for g in groups if "Almanac HD" in [r["title"] for r in g["rows"]]
+            ]
+            assert len(home) == 1, groups
+            titles_here = [r["title"] for r in home[0]["rows"]]
+            alm = [
+                r
+                for r in home[0]["rows"]
+                if r["title"].startswith("Almanac") and r["title"] != "Almanac HD"
+            ]
+            assert (
+                len(alm) == 1
+            ), titles_here  # beside the Almanac, not in a group of its own
+            hd = [r for r in home[0]["rows"] if r["title"] == "Almanac HD"][0]
+            assert hd["icon"] == alm[0]["icon"], (hd, alm)
+            for g in groups:
+                assert g["label"], g  # no row outside a headed group
+                assert g["label"].split()[-1] == str(len(g["rows"])), g
+            # The files only once the row is opened.
+            assert pg.locator(".ci-hd-part").first.is_visible() is False
+            assert "zimi_almanac" not in pg.inner_text("#manage-installed")
             parts = pg.evaluate(
-                "() => [...document.querySelectorAll('.ci-hd-part')].map(e => e.innerText)"
+                "() => [...document.querySelectorAll('.ci-hd-part')].map(e => e.textContent)"
             )
             assert len(parts) == 2 and any("moon" in p for p in parts), parts
+            pg.locator(".ci-hd-group summary, .ci-hd-files summary").first.click()
+            assert pg.locator(".ci-hd-part").first.is_visible() is True
+            assert pg.evaluate("document.documentElement.scrollWidth") <= 390
             # Older copies, with a remove, are in Settings > Server (Storage).
             pg.evaluate("() => enterManage(null, 'server')")
             pg.wait_for_selector("#ms-older .catalog-item", timeout=30000)
