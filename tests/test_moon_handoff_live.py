@@ -330,6 +330,23 @@ def test_leaving_restores_the_page(browser, served, reduced):
         ctx.close()
 
 
+# A touch is the browser's to scroll with unless the page answers its first moves in time (Chromium gives a touch handler about
+# 200 ms, then lets the compositor scroll and cancels the pointer): on a runner whose software GL is still busy with the 3D view's
+# first frames the answer comes late, and the gesture ends as a scroll. The finger goes down once the page answers promptly: a
+# measured state (CALM_TICKS timer ticks in a row, each under CALM_GAP_MS late), not a fixed wait.
+CALM_TICKS = 12
+CALM_GAP_MS = 60
+CALM_CEILING_MS = 60_000
+CALM = """([ticks, gap, ceiling]) => new Promise((done) => { let last = performance.now(), calm = 0; const t0 = last;
+  const id = setInterval(() => { const now = performance.now(); calm = now - last - 16 < gap ? calm + 1 : 0; last = now;
+    if (calm >= ticks || now - t0 > ceiling) { clearInterval(id); done({ calm: calm, ms: Math.round(now - t0) }); } }, 16); })"""
+
+
+def _wait_until_the_page_answers_promptly(pg):
+    got = pg.evaluate(CALM, [CALM_TICKS, CALM_GAP_MS, CALM_CEILING_MS])
+    assert got["calm"] >= CALM_TICKS, "the page never settled: %r" % got
+
+
 HANDOFF_STATE = """() => ({ open: typeof _aeIsOpen !== 'undefined' && _aeIsOpen, hand: !!(window._ae && _ae.hand), press: JSON.stringify(window._almMoonPress),
   lifter: typeof window.openAlmanacEarth, ready: typeof _aeReady === 'function' && _aeReady(), lifted: !!document.querySelector('.alm-moon-lifted'),
   frames: window.__frames || 0, hidden: document.hidden, scroll: document.getElementById('almanac-content').scrollTop,
@@ -382,6 +399,7 @@ def test_one_finger_lifts_and_keeps_turning(browser, served, pointer):
         r = _rect(pg)
         x, y = r["x"] + r["width"] / 2, r["y"] + r["height"] / 2
         scroll0 = pg.evaluate("document.getElementById('almanac-content').scrollTop")
+        _wait_until_the_page_answers_promptly(pg)
         if pointer == "touch":
             cdp = ctx.new_cdp_session(pg)
             cdp.send(
