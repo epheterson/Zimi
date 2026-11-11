@@ -4143,5 +4143,12 @@
   "voices_set_up_mb": "إعداد ({mb} ميغابايت)",
   "alm_gr_pd": "ملكية عامة",
   "alm_gr_omitted": "في هذه النسخة، تُذكر الصور التي ليست ملكية عامة بأسمائها ولا تُعرض.",
-  "alm_gr_note": "ثماني صور من هذه الصور التقطتها ناسا وهي ملكية عامة. أما البقية فحقوقها لأصحابها المذكورين بجانب كل صورة: Jon Lomberg وUN Photo وFrank Drake وNational Astronomy and Ionosphere Center وJay M. Pasachoff وPicturepoint في لندن. تُعرض هنا ليُرى التسجيل كما أُرسل، ولا تدّعي Zimi أي حق فيها. هذه مسوح ناسا للصور الأصلية، وليست مفكوكة من صوت التسجيل. المصدر: ناسا، science.nasa.gov."
+  "alm_gr_note": "ثماني صور من هذه الصور التقطتها ناسا وهي ملكية عامة. أما البقية فحقوقها لأصحابها المذكورين بجانب كل صورة: Jon Lomberg وUN Photo وFrank Drake وNational Astronomy and Ionosphere Center وJay M. Pasachoff وPicturepoint في لندن. تُعرض هنا ليُرى التسجيل كما أُرسل، ولا تدّعي Zimi أي حق فيها. هذه مسوح ناسا للصور الأصلية، وليست مفكوكة من صوت التسجيل. المصدر: ناسا، science.nasa.gov.",
+  "library_health_deep": "فحص عميق",
+  "library_health_deep_start": "نحو {time}. هل تبدأ؟",
+  "library_health_deep_stopped": "توقف الفحص العميق بعد {done} من {total}",
+  "pdf_too_large": "ملف PDF هذا أكبر من أن يُفتح هنا: فهو مخزن مضغوطًا داخل ملف ZIM.",
+  "zim_missing_chunk": "تعذر الفتح: الملف {file} مفقود",
+  "zi_license": "الترخيص",
+  "zi_relation": "مرتبط بـ"
 }

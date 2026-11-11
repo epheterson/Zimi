@@ -4143,5 +4143,12 @@
   "voices_set_up_mb": "Configurar ({mb} MB)",
   "alm_gr_pd": "domínio público",
   "alm_gr_omitted": "Nesta edição, as imagens que não estão em domínio público são nomeadas, não mostradas.",
-  "alm_gr_note": "Oito destas imagens são fotografias da NASA, em domínio público. As demais têm direitos autorais dos seus donos, nomeados ao lado de cada imagem: Jon Lomberg, UN Photo, Frank Drake, o National Astronomy and Ionosphere Center, Jay M. Pasachoff e Picturepoint, Londres. Aparecem aqui para mostrar o disco como foi enviado; a Zimi não reivindica nenhum direito sobre elas. São digitalizações da NASA das imagens originais, não decodificadas do som do disco. Fonte: NASA, science.nasa.gov."
+  "alm_gr_note": "Oito destas imagens são fotografias da NASA, em domínio público. As demais têm direitos autorais dos seus donos, nomeados ao lado de cada imagem: Jon Lomberg, UN Photo, Frank Drake, o National Astronomy and Ionosphere Center, Jay M. Pasachoff e Picturepoint, Londres. Aparecem aqui para mostrar o disco como foi enviado; a Zimi não reivindica nenhum direito sobre elas. São digitalizações da NASA das imagens originais, não decodificadas do som do disco. Fonte: NASA, science.nasa.gov.",
+  "library_health_deep": "Verificação completa",
+  "library_health_deep_start": "Cerca de {time}. Começar?",
+  "library_health_deep_stopped": "Verificação completa interrompida após {done} de {total}",
+  "pdf_too_large": "Este PDF é grande demais para abrir aqui: está guardado compactado no seu ZIM.",
+  "zim_missing_chunk": "Não abre: falta {file}",
+  "zi_license": "Licença",
+  "zi_relation": "Relacionado"
 }

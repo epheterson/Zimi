@@ -148,14 +148,18 @@ class Book:
     language, date, the cover picture), its spine, and its members."""
 
     def __init__(self, data):
+        # Bytes, or (an EPUB over the serving cap) a seekable file over its
+        # bytes in the ZIM (zimblob.RunFile), read member by member and
+        # costing nothing to keep.
+        in_memory = isinstance(data, (bytes, bytearray))
         try:
-            self._zip = zipfile.ZipFile(io.BytesIO(data))
+            self._zip = zipfile.ZipFile(io.BytesIO(data) if in_memory else io.BufferedReader(data))
             infos = self._zip.infolist()
         except (zipfile.BadZipFile, OSError, ValueError) as e:
             raise EpubError(f"not a zip: {e}") from e
         if len(infos) > MAX_MEMBERS:
             raise EpubError(f"{len(infos)} members")
-        self.size = len(data)
+        self.size = len(data) if in_memory else 0
         self._sizes = {i.filename: i.file_size for i in infos if not i.is_dir()}
         self._lock = threading.Lock()
         self._page = None
@@ -449,15 +453,26 @@ def _identity(zim):
 
 
 def _load(zim, epub_path):
-    """The EPUB entry's bytes, read under the library lock; None when the
-    ZIM has no such entry (or one too big to serve)."""
+    """The EPUB entry's bytes, read under the library lock; over the
+    serving cap, a file over its one uncompressed run in the ZIM (zimblob),
+    never loaded whole. None when the ZIM has no such entry, or one over the
+    cap stored compressed."""
     from zimi import server as _srv
+    from zimi import zimblob
 
     with _srv._zim_lock:
         archive = _srv.get_archive(zim)
         if archive is None:
             return None
-        return _srv.entry_bytes(archive, epub_path, _srv.MAX_SERVE_BYTES)
+        item = _srv.entry_item(archive, epub_path)
+        if item is None:
+            return None
+        if item.size <= _srv.MAX_SERVE_BYTES:
+            return bytes(item.content)
+        index, size = getattr(item, "_index", None), item.size
+    path = _srv.get_zim_files().get(zim, "")
+    at = zimblob.locate(path, index, size)
+    return zimblob.RunFile(path, at, size) if at is not None else None
 
 
 def book_in_zim(zim, epub_path):

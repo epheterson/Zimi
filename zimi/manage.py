@@ -22,7 +22,7 @@ import urllib.request
 from datetime import datetime, timezone
 
 import zimi.server as _srv
-from zimi import libfolders, nomadapi, outbound
+from zimi import libfolders, nomadapi, outbound, zimparts
 from zimi.safety import join_inside, loggable
 
 log = logging.getLogger("zimi")
@@ -1205,7 +1205,7 @@ def _catalog_copies():
     except OSError:
         names = []
     # Installed anywhere the library reads (subfolders, other folders), not only at the top of ZIM_DIR.
-    installed = {os.path.basename(p) for p in _srv.get_zim_files().values()}
+    installed = {zimparts.book_filename(p) for p in _srv.get_zim_files().values()}
     for name in names:
         zim = name[: -len(".torrent")]
         if name.endswith(".torrent") and zim not in installed and not os.path.exists(os.path.join(_srv.ZIM_DIR, zim)):
@@ -2170,7 +2170,7 @@ def _activity_health_finish(actor):
         record_activity(
             "health",
             "",  # the whole library — the client names it in the reader's language
-            outcome="ok" if state.get("phase") == "done" else "failed",
+            outcome={"done": "ok", "cancelled": "interrupted"}.get(state.get("phase"), "failed"),
             detail=f"{healthy}/{total}" if total else "",
             actor=actor,
         )
@@ -7136,7 +7136,11 @@ def handle_manage_post(handler, parsed, data):
         # Kick off the library health report on a worker thread.
         from zimi import health as _health
 
-        started, msg = _health.start_check()
+        if data.get("cancel") is True:
+            return handler._json(200, {"cancelled": _health.cancel_check()})
+        # {"deep": true} reads every file for its checksum (minutes a
+        # hundred GB); the Check button sends nothing and stays quick.
+        started, msg = _health.start_check(deep=data.get("deep") is True)
         if started:
             _activity_after(
                 _health.get_state,
@@ -7283,9 +7287,12 @@ def handle_manage_post(handler, parsed, data):
         if filepath is None:
             return handler._json(400, {"error": "Invalid filename"})
         if not os.path.exists(filepath):
+            # A split book: name.zim stands for its chunks.
+            filepath = zimparts.path_of(_srv.ZIM_DIR, filename) or filepath
+        if not os.path.exists(filepath):
             root = os.path.realpath(_srv.ZIM_DIR)
             for candidate in (_srv.get_zim_files() or {}).values():
-                if os.path.basename(candidate) != filename:
+                if zimparts.book_filename(candidate) != filename:
                     continue
                 label = libfolders.owner(candidate)
                 if (
@@ -7313,7 +7320,7 @@ def handle_manage_post(handler, parsed, data):
         try:
             file_size = 0
             try:
-                file_size = os.path.getsize(filepath)
+                file_size = zimparts.size(filepath)
             except OSError:
                 pass
             # Cache ZIM info before deletion so history shows proper title/icon
@@ -7347,7 +7354,8 @@ def handle_manage_post(handler, parsed, data):
                     loggable(filename),
                     loggable(e),
                 )
-            os.remove(filepath)
+            for part in zimparts.on_disk(filepath):
+                os.remove(part)
             log.info("Deleted ZIM: %s", loggable(filename))
             record_activity(
                 "delete",

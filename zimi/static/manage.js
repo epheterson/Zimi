@@ -3937,11 +3937,14 @@ function _msLibraryHtml() {
     '<div class="ms-actions">' +
       '<button class="set-btn" onclick="manageImportZim()">' + tH('import_zim') + '</button>' +
       '<button id="refresh-cache-btn" class="set-btn" onclick="settingsRefreshCache()">' + tH('refresh_cache') + '</button>' +
-      '<button id="library-health-btn" class="set-btn" onclick="runLibraryHealth()">' + tH('library_health') + '</button>' +
+      _healthButtonsHtml() +
     '</div>' +
     '<div id="library-health-section" class="library-health"></div>' +
     '<div id="tmp-files-section"></div>' +
     _msReorderHtml();
+  // A check started earlier (here, in another tab, before a reload) is
+  // still running on the server: show it rather than an idle button.
+  _resumeLibraryHealth();
   // Async-load tmp file info
   manageFetch('/manage/stats').catch(function() { return null; }).then(function(r) { return r && r.json(); }).then(function(s) {
     if (!s) return;
@@ -3964,18 +3967,75 @@ function _msLibraryHtml() {
 
 // ── Library health report ──
 var _healthPoll = null;
-function runLibraryHealth() {
-  var btn = document.getElementById('library-health-btn');
+// The deep check reads every byte of every book. Its estimate before it
+// starts assumes about this pace (a NAS's disks); once it runs, the
+// server's own pace (eta_seconds) takes over.
+var DEEP_CHECK_BYTES_PER_SEC = 100 * 1024 * 1024;
+// A deep check longer than this says how long and waits for a second tap.
+var DEEP_CHECK_CONFIRM_SECS = 10 * 60;
+var DEEP_CHECK_CONFIRM_MS = 6000;
+var HEALTH_POLL_MS = 600;
+function runLibraryHealth() { _startLibraryHealth({}); }
+function runDeepCheck(btn) {
+  if (btn.dataset.running) {
+    manageFetch('/manage/health-check', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ cancel: true }) })
+      .then(function() { _pollLibraryHealth(); }).catch(function() {});
+    return;
+  }
+  var bytes = (zimsCache || []).reduce(function(a, z) { return a + (z.size_bytes || 0); }, 0);
+  var secs = bytes / DEEP_CHECK_BYTES_PER_SEC;
+  if (secs > DEEP_CHECK_CONFIRM_SECS && !btn.classList.contains('confirming')) {
+    btn.classList.add('confirming');
+    btn.textContent = t('library_health_deep_start', { time: _fmtSpan(secs) });
+    setTimeout(function() {
+      if (!btn.classList.contains('confirming')) return;
+      btn.classList.remove('confirming');
+      btn.textContent = t('library_health_deep');
+    }, DEEP_CHECK_CONFIRM_MS);
+    return;
+  }
+  btn.classList.remove('confirming');
+  _startLibraryHealth({ deep: true });
+}
+function _startLibraryHealth(body) {
   var sec = document.getElementById('library-health-section');
-  if (btn) btn.disabled = true;
+  _healthButtons(body.deep ? 'deep' : 'quick');
   if (sec) sec.innerHTML = _loadingHtml('library_health_running');
-  manageFetch('/manage/health-check', { method: 'POST' })
+  manageFetch('/manage/health-check', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) })
     .then(function(r) { return r.json(); })
     .then(function() { _pollLibraryHealth(); })
     .catch(function() {
-      if (btn) btn.disabled = false;
+      _healthButtons(null);
       if (sec) sec.innerHTML = '<div class="mc-row"><span class="mc-value" style="color:var(--amber)">' + tH('library_health_failed') + '</span></div>';
     });
+}
+function _resumeLibraryHealth() {
+  manageFetch('/manage/health').then(function(r) { return r.json(); }).then(function(st) {
+    if (st && st.phase === 'running') _pollLibraryHealth();
+  }).catch(function() {});
+}
+// Which check is running ('quick', 'deep' or null): both buttons wait,
+// except the deep one, which becomes its own Cancel. Kept here so a pane
+// drawn again mid-check draws them that way too.
+var _healthRunning = null;
+function _healthButtonsHtml() {
+  var r = _healthRunning;
+  return '<button id="library-health-btn" class="set-btn" onclick="runLibraryHealth()"' + (r ? ' disabled' : '') + '>' + tH('library_health') + '</button>' +
+    '<button id="library-deep-btn" class="set-btn" onclick="runDeepCheck(this)"' +
+    (r === 'quick' ? ' disabled' : '') + (r === 'deep' ? ' data-running="1">' + tH('cancel') : '>' + tH('library_health_deep')) + '</button>';
+}
+function _healthButtons(running) {
+  _healthRunning = running;
+  var quick = document.getElementById('library-health-btn');
+  if (quick) quick.outerHTML = '';
+  var deep = document.getElementById('library-deep-btn');
+  if (deep) deep.outerHTML = _healthButtonsHtml();
+}
+function _deepProgressHtml(st) {
+  var line = t('library_health_progress', { done: _fmtBytes(st.bytes_done || 0), total: _fmtBytes(st.bytes_total || 0) });
+  var eta = st.eta_seconds != null ? _fmtEta(st.eta_seconds) : '';
+  return '<div class="mc-row health-deep-progress"><span class="mc-label">' + esc(st.current || '') + '</span>' +
+    '<span class="mc-value" style="color:var(--text2)">' + esc(line) + (eta ? ' · ' + esc(eta) : '') + '</span></div>';
 }
 function _pollLibraryHealth() {
   clearTimeout(_healthPoll);
@@ -3983,23 +4043,20 @@ function _pollLibraryHealth() {
     var sec = document.getElementById('library-health-section');
     if (!sec) return;
     if (st.phase === 'running') {
-      sec.innerHTML = _loadingHtml('library_health_running') +
+      _healthButtons(st.deep ? 'deep' : 'quick');
+      sec.innerHTML = _loadingHtml('library_health_running') + (st.deep ? _deepProgressHtml(st) :
         '<div class="mc-row"><span class="mc-value" style="color:var(--text2)">' +
-        t('library_health_progress', { done: st.done || 0, total: st.total || 0 }) + '</span></div>';
-      _healthPoll = setTimeout(_pollLibraryHealth, 600);
-    } else if (st.phase === 'done') {
-      _renderHealthReport(st);
-      var btn = document.getElementById('library-health-btn');
-      if (btn) btn.disabled = false;
-    } else {
-      sec.innerHTML = '<div class="mc-row"><span class="mc-value" style="color:var(--amber)">' + tH('library_health_failed') + '</span></div>';
-      var b2 = document.getElementById('library-health-btn');
-      if (b2) b2.disabled = false;
+        t('library_health_progress', { done: st.done || 0, total: st.total || 0 }) + '</span></div>');
+      _healthPoll = setTimeout(_pollLibraryHealth, HEALTH_POLL_MS);
+      return;
     }
-  }).catch(function() {
-    var b3 = document.getElementById('library-health-btn');
-    if (b3) b3.disabled = false;
-  });
+    _healthButtons(null);
+    // Stopped, the books read before the stop are still the report.
+    if (st.phase === 'done' || st.phase === 'cancelled') _renderHealthReport(st);
+    else {
+      sec.innerHTML = '<div class="mc-row"><span class="mc-value" style="color:var(--amber)">' + tH('library_health_failed') + '</span></div>';
+    }
+  }).catch(function() { _healthButtons(null); });
 }
 function _healthMark(status) {
   if (status === 'ok') return '<span style="color:#34d399" title="' + escAttr(t('healthy')) + '">✓</span>';
@@ -4052,6 +4109,10 @@ function _renderHealthReport(st) {
   var summaryLine = s.warnings
     ? t('library_health_summary_warn', { healthy: s.healthy, warnings: s.warnings })
     : t('library_health_summary_ok', { total: s.total });
+  if (st.phase === 'cancelled') {
+    summaryLine = t('library_health_deep_stopped', { done: s.total, total: s.of }) +
+      (s.warnings ? ' · ' + summaryLine : '');
+  }
   if (s.torrent_files) summaryLine += ' · ' + t('health_torrent_files', { n: s.torrent_files });
   var rank = { warn: 0, ok: 1, info: 2 };  // warnings first, torrent-metadata last
   var rows = (st.report || []).slice().sort(function(a, b) {
@@ -6770,6 +6831,7 @@ function renderInstalled(filterText) {
       const dateStr = z.date ? (_isZimiExport(z) ? z.date : z.date.substring(0, 7)) : null;
       if (dateStr) meta.push(dateStr);
       if (z.unreadable) meta.push('<span class="ci-bad">' + esc(t('zim_unreadable_' + z.unreadable)) + '</span>');
+      if (z.missing_part) meta.push('<span class="ci-bad">' + esc(t('zim_missing_chunk', { file: z.missing_part })) + '</span>');
       if (z.also_in) meta.push('<span>' + esc(t('zim_also_in', { label: z.also_in })) + '</span>');
       if (z.via) meta.push('<span>' + esc(t('zim_via', { label: z.via })) + '</span>');
       // Flavor badge from filename. When catalog variants exist, the current
@@ -7582,12 +7644,14 @@ function _pruneDlRates(dls) {
 function _fmtEta(seconds) {
   if (!isFinite(seconds) || seconds < 0) return '';
   if (seconds < 60) return t('dl_eta_under_minute');
+  return t('dl_eta_left', {time: _fmtSpan(seconds)});
+}
+// "4m", "1h 12m", "2d 3h": a minute or more, coarse on purpose.
+function _fmtSpan(seconds) {
   var m = Math.max(1, Math.round(seconds / 60));
-  var time;
-  if (m < 60) time = m + 'm';
-  else if (m < 24 * 60) time = Math.floor(m / 60) + 'h' + (m % 60 ? ' ' + (m % 60) + 'm' : '');
-  else time = Math.floor(m / 1440) + 'd' + (Math.floor((m % 1440) / 60) ? ' ' + Math.floor((m % 1440) / 60) + 'h' : '');
-  return t('dl_eta_left', {time: time});
+  if (m < 60) return m + 'm';
+  if (m < 24 * 60) return Math.floor(m / 60) + 'h' + (m % 60 ? ' ' + (m % 60) + 'm' : '');
+  return Math.floor(m / 1440) + 'd' + (Math.floor((m % 1440) / 60) ? ' ' + Math.floor((m % 1440) / 60) + 'h' : '');
 }
 
 async function refreshDownloads() {

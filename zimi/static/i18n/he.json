@@ -4143,5 +4143,12 @@
   "voices_set_up_mb": "הגדרה ({mb} MB)",
   "alm_gr_pd": "נחלת הכלל",
   "alm_gr_omitted": "במהדורה זו, תמונות שאינן בנחלת הכלל מופיעות בשמן בלבד, ללא התמונה.",
-  "alm_gr_note": "שמונה מהתמונות הן צילומים של נאס״א ונמצאות בנחלת הכלל. זכויות היוצרים על השאר שייכות לבעליהן, ששמם מופיע ליד כל תמונה: Jon Lomberg, UN Photo, Frank Drake, National Astronomy and Ionosphere Center, Jay M. Pasachoff ו-Picturepoint, לונדון. הן מוצגות כאן כדי שאפשר יהיה לראות את התקליט כפי שנשלח; Zimi אינה טוענת לזכויות בהן. אלה סריקות של נאס״א לתמונות המקוריות, לא פענוח של צליל התקליט. מקור: נאס״א, science.nasa.gov."
+  "alm_gr_note": "שמונה מהתמונות הן צילומים של נאס״א ונמצאות בנחלת הכלל. זכויות היוצרים על השאר שייכות לבעליהן, ששמם מופיע ליד כל תמונה: Jon Lomberg, UN Photo, Frank Drake, National Astronomy and Ionosphere Center, Jay M. Pasachoff ו-Picturepoint, לונדון. הן מוצגות כאן כדי שאפשר יהיה לראות את התקליט כפי שנשלח; Zimi אינה טוענת לזכויות בהן. אלה סריקות של נאס״א לתמונות המקוריות, לא פענוח של צליל התקליט. מקור: נאס״א, science.nasa.gov.",
+  "library_health_deep": "בדיקה מעמיקה",
+  "library_health_deep_start": "בערך {time}. להתחיל?",
+  "library_health_deep_stopped": "הבדיקה המעמיקה נעצרה אחרי {done} מתוך {total}",
+  "pdf_too_large": "קובץ ה-PDF הזה גדול מכדי להיפתח כאן: הוא שמור דחוס בתוך ה-ZIM שלו.",
+  "zim_missing_chunk": "לא ניתן לפתוח: הקובץ {file} חסר",
+  "zi_license": "רישיון",
+  "zi_relation": "קשור ל"
 }
