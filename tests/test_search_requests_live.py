@@ -173,9 +173,11 @@ def test_a_fast_typists_minute_stays_well_under_the_public_budget(served):
             box.press("Enter")
             _done(pg, text)
             pg.mouse.wheel(0, 2500)
-            more = pg.locator(".load-more button, .result-more")
+            # "More from" one named source: which source ranks first is not fixed (the result count itself moves by a
+            # few between runs), and the searches after this one are the ones that source answers.
+            more = pg.locator('.result-more[data-zim="alpha_en_test"]')
             if more.count():
-                more.first.click()
+                more.click()
                 pg.wait_for_function(
                     "() => allResults && !allResults.partial && _snippetsStreamSeq === 0",
                     timeout=30000,
