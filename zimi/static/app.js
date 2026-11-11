@@ -17130,10 +17130,19 @@ function _titleOverflows(el) {
   r.selectNodeContents(el);
   return r.getBoundingClientRect().width > el.clientWidth - parseFloat(cs.paddingLeft) - parseFloat(cs.paddingRight) + 0.01;
 }
-function _fitGameTitle(el) {
+function _shrinkTitle(el) {
   el.style.fontSize = '';
   var px = parseFloat(getComputedStyle(el).fontSize);
   while (_titleOverflows(el) && px > _GAME_TITLE_MIN_PX) { px -= 1; el.style.fontSize = px + 'px'; }
+}
+// Smallest size first; then the buttons and padding give up a few pixels (.tight); what still does not fit ends in the
+// ellipsis, and the full name is the tooltip.
+function _fitGameTitle(el) {
+  var head = el.parentNode;
+  head.classList.remove('tight');
+  _shrinkTitle(el);
+  if (_titleOverflows(el)) { head.classList.add('tight'); _shrinkTitle(el); }
+  el.title = _titleOverflows(el) ? el.textContent : '';
 }
 // Paint the header's game part, or take it away; the stylesheet swaps it for the search box.
 function _syncGameHead() {

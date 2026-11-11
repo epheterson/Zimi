@@ -15,7 +15,7 @@
   // rows), a tapped card lifts 14 px
   // (a card you can play stands 6 px proud when others cannot be played). An opponent's face-down hand of more than
   // five cards is one back and a count chip.
-  var COUNT_AT = 0.86, STATUS_MAX = 44, MIN_STRIP_PX = 22, LIFT_PX = 14, PLAYABLE_LIFT_PX = 6, COLLAPSE_FROM = 6;
+  var WIDE_CHOICES = 10, SHORT_TABLE_H = 420, MANY_CHIPS = 5, NORTH_GAP_PX = 6, COUNT_AT = 0.86, STATUS_MAX = 44, MIN_STRIP_PX = 22, LIFT_PX = 14, PLAYABLE_LIFT_PX = 6, COLLAPSE_FROM = 6;
   // Games that play a card on its second tap: the first tap lifts it (amber outline), the second plays it.
   var LIFT_THEN_PLAY = { spades: 1, euchre: 1, belote: 1, crazyeights: 1, durak: 1 };
   // SCORE_BAR_H: the chips' row (28 px, cardtable.css .ct-chip) and air under it for the ring round whoever is to play.
@@ -38,8 +38,10 @@
   var MIN_STEP_SHARE = 0.42, ROW_STEP_SHARE = 0.5, FLASH_MS = 1800, PANEL_GAP = 8;
   // The slot a card is dropped on to play it: this many cards wide and tall either side of the table's middle.
   var FELT_X = 1.6, FELT_Y = 1.1;
-  // Where each seat sits on the table, by the number of players: 0 south, 1 west, 2 north, 3 east.
-  var SEAT_POS = { 2: [0, 2], 3: [0, 1, 3], 4: [0, 1, 2, 3] };
+  // Where each seat sits on the table, by the number of players: 0 south, 1 west, 2 north, 3 east. With five, the north is shared
+  // by two hands: 4 (north-west) and 5 (north-east).
+  var SEAT_POS = { 2: [0, 2], 3: [0, 1, 3], 4: [0, 1, 2, 3], 5: [0, 1, 4, 5, 3] };
+  var NORTH_TRICK_DX = 0.45;   // the two north plays of a five-seat trick lean this many card widths off the middle
   var SUIT_ORDER = [0, 1, 3, 2]; // clubs, diamonds, spades, hearts: alternating colours in a hand
   var SUIT_GLYPH = ['♣', '♦', '♥', '♠']; // by ZimiCards suit: clubs, diamonds, hearts, spades
 
@@ -75,6 +77,12 @@
     g.northY = m.pad + SCORE_BAR_H;
     g.southY = m.H - ch - Math.max(m.pad, HAND_BOTTOM_PX);        // your bottom row sits on the bottom (the page already stops above the home-indicator inset)
     g.yTop = g.northY + ch + 8;
+    // A short table (a phone on its side): the west and east hands start level with the north row and are one back and a count each,
+    // so a tray of choices above the status line never covers them.
+    g.short = m.H < SHORT_TABLE_H;
+    g.sideTop = g.short ? g.northY : g.yTop;
+    // The tray of choices sits across the middle of a short table, so a trick or a pile stands to the right of it.
+    g.midX = g.short ? Math.round(m.W - m.pad - g.cw * (0.5 + TRICK_DX)) : cx;
     g.yBot = g.southY - (g.rows - 1) * g.rowStep - g.raise - 6;    // the rows above it push the status line up
     g.statusY = g.yBot - STATUS_H;
     // The trick sits high on the felt (40% down the table), clear of the north hand and the status line: eyes stay between the opponents and your hand.
@@ -91,14 +99,19 @@
     return Math.max(1, Math.ceil(n / perRow));
   }
   function rowsFor(m, n) { return handRows(m.W, m.pad, m.cw, n); }
-  function sideStep(g, n) { return Math.max(g.ch * SIDE_STEP_MIN, Math.min(g.ch * SIDE_STEP_MAX, (g.statusY - g.yTop - g.ch) / Math.max(1, n - 1))); }
+  function sideStep(g, n) { return Math.max(g.ch * SIDE_STEP_MIN, Math.min(g.ch * SIDE_STEP_MAX, (g.statusY - g.sideTop - g.ch) / Math.max(1, n - 1))); }
   // A card's corner in the middle for each position's play, and where a position's cards sit.
   function trickSpot(g, pos) {
-    var x = g.cx - g.cw / 2, y = g.cy - g.ch / 2;
-    return [{ x: x, y: y + g.ch * TRICK_DY }, { x: x - g.cw * TRICK_DX, y: y }, { x: x, y: y - g.ch * TRICK_DY }, { x: x + g.cw * TRICK_DX, y: y }][pos];
+    var x = (g.midX === undefined ? g.cx : g.midX) - g.cw / 2, y = g.cy - g.ch / 2;
+    return [{ x: x, y: y + g.ch * TRICK_DY }, { x: x - g.cw * TRICK_DX, y: y }, { x: x, y: y - g.ch * TRICK_DY }, { x: x + g.cw * TRICK_DX, y: y },
+      { x: x - g.cw * NORTH_TRICK_DX, y: y - g.ch * TRICK_DY }, { x: x + g.cw * NORTH_TRICK_DX, y: y - g.ch * TRICK_DY }][pos];
   }
+  // A north hand's room across the table and the middle of it: the whole width for the one north, a half each for two.
+  function northRoom(g, pos) { return pos === 2 ? g.W - 2 * g.pad : (g.W - 2 * g.pad) / 2 - NORTH_GAP_PX; }
+  function northCx(g, pos) { return pos === 2 ? g.cx : pos === 4 ? g.pad + (g.W - 2 * g.pad) / 4 : g.W - g.pad - (g.W - 2 * g.pad) / 4; }
   function seatSpot(g, pos) {
-    return [{ x: g.cx - g.cw / 2, y: g.southY }, { x: g.westX, y: g.yTop }, { x: g.cx - g.cw / 2, y: g.northY }, { x: g.eastX, y: g.yTop }][pos];
+    return [{ x: g.cx - g.cw / 2, y: g.southY }, { x: g.westX, y: g.sideTop }, { x: g.cx - g.cw / 2, y: g.northY }, { x: g.eastX, y: g.sideTop },
+      { x: northCx(g, 4) - g.cw / 2, y: g.northY }, { x: northCx(g, 5) - g.cw / 2, y: g.northY }][pos];
   }
   function posOf(seat, players) { return SEAT_POS[players][seat]; }
   // Where a seat sits for the person looking (a ZimiSeats object): the viewer is south.
@@ -133,20 +146,20 @@
   // Face-down (or face-up when `up`) fan of a seat's hand at a table position.
   function fan(g, pos, ids, up) {
     var cards = [], n = ids.length, p = 'p' + pos;
-    if (!up && n >= COLLAPSE_FROM) {
+    var side = pos === 1 || pos === 3;
+    if (!up && (n >= COLLAPSE_FROM || (g.short && side && n > 1))) {
       // One back and a count: every card sits in the same place (so a played card still flies from the hand).
-      var ax = pos === 2 ? Math.round(g.cx - g.cw / 2) : pos === 1 ? g.westX : g.eastX, ay = pos === 2 ? g.northY : g.yTop;
+      var north = pos === 2 || pos >= 4, ax = north ? Math.round(northCx(g, pos) - g.cw / 2) : pos === 1 ? g.westX : g.eastX, ay = north ? g.northY : g.sideTop;
       ids.forEach(function (id, k) { cards.push({ id: id, pile: p, idx: k, x: ax, y: ay, up: false }); });
       counts.push({ x: ax + g.cw / 2, y: ay + g.ch * COUNT_AT, n: n });   // low on the back: the Z stays clear
       return cards;
     }
-    if (pos === 2) {
-      var nx = g.cx - (g.cw + (n - 1) * g.topStep) / 2, ts = Math.min(g.topStep, n > 1 ? (g.W - 2 * g.pad - g.cw) / (n - 1) : 0);
-      nx = g.cx - (g.cw + (n - 1) * ts) / 2;
+    if (pos === 2 || pos >= 4) {
+      var ts = Math.min(g.topStep, n > 1 ? (northRoom(g, pos) - g.cw) / (n - 1) : 0), nx = northCx(g, pos) - (g.cw + (n - 1) * ts) / 2;
       ids.forEach(function (id, k) { cards.push({ id: id, pile: p, idx: k, x: Math.round(nx + k * ts), y: g.northY, up: !!up }); });
     } else {
       var sx = pos === 1 ? g.westX : g.eastX, st = sideStep(g, n);
-      ids.forEach(function (id, k) { cards.push({ id: id, pile: p, idx: k, x: sx, y: g.yTop + k * st, up: !!up }); });
+      ids.forEach(function (id, k) { cards.push({ id: id, pile: p, idx: k, x: sx, y: g.sideTop + k * st, up: !!up }); });
     }
     return cards;
   }
@@ -200,6 +213,7 @@
       if (sig === last) return;
       last = sig;
       paintChips(scoreRow, hd.chips, chipMemo, cfg.seats);
+      scoreRow.classList.toggle('ct-many', (hd.chips || []).length >= MANY_CHIPS);
       // Trump is a suit chip: the suit's glyph (red for the red suits), then the word.
       if (hd.trump !== undefined && hd.trump !== null) {
         var red = Z.isRed(Z.make(1, hd.trump));
@@ -207,13 +221,17 @@
       }
       scoreRow.style.top = m.pad + 'px';
       status.style.top = Math.round(statusY) + 'px'; status.style.height = STATUS_H + 'px';
-      panel.style.bottom = Math.round(m.H - statusY + PANEL_GAP) + 'px';
+      // A game that asks for it (cfg.sidePanel) keeps the tray out of the middle of a short table: a small column at the right, level with the status line.
+      var side = !!(cfg.sidePanel && g.short);
+      panel.classList.toggle('ct-side', side);
+      panel.style.bottom = Math.round(side ? m.H - (statusY + STATUS_H) : m.H - statusY + PANEL_GAP) + 'px';
       // The status line: one sentence. The game's one fact ("Hand 2", "To 121") leads it when both fit.
       // A flash (a reason, a call) is a sentence of its own: nothing leads it. A lifted card says what the next tap does.
       var line = view.flash || (liftedPile && hd.text && !hd.choices ? T('cards.tapAgain') : hd.text) || '';
       statusText.textContent = !view.flash && hd.fact && line && (hd.fact + ' \u00b7 ' + line).length <= STATUS_MAX ? hd.fact + ' \u00b7 ' + line : (line || hd.fact || '');
       statusBtn.textContent = hd.label || ''; statusBtn.hidden = !hd.label; statusBtn.disabled = !hd.action; statusBtn.classList.toggle('gs-primary', !!hd.action);   // the next thing to do is the filled amber button
       panel.textContent = ''; panel.hidden = !(hd.choices && hd.choices.length);
+      panel.classList.toggle('ct-wide', (hd.choices || []).length >= WIDE_CHOICES);   // a long row of bids takes the table's width
       (hd.choices || []).forEach(function (c, i) {
         var b = Z.h('button', { class: 'ar-btn ct-choice' + (c.cls ? ' ' + c.cls : ''), type: 'button', text: c.label });
         if (c.pressed !== undefined) b.setAttribute('aria-pressed', String(!!c.pressed));
@@ -266,7 +284,7 @@
       undoOff: cfg.seats ? function () { return cfg.seats.hotseat(); } : null,
       statText: function (sec, st) { paint(); return cfg.stat(sec, st); },
       cascadeOrder: cfg.cascadeOrder || function () { return []; },
-      winLines: cfg.winLines,
+      winLines: cfg.winLines, listWin: cfg.listWin, finished: cfg.finished, finishNow: cfg.finishNow,
       openMenu: function () {
         Z.sheet({
           title: root.ZimiText && root.ZimiText.has('game.' + cfg.id + '.title') ? T('game.' + cfg.id + '.title') : cfg.name,   // the game's name in the player's language
@@ -457,9 +475,9 @@
     // The game is decided for team `w`: the last hand's lines and the result, to the stats and the end sheet.
     tg.teamGameOver = function (w, scores, lines) {
       var vt = tg.viewTeam(), hot = seats.hotseat();
-      lines = lines.concat([T(hot ? 'cards.result.hot' : w === vt ? 'cards.result.you' : 'cards.result.them', { team: hot ? tg.teamNames(w) : '', a: scores[w], b: scores[1 - w] })]);
-      if (hot) session.lose({ name: tg.teamNames(w), team: true }, lines);
-      else if (w === vt) session.win(scores[vt]); else session.lose('', lines, scores[vt]);
+      lines = [T(hot ? 'cards.result.hot' : w === vt ? 'cards.result.you' : 'cards.result.them', { team: hot ? tg.teamNames(w) : '', a: scores[w], b: scores[1 - w] })].concat(lines);
+      if (hot) session.lose({ name: tg.teamNames(w), team: true }, lines, undefined, true);
+      else if (w === vt) session.win(scores[vt]); else session.lose('', lines, scores[vt], true);
     };
 
     // The table for a game: cfg is create()'s, and what a trick game always says is filled in.
@@ -469,7 +487,8 @@
         id: o.id, seats: seats, view: view, tap: tg.tap, liftPlay: function (st) { return st.phase === 'play'; },
         canPick: function (st, pile) { return st.phase === 'play' && pile.charAt(0) === 'h' && o.legal(st, seats.view(), idOf(pile)); },
         move: function (pile, idx, to) { return (to === 'trick' || to === 'deck') && pile.charAt(0) === 'h' ? tg.play(idOf(pile)) : false; },
-        stat: function (sec, st) { return tg.teamStat(sec, st.scores); }
+        stat: function (sec, st) { return tg.teamStat(sec, st.scores); },
+        listWin: true, finished: function (st) { return st.phase === 'over' && !!o.gameOver; }, finishNow: function () { o.gameOver(); }
       }, cfg, { place: function (st, m, v) { tg.syncView(st); return place(st, m, v); } }));
       tg.attach(t);
       return t;
@@ -478,7 +497,7 @@
   }
 
   root.ZimiTable = {
-    paintChips: paintChips, SEAT_POS: SEAT_POS, HAND13_COLS: HAND13_COLS, handCols: handCols, stateCols: stateCols, SUIT_GLYPH: SUIT_GLYPH, STATUS_H: STATUS_H, STATUS_MAX: STATUS_MAX, SCORE_BAR_H: SCORE_BAR_H,
+    paintChips: paintChips, SHORT_TABLE_H: SHORT_TABLE_H, SEAT_POS: SEAT_POS, HAND13_COLS: HAND13_COLS, handCols: handCols, stateCols: stateCols, SUIT_GLYPH: SUIT_GLYPH, STATUS_H: STATUS_H, STATUS_MAX: STATUS_MAX, SCORE_BAR_H: SCORE_BAR_H,
     next: next, sortHand: sortHand, rankHigh: rankHigh, short: short, shortList: shortList, shuffleOf: shuffleOf,
     countBy: countBy, maxBy: maxBy, minBy: minBy,
     geometry: geometry, rowsFor: rowsFor, sideStep: sideStep, trickSpot: trickSpot, seatSpot: seatSpot, posOf: posOf, posFor: posFor, handCards: handCards, fan: fan, takeCounts: takeCounts, handRows: handRows,

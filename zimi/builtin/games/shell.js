@@ -205,6 +205,8 @@
   //   'WxH..' a Simon Tatham puzzle: the type its dailies are, written as its game IDs write it
   var DAILY = {
     'solitaire.html': true, 'spider.html': true, 'freecell.html': true, 'pyramid.html': true, 'golf.html': true, 'tripeaks.html': true,
+    'yukon.html': true, 'fortythieves.html': true, 'canfield.html': true, 'scorpion.html': true, 'acesup.html': true, 'accordion.html': true,
+    'calculation.html': true, 'beleaguered.html': true, 'eightoff.html': true, 'montecarlo.html': true,
     'mahjong.html': true, 'sudoku.html': true, 'minesweeper.html': true, 'codebreaker.html': true, 'memory.html': true, '2048.html': true,
     'stacker.html': true, 'snake.html': true, 'blast.html': true, 'echo.html': true, 'rocks.html': true, 'lastline.html': true,
     'muncher.html': true, 'crossing.html': true, 'quest.html': true,
@@ -748,8 +750,10 @@
   // A loss is dignified: no motion over the board, the sheet settles in softly. A draw is plain. A tap, a key or the
   // sheet being asked for early skips the beat; under reduced motion there is none and the sheet is there at once.
   var BEAT_MS = 1800, LOSS_BEAT_MS = 1100, COUNT_MS = 600, MOMENT_OUT_MS = 300, SKIP_SETTLE_MS = 250, SKIP_GRACE_MS = 450, SCATTER = 14, SCATTER_REACH = 120, CONFETTI = 44, CONFETTI_COLOURS = 5, GOLDEN = 2.399963, HAPTIC = { win: [14, 70, 26], lose: [30] };
+  // A game that comes back to its end sheet on reload has had no tap yet: the browser refuses a buzz then and logs an error, so none is tried.
+  function touched() { var ua = root.navigator && root.navigator.userActivation; return !ua || ua.hasBeenActive; }
   function haptic(result) {
-    try { if (HAPTIC[result] && root.navigator && root.navigator.vibrate && !reducedMotion()) root.navigator.vibrate(HAPTIC[result]); } catch (e) { /* no haptics here */ }
+    try { if (HAPTIC[result] && root.navigator && root.navigator.vibrate && touched() && !reducedMotion()) root.navigator.vibrate(HAPTIC[result]); } catch (e) { /* no haptics here */ }
   }
   Shell.haptic = haptic;
   // A note, only when the player has turned Sound on (Settings), made only after a tap: one shared context, a soft sine with a short attack.
@@ -1673,7 +1677,7 @@
     var at = 'content:"";position:absolute;pointer-events:none;width:' + MARK_PX + 'px;height:' + MARK_PX + 'px;background:url(' + url + ') center/contain no-repeat;';
     // While a sheet is up the mark is not shown: it sits 12px in from the corner, where the sheet's rounded corner lets it peek out.
     return 'html.gs-hosted body:has(.ar-sheet:not([hidden]))::before, html.gs-hosted body:has(.ar-sheet:not([hidden])) .zc-table::before{opacity:0}' +
-      'html.gs-hosted body:has(> .ar-bar) .zc-table::before{' + at + 'z-index:0;right:' + MARK_GAP + 'px;bottom:' + MARK_GAP + 'px}' +
+      'html.gs-hosted body:has(> .ar-bar) .zc-table::before{' + at + 'z-index:-1;right:' + MARK_GAP + 'px;bottom:' + MARK_GAP + 'px}' +
       'html.gs-hosted body:has(> .ar-bar):not(:has(.zc-table))::before{' + at.replace('absolute', 'fixed') + 'z-index:-1;right:' + MARK_GAP + 'px;bottom:calc(' + MARK_GAP + 'px + var(--safe-b, 0px))}' +
       ':root[data-theme="dark"].gs-hosted body:has(> .ar-bar):not(:has(.zc-table))::before{filter:drop-shadow(1px 0 0 var(--mark-ring)) drop-shadow(-1px 0 0 var(--mark-ring)) drop-shadow(0 1px 0 var(--mark-ring)) drop-shadow(0 -1px 0 var(--mark-ring))}' +
       '@media (prefers-color-scheme:dark){:root:not([data-theme="light"]).gs-hosted body:has(> .ar-bar):not(:has(.zc-table))::before{filter:drop-shadow(1px 0 0 var(--mark-ring)) drop-shadow(-1px 0 0 var(--mark-ring)) drop-shadow(0 1px 0 var(--mark-ring)) drop-shadow(0 -1px 0 var(--mark-ring))}}';
@@ -1779,8 +1783,15 @@
     x.drawImage(c, Math.round((SNAP_W - w) / 2), Math.round((SNAP_H - hh) / 2), w, hh);
     return pixel ? out.toDataURL('image/png') : out.toDataURL('image/jpeg', SNAP_JPEG_QUALITY);
   }
+  // A game built from page elements (squares, pieces, dice) has no canvas: tablesnap.js paints its table as an svg.
+  // It loads once the page is up, when the game has neither a snapshot() nor a canvas, so a game left at once still has it.
+  function loadTableSnap() {
+    if (game.snapshot || bigCanvas() || root.ZimiTableSnap || !shellSrc || d.querySelector('script[data-tablesnap]')) return;
+    var s = d.createElement('script'); s.src = new root.URL('tablesnap.js', shellSrc).href; s.setAttribute('data-tablesnap', '');
+    d.head.appendChild(s);
+  }
   function takeSnapshot() {
-    var src = game.snapshot ? game.snapshot() : bigCanvas();
+    var src = game.snapshot ? game.snapshot() : bigCanvas() || (root.ZimiTableSnap && root.ZimiTableSnap.picture(d, game.table));
     if (!src) return null;
     if (typeof src === 'string') return /^\s*<svg[\s>]/.test(src) ? { svg: src } : null;
     try { return { img: canvasPicture(src) }; } catch (e) { return null; }   // a tainted or lost canvas: no picture
@@ -1824,7 +1835,7 @@
     if (hosted) hostReady();
     if (!built) return;
     DIRTY_EVENTS.forEach(function (t) { d.addEventListener(t, markDirty, true); });
-    watchSnapshots(); watchBlur(); watchRecords(); markStatusLines();
+    watchSnapshots(); loadTableSnap(); watchBlur(); watchRecords(); markStatusLines();
     d.documentElement.classList.add('gs-ready');
     // A daily says so under the game's name, so the player knows this board is the day's, not one of their own.
     var h1 = Shell.daily && d.querySelector('.ar-bar h1');

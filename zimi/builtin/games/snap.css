@@ -1,0 +1,8 @@
+/* Snap: the big Snap button under the two piles, and the count of cards left in each stack. */
+.sn-snap { position: absolute; z-index: 30; box-sizing: border-box; border: 2px solid rgba(255, 255, 255, 0.55); border-radius: 16px; background: rgba(0, 0, 0, 0.34); color: #fff; font: 700 var(--fs-title) var(--font); letter-spacing: 0.02em; touch-action: manipulation; cursor: pointer; transition: background 120ms ease-out, transform 120ms ease-out; -webkit-tap-highlight-color: transparent; }
+.sn-snap:active { transform: scale(0.98); }
+.sn-snap:focus-visible { outline: 2px solid var(--select-ring); outline-offset: 2px; }
+.sn-snap.sn-hot { background: var(--accent); border-color: var(--accent); color: var(--accent-ink); }
+.sn-snap:disabled { opacity: 0.5; cursor: default; }
+.sn-count { position: absolute; z-index: 30; transform: translateX(-50%); min-width: 28px; padding: 2px 10px; border-radius: 999px; background: rgba(0, 0, 0, 0.34); color: #fff; font-size: var(--fs-small); line-height: 1.5; text-align: center; font-variant-numeric: tabular-nums; pointer-events: none; }
+html[data-anim="off"] .sn-snap { transition: none; }

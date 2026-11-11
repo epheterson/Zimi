@@ -117,6 +117,10 @@
     say(T(failed || hinted ? 'puzzles.solved' : 'puzzles.solvedClean'));
     els.info.innerHTML = T('puzzles.info', { n: puzzle.rating }) + deltaHtml(d) + ' &middot; ' + puzzle.themes.map(themeLabel).join(', ');
     paintHud();
+    showEnd(d);
+  }
+  // The solved sheet; a puzzle that comes back solved after a reload shows it again (without the rating change, which is not kept).
+  function showEnd(d) {
     UI.end({ result: 'win', text: failed || hinted ? T('puzzles.solved') : undefined, newLabel: T('board.next'), onNew: nextPuzzle,
       stats: [[T('puzzles.rating'), state.rating + (d ? ' (' + (d > 0 ? '+' : '') + d + ')' : '')]] });
   }
@@ -258,7 +262,7 @@
       paint(); paintHud(); setButtons();
     },
     resume: function () {
-      if (done) { say(T(failed || hinted ? 'puzzles.solved' : 'puzzles.solvedClean')); return; }
+      if (done) { say(T(failed || hinted ? 'puzzles.solved' : 'puzzles.solvedClean')); showEnd(0); return; }
       if (pos.turn === userColor) { say(T(failed ? 'puzzles.notIt' : 'puzzles.findBest', { color: colorName(userColor) })); return; }
       busy = true; setButtons();
       later(function () { opponentMove(function () { busy = false; setButtons(); say(T('puzzles.findBest', { color: colorName(userColor) })); }); }, OPPONENT_DELAY_MS);

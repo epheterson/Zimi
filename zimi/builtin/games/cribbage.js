@@ -231,10 +231,11 @@
   }
 
   // ── Layout ──────────────────────────────────────────────────────────────
-  var BOARD_MAX_W = 560, BOARD_GAP = 6, ROW_GAP = 22, PILE_JOG = 1.5;
+  var BOARD_MAX_W = 560, SHORT_BOARD_H_SHARE = 0.22, SHORT_PILE_GAP = 14, SHORT_STAIR_SHARE = 0.4, BOARD_GAP = 6, ROW_GAP = 22, PILE_JOG = 1.5;
   function geo(m) {
     var g = T.geometry(m, 1);
-    g.boardW = Math.min(m.W - 2 * m.pad, BOARD_MAX_W); g.boardH = Math.round(g.boardW * BH / BW);
+    g.boardW = Math.min(m.W - 2 * m.pad, BOARD_MAX_W, g.short ? Math.round(SHORT_BOARD_H_SHARE * m.H * BW / BH) : BOARD_MAX_W);   // a short table gives the board a smaller share of its height
+    g.boardH = Math.round(g.boardW * BH / BW);
     g.boardTop = m.pad + T.SCORE_BAR_H; g.boardLeft = Math.round((m.W - g.boardW) / 2);
     g.northY = g.boardTop + g.boardH + BOARD_GAP;
     g.yTop = g.northY + g.ch + 10;
@@ -243,6 +244,10 @@
     g.rowA = Math.round(Math.max(g.yTop, g.cy - block / 2));
     g.rowB = g.rowA + g.ch + ROW_GAP; g.rowC = g.rowB + g.ch + ROW_GAP;
     g.cribX = Math.round(g.cx - g.cw * 1.35); g.starterX = Math.round(g.cx + g.cw * 0.35);
+    g.pileY = g.rowA;
+    if (g.short) { g.rowB = g.northY; g.rowC = g.northY + Math.round(g.ch * SHORT_STAIR_SHARE); }   // the count's staircase is one tight step beside the opponent's hand on a short table
+    // A short table has no row for the crib and the starter under the board: they stand either side of it.
+    if (g.short) { g.cribX = Math.max(g.pad, g.boardLeft - g.cw - SHORT_PILE_GAP); g.starterX = Math.min(g.W - g.pad - g.cw, g.boardLeft + g.boardW + SHORT_PILE_GAP); g.pileY = g.boardTop + Math.round((g.boardH - g.ch) / 2); }
     return g;
   }
   // A centred row of non-interactive cards.
@@ -253,7 +258,7 @@
   function place(st, m, view) {
     var V = (view && view.viewer) || 0, O = 1 - V, faceUp = !(view && view.hideHand);
     var g = geo(m), cards = [], slots = [], chosen = (view && view.chosen) || [], showing = st.phase === 'show' || (st.phase === 'over' && st.showStep >= 0);
-    slots.push({ id: 'deck', x: g.starterX, y: g.rowA, w: g.cw, h: g.ch, quiet: true, label: TX('crib.slot.starter') });
+    slots.push({ id: 'deck', x: g.starterX, y: g.pileY, w: g.cw, h: g.ch, quiet: true, label: TX('crib.slot.starter') });
     slots.push({ id: 'table', x: g.pad, y: g.rowB - 4, w: g.W - 2 * g.pad, h: 2 * g.ch + ROW_GAP + 8, quiet: true, label: TX('cards.slot.table') });
     var myTurn = st.phase === 'peg' && st.turn === V && !st.roundOver && faceUp, hand, opp;
     var info = function (id) {
@@ -272,10 +277,10 @@
     // The crib pile, face down, until the show reaches it.
     var cribUp = showing && st.showStep === 2;
     if (cribUp) cards = cards.concat(row(g, st.crib, g.rowB, g.cw * 0.95, true, 'crib', { glow: true }));
-    else st.crib.forEach(function (id, k) { cards.push({ id: id, pile: 'crib', idx: k, x: g.cribX + Math.round(k * PILE_JOG), y: g.rowA + Math.round(k * PILE_JOG), up: false }); });
-    cards.push({ id: st.starter, pile: 'starter', idx: 0, x: cribUp ? Math.round(g.cx - g.cw / 2) : g.starterX, y: g.rowA, up: st.cut, glow: showing });
+    else st.crib.forEach(function (id, k) { cards.push({ id: id, pile: 'crib', idx: k, x: g.cribX + Math.round(k * PILE_JOG), y: g.pileY + Math.round(k * PILE_JOG), up: false }); });
+    cards.push({ id: st.starter, pile: 'starter', idx: 0, x: cribUp ? Math.round(g.cx - g.cw / 2) : g.starterX, y: g.pileY, up: st.cut, glow: showing });
     // The count so far, a staircase: North's plays above, yours below.
-    var step = Math.min(g.cw * 0.6, (g.W - 2 * g.pad - g.cw) / 7), x0 = (g.W - (g.cw + 7 * step)) / 2;
+    var step = Math.min(g.cw * 0.6, (g.W - 2 * g.pad - g.cw) / 7), x0 = g.short ? Math.min(Math.round(g.cx + g.cw * 1.8), g.W - g.pad - (g.cw + 7 * step)) : (g.W - (g.cw + 7 * step)) / 2;
     if (st.phase === 'peg') st.seq.forEach(function (p, k) {
       cards.push({ id: p.id, pile: 'seq', idx: k, x: Math.round(x0 + k * step), y: p.seat === V ? g.rowC : g.rowB, up: true });
     });
@@ -346,8 +351,8 @@
     function tags(st, g) {
       var showing = st.phase === 'show' || st.showStep >= 0;
       tagCrib.textContent = showing && st.showStep === 2 ? '' : TX(seats.isYou(st.dealer) ? 'crib.tag.you' : 'crib.tag', { name: who(st.dealer) });
-      tagCrib.style.left = g.cribX + 'px'; tagCrib.style.top = (g.rowA + g.ch + 3) + 'px'; tagCrib.style.width = g.cw + 'px';
-      tagStarter.hidden = showing; tagStarter.style.left = g.starterX + 'px'; tagStarter.style.top = (g.rowA + g.ch + 3) + 'px'; tagStarter.style.width = g.cw + 'px';
+      tagCrib.style.left = g.cribX + 'px'; tagCrib.style.top = (g.pileY + g.ch + 3) + 'px'; tagCrib.style.width = g.cw + 'px';
+      tagStarter.hidden = showing; tagStarter.style.left = g.starterX + 'px'; tagStarter.style.top = (g.pileY + g.ch + 3) + 'px'; tagStarter.style.width = g.cw + 'px';
       tagCrib.hidden = showing && st.showStep >= 2;
     }
     function itemLines(res, title) {

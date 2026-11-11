@@ -16,7 +16,7 @@
 (function (root) {
   'use strict';
   var PREFIX = 'zimi.games.', NAMES_KEY = PREFIX + 'players', MAX_NAME = 14;
-  var COMPASS = { 2: ['south', 'north'], 3: ['south', 'west', 'east'], 4: ['south', 'west', 'north', 'east'] };
+  var COMPASS = { 2: ['south', 'north'], 3: ['south', 'west', 'east'], 4: ['south', 'west', 'north', 'east'], 5: ['south', 'west', 'northwest', 'northeast', 'east'] };
   // Every visible string goes through ZimiText (text.js, which shell.js loads); the pure naming rules fall back to English where there is none.
   var T = function (key, vars) { return root.ZimiText ? root.ZimiText.T(key, vars) : key; };
   var POINTS = { south: 'South', west: 'West', north: 'North', east: 'East' };

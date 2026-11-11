@@ -67,7 +67,26 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 - Search finds PDF collections' documents (nautilus and zimgit libraries) by their listed title, description and author and by the text inside the PDFs, from an index Zimi reads in the background beside the ZIM (#142).
 - `list_entries` (MCP tool and `/entries`): a source's entries by MIME type or path prefix, paged (#142).
 - **Lighter Docker image:** under 1 GB compressed (was about 2.3 GB unpacked, now about 0.7 GB). The browser, SingleFile, video tools and warc2zim are add-ons, added once from the first-run list or Settings > Server > Add-ons (Ask first, Automatically or Never).
+### Changed
+
+- Games: leaving any board, dice or tile game under way keeps a picture of its table as the shelf's tile (live tiles were cards and canvas games only), and Stats lists what you have reached in plain facts.
+### Added
+
+- Games: Pig, Shut the Box and Ten Thousand (dice), Color Trail (a color race for small children) and Who Is It (find Zimi's face with yes-or-no questions), in ten languages.
+### Added
+
+- Games: Go Fish, Old Maid, Snap, Oh Hell and Cheat, five family card games against Zimi.
+### Added
+
+- Games: ten more solitaires on the shelf: Yukon, Forty Thieves, Canfield, Scorpion, Aces Up, Accordion, Calculation, Beleaguered Castle, Eight Off and Monte Carlo.
+### Added
+
+- Games: Courtier, a small deduction card game for two to four, and Odd One Out, a party game for three to eight on one phone that plays from pictures in any language.
+- Games: the shelf opens on a World favorites row (the best-known games), then a New row of what arrived with this release; the games that use your library moved to the end.
+
 ### Fixed
+
+- Games: Drop Pin on your own map no longer says the map has not loaded over a map that has, and the map is only a map there: its search box, place chips, cards and menus are put away and the place's own name is taken off its labels.
 
 - Games: a daily played past midnight counts for the day it began; ZimCity's money warning follows this year's taxes, a kept city's buttons act on that city, and a paused city stops redrawing; Canasta fits eleven melds a side on a short wide screen.
 

@@ -1,0 +1,42 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Odd One Out - ZimiGames</title>
+<link rel="stylesheet" href="games.css">
+<link rel="stylesheet" href="play.css">
+<link rel="stylesheet" href="passkit.css">
+<link rel="stylesheet" href="oddone.css">
+<!-- zimi-shell --><script src="shell.js"></script><!-- /zimi-shell -->
+</head>
+<body>
+<header class="ar-bar">
+  <a class="ar-back" href="index.html" data-t-aria="shell.back" aria-label="Back">&lsaquo;</a>
+  <h1 data-t="game.oddone.title">Odd One Out</h1>
+  <button class="ar-btn" id="oo-new" type="button" data-t="shell.menu.new">New game</button>
+</header>
+
+<main class="pl-main oo-page">
+  <p class="pl-msg" id="oo-msg" role="status" aria-live="polite"></p>
+  <div class="oo-main" id="oo-main"></div>
+</main>
+
+<div class="ar-sheet" id="oo-sheet" hidden role="dialog" aria-modal="true" aria-labelledby="oo-sheet-title">
+  <div class="ar-sheet-card">
+    <h2 id="oo-sheet-title" data-t="game.oddone.title">Odd One Out</h2>
+    <p data-t="oddone.intro">Pass one phone around. Everyone sees the same picture except one player, who sees a question mark.</p>
+    <div id="oo-setup"></div>
+    <div class="ar-sheet-actions"><button class="ar-btn gs-primary" id="oo-go" type="button" data-t="shell.start">Start</button></div>
+  </div>
+</div>
+<script src="util.js"></script>
+<script src="playkit.js"></script>
+<script src="handoff.js"></script>
+<script src="passkit.js"></script>
+<script src="pictures.js"></script>
+<script src="oddone.js"></script>
+<!-- zimi-recent --><script defer src="recent.js"></script><!-- /zimi-recent -->
+<!-- zimi-about --><footer class="gm-about"><a href="about.html?qid=Q85801811">About Odd One Out</a></footer><!-- /zimi-about -->
+</body>
+</html>

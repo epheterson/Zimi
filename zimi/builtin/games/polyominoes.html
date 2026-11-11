@@ -1,0 +1,45 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Polyominoes - ZimiGames</title>
+<link rel="stylesheet" href="games.css">
+<link rel="stylesheet" href="board.css">
+<link rel="stylesheet" href="boardui.css">
+<link rel="stylesheet" href="world.css">
+<link rel="stylesheet" href="polyominoes.css">
+<!-- zimi-shell --><script src="shell.js"></script><!-- /zimi-shell -->
+</head>
+<body>
+<header class="ar-bar">
+  <a class="ar-back" href="index.html" data-t-aria="shell.back" aria-label="Back">&lsaquo;</a>
+  <h1>Polyominoes</h1>
+  <button class="ar-btn" id="wk-undo" type="button" disabled data-t="board.undo">Undo</button>
+  <button class="ar-btn" id="wk-new" type="button" aria-haspopup="dialog" data-t="shell.menu.new">New game</button>
+</header>
+
+<main class="bg-main po-main">
+  <p class="bg-status" id="wk-status"></p>
+  <div class="bg-score" id="wk-score" data-t-aria="poly.left" aria-label="Squares left"></div>
+  <div class="po-board" id="po-board" data-t-aria="poly.board" aria-label="Polyominoes board"></div>
+  <div class="po-tray" id="po-tray" role="group" data-t-aria="poly.tray" aria-label="Your pieces"></div>
+  <div class="bg-controls">
+    <button class="ar-btn" id="wk-hint" type="button" disabled data-t="board.hint">Hint</button>
+    <button class="ar-btn po-icon" id="po-rotate" type="button" disabled data-t-aria="poly.rotate" data-t-title="poly.rotate" aria-label="Rotate"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20 12a8 8 0 1 1-2.5-5.8M20 4v4.5h-4.5"/></svg></button>
+    <button class="ar-btn po-icon" id="po-flip" type="button" disabled data-t-aria="board.flip" data-t-title="board.flip" aria-label="Flip"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3v18M8 7L3 12l5 5V7zM16 7l5 5-5 5V7z"/></svg></button>
+    <button class="ar-btn gs-primary" id="po-place" type="button" disabled data-t="walls.place">Place</button>
+  </div>
+  <p class="bg-stats" id="wk-stats"></p>
+</main>
+<script src="util.js"></script>
+<script src="boardkit.js"></script>
+<script src="boardui.js"></script>
+<script src="worldkit.js"></script>
+<script src="enginekit.js"></script>
+<script src="polyominoes-engine.js"></script>
+<script src="polyominoes.js"></script>
+<!-- zimi-recent --><script defer src="recent.js"></script><!-- /zimi-recent -->
+<!-- zimi-about --><footer class="gm-about"><a href="about.html?qid=Q1144819">About Polyominoes</a></footer><!-- /zimi-about -->
+</body>
+</html>

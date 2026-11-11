@@ -257,12 +257,16 @@
     els.wrap.style.setProperty('--side', SIDE_W + 'px');
     draw();
   }
+  var dpr = 1;
   function sizeCanvas(c, w, h) {
-    var dpr = window.devicePixelRatio || 1;
+    dpr = window.devicePixelRatio || 1;
     c.width = Math.round(w * dpr); c.height = Math.round(h * dpr);
     c.style.width = w + 'px'; c.style.height = h + 'px';
-    c.getContext('2d').setTransform(dpr, 0, 0, dpr, 0, 0);
+    scaleTo(c.getContext('2d'));
   }
+  // The scale is laid again before each draw: a browser that drops a canvas's state (it does, when it moves the canvas to the GPU or back)
+  // would otherwise leave the board drawn at a fraction of its size in a corner.
+  function scaleTo(c) { c.setTransform(dpr, 0, 0, dpr, 0, 0); }
 
   function block(c, x, y, size, color, ghost) {
     var pad = Math.max(1, size * 0.06);
@@ -285,6 +289,7 @@
   function draw() {
     if (!g) return;
     var W = COLS * cs, H = (ROWS - HIDDEN) * cs;
+    scaleTo(ctx);
     ctx.clearRect(0, 0, W, H);
     ctx.fillStyle = pal.cell; ctx.fillRect(0, 0, W, H);
     ctx.strokeStyle = pal.line; ctx.lineWidth = 1; ctx.beginPath();
@@ -321,6 +326,7 @@
 
   function drawMini(c, canvas, types, alpha) {
     var mini = Math.round(cs * 0.62), w = parseFloat(canvas.style.width), h = parseFloat(canvas.style.height);
+    scaleTo(c);
     c.fillStyle = FIELD; c.fillRect(0, 0, w, h);
     c.globalAlpha = alpha;
     types.forEach(function (t, i) {

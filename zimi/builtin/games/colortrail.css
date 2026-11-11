@@ -1,0 +1,31 @@
+/* Color Trail: a winding road of coloured squares, each with its shape; the deck is the one big button. */
+:root { --ct-ground: #efe6cf; --ct-strip: #d9c9a3; --ct-edge: rgba(0, 0, 0, 0.28); }
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) { --ct-ground: #3a3224; --ct-strip: #4a3f2c; --ct-edge: rgba(0, 0, 0, 0.5); } }
+:root[data-theme="dark"] { --ct-ground: #3a3224; --ct-strip: #4a3f2c; --ct-edge: rgba(0, 0, 0, 0.5); }
+
+.ct-board { width: min(100vw - 24px, 420px, calc((100svh - 326px) * 0.612)); border-radius: var(--r-sheet); overflow: hidden; background: var(--ct-ground); user-select: none; -webkit-user-select: none; }
+.ct-board > svg { display: block; width: 100%; height: auto; }
+.ct-sq { stroke: var(--ct-edge); stroke-width: 1.5; }
+.ct-strip { fill: var(--ct-strip); }
+.ct-start { font: 700 13px var(--font); letter-spacing: 0.12em; fill: var(--ink2); }
+.ct-end { fill: #f4d98a; stroke: #a98d56; stroke-width: 2; }
+.ct-star { fill: #fff6dc; stroke: #8a6410; stroke-width: 2; stroke-linejoin: round; }
+.ct-bridge-edge { fill: none; stroke: #8a6410; stroke-width: 12; stroke-linecap: round; }
+.ct-bridge-top { fill: none; stroke: #f4d98a; stroke-width: 8; stroke-linecap: round; stroke-dasharray: 9 4; }
+.ct-bridge-end { fill: #f4d98a; stroke: #8a6410; stroke-width: 2.5; stroke-linejoin: round; }
+.ct-token { filter: drop-shadow(0 2px 2px rgba(0, 0, 0, 0.45)); }
+.bg-score { flex-wrap: wrap; justify-content: center; }
+
+/* The deck: one big card to tap. Its face is the colour and shape just drawn. */
+.ct-deck { display: flex; align-items: center; justify-content: center; min-height: 108px; }
+.ct-drawb { padding: var(--sp-1); border: 0; border-radius: var(--radius); background: none; cursor: pointer; touch-action: manipulation; }
+.ct-drawb:disabled { cursor: default; }
+.ct-drawb:not(:disabled) .ct-face { outline: 3px solid var(--accent); outline-offset: 3px; border-radius: 12px; }
+.ct-face { display: block; width: 72px; height: 94px; }
+.ct-back { fill: #2b3550; stroke: #4b5568; stroke-width: 2; }
+.ct-back-in { fill: #1d2433; stroke: #7c8698; stroke-width: 1.5; }
+.ct-back-q { font: 800 34px var(--font); fill: #f59e0b; }
+.ct-card-edge { stroke: #fff; stroke-width: 3; }
+.ct-face.ct-flip { animation: ct-flip 0.45s ease-out; }
+@keyframes ct-flip { from { transform: rotateY(90deg) scale(0.9); } to { transform: none; } }
+@media (prefers-reduced-motion: reduce) { html:not([data-anim="normal"]):not([data-anim="fast"]) .ct-face.ct-flip { animation: none; } }

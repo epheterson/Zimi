@@ -233,7 +233,7 @@
     var took = res.captured.reduce(function (a, c) { return a + c.n; }, 0);
     if (res.captured.length) return T('mancala.captured', { name: who, n: took });
     if (res.grandSlam) return T('mancala.grandSlam', { name: who });
-    if (res.extra) return T(you ? 'mancala.again.you' : 'mancala.again', { name: who });
+    if (res.extra && !res.state.done) return T(you ? 'mancala.again.you' : 'mancala.again', { name: who });
     return '';
   }
 

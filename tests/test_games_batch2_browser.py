@@ -311,7 +311,11 @@ def test_puzzle_pages_say_their_rules_in_one_line(browser, served):
 # 8. German: the games speak to the player as "du" (the shelf's "Sie" in a score pill read as "she/they"), and Hold'em's
 # out and fold words differ.
 THIRD_PERSON_SIE = {"game.goproblems.why", "game.koikoi.why", "help.fourinarow.turn", "help.inertia.turn", "help.liarsdice.tip", "help.scopa.turn",
-                    "history.blast", "history.draughts", "history.golf", "history.pattern", "openings.notThis", "sky.fact.venus", "spider.why.rank"}
+                    "history.blast", "history.draughts", "history.golf", "history.pattern", "openings.notThis", "sky.fact.venus", "spider.why.rank",
+                    # the new games: Sie is she, it or they (a card, a pile, a shape), never the player
+                    "accordion.why.match", "help.beleaguered.tip", "help.canfield.tip", "help.cheat.turn", "help.courtier.turn", "help.fortythieves.tip",
+                    "help.polyominoes.turn", "help.shutthebox.tip", "history.acesup", "history.fortythieves", "history.polyominoes",
+                    "poly.why.bounds", "poly.why.corner", "poly.why.edge"}
 
 
 def test_german_games_text_is_informal():

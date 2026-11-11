@@ -172,7 +172,7 @@
     };
     var heaviest = function (down) { return Math.max.apply(null, COLUMNS.map(function (c) { return weight(P[c], down); })); };
     var maxStep = ch * UP_STEP_SHARE, down = Z.openDown(heaviest, rows.room, ch, maxStep, DOWN_RATIO, MAX_DOWN_RATIO, DOWN_RATIO_STEP);
-    var step = Z.fanStep(heaviest(down), rows.room, ch, maxStep, ch * MIN_STEP_SHARE);
+    var step = Z.growStep(heaviest(down), rows.room, ch, ch * MIN_STEP_SHARE);
     var bottom = y2 + ch;
 
     P.stock.forEach(function (c, i) { cards.push({ id: c.id, pile: 'stock', idx: i, x: x(0), y: y1, up: false, hidden: i < P.stock.length - 2 }); });

@@ -25,6 +25,8 @@
 .ct-status .ar-btn[hidden] { display: none; }
 .ct-panel { position: absolute; left: 50%; transform: translateX(-50%); display: flex; flex-wrap: wrap; justify-content: center; gap: var(--sp-2); width: min(100% - 16px, 520px); padding: var(--sp-2); border-radius: var(--r-sheet); background: rgba(0, 0, 0, 0.5); z-index: 35; }
 .ct-panel[hidden] { display: none; }
+.ct-panel.ct-side { left: auto; right: var(--sp-2); transform: none; width: 214px; justify-content: flex-end; gap: 6px; padding: 6px; }
+.ct-panel.ct-side .ct-choice { flex: 1 1 calc(50% - 3px); min-width: 0; min-height: 36px; padding: 0 8px; }
 .ct-choice { min-width: var(--target); min-height: var(--target); padding: 0 14px; font-weight: 600; }
 .ct-choice.ct-red { color: var(--suit-red); }
 .ct-choice[aria-pressed="true"] { background: linear-gradient(var(--accent-glow), var(--accent-glow)), var(--surface); border-color: var(--select-ring); color: var(--ink); }
@@ -36,6 +38,8 @@
 /* On a phone four players and a trump chip share one row: no dot, tight padding, the trump chip is its suit alone. */
 @media (max-width: 440px) { .ct-chip { padding: 0 8px; gap: 4px; } .ct-chip::before { display: none; } .ct-scores { flex-wrap: nowrap; gap: 4px; padding: 0 4px; } .ct-chip.ct-trump span { display: none; } }
 @media (max-width: 400px) { .ct-chip { padding: 0 6px; } }
+/* Five at the table (and the trump chip): the row has to fit a phone, so the chips take less air. */
+@media (max-width: 440px) { .ct-many { gap: 3px; padding: 0 2px; } .ct-many .ct-chip { padding: 0 5px; gap: 3px; } }
 .ct-status-text:empty { display: none; }
 
 /* Chip stacks: tokens in the casino colours (materials: they keep their hues), a column to a denomination. */
@@ -48,3 +52,6 @@
 .ct-token::after { content: ""; position: absolute; inset: 3px; border-radius: 50%; border: 1px solid rgba(255, 255, 255, 0.55); }
 .ct-d500 { --ct-chip: #6b46c1; } .ct-d100 { --ct-chip: #232a33; } .ct-d50 { --ct-chip: #d9780b; } .ct-d25 { --ct-chip: #2f855a; }
 .ct-d10 { --ct-chip: #2b6cb0; } .ct-d5 { --ct-chip: #b3261e; } .ct-d1 { --ct-chip: #9aa3ad; }
+
+/* A long row of choices (Spades' bids) gets the width of the table, so on a phone on its side it is one row. */
+.ct-panel.ct-wide { width: min(100% - 16px, 780px); }

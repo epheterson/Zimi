@@ -228,7 +228,7 @@
       function (a, b) { return effSuit(a, st.trump) !== effSuit(b, st.trump); });
     slots = slots.concat(hand.slots); cards = cards.concat(hand.cards);
     [1, 2, 3].forEach(function (pos) { var seat = (V + pos) % SEATS; if (seat !== st.sitting) cards = cards.concat(T.fan(g, pos, st.hands[seat], false)); });
-    if (st.phase === 'order1' || st.phase === 'order2') cards.push({ id: st.upcard, pile: 'up', idx: 0, x: Math.round(g.cx - g.cw / 2), y: Math.round(g.cy - g.ch / 2), up: st.phase === 'order1' });
+    if (st.phase === 'order1' || st.phase === 'order2') cards.push({ id: st.upcard, pile: 'up', idx: 0, x: Math.round(g.midX - g.cw / 2), y: Math.round(g.cy - g.ch / 2), up: st.phase === 'order1' });
     return { height: m.H, slots: slots, cards: cards.concat(T.trickCards(g, st.trick, sweep, rel, view && view.win)) };
   }
 
@@ -326,7 +326,7 @@
     t = tg.create({
       name: 'Euchre', geo: geo, place: place, hud: hud, newGame: newGame, heightShare: 0.13,
       cascadeOrder: function (st) { return st.played.map(function (id) { return { id: id }; }); },
-      winLines: function (sec, st) { return handLines(st).concat([TX('cards.result.you', { a: st.scores[viewTeam()], b: st.scores[1 - viewTeam()] })]); },
+      winLines: function (sec, st) { return [TX('cards.result.you', { a: st.scores[viewTeam()], b: st.scores[1 - viewTeam()] })].concat(handLines(st)); },
       rules: TX('euchre.rules')
     });
     board = t.board; session = t.session;

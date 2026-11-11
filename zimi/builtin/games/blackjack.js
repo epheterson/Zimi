@@ -286,6 +286,8 @@
       pile.textContent = '';
       if (amount > 0) { pile.appendChild(T.chipStack(amount)); pile.appendChild(Z.h('span', { class: 'ct-caption', text: TX('bj.bet', { n: amount }) })); }
       pile.style.top = Math.round(g.northY + g.ch + 24) + 'px';
+      // A short table keeps the middle for the tray of choices: the chips stand to the right of it.
+      pile.style.left = g.short ? Math.round(Math.min(g.midX, g.W - g.pad - 70) - 70) + 'px' : ''; pile.style.right = g.short ? 'auto' : ''; pile.style.width = g.short ? '140px' : '';
     }
     function tableChips(st) {
       var chips = [];

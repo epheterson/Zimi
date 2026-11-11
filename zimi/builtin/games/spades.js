@@ -250,7 +250,8 @@
           out.text = seats.hotseat() ? TX('spades.yourBid.name', { name: seats.name(V) }) : TX('spades.yourBid');
           out.choices = [{ label: TX('spades.nil'), onclick: function () { bid(0); }, aria: TX('spades.bidNil') }];
           for (var n = 1; n <= MAX_BID; n++) out.choices.push(bidChoice(n));
-          out.lines = [{ text: TX('spades.estimate', { n: Math.round(estimate(st.hands[V])) }) + (st.bids[partnerOf(V)] !== null ? ' ' + TX('spades.partnerBid', { name: seats.name(partnerOf(V)), bid: bidName(st.bids[partnerOf(V)]) }) : '') }];
+          var m = board && board.metrics();   // a phone on its side has no room for the hint line above one row of bids
+          if (!(m && m.H < T.SHORT_TABLE_H)) out.lines = [{ text: TX('spades.estimate', { n: Math.round(estimate(st.hands[V])) }) + (st.bids[partnerOf(V)] !== null ? ' ' + TX('spades.partnerBid', { name: seats.name(partnerOf(V)), bid: bidName(st.bids[partnerOf(V)]) }) : '') }];
         } else out.text = TX('cards.bidding', { name: seats.name(st.turn) });
       } else if (st.phase === 'handEnd') { out.text = TX('cards.handEnd'); out.label = TX('cards.nextHand'); out.action = tg.startNextHand; }
       else if (st.phase === 'over') { out.text = TX('shell.end.over'); out.label = TX('shell.menu.new'); out.action = newGame; }
@@ -296,7 +297,7 @@
     t = tg.create({
       name: 'Spades', geo: geo, place: place, hud: hud, newGame: newGame,
       cascadeOrder: function (st) { return st.played.concat(st.trick.map(function (x) { return x.id; })).map(function (id) { return { id: id }; }); },
-      winLines: function (sec, st) { var vt = viewTeam(); return handLines(st).concat([TX('spades.result.won', { a: st.scores[vt], b: st.scores[1 - vt], hands: Z.plural(st.handNo + 1, 'hand') })]); },
+      winLines: function (sec, st) { var vt = viewTeam(); return [TX('spades.result.won', { a: st.scores[vt], b: st.scores[1 - vt], hands: Z.plural(st.handNo + 1, 'hand') })].concat(handLines(st)); },
       rules: TX('spades.rules')
     });
     board = t.board; session = t.session;

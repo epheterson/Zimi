@@ -65,7 +65,7 @@ def scan(browser, served, path, width, theme, lang):
         page.goto("%s/%s#lang=%s" % (served, path, lang))
         page.wait_for_load_state("load")
         quiet(page, 1200)   # built: nothing changing, nothing animating (at most the 1.2 s this once waited)
-        page.mouse.click(width // 2, 420)
+        page.mouse.click(2, 2)   # a gesture to wake the page, on no tile (the shelf's rows lie under the middle)
         quiet(page, 500)
         page.add_script_tag(content=AXE)
         return page.evaluate(RUN)

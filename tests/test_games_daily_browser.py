@@ -114,11 +114,25 @@ def test_the_shelf_writes_the_servers_day_into_every_daily_whatever_the_zone(
     )
 
 
+# The tableau solitaires after Klondike: each deals from the day's seed like Klondike and FreeCell.
+VARIANT_DAILIES = (
+    "yukon",
+    "fortythieves",
+    "canfield",
+    "scorpion",
+    "acesup",
+    "accordion",
+    "calculation",
+    "beleaguered",
+    "eightoff",
+    "montecarlo",
+)
 SUDOKU = "() => document.getElementById('su-board').innerText"
+# Cards stacked in one place (Calculation's face-down deck) keep their pile order: the deal shows in that order, not in the ids.
 CARDS = """() => Array.from(document.querySelectorAll('.zc-card[data-id]')).map(e => {
   const r = e.getBoundingClientRect();
   return { id: +e.dataset.id, col: Math.round(r.left / 20), top: r.top, down: e.classList.contains('zc-down') };
-}).sort((a, b) => a.col - b.col || a.top - b.top || a.id - b.id).map(c => [c.id, c.col, c.down])"""
+}).sort((a, b) => a.col - b.col || a.top - b.top).map(c => [c.id, c.col, c.down])"""
 TATHAM = """() => { const cw = Module.cwrap; const p = cw('get_save_file','number',[])(); const t = UTF8ToString(p);
   cw('free_save_file','void',['number'])(p); return (/^DESC\\s*:\\d+:(.*)$/m.exec(t) || [])[1]; }"""
 
@@ -141,6 +155,16 @@ TATHAM = """() => { const cw = Module.cwrap; const p = cw('get_save_file','numbe
             "document.querySelectorAll('.zc-card[data-id]').length === 104",
             CARDS,
         ),
+    ]
+    + [
+        (
+            name + ".html",
+            "document.querySelectorAll('.zc-card[data-id]').length >= 20",
+            CARDS,
+        )
+        for name in VARIANT_DAILIES
+    ]
+    + [
         (
             "puzzles/loopy.html",
             "typeof command === 'function' && document.getElementById('puzzle').style.display !== 'none'",

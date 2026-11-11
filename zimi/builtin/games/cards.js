@@ -1236,7 +1236,9 @@
         if (!stopped) raf = requestAnimationFrame(frame);
       });
       function launch(c) {
-        var e = els[c.id], r = e.getBoundingClientRect(), dir = Math.random() < 0.5 ? -1 : 1;
+        var e = els[c.id], r, dir = Math.random() < 0.5 ? -1 : 1;
+        if (!e) return;   // a card the table is not showing (a partner's hand at the end of a Bridge deal) has nothing to fly from
+        r = e.getBoundingClientRect();
         e.style.visibility = 'hidden'; hidden.push(e);
         flyers.push({ id: c.id, x: r.left, y: r.top, vx: dir * (VX_MIN + Math.random() * VX_SPAN) * scale, vy: -(VY_MIN + Math.random() * VY_SPAN) * scale });
       }
@@ -1310,7 +1312,8 @@
 
   // ── The session: undo, clock, stats, keys, the win ────────────────────
   // cfg: { id, els: {undo, newBtn, menu, stat}, board, newGame(), openMenu(),
-  //        statText(sec, state), cascadeOrder(state), winLines(sec, state) }
+  //        statText(sec, state), cascadeOrder(state), winLines(sec, state),
+  //        listWin, finished(state), finishNow() }   listWin: the sheet lists every line of winLines under the first (a table of scores), not the first alone   finished: a kept state that is over though its end never ran; finishNow() runs the game's own end
   // Where a status line of height h goes: where the game's layout put it, or higher if your hand (raised cards
   // included, from board.handTop()) would reach into it.
   var STATUS_GAP = 6;
@@ -1375,7 +1378,9 @@
     function takeUp(kept) {
       s.state = kept.state; s.history = kept.history || []; banked = kept.ms || 0; begun = true; s.ending = kept.ending || null;
       board.render(s.state); paint();
-      if (s.ending) { s.won = true; session_showEnd(s.ending, 0); } else run();
+      if (s.ending) { s.won = true; session_showEnd(s.ending, 0); }
+      else if (cfg.finished && cfg.finished(s.state)) cfg.finishNow();   // over, but the end never ran (an old save): the game's own end builds its sheet from the state
+      else run();
     }
     function keptGame() {
       var kept = root.ZimiShell && root.ZimiShell.saved ? root.ZimiShell.saved() : null;
@@ -1400,6 +1405,7 @@
     // How a game that is not won ends: kind is '' (you lose), 'draw', 'over' (Game over) or { name, team } for the
     // winner of a table of people ("Sam wins", "You and Ana win"). The sheet says lines[0]; `listAll` puts the rest of the lines under it.
     s.lose = function (kind, lines, score, listAll) {
+      if (s.won) return;   // a finished game taken up again (its sheet is already up) is not finished a second time
       s.won = true; halt(); resume = false; clearLater();
       if (typeof score === 'number') s.stats.scored(score);
       paint();
@@ -1411,10 +1417,12 @@
       sheet({ title: title, body: body, actions: [{ label: T('shell.close') }, { label: T('shell.menu.new'), primary: true, onclick: cfg.newGame }] });
     };
     s.win = function (score) {
+      if (s.won) return;   // ... nor won again: the record counts it once
       s.won = true; halt(); resume = false; clearLater();
       var sec = seconds(), best = s.stats.won(sec, score);
       paint();
-      if (root.ZimiShell && root.ZimiShell.endSheet) s.ending = { result: 'win', text: cfg.winLines(sec, s.state)[0], stats: [[T('cards.stats.time'), fmtTime(sec)], [T('cards.stats.won'), T('cards.stats.wonOf', { won: best.won, played: best.played })]] };
+      var won = cfg.winLines(sec, s.state);
+      if (root.ZimiShell && root.ZimiShell.endSheet) s.ending = { result: 'win', text: won[0], more: cfg.listWin ? won.slice(1) : [], stats: [[T('cards.stats.time'), fmtTime(sec)], [T('cards.stats.won'), T('cards.stats.wonOf', { won: best.won, played: best.played })]] };
       board.cascade(cfg.cascadeOrder(s.state), function () {
         var lines = cfg.winLines(sec, s.state);
         if (s.ending) { session_showEnd(s.ending); return; }
@@ -1477,8 +1485,15 @@
   }
   // The page's fixed parts, by the ids every game page uses.
   function pageEls() {
-    var g = function (id) { return root.document.getElementById(id); };
-    return { table: g('zc-table'), sub: g('zc-sub'), undo: g('zc-undo'), newBtn: g('zc-new'), menu: g('zc-menu'), stat: g('zc-stat') };
+    var g = function (id) { return root.document.getElementById(id); }, undo = g('zc-undo');
+    // The page's Undo is plain English in the markup; it speaks the player's language (and follows it when the words arrive late).
+    if (undo && !undo.dataset.words && root.ZimiText) {
+      undo.dataset.words = '1';
+      var say = function () { undo.textContent = root.ZimiText.T('board.undo'); };
+      say();
+      if (root.ZimiText.onChange) root.ZimiText.onChange(say);
+    }
+    return { table: g('zc-table'), sub: g('zc-sub'), undo: undo, newBtn: g('zc-new'), menu: g('zc-menu'), stat: g('zc-stat') };
   }
   // A pile's cards as plain ids (for games whose piles hold {id, up}).
   function idsOf(pile) { return pile.map(function (c) { return c.id; }); }
@@ -1509,8 +1524,18 @@
   // A face-up card in a fan shows this much of its height when the table has room: its whole corner index and its whole top
   // row of pips (PIP_TOP). Less cuts the pips through the middle into triangles beside the index.
   var FAN_UP_SHARE = 0.34;
+  // A fan with height to spare opens up to this share of a card's height per step, instead of huddling at FAN_UP_SHARE at the top
+  // of a tall phone; a long column still shrinks to fit (fanStep takes the smaller of room and this).
+  var FAN_GROW_SHARE = 0.8, FAN_GROW_AIR = 0.6;   // ... and keeps this many card heights of air under the lowest card
   function fanStep(weight, room, ch, maxStep, minStep) {
     return Math.max(minStep, Math.min(maxStep, weight > 0 ? (room - ch) / weight : maxStep));
+  }
+
+  // The step of a cascade's fan: as open as the free height allows (up to FAN_GROW_SHARE of a card), the longest column (weight, in
+  // steps) still inside room, and air left under it unless the column needs the room.
+  function growStep(weight, room, ch, minStep) {
+    var fit = fanStep(weight, room, ch, ch * FAN_GROW_SHARE, minStep);
+    return weight > 0 ? Math.max(minStep, Math.min(fit, Math.max(ch * FAN_UP_SHARE, (room - ch - ch * FAN_GROW_AIR) / weight))) : fit;
   }
 
   // ── The solitaire page ───────────────────────────────────────────────────
@@ -1618,7 +1643,7 @@
     FACT_H: FACT_H, factLine: factLine, moonPhase: moonPhase, moonLitPath: moonLitPath, faceMarkup: faceMarkup, backMarkup: backMarkup,
     italianFaceMarkup: italianFaceMarkup, italianName: italianName,
     spanishFaceMarkup: spanishFaceMarkup, spanishName: spanishName, hanafudaFaceMarkup: hanafudaFaceMarkup, hanafudaCard: hanafudaCard, hanafudaName: hanafudaName, HANA_MONTHS: HANA_MONTHS, jokerMarkup: jokerMarkup, markSvg: markSvg,
-    fmtTime: fmtTime, plural: plural, winTime: winTime, solitairePage: solitairePage, stuckWhen: stuckWhen, describePile: describePile, fanStep: fanStep, FAN_UP_SHARE: FAN_UP_SHARE, openDown: openDown, solitaireRows: solitaireRows, statusTop: statusTop, pageEls: pageEls, idsOf: idsOf, restShare: restShare,
+    fmtTime: fmtTime, plural: plural, winTime: winTime, solitairePage: solitairePage, stuckWhen: stuckWhen, describePile: describePile, fanStep: fanStep, growStep: growStep, FAN_UP_SHARE: FAN_UP_SHARE, openDown: openDown, solitaireRows: solitaireRows, statusTop: statusTop, pageEls: pageEls, idsOf: idsOf, restShare: restShare,
     toast: toast, store: store, createStats: createStats, h: h, sheet: sheet, segmented: segmented, backsSheet: backsSheet, backsRow: backsRow,
     T: T, createBoard: createBoard, createSession: createSession, ensureSprite: ensureSprite,
     currentBack: function () { return currentBack; }

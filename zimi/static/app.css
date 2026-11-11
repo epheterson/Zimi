@@ -469,6 +469,9 @@
   .game-title { flex: 1; min-width: 0; padding-inline: 6px; font-size: 15px; font-weight: 600; color: var(--text); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   .game-head .reader-btn { width: 44px; height: 44px; }   /* touch targets: the bar is 56px, so they sit side by side without touching */
   .game-head .reader-btn[hidden] { display: none; }
+  /* A name that does not fit even at the smallest size gets the room the buttons and padding can spare (_fitGameTitle): 40px targets, 2px of padding. */
+  .game-head.tight .reader-btn { width: 40px; }
+  .game-head.tight .game-title { padding-inline: 2px; }
   .game-head .reader-btn:disabled { opacity: 0.35; cursor: default; }
   body.game-page:not(.game-shelf) .topbar-search { display: none; }
   /* The shelf is the one page of the games that keeps the box: it searches the games (app.js _isGameShelf). */

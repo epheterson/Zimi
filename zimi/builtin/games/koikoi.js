@@ -186,12 +186,15 @@
   }
 
   // ── Layout ──────────────────────────────────────────────────────────────
-  var ROW_GAP = 8, TABLE_GAP_SHARE = 0.1, STRIP_H = 28, REST_ROWS = 3;
+  var ROW_GAP = 8, TABLE_GAP_SHARE = 0.1, STRIP_H = 28, REST_ROWS = 3, SHORT_GAP = 6;
   function geo(m) {
     var g = T.geometry(m, 1);
     g.showY = g.yTop;
     g.tableTop = g.yTop + g.ch + 14;
     g.tableBottom = g.statusY - STRIP_H;
+    // A short table (a phone on its side) has no height for the table, the captured strip and the status line in a column: the strip goes up
+    // beside the opponent's hand and the table takes the room it leaves.
+    if (g.short) { g.tableTop = g.northY + g.ch + SHORT_GAP; g.tableBottom = g.statusY - SHORT_GAP; }
     g.gap = Math.round(g.cw * TABLE_GAP_SHARE);
     g.perRow = Math.max(1, Math.floor((g.W - 2 * g.pad + g.gap) / (g.cw + g.gap)));
     return g;
@@ -304,7 +307,8 @@
         KINDS.forEach(function (k) { aria.push(count(cap, k) + ' ' + KIND_WORD(k)); });
         p.setAttribute('aria-label', TX(seats.isYou(seat) ? 'koikoi.pill.you' : 'koikoi.pill', { name: who(seat), list: aria.join(', ') }));
       });
-      strip.style.top = Math.round(g.statusY - STRIP_H + 2) + 'px';
+      strip.style.top = Math.round(g.short ? g.northY + 2 : g.statusY - STRIP_H + 2) + 'px';
+      strip.style.justifyContent = g.short ? 'flex-start' : '';
       strip.hidden = st.phase === 'koi' && seats.person(st.turn); // the choices sit where it does
     }
     function showCaptured(seat) {
@@ -428,8 +432,8 @@
     }
     function gameOver() {
       var st = session.state, w = gameWinner(st.scores), lines = resultLines(st);
-      lines.push(w < 0 ? TX('koikoi.tie') : TX(seats.isYou(w) ? 'cards.result.you' : 'koikoi.result.name', { name: who(w), a: st.scores[w], b: st.scores[1 - w] }));
-      if (seats.isYou(w)) session.win(st.scores[w]); else session.lose(w < 0 ? 'draw' : seats.hotseat() ? { name: who(w) } : '', lines, seats.hotseat() ? undefined : st.scores[0]);
+      lines.unshift(w < 0 ? TX('koikoi.tie') : TX(seats.isYou(w) ? 'cards.result.you' : 'koikoi.result.name', { name: who(w), a: st.scores[w], b: st.scores[1 - w] }));
+      if (seats.isYou(w)) session.win(st.scores[w]); else session.lose(w < 0 ? 'draw' : seats.hotseat() ? { name: who(w) } : '', lines, seats.hotseat() ? undefined : st.scores[0], true);
     }
     var order = function () { return Z.shuffled(Math.random).filter(function (c) { return c < DECK; }); };
     function startNextMonth() {
@@ -474,12 +478,12 @@
     // A fresh deal: nobody has seen it, so two people start at a handoff.
     function deal() { seats.begin(function () { refresh(); drive(); }, session.state.turn); }
     t = T.create({
-      id: 'koikoi', name: 'Koi-Koi', seats: seats, view: view, geo: geo, place: function (st, m, v) { syncView(st); return place(st, m, v); }, hud: hud, newGame: startGame, tap: tap, heightShare: 0.12, face: Z.hanafudaFaceMarkup,
+      id: 'koikoi', name: 'Koi-Koi', listWin: true, finished: function (st) { return st.phase === 'over'; }, finishNow: gameOver, seats: seats, view: view, geo: geo, place: function (st, m, v) { syncView(st); return place(st, m, v); }, hud: hud, newGame: startGame, tap: tap, heightShare: 0.12, face: Z.hanafudaFaceMarkup,
       canPick: function () { return false; },
       // The scores are on the table; a clock that only counts a match has no place in the bar.
       stat: function () { return ''; },
       cascadeOrder: function (st) { return st.captured[0].slice(0, 24).map(function (id) { return { id: id }; }); },
-      winLines: function (sec, st) { return resultLines(st).concat([TX('koikoi.result.won', { a: st.scores[seats.view()], b: st.scores[1 - seats.view()], months: Z.plural(st.months, 'month') })]); },
+      winLines: function (sec, st) { return [TX('koikoi.result.won', { a: st.scores[seats.view()], b: st.scores[1 - seats.view()], months: Z.plural(st.months, 'month') })].concat(resultLines(st)); },
       menuExtra: function () {
         return [T.choiceRow(TX('koikoi.length'), MONTH_KEY, MONTH_CHOICES.map(function (n) { return { value: n, label: TX('koikoi.months', { n: n }) }; }), 6, function () { /* read at the next game */ }),
           Z.h('p', { class: 'zc-note', text: TX('koikoi.lengthNote') })];
