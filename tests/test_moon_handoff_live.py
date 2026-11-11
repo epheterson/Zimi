@@ -330,6 +330,20 @@ def test_leaving_restores_the_page(browser, served, reduced):
         ctx.close()
 
 
+HANDOFF_STATE = """() => ({ open: typeof _aeIsOpen !== 'undefined' && _aeIsOpen, hand: !!(window._ae && _ae.hand), press: JSON.stringify(window._almMoonPress),
+  lifter: typeof window.openAlmanacEarth, ready: typeof _aeReady === 'function' && _aeReady(), lifted: !!document.querySelector('.alm-moon-lifted'),
+  frames: window.__frames || 0, hidden: document.hidden, scroll: document.getElementById('almanac-content').scrollTop,
+  under: (function () { var e = document.querySelector('%s'); if (!e) return null; var r = e.getBoundingClientRect(), h = document.elementFromPoint(r.x + r.width / 2, r.y + r.height / 2); return h ? (h.className || h.tagName) : null; })() })""" % HERO
+
+
+def _handoff_done(pg):
+    """The 3D view is open and has let go of the hand-in: a state. When it does not come, the page's own state is in the message."""
+    try:
+        pg.wait_for_function("() => _aeIsOpen && !_ae.hand", timeout=HANDOFF_MS, polling=POLL_MS)
+    except Exception as e:
+        raise AssertionError("the hand-off did not finish: %s; the page: %r" % (type(e).__name__, pg.evaluate(HANDOFF_STATE))) from None
+
+
 def _touch_drag_turns(pg, cdp, x, y, steps, dx, dy):
     for i in range(1, steps + 1):
         cdp.send(
@@ -382,9 +396,7 @@ def test_one_finger_lifts_and_keeps_turning(browser, served, pointer):
             for i in range(1, 7):
                 pg.mouse.move(x + i * 4, y + i)
             x, y = x + 24, y + 6
-        pg.wait_for_function(
-            "() => _aeIsOpen && !_ae.hand", timeout=HANDOFF_MS, polling=POLL_MS
-        )
+        _handoff_done(pg)
         az0, el0 = pg.evaluate("[_ae.az, _ae.el_]")
         if pointer == "touch":
             x, y = _touch_drag_turns(pg, cdp, x, y, 10, 3, 6)
