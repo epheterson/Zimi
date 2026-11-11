@@ -70,7 +70,7 @@ def served(tmp_path_factory):
 
 
 # The sphere's own vertex for (lat, lon), by the uv the shader reads the map at, against where the landmark system
-# puts the same latitude and longitude: they are one point, for every body.
+# puts the same latitude and longitude: they are one point, for every body (the Earth's picture row is the geodetic latitude).
 VERTEX_VS_LANDMARK = """(a) => {
     var S = _ae.gl, out = {};
     a.bodies.forEach(function (key) {
@@ -222,10 +222,10 @@ def test_landmarks_on_every_body_and_a_flight_to_a_rover(served):
                 )
                 == 25
             )
-            heading = pg.evaluate(
-                "Array.from(document.querySelectorAll('#ae-go h4')).map(h => h.textContent).pop()"
+            headings = pg.evaluate(
+                "Array.from(document.querySelectorAll('#ae-go h4')).map(h => h.textContent)"
             )
-            assert heading == "Landing sites", heading
+            assert "Landing sites" in headings, headings
             pg.click("#ae-go .ae-go-row:has-text('Curiosity')")
             pg.wait_for_function(
                 "() => { _ae.dirty = true; _aeKick(); return !_ae.fly && _ae.target === 'mars' && ("

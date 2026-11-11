@@ -3923,5 +3923,14 @@
   "alm_ms_ev_tmi_burn": "Allumage d'injection vers Mars",
   "alm_ms_ev_sc_sep": "Séparation de la sonde",
   "tb_kn_ms_m20_launch": "Perseverance : lancement et croisière",
-  "tb_kn_ms_m20_launch_v": "L'ascension de l'Atlas V 541 suit les événements publiés du lancement ; son altitude et sa vitesse entre eux, l'azimut, l'orbite de parking et la forme de l'injection sont supposés. À partir de 12:52 UT la sonde est celle de JPL Horizons (-168), géocentrique puis héliocentrique pendant les 203 jours jusqu'à Mars"
+  "tb_kn_ms_m20_launch_v": "L'ascension de l'Atlas V 541 suit les événements publiés du lancement ; son altitude et sa vitesse entre eux, l'azimut, l'orbite de parking et la forme de l'injection sont supposés. À partir de 12:52 UT la sonde est celle de JPL Horizons (-168), géocentrique puis héliocentrique pendant les 203 jours jusqu'à Mars",
+  "map_offer_overlaps": "Recoupe {maps}",
+  "map_newer": "Une version plus récente de {map} est dans le catalogue",
+  "map_here": "Carte d’ici",
+  "map_none_here": "Aucune carte d’ici à ouvrir ou télécharger",
+  "tb_kn_maps_fade": "Fondu de la carte, altitude",
+  "tb_kn_maps_min": "Approche minimale au-dessus d’une carte",
+  "tb_kn_maps_tile": "Largeur d’une tuile de carte à l’écran",
+  "tb_kn_maps_ride": "La caméra suit le sol en dessous de",
+  "tb_kn_maps_data": "Routes et noms sur la Terre"
 }

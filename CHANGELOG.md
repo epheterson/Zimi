@@ -89,6 +89,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 - Games: Drop Pin on your own map no longer says the map has not loaded over a map that has, and the map is only a map there: its search box, place chips, cards and menus are put away and the place's own name is taken off its labels.
 
 - Games: a daily played past midnight counts for the day it began; ZimCity's money warning follows this year's taxes, a kept city's buttons act on that city, and a paused city stops redrawing; Canasta fits eleven melds a side on a short wide screen.
+### Added
+
+- A map for any place from every view: the 3D view, its Go to sheet, an article with coordinates and the Almanac's place open the installed map that covers it, or offer the right one to download (smallest region, newest, size shown).
+- Your installed map's roads and place names appear on the 3D Earth as you come down, and a quiet hint offers a map where none covers what you are looking at.
 ### Almanac
 
 - **Missions:** Go to > Missions replays Apollo 11 from the pad to splashdown (landing on the Moon hands over to the site visit), Perseverance's approach, entry and landing at Jezero, and Voyager 1 and 2 past every planet they met, on the 3D view's own clock: a timeline of named phases to scrub or jump between, the vehicle with its stages and burns, a camera that tells each phase until you drag it. Plan a flight draws a porkchop plot to any planet and flies the transfer you pick.
@@ -97,6 +101,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 - **Stand where they landed:** in the Almanac's 3D view the Apollo, Luna, Chang'e, Viking, Mars rover, Venera and Huygens sites are models on their real ground with the Sun's real shadows; drive the Moon buggy or a Mars rover, watch a Saturn V leave its pad, and replay Curiosity's and Perseverance's whole journeys on the timeline.
 - **Spacecraft that look real:** the station and the probes are shaded as foil, cells and aluminium, lit by the Sun and the nearest world, and shadow themselves; with Almanac HD they are NASA's full models with their textures.
+### Highlights
+
 - **Stand where they landed:** in the Almanac's 3D view the Apollo, Luna, Chang'e, Viking, Mars rover, Venera and Huygens sites are models on their real ground with the Sun's real shadows; drive the Moon buggy (with a speed readout and a bounce on landing) or a Mars rover, watch a Saturn V leave its pad, and replay Curiosity's and Perseverance's whole journeys on the timeline.
 ### Almanac
 

@@ -225,6 +225,10 @@ hd/craft/ in the Almanac HD ZIM (scripts/build_craft_hd.py)
   - Mercury, Venus, Mars, Jupiter and Saturn at 8192 px: Solar System Scope's
     8k maps, CC BY 4.0, credited on the view while drawn.
 
+Map overlay on the 3D Earth (almanac-maps.js)
+  - Roads and place names read at run time from the installed Kiwix/StreetZim
+    map ZIM's vector tiles (OpenMapTiles schema). Map data (c) OpenStreetMap
+    contributors, ODbL; credited on the view while drawn. Nothing is shipped.
 craft-site-<model>-v1.bin, sites-v1.json (scripts/build_site_models.py)
   The landers, rovers, flags and the Saturn V the 3D view stands on the Moon and
   the planets (almanac-sites.js), in the ZCRF format of the probes above.

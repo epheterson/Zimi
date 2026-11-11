@@ -37,7 +37,6 @@ var _WIKI_SVG_LANG = '<svg aria-hidden="true" width="20" height="20" viewBox="0 
 var _WIKI_SVG_SIDE = '<svg aria-hidden="true" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M12 4v16"/></svg>';
 var _WIKI_SPLIT_MIN = 1100;     // px wide: two languages side by side
 var _WIKI_PANE_HEAD = 44;       // px: the other language's name and its close, over its pane
-var _WIKI_MAP_ZOOM = 12;        // a map opened on an article's coordinates: a town and around it
 var _WIKI_SVG_MAP = '<svg aria-hidden="true" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M9 4L3 6v14l6-2 6 2 6-2V4l-6 2-6-2z"/><path d="M9 4v14M15 6v14"/></svg>';
 // Where the next article lands, when it is this one in another language or
 // level: the section you were in ({k: its place among the article's
@@ -933,16 +932,17 @@ function _wikiLayout(frame) {
   // article has coordinates and a map of there is installed. After the
   // lead; if you have read past it by the time it comes, the page is held
   // where you are.
-  var place = null;
+  var spot = null, mapHere = null, mapAnswer = null;
   var geo = (article.querySelector('.geo') || {}).textContent || '';
   var gm = /(-?\d+(?:\.\d+)?)\s*[;,]\s*(-?\d+(?:\.\d+)?)/.exec(geo);
+  // The place's map is the shared flow's (mapflow.js): the installed map that holds it, or the one worth downloading.
+  var mapReady = Promise.resolve();
   if (gm) {
-    var pt = { lat: parseFloat(gm[1]), lng: parseFloat(gm[2]) };
-    var maps = (zimsCache || []).filter(function(z) { return z.kind === 'map' && _mapCovers(z, pt) !== false; });
-    // A map known to cover the place, then the smallest (the most detailed).
-    var area = function(z) { var b = z.map_bounds; return b && b.length === 4 ? Math.abs((b[2] - b[0]) * (b[3] - b[1])) : 1e9; };
-    maps.sort(function(a, b) { return (_mapCovers(b, pt) === true) - (_mapCovers(a, pt) === true) || area(a) - area(b); });
-    if (maps.length) place = { zim: maps[0].name, path: maps[0].main_path, pos: mapPositionHash(_WIKI_MAP_ZOOM, pt.lat, pt.lng) };
+    spot = { lat: parseFloat(gm[1]), lng: parseFloat(gm[2]) };
+    mapReady = _mapHere().then(function(m) {
+      mapHere = m;
+      return m && m.lookup(spot.lat, spot.lng);
+    }).then(function(answer) { mapAnswer = answer; }, function() {});
   }
   var renderStrip = function() {
     var items = (info.topic || []).map(function(tp) {
@@ -953,7 +953,9 @@ function _wikiLayout(frame) {
         icon + '<span><i>' + esc(tp.project.charAt(0).toUpperCase() + tp.project.slice(1)) + '</i>' +
         '<em' + (lang ? ' lang="' + escAttr(lang) + '"' : '') + '>' + esc(tp.title) + '</em></span></a></li>';
     });
-    if (place) items.push('<li><a href="#" class="zw-map">' + _WIKI_SVG_MAP + '<span><i>' + tH('wiki_map') + '</i><em>' + esc(_zimTitle(place.zim)) + '</em></span></a></li>');
+    var mapKind = mapHere && mapHere.outcome(mapAnswer);
+    var mapMap = mapKind === 'open' ? mapAnswer.installed[0] : mapKind === 'offer' ? (mapAnswer.offers[0] || mapAnswer.world[0]) : null;
+    if (mapMap) items.push('<li><a href="#" class="zw-map">' + _WIKI_SVG_MAP + '<span><i>' + tH('wiki_map') + '</i><em>' + esc(mapMap.title) + (mapKind === 'offer' ? ' ' + mapHere.DOWN_SVG : '') + '</em></span></a></li>');
     if (!items.length) return;
     var strip = ui(el('nav', 'zw-strip'));
     strip.setAttribute('aria-label', t('wiki_in_library'));
@@ -967,7 +969,7 @@ function _wikiLayout(frame) {
     var r = strip.getBoundingClientRect();
     if (r.bottom < 0) win.scrollTo(0, y + r.height + parseFloat(win.getComputedStyle(strip).marginTop) + parseFloat(win.getComputedStyle(strip).marginBottom));
     var mapA = strip.querySelector('.zw-map');
-    if (mapA) mapA.onclick = function(e) { e.preventDefault(); openArticle(place.zim, place.path, title, { pos: place.pos }); };
+    if (mapA) mapA.onclick = function(e) { e.preventDefault(); mapHere.go(spot.lat, spot.lng, title); };
   };
   var renderInfo = function() {
     renderStrip();
@@ -995,7 +997,8 @@ function _wikiLayout(frame) {
       else article.insertBefore(note, article.querySelector(':scope > .zw-next'));
     }
   };
-  _wikiInfo(zim, _splitPathFragment(path).base).then(function(d) {
+  Promise.all([_wikiInfo(zim, _splitPathFragment(path).base), mapReady]).then(function(got) {
+    var d = got[0];
     if (!d || frame.contentDocument !== doc) return;
     info = d;
     renderInfo();

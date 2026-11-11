@@ -3923,5 +3923,14 @@
   "alm_ms_ev_tmi_burn": "Ignição de injeção para Marte",
   "alm_ms_ev_sc_sep": "Separação da sonda",
   "tb_kn_ms_m20_launch": "Perseverance: lançamento e cruzeiro",
-  "tb_kn_ms_m20_launch_v": "A subida do Atlas V 541 segue os eventos publicados do lançamento; a altitude e a velocidade entre eles, o azimute, a órbita de estacionamento e a forma da injeção são supostos. Às 12:52 UT a sonda é a do JPL Horizons (-168), geocêntrica e depois heliocêntrica nos 203 dias até Marte"
+  "tb_kn_ms_m20_launch_v": "A subida do Atlas V 541 segue os eventos publicados do lançamento; a altitude e a velocidade entre eles, o azimute, a órbita de estacionamento e a forma da injeção são supostos. Às 12:52 UT a sonda é a do JPL Horizons (-168), geocêntrica e depois heliocêntrica nos 203 dias até Marte",
+  "map_offer_overlaps": "Sobrepõe-se a {maps}",
+  "map_newer": "Há um {map} mais recente no catálogo",
+  "map_here": "Mapa daqui",
+  "map_none_here": "Nenhum mapa daqui para abrir ou baixar",
+  "tb_kn_maps_fade": "Esmaecimento do mapa, altitude",
+  "tb_kn_maps_min": "Aproximação mínima sobre um mapa",
+  "tb_kn_maps_tile": "Largura de um bloco do mapa na tela",
+  "tb_kn_maps_ride": "A câmara acompanha o solo abaixo de",
+  "tb_kn_maps_data": "Ruas e nomes sobre a Terra"
 }

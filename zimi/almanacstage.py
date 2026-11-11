@@ -136,6 +136,7 @@ SHELL_SEEDS = (
 GUARDED = frozenset(
     (
         "_MAPS_SVG",
+        "_mapHere",
         "_armTapRelay",
         "_chromeReset",
         "_getPrefLanguages",
