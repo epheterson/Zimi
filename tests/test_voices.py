@@ -1608,7 +1608,9 @@ def test_the_engine_pins_agree_everywhere():
     with open(os.path.join(root, "Dockerfile"), encoding="utf-8") as f:
         installs = [ln for ln in f if ln.startswith("RUN pip install")]
     docker = {pin for ln in installs for pin in re.findall(r'"([^"]+)"', ln)}
-    assert set(voices.ENGINE_REQUIREMENTS) <= docker
+    # The add-ons image carries none of the big parts: the voice engines are set up on demand into the data folder, so the
+    # image must NOT install them (the pins above are the venv's and the extra's).
+    assert not (set(voices.ENGINE_REQUIREMENTS) & docker)
 
 
 def test_a_cancel_during_setup_stops_pip_and_leaves_nothing(bare, monkeypatch):

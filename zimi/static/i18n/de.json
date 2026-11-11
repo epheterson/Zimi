@@ -4139,5 +4139,6 @@
   "then_see_pad": "Die Rakete auf der Rampe, der Countdown bei dreißig Sekunden",
   "alm_go_small": "Kleine Welten",
   "go_view_grid": "Raster",
-  "go_view_list": "Liste"
+  "go_view_list": "Liste",
+  "voices_set_up_mb": "Einrichten ({mb} MB)"
 }

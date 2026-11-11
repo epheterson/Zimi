@@ -39,6 +39,7 @@ import sys
 import tempfile
 import urllib.parse
 
+from zimi import subproc
 from zimi.creator import CreateError, capture_proxy_url, check_public
 from zimi.captureproxy import CHROMIUM_PROXIED_ARGS
 
@@ -91,7 +92,7 @@ def singlefile_version():
     if not exe:
         return None
     try:
-        p = subprocess.run(
+        p = subproc.run(
             [exe, "--version"], capture_output=True, text=True, timeout=30
         )
     except (OSError, subprocess.SubprocessError):
@@ -239,7 +240,7 @@ def capture_page(
 
     say("capturing with SingleFile…")
     try:
-        proc = subprocess.run(cmd, capture_output=True, text=True, timeout=timeout)
+        proc = subproc.run(cmd, capture_output=True, text=True, timeout=timeout)
     except subprocess.TimeoutExpired:
         shutil.rmtree(workdir, ignore_errors=True)
         raise CreateError(

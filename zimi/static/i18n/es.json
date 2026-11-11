@@ -4139,5 +4139,6 @@
   "then_see_pad": "El cohete en su plataforma, la cuenta atrás en treinta segundos",
   "alm_go_small": "Mundos menores",
   "go_view_grid": "Cuadrícula",
-  "go_view_list": "Lista"
+  "go_view_list": "Lista",
+  "voices_set_up_mb": "Preparar ({mb} MB)"
 }

@@ -4139,5 +4139,6 @@
   "then_see_pad": "O foguete na plataforma, a contagem em trinta segundos",
   "alm_go_small": "Mundos menores",
   "go_view_grid": "Grade",
-  "go_view_list": "Lista"
+  "go_view_list": "Lista",
+  "voices_set_up_mb": "Configurar ({mb} MB)"
 }

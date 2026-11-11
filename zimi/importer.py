@@ -85,7 +85,7 @@ def _run_capture(cmd, timeout=60):
     """Run a short command, return ``(returncode, stripped stdout)``. Any
     launch failure reads as a nonzero exit — probes treat both the same."""
     try:
-        p = subprocess.run(cmd, capture_output=True, text=True, timeout=timeout)
+        p = subproc.run(cmd, capture_output=True, text=True, timeout=timeout)
     except (OSError, subprocess.SubprocessError):
         return 1, ""
     return p.returncode, (p.stdout or "").strip()

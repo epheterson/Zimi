@@ -4139,5 +4139,6 @@
   "then_see_pad": "La fusée sur son pas de tir, le compte à rebours à trente secondes",
   "alm_go_small": "Petits mondes",
   "go_view_grid": "Grille",
-  "go_view_list": "Liste"
+  "go_view_list": "Liste",
+  "voices_set_up_mb": "Installer ({mb} Mo)"
 }

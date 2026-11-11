@@ -4139,5 +4139,6 @@
   "then_see_pad": "火箭立在发射台上，倒计时三十秒",
   "alm_go_small": "小天体",
   "go_view_grid": "网格",
-  "go_view_list": "列表"
+  "go_view_list": "列表",
+  "voices_set_up_mb": "设置（{mb} MB）"
 }
