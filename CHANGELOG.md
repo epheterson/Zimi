@@ -115,6 +115,27 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 - **The Sun close up:** prominences and flares (illustrative, labelled so), loops over sunspot groups and a finer boiling surface.
 
 - **The sky you remember:** a Launches button in the 3D Earth lists every orbital launch since 1957 by year, site and rocket (Jonathan McDowell's GCAT), opens one at its pad at lift-off, draws its ascent and the satellites it left (reconstructed from the launch's orbit, or exact with your own Space-Track login), and says whether you could have seen it from your place, in the live sky too.
+### Highlights
+
+**Zimi**
+
+- `zimi check` checks a ZIM the way openZIM's zimcheck does: its checksum, metadata, icon, redirects and internal links.
+- An app that is open when you change the language is drawn again in the new one.
+- Manage can clear the catalog copies Zimi keeps: the cached catalog and the `.torrent` files of ZIMs you have not installed.
+
+**Games**
+
+- Tri Peaks and Blast open the right encyclopedia article from their About link, and Net no longer links to a page that does not exist.
+
+**Almanac**
+
+- The beach scene has clouds that glow after sunset where the Sun still reaches them, and a helicopter with blinking lights.
+- A magnifier on a planet's tip in the solar system opens the sky aimed at it.
+### Added
+
+- Search finds PDF collections' documents (nautilus and zimgit libraries) by their listed title, description and author and by the text inside the PDFs, from an index Zimi reads in the background beside the ZIM (#142).
+- `list_entries` (MCP tool and `/entries`): a source's entries by MIME type or path prefix, paged (#142).
+- **Lighter Docker image:** under 1 GB compressed (was about 2.3 GB unpacked, now about 0.7 GB). The browser, SingleFile, video tools and warc2zim are add-ons, added once from the first-run list or Settings > Server > Add-ons (Ask first, Automatically or Never).
 
 ## [1.15.4]
 

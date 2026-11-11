@@ -480,7 +480,7 @@ def test_life_on_the_horizon(browser, served):
         assert not errors, errors
     finally:
         ctx.close()
-    # Inland: the same beach and palms, the sea at half tide, and no tide claimed.
+    # Inland: the place's own land, no sea, and no tide claimed.
     ctx, pg, errors = _almanac(browser, served, place=DENVER)
     try:
         _settle(pg, DAY)
@@ -495,7 +495,12 @@ def test_life_on_the_horizon(browser, served):
         pg.wait_for_timeout(300)
         assert pg.evaluate("_skyState.sea") is None
         assert not pg.evaluate("_skyState.bodies.some((b) => b.type === 'sea')")
-        assert pg.evaluate("(_skyState.palmCache || []).some(Boolean)")
+        # The foreground is the place's own land (almanac-skyland.js): grass on the plains, not a beach, and no palms.
+        pg.wait_for_function("() => !!_skyState.land", polling=POLL_MS, timeout=60000)
+        pg.evaluate("_skyKick()")
+        pg.wait_for_timeout(300)
+        assert pg.evaluate("_osCardScene(_skyState)") in ("grass", "desert")
+        assert not pg.evaluate("(_skyState.palmCache || []).some(Boolean)")
         assert not errors, errors
     finally:
         ctx.close()

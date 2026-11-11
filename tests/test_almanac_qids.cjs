@@ -168,7 +168,17 @@ const PLAIN_ROWS = {
   sun_prom_height: 'the height this view draws prominences at',
   sun_flare: 'the rise and fade this view draws a flare with',
   cloud_clear: 'a clearing round the Sun and Moon, not a named thing',
-  heli_beacon: 'the flash rate of a light, not a named thing'
+  heli_beacon: 'the flash rate of a light, not a named thing',
+  air_rayleigh: 'a coefficient of the sky model, not a named thing',
+  air_rayleigh_h: 'a scale height of the sky model, not a named thing',
+  air_mie: 'a coefficient of the sky model, not a named thing',
+  air_mie_h: 'a scale height of the sky model, not a named thing',
+  air_ozone: 'a coefficient of the sky model, not a named thing',
+  cloud_base: 'a figure of the generated cloud deck, not a named thing',
+  cloud_thick: 'a figure of the generated cloud deck, not a named thing',
+  cloud_cover: 'a range the generated cloud deck is chosen over, not a named thing',
+  cloud_wind: 'a range the generated cloud deck is chosen over, not a named thing',
+  cloud_scale: 'a figure of the generated cloud deck, not a named thing'
 };
 const rowsSrc = grab(tbSrc, /var TB_CONST_ROWS = \{[\s\S]*?\n\};/, 'TB_CONST_ROWS');
 const rowKeys = [...rowsSrc.matchAll(/^\s+\['([a-z0-9_]+)', /gm)].map((m) => m[1]);

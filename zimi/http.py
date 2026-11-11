@@ -1281,6 +1281,7 @@ if os.path.isdir(_STATIC_DIR):
             + _static_hash("almanac-orrery.js")
             + _static_hash("almanac-sky.js")
             + _static_hash("almanac-skygl.js")
+            + _static_hash("almanac-onesky.js")
             + _static_hash("almanac-skyfacts.js")
             + _static_hash("almanac-skyscene.js")
             + _static_hash("zone-places.js")
@@ -1306,6 +1307,7 @@ if os.path.isdir(_STATIC_DIR):
             + _static_hash("almanac-maps.js")
             + _static_hash("almanac-look.js")
             + _static_hash("almanac-oneland.js")
+            + _static_hash("almanac-skyland.js")
             + _static_hash("almanac-sun.js")
             + _static_hash("almanac-skyfind.js")
             + _static_hash("almanac-terrain.js")
@@ -1314,6 +1316,7 @@ if os.path.isdir(_STATIC_DIR):
             + _static_hash("almanac-standhost.js")
             + _static_hash("almanac-standgl.js")
             + _static_hash("almanac-stand.js")
+            + _static_hash("almanac-oneair.js")
             + _static_hash("almanac-sites.js")
             + _static_hash("almanac-sites-ground.js")
             + _static_hash("almanac-sites-drive.js")
@@ -1350,7 +1353,7 @@ _OFFLINE_SHELL_FILE = re.compile(
     r"/static/((?:app\.(?:js|css)|almanac[\w-]*\.(?:js|css)|zone-places\.js"
     r"|world-map\.svg|tz-borders\.json|fieldguide[\w-]*\.(?:html|json|js)|highlights\.js|find\.js|readaloud\.js|manage\.js"
     r"|keepstore\.js|keepworker\.js|zimreader\.js|fzstd\.js|rosetta/manifest\.json"
-    r"|earth/(?:landmarks-v1\.json|sites-v1\.json|traverses-v1\.json|moon-v1\.webp|stars-v1\.bin|stars-names-v1\.json|constellations-v1\.json|milkyway-v1\.webp"
+    r"|earth/(?:landmarks-v1\.json|sites-v1\.json|traverses-v1\.json|moon-v1\.webp|stars-v1\.bin|landcover-v1\.bin|nightlights-v1\.bin|stars-names-v1\.json|constellations-v1\.json|milkyway-v1\.webp"
     r"|satellite-[\d.]+\.min\.js|three-r\d+\.min\.js|earth-(?:day|night)-v1\.webp))"
     r"(?:\?v=[0-9a-z]+)?)"
 )

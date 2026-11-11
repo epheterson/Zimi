@@ -90,11 +90,11 @@ function _alSelect(i) {
   _alStandRegister();
   _alKick();
 }
-// The ground view's sky (almanac-stand.js _aeStandSkySource) is given the selected launch's rocket, plume and batch, for as
+// The ground view's sky (almanac-onesky.js _osSkySource) is given the selected launch's rocket, plume and batch, for as
 // long as the launch is selected.
 function _alStandRegister() {
-  if (_al.standOff || typeof _aeStandSkySource !== 'function') return;
-  _al.standOff = _aeStandSkySource(function (body, lat, lon, ms) {
+  if (_al.standOff || typeof _osSkySource !== 'function') return;
+  _al.standOff = _osSkySource(function (body, lat, lon, ms) {
     return body === 'earth' && _al.flight && _al.cur ? _lfStandObjects(_al.flight, _al.cur, _al.depSource === AL_SRC.recon ? _al.dep : null, ms, lat, lon) : [];
   });
 }
@@ -136,6 +136,7 @@ function _alOrbitText(L) {
 var AL_CSS = [
   '.al-sheet{position:absolute;left:50%;transform:translateX(-50%);bottom:calc(150px + env(safe-area-inset-bottom));width:min(440px,calc(100% - 32px));max-height:46vh;overflow-y:auto;overscroll-behavior:contain;box-sizing:border-box;background:rgba(18,18,20,.985);border:1px solid var(--border);border-radius:12px;padding:10px 12px;font-size:13px;color:var(--text2);pointer-events:auto}',
   '.al-sheet[hidden]{display:none}',
+  '.al-sheet.al-sheet-page{position:fixed;z-index:10050;bottom:max(16px,env(safe-area-inset-bottom))}',
   '.al-sheet h3{margin:0 56px 8px 0;font-size:14px;font-weight:600;color:var(--text)}',
   '.al-x,.al-back{position:absolute;top:6px;background:none;border:0;color:var(--text2);font-size:20px;cursor:pointer;line-height:1;padding:4px 6px}',
   '.al-x{right:8px}.al-back{right:36px}',
@@ -152,6 +153,8 @@ var AL_CSS = [
   '.al-note{margin:6px 0 0;font-size:11.5px;opacity:.8}',
   '.at-when{margin:0 0 8px;font-size:15px;font-weight:600;color:var(--text)}',
   '.al-acts .at-primary,.al-acts .at-primary:focus-visible{color:#111;background:var(--amber);border-color:var(--amber)}',
+  '.al-acts .at-primary:disabled{opacity:.35;filter:grayscale(.6);cursor:default;pointer-events:none}',
+  '.al-note#at-no3d{margin:8px 0 10px}',
   '@media (hover:hover){.al-acts .at-primary:hover{color:#111;background:var(--amber);border-color:var(--amber);filter:brightness(1.08)}}',
   '.at-group{margin:10px 0 2px;font-size:11px;font-weight:600;letter-spacing:.06em;text-transform:uppercase;color:var(--text2)}',
   '.al-sheet a{color:var(--amber)}',
@@ -198,7 +201,8 @@ function _alOpenThens() {
 }
 function _alToggle() { if (_al.sheet) _alCloseSheet(); else _alOpenSheet(); }
 function _alOpenSheet() {
-  var host = _aeById('ae-view') || (_ae && _ae.el);
+  var plain = typeof _os3DAvailable === 'function' && !_os3DAvailable();   // no 3D view: the sheet stands over the page
+  var host = plain ? document.body : (_aeById('ae-view') || (_ae && _ae.el));
   if (!host) return;
   if (typeof _asCloseSheet === 'function') _asCloseSheet();
   if (!document.getElementById('al-style')) {
@@ -212,6 +216,7 @@ function _alOpenSheet() {
     _al.sheetEl.className = 'al-sheet';
     _al.sheetEl.setAttribute('role', 'dialog');
     _al.sheetEl.setAttribute('aria-label', _aeT('alm_launches'));
+    if (plain) _al.sheetEl.classList.add('al-sheet-page');
     host.appendChild(_al.sheetEl);
   }
   _al.sheet = true;
@@ -607,39 +612,3 @@ function _alExactPoints(ms, sc, n) {
 // ── The live sky ──
 // Called by almanac-sky.js _skyPaintActors. The rocket while it is up, with the sight it makes from this place, and the
 // released satellites that are lit.
-function _alSkyPaint(ctx, s) {
-  if (!_al.flight || !_al.cur) return;
-  var ms = _skyLive() ? Date.now() : s.nowTime, dpr = s.dpr, drawn = false, L = _al.cur;
-  var r = _lfSkyRocket(_al.flight, L, ms, s.lat, s.lon);
-  if (r && _skyInView(s, _skyX(s, r.az), 40)) {
-    var hx = _skyX(s, r.az), hy = _skyY(s, r.el), px = hx, py = hy;
-    r.trail.forEach(function (q, j) {
-      var qx = _skyX(s, q.az), qy = _skyY(s, q.el);
-      ctx.strokeStyle = 'rgba(255,236,200,' + (0.5 * (1 - j / r.trail.length)).toFixed(3) + ')';
-      ctx.lineWidth = dpr * 1.6;
-      ctx.beginPath(); ctx.moveTo(px, py); ctx.lineTo(qx, qy); ctx.stroke();
-      px = qx; py = qy;
-    });
-    if (r.sight === 'jellyfish') _skyLight(ctx, hx, hy, 9 * dpr, r.rgb, 0.35);
-    _skyLight(ctx, hx, hy, (r.sight === 'dot' || r.sight === 'day' ? 2.2 : 3) * dpr, r.sight === 'flame' ? r.rgb : [255, 244, 225], 0.95);
-    ctx.fillStyle = 'rgba(255,250,235,.85)';
-    ctx.font = (11 * dpr) + 'px sans-serif';
-    ctx.fillText(L.name, hx + 8 * dpr, hy - 8 * dpr);
-    s.bodies.push({ type: 'rocket', name: r.name, x: hx / dpr, y: hy / dpr, r: 5, alt: r.el, az: r.az, km: r.km });
-    drawn = true;
-  }
-  if (_al.dep && _al.depSource === AL_SRC.recon) {
-    var first = true;
-    _lfSkyBatch(_al.dep, ms, s.lat, s.lon).forEach(function (v) {
-      var x = _skyX(s, v.az);
-      if (!_skyInView(s, x, 4)) return;
-      var y = _skyY(s, v.el);
-      ctx.fillStyle = 'rgba(255,240,205,' + (AL_PEARL_ALPHA * v.share).toFixed(3) + ')';   // a pinpoint, no halo: a string of pearls, fading in the Earth's shadow
-      ctx.beginPath(); ctx.arc(x, y, AL_PEARL_PX * dpr, 0, 6.2832); ctx.fill();
-      if (first) s.bodies.push({ type: 'sat', name: _aeT('alm_launch_recon'), x: x / dpr, y: y / dpr, r: 4, alt: v.el, az: v.az, km: v.km });
-      first = false;
-      drawn = true;
-    });
-  }
-  if (drawn) s.issUp = true;
-}

@@ -5124,7 +5124,7 @@ var AE_FLY_OVERVIEW_MS = 2000, AE_FLY_OVERVIEW_STRETCH = 1.25, AE_FLY_OVERVIEW_K
 //   _aeStandAt(body, lat, lon)         enter the view: a promise of whether it started
 //   _aeGroundHeight(body, lat, lon)    metres above the body's mean radius; 0 until the body's terrain is loaded
 var AE_STAND_KEYS = ['earth', 'moon', 'mercury', 'venus', 'mars', 'io', 'europa', 'ganymede', 'callisto', 'titan', 'pluto'];
-var AE_STAND_SRCS = [_almAsset('/static/almanac-terrain.js'), _almAsset('/static/almanac-terrainshade.js'), _almAsset('/static/almanac-standlook.js'), _almAsset('/static/almanac-standgl.js'), _almAsset('/static/almanac-oneland.js'), _almAsset('/static/almanac-stand.js'), _almAsset('/static/almanac-standhost.js')];
+var AE_STAND_SRCS = [_almAsset('/static/almanac-terrain.js'), _almAsset('/static/almanac-terrainshade.js'), _almAsset('/static/almanac-standlook.js'), _almAsset('/static/almanac-standgl.js'), _almAsset('/static/almanac-oneland.js'), _almAsset('/static/almanac-stand.js'), _almAsset('/static/almanac-standhost.js'), _almAsset('/static/almanac-oneair.js')];
 var AE_STAND_FIGURE_SVG = '<svg class="ae-tool-svg" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="5.5" r="2.3"/><path d="M12 8.5v6M8.5 11.5l3.5-1 3.5 1M12 14.5l-2.5 5.5M12 14.5l2.5 5.5"/></svg>';
 var AE_STAND_EYE_M = 1.7;                      // an eye above the ground
 var AE_STAND_AIRLESS_DAY_MU = [-0.05, 0.12], AE_STAND_AIRLESS_DAY_LIM = 0.5;   // the Sun's sine of height where the stars go (-3 to 7 degrees), and the faintest star left
@@ -5936,11 +5936,13 @@ function _aeLaunchesLoad() {
 }
 // The there-and-then list, from the live sky: the 3D view opens (its sheet is where the list lives) and the list with it.
 function openAlmanacThens() {
-  if (!_aeIsOpen) openAlmanacEarth({ target: 'earth' });
+  // Without WebGL2 the 3D view cannot open: the list is plain data and is shown over the page (almanac-launches.js _alOpenSheet), its ground button off.
+  var plain = typeof _os3DAvailable === 'function' && !_os3DAvailable();
+  if (!_aeIsOpen && !plain) openAlmanacEarth({ target: 'earth' });
   _aeLaunchesLoad().then(function () {
     var tries = 0;
     (function go() {
-      if (typeof _aeReady === 'function' && _aeReady() && _aeIsOpen) _alOpenThens();
+      if (plain || (typeof _aeReady === 'function' && _aeReady() && _aeIsOpen)) _alOpenThens();
       else if (++tries < 200) setTimeout(go, 150);
     })();
   }).catch(function () {});
@@ -5958,7 +5960,7 @@ function _aeSatsAllBoot() {
 // The live sky (almanac-sky.js _skyPaintActors): the passes over the place, once the layer is on; it is brought up from
 // here when the sky is shown and the choice was kept.
 function _aeSatsAllSky(ctx, s) {
-  if (typeof _asSkyPaint === 'function') { _asSkyPaint(ctx, s); return; }
+  if (typeof _asSkyPrime === 'function') { _asSkyPrime(s); return; }
   if (!_aeSatsAllKept() || _aeSatsAllPromise) return;
   _aeSatsAllLoad().then(function () { _asSet(true); _skyKickNow(); }).catch(function () {});
 }
