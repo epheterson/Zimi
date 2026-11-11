@@ -1,0 +1,92 @@
+#!/bin/bash
+# Point the NAS at a release line, or say which one it runs. Rules: docs/release-lines.md.
+#
+#   scripts/nas-line show                     the line, commit and version the NAS runs now
+#   scripts/nas-line use <line> [--yes|-n]    deploy that line's tip from a clean temporary clone
+#
+# <line> is patch, minor, major, or any branch name. `use` clones the branch from origin (never
+# your working tree, so a dirty tree cannot leak in), prints the plan (deploy.sh --dry-run), then
+# asks before deploying; --yes skips the question, -n/--dry-run stops after the plan. It uses this
+# checkout's deploy.sh on the clone's files, so a line that predates the manifest deploys too.
+# Nothing in the NAS data folder is touched.
+#
+# Environment: ZIMI_LINE_PATCH / ZIMI_LINE_MINOR / ZIMI_LINE_MAJOR rename the branches;
+# ZIMI_LINES_REPO is where the clone comes from (default: this checkout's origin);
+# ZIMI_NAS_HOST, ZIMI_NAS_DIR are as in deploy.sh.
+# shellcheck disable=SC2029  # the paths are meant to expand here
+set -euo pipefail
+
+SELF=$(cd "$(dirname "$0")" && pwd)
+ROOT=$(cd "$SELF/.." && pwd)
+HOST=${ZIMI_NAS_HOST:-nas}
+NAS_DIR=${ZIMI_NAS_DIR:-/volume1/docker/kiwix}
+MANIFEST=$NAS_DIR/.zimi-deploy/manifest
+LINE_PATCH=${ZIMI_LINE_PATCH:-line/patch}
+LINE_MINOR=${ZIMI_LINE_MINOR:-line/minor}
+LINE_MAJOR=${ZIMI_LINE_MAJOR:-line/major}
+
+usage() { sed -n '2,/^set -euo/p' "$0" | sed '$d' | sed 's/^# \{0,1\}//'; }
+die() { echo "nas-line: $*" >&2; exit 2; }
+branch_of() {
+  case "$1" in patch) echo "$LINE_PATCH" ;; minor) echo "$LINE_MINOR" ;; major) echo "$LINE_MAJOR" ;; *) echo "$1" ;; esac
+}
+line_of() {
+  case "$1" in
+    "$LINE_PATCH") echo patch ;; "$LINE_MINOR") echo minor ;; "$LINE_MAJOR") echo major ;; *) echo "${1:-unknown}" ;;
+  esac
+}
+
+show() {
+  local man ref commit state when ver
+  man=$(ssh "$HOST" "cat $MANIFEST 2>/dev/null || true")
+  if [ -n "$man" ]; then
+    ref=$(printf '%s\n' "$man" | awk -F'\t' '$1=="# ref"{print $2}')
+    commit=$(printf '%s\n' "$man" | awk -F'\t' '$1=="# commit"{print $2}')
+    state=$(printf '%s\n' "$man" | awk -F'\t' '$1=="# state"{print $2}')
+    when=$(printf '%s\n' "$man" | awk -F'\t' '$1=="# time"{print $2}')
+  fi
+  ver=$(ssh "$HOST" "curl -sf http://localhost:8899/health" 2>/dev/null \
+    | python3 -c 'import sys,json; print(json.load(sys.stdin).get("version","?"))' 2>/dev/null || echo "no answer")
+  if [ -n "$man" ]; then
+    echo "NAS runs line $(line_of "$ref") ($ref) @ $commit, state $state, deployed $when; /health says version $ver"
+  else
+    echo "NAS has no deploy manifest yet (never deployed by the manifest deploy); /health says version $ver"
+  fi
+}
+
+use() {
+  local line=${1:-} mode=ask arg
+  [ -n "$line" ] || die "use needs a line (patch, minor, major or a branch)"
+  shift
+  for arg in "$@"; do
+    case "$arg" in
+      --yes) mode=yes ;;
+      -n|--dry-run) mode=plan ;;
+      *) die "unknown option '$arg'" ;;
+    esac
+  done
+  local branch repo
+  branch=$(branch_of "$line")
+  repo=${ZIMI_LINES_REPO:-$(git -C "$ROOT" remote get-url origin)}
+  tmp=$(mktemp -d "${TMPDIR:-/tmp}/zimi-line.XXXXXX")
+  trap 'rm -rf "${tmp:-}"' EXIT
+  git clone --quiet --depth 1 --branch "$branch" --single-branch "$repo" "$tmp/tree" \
+    || die "cannot clone branch '$branch' from $repo"
+  export ZIMI_DEPLOY_SRC=$tmp/tree ZIMI_DEPLOY_REF=$branch
+  "$ROOT/deploy.sh" --dry-run
+  [ "$mode" = plan ] && exit 0
+  if [ "$mode" = ask ]; then
+    [ -t 0 ] || die "not a terminal: pass --yes to deploy, or -n for the plan only"
+    read -r -p "Deploy $branch to the NAS? [y/N] " reply
+    case "$reply" in y|Y|yes) ;; *) echo "not deployed"; exit 1 ;; esac
+  fi
+  "$ROOT/deploy.sh"
+  echo "Switched: $(show)"
+}
+
+case "${1:-}" in
+  show) show ;;
+  use) shift; use "$@" ;;
+  -h|--help) usage ;;
+  *) die "usage: nas-line show | use <patch|minor|major|branch> [--yes|-n]" ;;
+esac
