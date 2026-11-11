@@ -187,3 +187,30 @@ def test_the_owner_filter_says_unassigned_and_the_rows_wrap_inside_the_panel(thr
     ), got  # nothing scrolls sideways
     assert got["rows"] == 3 and len(got["labels"]) == 3, got
     assert "TBD" not in got["text"] and "Unassigned" in got["text"], got
+
+
+# ── The hero disc ──
+def test_the_hero_disc_stays_put_under_a_drag_until_the_view_can_turn_it(no_map):
+    """Before the 3D view is up the disc is a picture: it must not slide under the finger; the drag is kept to turn the Moon by."""
+    from playwright.sync_api import sync_playwright
+
+    with sync_playwright() as pw:
+        br = pw.chromium.launch(args=GL_ARGS)
+        try:
+            ctx, pg = _open(br, no_map)
+            pg.wait_for_selector("#almanac-head .almanac-moon-open", timeout=60_000)
+            pg.wait_for_function(
+                "() => typeof _aeHandDrag === 'function'", timeout=60_000
+            )
+            box = "() => { var r = document.querySelector('#almanac-head .almanac-moon-open').getBoundingClientRect(); return [r.x, r.y]; }"
+            before = pg.evaluate(box)
+            for dx, dy in ((20, 4), (30, 6), (40, 2)):
+                pg.evaluate("([x, y]) => _aeHandDrag(x, y)", [dx, dy])
+            assert pg.evaluate(box) == before, "the disc moved under the drag"
+            assert pg.evaluate("() => _aeWaitDragPx") == {
+                "x": 90,
+                "y": 12,
+            }, "the drag is kept"
+            assert not pg.errors, pg.errors
+        finally:
+            br.close()

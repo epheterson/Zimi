@@ -8150,27 +8150,19 @@ function _aeHandDrag(dx, dy) {
   if (!_aeIsOpen || !_ae.gl) { _aeWaitDrag(dx, dy); return; }
   _aeDragBy(dx, dy);
 }
-// The view is not up yet (its parts are still being made): the disc follows the finger at once, in 2D, and the
-// drag so far is kept to turn the Moon by when the view lifts it. Shown as the disc leaning toward the finger.
-var AE_WAIT_DRAG_LEAN = 0.35, AE_WAIT_DRAG_MAX_PX = 48;
+// The view is not up yet (its parts are still being made): the disc is a picture, with nothing to turn, so it stays where it
+// is (breathing, alm-moon-waking) and the drag so far is kept, to turn the Moon by once the view lifts it. It never slides
+// under the finger: that read as the Moon being pushed across the page, not turned.
 var _aeWaitDragPx = null;
 function _aeWaitDrag(dx, dy) {
-  // No view is coming (no WebGL here): nothing would let the disc go again.
-  if (_ae && _ae.failed) return;
-  var hero = document.querySelector(AE_HERO_SEL);
-  if (!hero) return;
+  if (_ae && _ae.failed) return;   // no view is coming (no WebGL here): nothing to keep the drag for
   var p = _aeWaitDragPx || (_aeWaitDragPx = { x: 0, y: 0 });
   p.x += dx; p.y += dy;
-  var lean = function (v) { return _aeClamp(v * AE_WAIT_DRAG_LEAN, -AE_WAIT_DRAG_MAX_PX, AE_WAIT_DRAG_MAX_PX); };
-  hero.style.transition = 'none';
-  hero.style.transform = 'translate(' + lean(p.x).toFixed(1) + 'px,' + lean(p.y).toFixed(1) + 'px)';
 }
 // The disc is let go (before the view lifts it, which reads where it stands); returns the drag kept, if any.
 function _aeWaitDragRelease() {
   var p = _aeWaitDragPx;
   _aeWaitDragPx = null;
-  var hero = document.querySelector(AE_HERO_SEL);
-  if (hero) { hero.style.transition = ''; hero.style.transform = ''; }
   return p;
 }
 // A finger's move, in screen pixels (right, down), as the camera's turn: the
