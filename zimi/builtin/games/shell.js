@@ -191,6 +191,15 @@
   var ID = (root.location.pathname.split('/').pop() || '').replace(/\.html?$/, '') || 'index';
   var Shell = { id: ID };
   root.ZimiShell = Shell;
+  // Scripts ran: the shelf's "needs scripts" line (games.css) goes.
+  if (d && d.documentElement) d.documentElement.classList.add('gs-js');
+  // Kiwix JS: this page in a frame that is not Zimi's reader (kiwix-serve's viewer has /content/ in its path and no toolbar over the page).
+  // No Zimi server answers there, so nothing asks for one (/games-day, librarykit's probes), and its toolbar of KIWIX_JS_TOOLBAR_PX over the
+  // frame's bottom is kept clear through --host-bottom, which games.css folds into --safe-b.
+  var KIWIX_JS_TOOLBAR_PX = 48;
+  var kiwixJs = !!d && root.parent !== root && !inZimi() && String(root.location && root.location.pathname).indexOf('/content/') < 0;
+  if (kiwixJs && d.documentElement.style) d.documentElement.style.setProperty('--host-bottom', KIWIX_JS_TOOLBAR_PX + 'px');
+  Shell.kiwixJs = kiwixJs;
 
   // ── the daily edition ──
   // A page opened with ?daily=YYYY-MM-DD plays that day's edition: the same deal, board or puzzle for everyone on that date,
@@ -266,7 +275,7 @@
   var serverDay = null;
   Shell.serverDay = function () {
     if (!serverDay) {
-      serverDay = (root.fetch ? root.fetch('/games-day', { cache: 'no-store' }).then(function (r) { return r.ok ? r.json() : null; }) : Promise.resolve(null))
+      serverDay = (root.fetch && !kiwixJs ? root.fetch('/games-day', { cache: 'no-store' }).then(function (r) { return r.ok ? r.json() : null; }) : Promise.resolve(null))
         .then(function (j) {
           if (!j || !isDay(j.day)) return deviceDay();
           if (typeof j.utcOffsetMin === 'number') { try { root.localStorage.setItem(OFFSET_KEY, String(j.utcOffsetMin)); } catch (e) { /* blocked */ } }
@@ -583,12 +592,27 @@
   // A long name ("International Draughts") beside Undo and Menu on a phone: the title steps down a pixel at a time to
   // TITLE_MIN_PX before it is cut with an ellipsis.
   var TITLE_MIN_PX = 12;
+  // A stat that still leaves the title cut ("2048" as "2." beside "24 · Bestwert 24" at 390 px in German) goes on a second
+  // line under the title (gs-bar-stack), the way a daily's tag does, and the title gets the stat's width.
   function fitTitle() {
     var h1 = d.querySelector('.ar-bar h1');
     if (!h1) return;
-    h1.style.fontSize = '';
-    var px = parseFloat(root.getComputedStyle(h1).fontSize);
-    while (h1.scrollWidth > h1.clientWidth + 0.5 && px > TITLE_MIN_PX) { px -= 1; h1.style.fontSize = px + 'px'; }
+    var bar = h1.parentNode, stat = bar.querySelector(':scope > .ar-stat');
+    var cut = function () { return h1.scrollWidth > h1.clientWidth + 0.5; };
+    var shrink = function () {
+      h1.style.fontSize = '';
+      var px = parseFloat(root.getComputedStyle(h1).fontSize);
+      while (cut() && px > TITLE_MIN_PX) { px -= 1; h1.style.fontSize = px + 'px'; }
+    };
+    bar.classList.remove('gs-bar-stack');
+    shrink();
+    if (cut() && !hosted && stat && stat.offsetWidth && stat.textContent.trim()) { bar.classList.add('gs-bar-stack'); shrink(); }
+  }
+  // The bar changes as the game goes (a score grows, Pause becomes Resume, a button shows or hides): it is laid out again.
+  // fitTitle itself changes only the title's style and the bar's class, which are not watched.
+  function watchBar() {
+    var bar = d.querySelector('.ar-bar');
+    if (bar && root.MutationObserver) new root.MutationObserver(fitTitle).observe(bar, { childList: true, characterData: true, subtree: true, attributes: true, attributeFilter: ['hidden'] });
   }
 
   // ── motion, status and the shake ──
@@ -1408,6 +1432,8 @@
     grid.appendChild(tile('stats', T('shell.menu.stats'), '', function () { show(statsPane); }));
     if (aboutLink()) grid.appendChild(tile('about', T('shell.menu.about'), '', function () { show(aboutPane); }));
     card.appendChild(grid);
+    var home = homeLine();
+    if (home) card.appendChild(home);
     void options;
   }
   function summary() {
@@ -1716,7 +1742,7 @@
       probe.remove();
       var r = hosted ? root.frameElement.getBoundingClientRect() : { left: 0, right: w.innerWidth, bottom: w.innerHeight };
       var reach = function (inset, gap) { return Math.max(0, inset - gap) + 'px'; };
-      st.setProperty('--safe-b', reach(bottom, w.innerHeight - r.bottom));
+      st.setProperty('--safe-b', 'calc(' + reach(bottom, w.innerHeight - r.bottom) + ' + var(--host-bottom, 0px))');
       st.setProperty('--safe-l', reach(left, r.left));
       st.setProperty('--safe-r', reach(right, w.innerWidth - r.right));
     } catch (e) { /* not reachable: the page's own env() stands */ }
@@ -1725,6 +1751,39 @@
   if (hosted) {
     d.documentElement.classList.add('gs-hosted');
     var hostStyle = d.createElement('style'); hostStyle.textContent = HOST_CSS + hostMarkCss(HOME + 'mark.svg'); d.head.appendChild(hostStyle);
+  }
+  // ── where this came from ──
+  // Outside Zimi (Kiwix, a browser tab) one credit line: "© <year> [mark] Zimi", the mark and the name one link to Zimi's
+  // address (zimihome.js's ZIMI_HOME_MARK puts the mark after the name, or leaves it out).
+  // Inside Zimi it is noise and is never drawn. The address is zimihome.js's (written once there); the year is the build's
+  // (zimibuild.js, which ownzims writes into the ZIM; never the reader's clock; a page read from its folder has none and says
+  // "© Zimi"). Both load only out here. The shelf's last line, and the foot of a game's Menu.
+  var COPYRIGHT = '©';
+  function homeLine() {
+    var url = root.ZIMI_HOME;
+    if (hosted || !url) return null;
+    var year = root.ZIMI_BUILT_YEAR, at = root.ZIMI_HOME_MARK;
+    var mark = at === 'before' || at === 'after' ? h('img', { src: HOME + 'mark.svg', alt: '', width: '13', height: '13', class: at === 'after' ? 'gs-mark-end' : '' }) : null;
+    var link = h('a', { href: url, target: '_blank', rel: 'noopener' }, at === 'after' ? ['Zimi', mark] : [mark, 'Zimi']);
+    return h('div', { class: 'gs-home' }, [h('span', {}, [COPYRIGHT + ' ' + (year ? year + ' ' : ''), link])]);
+  }
+  Shell.homeLine = homeLine;
+  function loadScript(name, then) {
+    var s = d.createElement('script');
+    s.src = HOME + name;
+    s.onload = s.onerror = then;
+    d.head.appendChild(s);
+  }
+  if (!hosted && d.head) {
+    // The shelf's very last line, under Credits: the page ends on it.
+    var placeHome = function () {
+      var shelf = d.querySelector('.ar-shelf'), line = shelf && homeLine();
+      if (line) shelf.appendChild(line);
+    };
+    // The files can arrive before the shelf's header is parsed (shell.js runs in the head): then it waits for the page.
+    loadScript('zimihome.js', function () {
+      loadScript('zimibuild.js', function () { if (d.readyState === 'loading') d.addEventListener('DOMContentLoaded', placeHome); else placeHome(); });
+    });
   }
   // Measured now, again once the page is laid out (before that a phone may still report the default 980 px layout's
   // height), and whenever the window changes (turning the phone, a browser bar coming or going).
@@ -1841,7 +1900,7 @@
     var h1 = Shell.daily && d.querySelector('.ar-bar h1');
     if (h1 && !h1.querySelector('small')) h1.appendChild(h('small', { class: 'gs-daily-tag', 'data-t': 'daily.tag', text: T('daily.tag') }));
     if (h1) h1.parentNode.insertBefore(h('span', { class: 'gs-daily-tag gs-daily-flag', 'data-t': 'daily.tag', text: T('daily.tag') }), h1.nextSibling);
-    fitTitle(); root.addEventListener('resize', fitTitle);
+    fitTitle(); watchBar(); root.addEventListener('resize', fitTitle);
     if (helpFor(ID)) d.documentElement.classList.add('gs-help');
     // Settings that a game paints itself (a clock's text) are repainted when they change.
     settings.on(function () { if (game.paint) game.paint(); });

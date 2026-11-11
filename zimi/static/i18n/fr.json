@@ -165,7 +165,7 @@
   "alm_galactic_orbit": "{pct}% de l'orbite n°{n}",
   "alm_gps_coords": "GPS : {lat}, {lon}",
   "alm_gps_unavailable": "GPS indisponible",
-  "alm_gr_subtitle": "49 images sélectionnées par l'équipe de Carl Sagan, décodées à partir de signaux vidéo analogiques sur un disque phonographique plaqué or, désormais à plus de 24 milliards de km de la Terre.",
+  "alm_gr_subtitle": "49 des 116 images du disque, dans son ordre, choisies par l'équipe de Carl Sagan. Le disque est aujourd'hui à plus de 20 milliards de km de la Terre.",
   "alm_gr_title": "Images gravées sur le disque",
   "alm_greatest_elongation": "Plus grande élongation",
   "alm_h_abbr": "h",
@@ -4140,5 +4140,8 @@
   "alm_go_small": "Petits mondes",
   "go_view_grid": "Grille",
   "go_view_list": "Liste",
-  "voices_set_up_mb": "Installer ({mb} Mo)"
+  "voices_set_up_mb": "Installer ({mb} Mo)",
+  "alm_gr_pd": "domaine public",
+  "alm_gr_omitted": "Dans cette édition, les images qui ne sont pas dans le domaine public sont nommées, sans être montrées.",
+  "alm_gr_note": "Huit de ces images sont des photographies de la NASA, dans le domaine public. Les autres sont protégées par le droit d'auteur de leurs propriétaires, nommés à côté de chaque image : Jon Lomberg, UN Photo, Frank Drake, le National Astronomy and Ionosphere Center, Jay M. Pasachoff et Picturepoint, Londres. Elles figurent ici pour montrer le disque tel qu'il a été envoyé ; Zimi ne revendique aucun droit sur elles. Ce sont les numérisations des images originales faites par la NASA, non décodées du son du disque. Source : NASA, science.nasa.gov."
 }

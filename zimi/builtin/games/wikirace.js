@@ -311,8 +311,11 @@
   function go(path) {
     if (busy || !race || race.done || !race.begun) return;
     busy = true;
+    var mine = race;
     provider.open(path).then(function (page) {
       busy = false;
+      // A page that arrives after the race ended (Give up, New game, a slow disk) counts for nothing: one race, one result.
+      if (race !== mine || race.done) return;
       race.steps.push({ path: page.path, title: page.title, via: 'link' });
       saveDaily();
       if (Engine.isTarget(page, race.pair.end)) { show(page); arrive(page); } else show(page);
@@ -325,7 +328,8 @@
     if (busy || !race || race.done || race.steps.length < 2) return;
     var prev = race.steps[race.steps.length - 2];
     busy = true;
-    provider.open(prev.path).then(function (page) { busy = false; race.steps.push({ path: prev.path, title: prev.title, via: 'back' }); saveDaily(); show(page); }, function () { busy = false; });
+    var mine = race;
+    provider.open(prev.path).then(function (page) { busy = false; if (race !== mine || race.done) return; race.steps.push({ path: prev.path, title: prev.title, via: 'back' }); saveDaily(); show(page); }, function () { busy = false; });
   }
   function giveUp() {
     if (!race || race.done || !race.begun) return;

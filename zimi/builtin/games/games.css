@@ -73,13 +73,16 @@ button { font: inherit; color: inherit; }
 .ar-back:hover { color: var(--accent); }
 /* In dark the pebble gets a 1px ring so it never vanishes into the bar: the one allowed change to it. The ground is no lighter than
    the bar, so the ring is the ink at 28 percent. */
+/* Shown only without scripts (shell.js marks the root gs-js): Kiwix JS's restricted mode strips them. */
+html.gs-js .gs-needjs { display: none; }
+.gs-needjs { margin: 12px auto; max-width: 30em; padding: 0 var(--gutter); font-size: 14px; text-align: center; opacity: .8; }
 /* The screen's safe edges (the home indicator, a notch in landscape). In a page of its own they are the browser's; inside
    Zimi's reader the frame hears 0 from WebKit, so the shell measures how far the frame reaches into Zimi's own and sets
    these on the root (shell.js, hostInsets). Use these, never env(safe-area-inset-*), in a game. */
-:root { --safe-b: env(safe-area-inset-bottom, 0px); --safe-l: env(safe-area-inset-left, 0px); --safe-r: env(safe-area-inset-right, 0px); }
+:root { --host-bottom: 0px; --safe-b: calc(env(safe-area-inset-bottom, 0px) + var(--host-bottom)); --safe-l: env(safe-area-inset-left, 0px); --safe-r: env(safe-area-inset-right, 0px); }
 :root { --mark-ring: color-mix(in srgb, var(--ink) 28%, transparent); }
-:root[data-theme="dark"] .gs-m-stamp, :root[data-theme="dark"] .ar-back::after, :root[data-theme="dark"] body:not(:has(> .ar-bar)) .ar-sheet-card h2::before { filter: drop-shadow(1px 0 0 var(--mark-ring)) drop-shadow(-1px 0 0 var(--mark-ring)) drop-shadow(0 1px 0 var(--mark-ring)) drop-shadow(0 -1px 0 var(--mark-ring)); }
-@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) .gs-m-stamp, :root:not([data-theme="light"]) .ar-back::after, :root:not([data-theme="light"]) body:not(:has(> .ar-bar)) .ar-sheet-card h2::before { filter: drop-shadow(1px 0 0 var(--mark-ring)) drop-shadow(-1px 0 0 var(--mark-ring)) drop-shadow(0 1px 0 var(--mark-ring)) drop-shadow(0 -1px 0 var(--mark-ring)); } }
+:root[data-theme="dark"] .gs-m-stamp, :root[data-theme="dark"] .gs-home img, :root[data-theme="dark"] .ar-back::after, :root[data-theme="dark"] body:not(:has(> .ar-bar)) .ar-sheet-card h2::before { filter: drop-shadow(1px 0 0 var(--mark-ring)) drop-shadow(-1px 0 0 var(--mark-ring)) drop-shadow(0 1px 0 var(--mark-ring)) drop-shadow(0 -1px 0 var(--mark-ring)); }
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) .gs-m-stamp, :root:not([data-theme="light"]) .gs-home img, :root:not([data-theme="light"]) .ar-back::after, :root:not([data-theme="light"]) body:not(:has(> .ar-bar)) .ar-sheet-card h2::before { filter: drop-shadow(1px 0 0 var(--mark-ring)) drop-shadow(-1px 0 0 var(--mark-ring)) drop-shadow(0 1px 0 var(--mark-ring)) drop-shadow(0 -1px 0 var(--mark-ring)); } }
 /* Inside Zimi's reader the shell already has a way back (its arrow and the ZimiGames crumb):
    the page's own would be a second one (recent.js sets .in-zimi). */
 .in-zimi .ar-back { display: none; }
@@ -104,7 +107,9 @@ button { font: inherit; color: inherit; }
 .pl-main, .bg-main, .ms-main, .mj-main { flex: 1 0 auto; justify-content: flex-start; width: 100%; max-width: var(--column); margin-inline: auto; padding-bottom: max(var(--sp-5), var(--safe-b)); }
 @media (min-width: 700px) { .pl-main, .bg-main, .ms-main, .mj-main { justify-content: center; } }
 body:has(> main:is(.pl-main, .bg-main, .ms-main, .mj-main)) { display: flex; flex-direction: column; min-height: 100vh; min-height: 100svh; height: auto; }
-body.zc-game { padding-bottom: var(--safe-b); }
+/* A card table runs to the foot of the screen: the felt fills the home indicator's strip and the table keeps its cards above it
+   (padding on the body showed the page colour there, a white band under Blackjack on an iPhone). */
+body.zc-game .zc-table { padding-bottom: var(--safe-b); }
 /* The primary action is where the thumb is: a page whose own children include a row holding a .gs-primary button (or one marked
    .gs-dock) docks that row at the bottom safe area, and everything above it is centred in the space left (two equal spacers).
    Taller than the screen, the row stays pinned over the content on a ground-coloured fade. Touch screens at phone height and up:
@@ -229,6 +234,17 @@ html[data-anim="off"] *, html[data-anim="off"] *::before, html[data-anim="off"] 
 .ar-brand span { padding-bottom: 1.33px; }
 .ar-shelf header p { flex: 1 0 100%; margin: 0; color: var(--ink2); max-width: 60ch; }
 .sh-on header p { display: none; }
+/* Outside Zimi: the credit line (shell.js homeLine), "© year [mark] Zimi", sized and coloured as a credit. The mark and the
+   name are one link; where the mark sits is zimihome.js's ZIMI_HOME_MARK. Its centre is on the centre of the digits' height:
+   vertical-align -2.3px puts it there at 12px, measured to 0.01px (test_zimi_home_line_browser). */
+.gs-home { display: flex; align-items: center; margin: 0; font-size: 12px; line-height: 16px; color: var(--ink2); font-variant-numeric: tabular-nums; }
+.gs-home img { display: inline-block; width: 13px; height: 13px; vertical-align: -2.3px; margin-inline: 0 3px; }
+.gs-home img.gs-mark-end { margin-inline: 3px 0; }
+.gs-home a { color: inherit; text-decoration: underline; text-decoration-color: color-mix(in srgb, currentColor 45%, transparent); text-underline-offset: 2px; padding: 14px 12px; margin: -14px -12px; border-radius: var(--r-chip); }
+.gs-home a:hover { color: var(--ink); text-decoration-color: currentColor; }
+.gs-home a:focus-visible { outline: 2px solid var(--accent); outline-offset: -13px; }
+.ar-shelf > .gs-home { margin-top: 20px; }
+.gs-card > .gs-home { align-self: center; margin-top: 4px; }
 .sh-tools { display: flex; align-items: center; justify-content: flex-end; gap: 10px; flex: 1 1 0; min-width: 0; }
 .sh-search { position: relative; display: flex; align-items: center; flex: 1 1 auto; max-width: 340px; color: var(--ink3); }
 .sh-search svg { position: absolute; left: 11px; pointer-events: none; }
@@ -452,7 +468,9 @@ html.gs-hosted .ar-shelf header:not(:has(.sh-tools)) { display: none; }
 .ar-box-label { display: block; padding: 6px 2px 2px; }
 .ar-box:not(:first-child) .ar-box-label { padding-left: calc(var(--ov) + 2px); }
 /* A name wraps onto more lines before it is cut ("Crucigrama mini", "Cinco letras"), and only after three (a narrow box under another) does it end in dots. */
-.ar-box-label strong { display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 3; font-size: 13px; line-height: 1.25; overflow: hidden; overflow-wrap: anywhere; hyphens: auto; }
+.ar-box-label strong { display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 3; font-size: 13px; line-height: 1.25; overflow: hidden; overflow-wrap: normal; word-break: normal; hyphens: manual; }
+/* recent.js fitNames: a word too wide even at its smallest size ends in an ellipsis on one line, never broken in two. */
+.ar-box-label strong.ar-name-cut { display: block; white-space: nowrap; text-overflow: ellipsis; }
 .ar-box-label small { display: block; margin-top: 1px; font-size: var(--fs-caption); line-height: 1.3; color: #6b5d4a; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-variant-numeric: tabular-nums; }
 .ar-continue { flex: 1 1 360px; min-width: 0; }
 /* A phone: a tighter fan so about five boxes lie in view and the rest peek from the edge (the table scrolls). Only the top box has room for the time. */
@@ -586,6 +604,12 @@ dl.gs-meta { margin-top: 4px; padding-top: 12px; border-top: 1px solid var(--lin
 /* The bar's second line gives way (with an ellipsis) before the clock or the buttons do. */
 .gs-ready .ar-bar h1 { min-width: 0; }
 .gs-ready .ar-bar h1 small { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+/* shell.js fitTitle: a stat that would cut the title goes under it, small, like the daily tag; Back keeps the first column,
+   the buttons the columns after, each across both lines. */
+.ar-bar.gs-bar-stack { display: grid; grid-template-columns: auto minmax(0, 1fr); grid-auto-columns: auto; grid-auto-flow: column; grid-template-rows: auto auto; align-content: center; align-items: center; row-gap: 0; }
+.ar-bar.gs-bar-stack > * { grid-row: 1 / span 2; }
+.ar-bar.gs-bar-stack > h1 { grid-row: 1; grid-column: 2; align-self: end; }
+.ar-bar.gs-bar-stack > .ar-stat { grid-row: 2; grid-column: 2; align-self: start; justify-self: start; margin: 0; max-width: 100%; font-size: var(--fs-caption); line-height: 1.3; overflow: hidden; text-overflow: ellipsis; min-width: 0; }
 
 /* A controller is in use: show where focus is, whatever moved it. */
 html.gs-pad :focus { outline: 2px solid var(--accent); outline-offset: 2px; }

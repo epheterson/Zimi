@@ -187,7 +187,7 @@
   });
 
   Lib.library().then(function (list) {
-    var w = (list || []).filter(function (z) { return z.project === 'wiktionary' && Lib.primaryLang(z.language) === 'en'; })[0];
+    var w = Lib.englishWiktionary(list);
     dict = w ? w.name : '';
     var kept = ZimiShell.saved();
     if (kept && kept.g && kept.g.words && kept.g.words.length) { g = kept.g; dict = g.zim || ''; show(false); if (g.phase === 'reveal') status.say(g.won ? T('babel.right', { word: Lib.iso(g.words[g.round].answer), points: g.points[g.round] }) : T('babel.itWas', { word: Lib.iso(g.words[g.round].answer) })); }
