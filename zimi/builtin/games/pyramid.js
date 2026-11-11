@@ -106,17 +106,16 @@
   }
 
   // ── Layout ──────────────────────────────────────────────────────────────
-  // A covered card shows its index and clean paper, never its body's suit cut by the two cards on it (the suit starts at 0.49 of
-  // the card; Z.FAN_UP_SHARE is the most a fan opens): the rows step at least ROW_STEP_SHARE, at most the fan's widest.
-  var ROW_STEP_SHARE = 0.4, ROW_STEP_MAX = Z.FAN_UP_SHARE, HEIGHT_SHARE = 0.125;
+  // A covered card shows its index row and nothing more: never its body's suit or a court's picture cut by the two cards on it
+  // (the rows step at most Z.courtStep, a court's index row).
+  var HEIGHT_SHARE = 0.125;
 
   function place(state, m, view) {
     var P = state.piles, cw = m.cw, ch = m.ch, picked = view && view.picked;
     var x = function (col) { return m.left + col * m.step; };
-    // Stock, waste and the taken pile are one row right under the bar; the pyramid under it, its rows stepping down to fill
-    // the height: the more of a covered card shows, the easier the pyramid reads.
+    // Stock, waste and the taken pile are one row right under the bar; the pyramid under it, each covered card showing its index row.
     var rows = Z.solitaireRows(m), y2 = rows.top, y1 = rows.cols, slots = [], cards = [];
-    var rowStep = Z.cleanStep(Math.max(ch * ROW_STEP_SHARE, Math.min(ch * ROW_STEP_MAX, (rows.room - ch) / (ROWS - 1))), ch);
+    var rowStep = Z.courtStep(ch);
     var height = Math.max(m.H, y1 + rowStep * (ROWS - 1) + ch + m.pad);
     var at = function (p) { return { x: x(COLS / 2 - 0.5 - rowOf(p) / 2 + colOf(p)), y: y1 + rowOf(p) * rowStep }; };
 

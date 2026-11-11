@@ -162,8 +162,9 @@
       P[f].forEach(function (id, i) { cards.push({ id: id, pile: f, idx: i, x: fx(n), y: cy(n), up: true, hidden: i < P[f].length - 2 }); });
     });
     COLUMNS.forEach(function (c, n) {
-      P[c].forEach(function (id, i) { cards.push({ id: id, pile: c, idx: i, x: colX(n), y: y2 + i * step, up: true }); });
-      bottom = Math.max(bottom, y2 + Math.max(0, P[c].length - 1) * step + ch);
+      var yy = y2;
+      P[c].forEach(function (id, i) { cards.push({ id: id, pile: c, idx: i, x: colX(n), y: yy, up: true }); if (i < P[c].length - 1) yy += Z.stepAfter(id, step, ch); });
+      bottom = Math.max(bottom, yy + ch);
     });
     var height = Math.max(bottom + m.pad, m.H);
 

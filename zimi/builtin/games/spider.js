@@ -184,7 +184,7 @@
       var yy = y2;
       P[c].forEach(function (k, i) {
         cards.push({ id: k.id, pile: c, idx: i, x: x(n), y: yy, up: k.up });
-        if (i < P[c].length - 1) yy += k.up ? step : step * down;
+        if (i < P[c].length - 1) yy += k.up ? Z.stepAfter(k.id, step, ch) : step * down;
       });
       bottom = Math.max(bottom, yy + ch);
     });

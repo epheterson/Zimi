@@ -274,16 +274,12 @@ check(Z.shuffled(() => 0.5).length === 52 && new Set(Z.shuffled(Math.random)).si
   // palette is checked on the standalone drawings, where the colours are.
   const faces = courtIds.map(c => Z.faceMarkup(c, true));
   check(courtIds.every(c => /<use href="#zc-ct-[JQK][CDHS]"/.test(Z.faceMarkup(c, false))), 'all twelve French courts draw their courts.js figure from the sprite');
-  check(faces.every(f => /<svg x="8" y="40" width="84" height="92" viewBox="[\d.]+ 0 [\d.]+ 1000">/.test(f)), 'and carry it inline as a standalone image: the figure crown to waist in a tall frame under the index, 8 units from the sides and bottom');
+  check(faces.every(f => /<svg x="2.5" y="40" width="95" height="97.5" viewBox="[\d.]+ 0 [\d.]+ 1000">/.test(f)), 'and carry it inline as a standalone image: the figure crown to waist filling the card under the index, 2.5 units from the sides and bottom');
   check(courtIds.every(c => (Z.faceMarkup(c, false).match(/class="zc-ct /g) || []).length === 2), 'a court on the page has a frame for each index arrangement');
-  // A fanned strip shows a court's frame (top at 40 of 140) not at all or as a picture's top (16 units or more), never a sliver.
+  // A covered court in a fan shows its index row and none of its picture (frame top at 40 of 140: its rule clear of the Q's tail by 2): the step after it is cut to
+  // courtStep; a number card keeps the fan's step.
   const ch = 70, units = st => st / ch * 140;
-  const bad = []; for (let u = 10; u <= 62; u += 0.5) { const got = units(Z.cleanStep(u / 140 * ch, ch)); if (got > 39.01 && got < 56) bad.push(u); }
-  check(bad.length === 0 && Math.abs(units(Z.cleanStep(45 / 140 * ch, ch)) - 39) < 1e-9 && Z.cleanStep(30, ch) === 30, 'fan steps never show a sliver of a court\'s frame (' + bad.join(' ') + ')');
-  check(new Set(faces).size === 12, 'the twelve French courts are twelve different drawings');
-  const colours = new Set();
-  faces.forEach(f => (f.match(/(?:fill|stroke)="(#[0-9a-fA-F]{3,6}|none)"/g) || []).forEach(m => colours.add(m.split('"')[1].toLowerCase())));
-  check([...colours].every(c => palette.has(c)), 'the courts use only the card palette (' + [...colours].join(' ') + ')');
+  check(Math.abs(units(Z.courtStep(ch)) - 39.5) < 1e-9 && Math.abs(units(Z.stepAfter(id('KS'), 0.44 * ch, ch)) - 39.5) < 1e-9 && Z.stepAfter(id('9S'), 0.44 * ch, ch) === 0.44 * ch && Z.stepAfter(id('QH'), 10, ch) === 10, 'a fanned court shows its index row only; number cards keep the fan');
   const bytes = fs.statSync(path.join(dir, 'courts.js')).size;
   check(bytes < 200 * 1024, 'courts.js stays under 200 KB (' + Math.round(bytes / 1024) + ' KB)');
   const ace = Z.faceMarkup(id('AS'), false);

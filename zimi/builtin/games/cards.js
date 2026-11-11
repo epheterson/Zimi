@@ -327,15 +327,14 @@
       gold('M43 32 41.4 24.4 46 27.6 50 22.4 54 27.6 58.6 24.4 57 32z') + '<path d="M43 30.2H57" stroke="currentColor" stroke-width="1" fill="none"/>' + heldItalian(s, 67, 65.6, standalone, compact, set);
   }
 
-  // A French court: the figure in a tall frame filling the paper under the index, FACE.side from the left, right and bottom edges, so
-  // its margins are the index's. Under the row index it starts COURT_TOP down (clear of the Q's tail); under the column index (hands)
-  // it starts COURT_GAP under the column's suit. Both frames are in every face and cards.css shows the one that goes with the
-  // index (the standalone image has the row's). Without courts.js the drawn bust stands in.
-  // A fanned strip shows a court's frame either not at all or as a picture's top: fan steps between COURT_TOP and COURT_TOP +
-  // COURT_MIN_SHOWN of the height are moved up to just above the frame (cleanStep).
+  // A French court: the figure fills the card under the index, COURT_MARGIN in from the left, right and bottom edges (one even
+  // margin), from COURT_TOP down (just under the index row, the Q's tail included). Under the column index (hands) it starts
+  // COURT_GAP under the column's suit. Both frames are in every face and cards.css shows the one that goes with the index (the
+  // standalone image has the row's). Without courts.js the drawn bust stands in.
+  // A covered court in a fan shows its index row and nothing of the picture: the card after a court steps courtStep at most.
   function courtFrames() {
-    var w = FACE_W - 2 * FACE.side, bottom = FACE_H - FACE.side, colTop = FACE.top + FACE.colCap + FACE.colGap + FACE.colSuit + COURT_GAP;
-    return { row: { x: FACE.side, y: COURT_TOP, w: w, h: bottom - COURT_TOP }, col: { x: FACE.side, y: colTop, w: w, h: bottom - colTop } };
+    var w = FACE_W - 2 * COURT_MARGIN, bottom = FACE_H - COURT_MARGIN, colTop = FACE.top + FACE.colCap + FACE.colGap + FACE.colSuit + COURT_GAP;
+    return { row: { x: COURT_MARGIN, y: COURT_TOP, w: w, h: bottom - COURT_TOP }, col: { x: COURT_MARGIN, y: colTop, w: w, h: bottom - colTop } };
   }
   function courtFrame(kind, s, f, cls, standalone) {
     var art = root.ZimiCourts && root.ZimiCourts.panel ? root.ZimiCourts.panel(kind, s, f.x, f.y, f.w, f.h, standalone) : '';
@@ -348,14 +347,14 @@
     var f = courtFrames();
     return courtFrame(kind, s, f.row, 'zc-ct zc-ct-row', standalone) + (standalone ? '' : courtFrame(kind, s, f.col, 'zc-ct zc-ct-col', false));
   }
-  // A fan step (px, for a card ch px tall) that would show a sliver of a court's frame becomes the step just above the frame.
-  function cleanStep(step, ch) {
-    var u = step / ch * FACE_H;
-    return u > COURT_TOP - 1 && u < COURT_TOP + COURT_MIN_SHOWN ? (COURT_TOP - 1) / FACE_H * ch : step;
-  }
+  // The most a court card may show in a fan (px, for a card ch px tall): its index row, ending half a unit above its picture.
+  function courtStep(ch) { return (COURT_TOP - 0.5) / FACE_H * ch; }
+  function isCourt(id) { return rank(id) > 10; }
+  // The step after card `id` in a fan whose step is `step`: a court's is cut to its index row.
+  function stepAfter(id, step, ch) { return isCourt(id) ? Math.min(step, courtStep(ch)) : step; }
 
   // The same pip for the small card's simplified body.
-  var SMALL_SUIT_Y = 92, SMALL_SUIT_SCALE = 3.1, SUIT_BOX = 20, COURT_RX = 2.5, COURT_TOP = 40, COURT_GAP = 4, COURT_MIN_SHOWN = 16;   // SUIT_BOX: a suit shape's size in its own units
+  var SMALL_SUIT_Y = 92, SMALL_SUIT_SCALE = 3.1, SUIT_BOX = 20, COURT_RX = 2.5, COURT_TOP = 40, COURT_GAP = 3, COURT_MARGIN = 2.5;   // SUIT_BOX: a suit shape's size in its own units
   function smallSuit(s, standalone, shapes, prefix, extra) {
     return standalone ? '' : '<g class="zc-small" display="none">' + placed(s, 50, SMALL_SUIT_Y, SMALL_SUIT_SCALE, false, false, shapes, prefix) + (extra || '') + '</g>';
   }
@@ -1608,7 +1607,7 @@
   // it and use the screen; long ones close up towards the game's own floor.
   var FAN_UP_SHARE = 0.44;
   function fanStep(weight, room, ch, maxStep, minStep) {
-    return cleanStep(Math.max(minStep, Math.min(maxStep, weight > 0 ? (room - ch) / weight : maxStep)), ch);
+    return Math.max(minStep, Math.min(maxStep, weight > 0 ? (room - ch) / weight : maxStep));
   }
 
   // ── The solitaire page ───────────────────────────────────────────────────
@@ -1718,7 +1717,7 @@
     FACT_H: FACT_H, factLine: factLine, moonPhase: moonPhase, moonLitPath: moonLitPath, faceMarkup: faceMarkup, backMarkup: backMarkup,
     italianFaceMarkup: italianFaceMarkup, italianName: italianName,
     spanishFaceMarkup: spanishFaceMarkup, spanishName: spanishName, hanafudaFaceMarkup: hanafudaFaceMarkup, hanafudaCard: hanafudaCard, hanafudaName: hanafudaName, HANA_MONTHS: HANA_MONTHS, jokerMarkup: jokerMarkup, markSvg: markSvg,
-    fmtTime: fmtTime, plural: plural, winTime: winTime, solitairePage: solitairePage, stuckWhen: stuckWhen, describePile: describePile, fanStep: fanStep, cleanStep: cleanStep, FAN_UP_SHARE: FAN_UP_SHARE, openDown: openDown, solitaireRows: solitaireRows, statusTop: statusTop, pageEls: pageEls, idsOf: idsOf, restShare: restShare,
+    fmtTime: fmtTime, plural: plural, winTime: winTime, solitairePage: solitairePage, stuckWhen: stuckWhen, describePile: describePile, fanStep: fanStep, courtStep: courtStep, stepAfter: stepAfter, FAN_UP_SHARE: FAN_UP_SHARE, openDown: openDown, solitaireRows: solitaireRows, statusTop: statusTop, pageEls: pageEls, idsOf: idsOf, restShare: restShare,
     toast: toast, store: store, createStats: createStats, h: h, sheet: sheet, segmented: segmented, backsSheet: backsSheet, backsRow: backsRow,
     T: T, createBoard: createBoard, createSession: createSession, ensureSprite: ensureSprite,
     currentBack: function () { return currentBack; }
