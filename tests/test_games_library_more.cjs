@@ -38,6 +38,12 @@ const rng = seed => load(['librarykit.js']).GamesLib.rng(seed);
     // The real kiwix-serve (3.8.2): <name> is the ZIM's Name, the book's address is its file's name, in the text/html link.
     const real = Lib.parseCatalog('<feed><entry><title>Wikipedia</title><language>eng</language><name>wikipedia_en_all</name><articleCount>9</articleCount>' +
       '<link type="text/html" href="/kiwix/content/wikipedia_en_all_nopic_2026-01" /><author><name></name></author></entry></feed>');
+    // The word games read the biggest English Wiktionary, not the first listed (a real kiwix-serve listed Simple English first).
+    const twoWikt = [{ name: 'wiktionary_en-simple_all_nopic_2026-10', kind: 'wiki', project: 'wiktionary', language: 'en', article_count: 54668 },
+      { name: 'wiktionary_fr_all_nopic_2026-01', kind: 'wiki', project: 'wiktionary', language: 'fr', article_count: 9000000 },
+      { name: 'wiktionary_en_all_nopic_2026-02', kind: 'wiki', project: 'wiktionary', language: 'en', article_count: 9800000 }];
+    check(Lib.englishWiktionary(twoWikt).name === 'wiktionary_en_all_nopic_2026-02' && Lib.englishWiktionary(twoWikt.slice(1, 2)) === null && Lib.englishWiktionary([]) === null,
+      'kit: the word games take the biggest English Wiktionary, never another language\'s');
     check(real.length === 1 && real[0].name === 'wikipedia_en_all_nopic_2026-01' && real[0].project === 'wikipedia' && real[0].language === 'en', 'kit: a book is addressed by its kiwix-serve link, not its Name');
     check(Lib.number('1,404,890,000') === 1404890000 && Lib.number('8,848.86 m (29,031.7 ft)') === 8848.86 && Lib.number('9.6 million') === 9600000 && Lib.number('17,098,246 (6,601,667)') === 17098246 && isNaN(Lib.number('n/a')), 'kit: a number as a table writes it');
     check(Lib.number('−5') === -5 && Lib.number('1.4 billion') === 1.4e9 && Lib.number('6,650(7,088)') === 6650, 'kit: a minus sign, billions, a figure with another in brackets');

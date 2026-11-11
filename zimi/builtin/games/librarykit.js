@@ -192,6 +192,14 @@
     return libAnswer;
   };
 
+  // The English Wiktionary the word games read: the biggest of the library's, so a full one (English sections, translations,
+  // every word) wins over the Simple English one when both are there. kiwix-serve lists books in no useful order, and the
+  // first was the Simple English one on a real library: Bluff found no English sections and fell back, Bee knew fewer words.
+  Lib.englishWiktionary = function (list) {
+    var p = Lib.pickZim(list, 'wiktionary', 'en');
+    return p && p.exact ? p.zim : null;
+  };
+
   // A book whose name starts with `prefix` (Project Gutenberg's ZIMs are not wikis): the player's language, else the biggest.
   Lib.pickByName = function (list, prefix, lang) {
     var mine = (list || []).filter(function (z) { return z.name && z.name.indexOf(prefix) === 0; });
