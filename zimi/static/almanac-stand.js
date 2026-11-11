@@ -10,6 +10,7 @@
 // the viewer's feet. The orbit view's scene is not drawn meanwhile; it is updated at the pace the sky needs.
 
 var AE_STAND_DESCENT_MS = 3400, AE_STAND_ASCENT_MS = 1900, AE_STAND_FADE_MS = 260, AE_STAND_GIVE_UP_MS = 25000;
+var AE_STAND_TILT_SHARE = 0.5;               // the share of the descent (by height, on a log scale) in which the view comes up from straight down to the horizon
 var AE_STAND_PITCH_DEG = 3;                // the horizon sits a little below the middle of the picture
 var AE_STAND_FOV_MIN_DEG = 50, AE_STAND_FOV_MAX_DEG = 85, AE_STAND_HFOV_DEG = 64, AE_STAND_ZOOM_MIN = 0.06, AE_STAND_ZOOM_MAX = 1.6;
 var AE_STAND_PITCH_MAX_DEG = 89;
@@ -56,15 +57,30 @@ function _aeStandStart(key, lat, lon, handoff) {
     var body = AE_STAND_BODIES[key];
     // The flight comes to the nearest the orbit view lets the camera go over the place, looking straight down at it; the
     // ground is built meanwhile, and the swap to it happens where that flight ends.
-    var minDist = AE_TARGETS[key].min, surface = AE_TARGETS[key].surface;
-    pend.alt0 = Math.max(30, (minDist - surface) * AE_EARTH_RADIUS_KM);
+    // The flight stops where the built-in colour map is still sharp (a texel about AE_STAND_SHARP_TEXEL_PX pixels), not at the nearest the view allows,
+    // where its texels are blocks the size of a hand; the ground picks up from there at a few kilometres, over matching colour, by a cross-fade.
+    var minDist = AE_TARGETS[key].min, dist = _aeStandSharpDist(key);
+    pend.alt0 = AE_STAND_CUT_KM; pend.sharp = dist;
     _aeStandBuild(pend, body);
-    _aeFlyTo(key, minDist, _aeAzElOf(_aeStToScene(frame, _aeStPlaceVec(key, lat, lon))));
+    _aeFlyTo(key, dist, _aeAzElOf(_aeStToScene(frame, _aeStPlaceVec(key, lat, lon))));
     _ae.preset = null;
     _aeMarkViews();
     _aeKick();
     return true;
   });
+}
+var AE_STAND_CUT_KM = 3, AE_STAND_SHARP_TEXEL_PX = 1.5;   // the height the ground view starts from; how many pixels a texel of the colour map may span
+// The width of the body's colour map as the orbit view holds it.
+function _aeStandMapWidth(key) {
+  var S = _ae.gl, tex = key === 'earth' ? S.earthUni.dayMap.value : key === 'moon' ? S.moonUni.moonMap.value : S.planets && S.planets[key] ? S.planets[key].uni.map.value : null;
+  return tex && tex.image && tex.image.width ? tex.image.width : AE_STAND_MAP_FALLBACK_W;
+}
+var AE_STAND_MAP_FALLBACK_W = 2048;
+// How far from the body's centre the camera stands when one texel of its map is AE_STAND_SHARP_TEXEL_PX pixels: never nearer than the view's own nearest.
+function _aeStandSharpDist(key) {
+  var surface = AE_TARGETS[key].surface, focal = _aeFocalPx(), w = _aeStandMapWidth(key);
+  var d = surface + 2 * Math.PI * surface * focal / (AE_STAND_SHARP_TEXEL_PX * w);
+  return _aeClampDist(Math.max(AE_TARGETS[key].min, d));
 }
 // The 3D view open and ready (opening it on the body if it was not).
 function _aeStandViewUp() {
@@ -92,7 +108,7 @@ function _aeStandRestoreView(prev, st) {
   _ae.target = key; _ae.arrived = prev.arrived;
   if (frame && t) {
     var azel = _aeAzElOf(_aeStToScene(frame, _aeStPlaceVec(key, st.lat, st.lon)));
-    _ae.dist = _aeClampDist(t.min); _ae.az = azel.az; _ae.el_ = azel.el;
+    _ae.dist = st.pend && st.pend.sharp ? st.pend.sharp : _aeClampDist(t.min); _ae.az = azel.az; _ae.el_ = azel.el;
     _ae.pick = { body: key, lat: st.lat, lon: st.lon };   // the place, as a dot
   }
   _ae.preset = prev.target === key ? prev.preset : null;
@@ -408,7 +424,7 @@ function _aeStandGroundMesh(st, pend, U, mat) {
     uMap: { value: pend.tex || null }, uMapped: { value: pend.tex ? 1 : 0 }, uMapW: { value: 1 }, uPlaceUv: { value: [pend.lon / 360 + 0.5, pend.lat / 180 + 0.5] }, uGrey: { value: AE_STAND_GREY_MAP[st.key] ? 1 : 0 },
     uBase: { value: AE_STAND_BASE[st.key] || [0.5, 0.5, 0.5] }, uGain: { value: AE_STAND_TINT[st.key] || [1, 1, 1] },
     uAmbient: { value: [0, 0, 0] }, uSkyHor: { value: [0, 0, 0] }, uSkyZen: { value: [0, 0, 0] }, uE2: { value: [0, 0, 0] }, uDir2: { value: [0, 0, 1] },
-    uLommel: { value: a ? 0 : 1 }, uRough: { value: AE_STAND_ROUGH[st.key] || (st.b.fbm.amp > 100 ? 1.3 : 1) }, uRock: { value: AE_STAND_ROCK[st.key] || 0.25 }, uDetail: { value: st.key === 'earth' ? 1 : 0 }, uCloudDim: { value: 1 }, uKg: { value: 1 }, uGrass: { value: 0 }, uTundra: { value: 0 }, uCanopy: { value: 0 }, uHead: { value: [0, 1] }, uCover: { value: st.key === 'earth' ? 1 : 0 },
+    uLommel: { value: a ? 0 : 1 }, uRough: { value: AE_STAND_ROUGH[st.key] || (st.b.fbm.amp > 100 ? 1.3 : 1) }, uRock: { value: st.key in AE_STAND_ROCK ? AE_STAND_ROCK[st.key] : 0.25 }, uDetail: { value: st.key === 'earth' ? 1 : 0 }, uCloudDim: { value: 1 }, uKg: { value: 1 }, uGrass: { value: 0 }, uTundra: { value: 0 }, uCanopy: { value: 0 }, uHead: { value: [0, 1] }, uCover: { value: st.key === 'earth' ? 1 : 0 },
     uDiffuse: { value: d ? 1 : 0 }, uVis: { value: d ? d.vis : 1 }, uDirect: { value: 1 }, uDiffSky: { value: [0, 0, 0] }
   }, U);
   var ground = st.groundMesh = new THREE.Mesh(g, mat(AE_ST_GROUND_VERT, AE_ST_GROUND_FRAG, gu, {}));
@@ -442,7 +458,8 @@ var AE_STAND_SHADE_LOD = 1.5;              // the shadow grids hold wavelengths 
 var AE_STAND_SHADE_MOVE = 0.0044, AE_STAND_SHADE_EVERY_MS = 300, AE_STAND_SHADE_SLICE_MS = 5;   // the Sun has moved a quarter degree; not again sooner than this; the work a frame
 var AE_STAND_BASE = { ceres: [0.5, 0.48, 0.45] };
 var AE_STAND_ROUGH = { earth: 0.25 };   // the fine bumps' scale: the Earth's ground is turf and soil, not regolith
-var AE_STAND_ROCK = { earth: 0.015, moon: 0.28, mercury: 0.28, venus: 0.4, mars: 0.4, io: 0.2, europa: 0.08, ganymede: 0.22, callisto: 0.3, titan: 0.3, pluto: 0.15 };
+// Stones: none on the Earth (its grass and dry plains are not stony ground, and the land cover cannot say where it is bare per pixel).
+var AE_STAND_ROCK = { earth: 0, moon: 0.28, mercury: 0.28, venus: 0.4, mars: 0.4, io: 0.2, europa: 0.08, ganymede: 0.22, callisto: 0.3, titan: 0.3, pluto: 0.15 };
 function _aeStandStars(st, list) {
   var THREE = _ae.gl.THREE, n = list.count, pos = new Float32Array(3 * n), mag = new Float32Array(n), col = new Float32Array(3 * n), s = {};
   for (var i = 0; i < n; i++) {
@@ -917,11 +934,11 @@ function _aeStandView(st, now) {
   var lo = Math.log(AE_STAND_EYE_M / 1000), hi = Math.log(st.alt0), pitchLook = st.userPitch + _aeRad(AE_STAND_PITCH_DEG), down = -_aeRad(AE_STAND_PITCH_MAX_DEG);
   if (st.mode === 'descend') {
     st.altKm = Math.exp(hi + (lo - hi) * u);
-    st.pitch = down + (pitchLook - down) * _aeSmoother(_aeClamp((u - 0.1) / 0.9, 0, 1));
+    st.pitch = down + (pitchLook - down) * _aeSmoother(_aeClamp(u / AE_STAND_TILT_SHARE, 0, 1));   // the view is up on the horizon by the time the air is thick, not a downward view of grey
     if (u >= 1) { st.mode = 'ground'; st.pitch = pitchLook; }
   } else if (st.mode === 'ascend') {
     st.altKm = Math.exp(lo + (hi - lo) * u);
-    st.pitch = st.fromPitch + (down - st.fromPitch) * _aeSmoother(_aeClamp(u / 0.9, 0, 1));
+    st.pitch = st.fromPitch + (down - st.fromPitch) * _aeSmoother(_aeClamp((u - (1 - AE_STAND_TILT_SHARE)) / AE_STAND_TILT_SHARE, 0, 1));   // the way down, backwards: the view tips down over the last half
     if (u >= 1 && !st.fading) _aeStandFinishLeave(st);
   } else { st.altKm = AE_STAND_EYE_M / 1000; st.pitch = pitchLook; }
 }

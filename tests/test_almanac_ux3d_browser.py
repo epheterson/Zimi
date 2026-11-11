@@ -382,3 +382,37 @@ def test_the_descent_is_one_path_with_no_black_frame_and_the_ascent_is_the_same_
     assert end["dist"] >= end["fit"] - 1e-6 and end["pick"] and end["preset"] == "earth", end  # the body whole, the place marked
     assert end["dist"] >= start - 1e-6, (start, end)
     assert not pg.errors, pg.errors
+
+
+def test_with_reduced_motion_the_ground_is_a_cross_fade_not_a_flight(no_map):
+    from playwright.sync_api import sync_playwright
+
+    with sync_playwright() as pw:
+        br = pw.chromium.launch(args=GL_ARGS)
+        try:
+            ctx = br.new_context(viewport=VIEW, device_scale_factor=2, has_touch=True, is_mobile=True, service_workers="block", reduced_motion="reduce")
+            ctx.add_init_script("try { localStorage.setItem('zimi_almanac_place', %r); localStorage.setItem('zimi_cap', 'full'); } catch (e) {}" % LA)
+            pg = ctx.new_page()
+            pg.errors = []
+            pg.on("pageerror", lambda e: pg.errors.append(str(e)))
+            pg.goto(no_map + "/#almanac", wait_until="load")
+            pg.wait_for_function("() => typeof openAlmanacEarth === 'function'", timeout=120_000)
+            _open_3d(pg)
+            pg.evaluate("() => _aeGoTo(Date.UTC(2026, 5, 21, 20, 0))")
+            pg.wait_for_timeout(2000)
+            pg.evaluate(LOGGER)
+            pg.evaluate("() => _aeStandAt('earth', 34.05, -118.24)")
+            frames, saw_still = [], False
+            while True:
+                frames.append(_mean(pg))
+                saw_still = saw_still or pg.evaluate("() => !!document.querySelector('.ae-stand-still')")
+                if pg.evaluate("() => !!_ae.stand && _ae.stand.mode === 'ground'") or len(frames) > 120:
+                    break
+            log = pg.evaluate("() => window.__log")
+            assert min(frames) > DARK_MEAN, [round(f) for f in frames]
+            assert not [f for f in log if f["mode"] == "descend"], "no flight down under reduced motion: the ground at once"
+            pg.click("#ae-stand-back")
+            pg.wait_for_function("() => !_ae.stand && !_ae.fly", timeout=60_000, polling=250)
+            assert not pg.errors, pg.errors
+        finally:
+            br.close()

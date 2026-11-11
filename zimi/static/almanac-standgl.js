@@ -229,7 +229,7 @@ function _aeStTreeFrag(albLines, uniforms) {
   ].join('\n');
 }
 var AE_ST_TREE_FRAG = _aeStTreeFrag([
-  '  vec3 alb = vTree.z > 3.5 ? vec3(0.12, 0.11, 0.055) : vTree.z < 0.5 ? vec3(0.026, 0.05, 0.03) : vTree.z < 1.5 ? vec3(0.03, 0.05, 0.026) : vTree.z < 2.5 ? vec3(0.05, 0.09, 0.035) : vec3(0.04, 0.028, 0.02);',
+  '  vec3 alb = vTree.z > 3.5 ? vec3(0.2, 0.19, 0.1) : vTree.z < 0.5 ? vec3(0.026, 0.05, 0.03) : vTree.z < 1.5 ? vec3(0.03, 0.05, 0.026) : vTree.z < 2.5 ? vec3(0.05, 0.09, 0.035) : vec3(0.04, 0.028, 0.02);',
   '  alb *= (0.8 + 0.4 * vTree.y) * (0.6 + 0.4 * min(vTree.x, 1.0));'   // each tree its own shade, darker below, paler at the tips
 ].join('\n'), '');
 // Grass: blades in tufts, the ground's own colour (uGrassAlb) darker at the root and paler dry at the tip, swaying a little (uSway: 0 under reduced motion).
@@ -480,13 +480,13 @@ var AE_ST_GROUND_FRAG = [
   'uniform vec3 uAmbient, uSkyHor, uSkyZen, uE2, uDir2;',
   'uniform vec2 uHead; uniform float uCloudDim; uniform float uGrass, uTundra, uCanopy; uniform float uLommel, uRough, uRock, uDetail, uCover, uDiffuse, uVis, uDirect; uniform vec3 uDiffSky;',
   'varying vec3 vP, vN, vDir; varying float vH, vSea, vShade;',
-  // Rock, fractal bumps and mottling at the scales a pixel can show, all fixed to the ground (the camera never moves on it). Each octave's lattice is
-  // turned by its own angle: with all of them square to the same axes a grazing Sun drew their cells as squares.
+  // Rock, fractal bumps and mottling at the scales a pixel can show, all fixed to the ground (the camera never moves on it). Each octave is two
+  // lattices at different angles (turned again from one octave to the next): one lattice's cells, flat at their corners, showed as squares under a grazing Sun.
   'float fine(vec3 p, float foot) {',
   '  float h = 0.0;',
   '  for (int i = 0; i < 7; i++) {',
   '    float s = 0.05 * pow(3.1, float(i)), w = 1.0 - smoothstep(0.08, 0.35, 2.2 * foot / s);',
-  '    if (w > 0.0) { float a = 0.83 * float(i), ca = cos(a), sa = sin(a); vec3 q = vec3(ca * p.x - sa * p.y, sa * p.x + ca * p.y, p.z); h += vnoise(q / s + float(i) * 7.3) * ' + AE_ST_FINE_SLOPE.toFixed(3) + ' * s * w; }',
+  '    if (w > 0.0) { float a = 0.83 * float(i), ca = cos(a), sa = sin(a), cb = 0.7071 * (ca - sa), sb = 0.7071 * (sa + ca); vec3 q = vec3(ca * p.x - sa * p.y, sa * p.x + ca * p.y, p.z) / s + float(i) * 7.3, r = vec3(cb * p.x - sb * p.y, sb * p.x + cb * p.y, p.z + 3.1 * s) / s + float(i) * 3.7; h += 0.7071 * (vnoise(q) + vnoise(r)) * ' + AE_ST_FINE_SLOPE.toFixed(3) + ' * s * w; }',
   '  }',
   '  return h * uRough;',
   '}',
