@@ -7043,25 +7043,46 @@ function _keepWarmWhenIdle(kept) {
   if (window.requestIdleCallback) requestIdleCallback(go, { timeout: 4000 }); else setTimeout(go, 1500);
 }
 
-function _closeZimAbout() {
+// The ⋯ that raised a menu or a sheet: focus goes back to it when the sheet closes,
+// and the page's Back closes the sheet before it leaves the page (a step in history,
+// the way the Almanac's Look is, almanac-look.js).
+var _moreOpener = null;
+function _rememberMore(el) { _moreOpener = el || null; }
+function _refocusMore() {
+  var el = _moreOpener;
+  _moreOpener = null;
+  if (el && el.isConnected && typeof el.focus === 'function') el.focus({ preventScroll: true });
+}
+var _ziSwallow = false;
+function _ziPop(e) {
+  if (_ziSwallow) { _ziSwallow = false; return true; }
+  if (document.getElementById(_ZI_OVERLAY_ID) && !(e.state && e.state.ziAbout)) { _closeZimAbout(true); return true; }
+  return false;
+}
+function _closeZimAbout(fromHistory) {
   var ov = document.getElementById(_ZI_OVERLAY_ID);
   if (ov && ov.parentNode) ov.parentNode.removeChild(ov);
+  if (ov && fromHistory !== true && history.state && history.state.ziAbout) { _ziSwallow = true; history.back(); }
   _ziUnlockPage();
   document.removeEventListener('keydown', _ziKeydown);
+  if (ov) _refocusMore();
 }
 
-// Opens the panel immediately with a loading line, then fills it — the fetch
-// opens the archive, and on a cold library that is not instant. Every write
-// re-finds the body, so a panel closed mid-flight is never resurrected.
-function _openZimAbout(zim) {
-  _closeZimAbout();
+// The sheet About opens, with a loading line in it; returns the writer that fills its body.
+// Every write re-finds the body, so a sheet closed mid-flight is never resurrected.
+function _ziOpenPanel(titleKey) {
+  var opener = _moreOpener;
+  _closeZimAbout(true);
+  _moreOpener = opener;
+  var ae = document.activeElement;
+  if (ae && ae !== document.body && ae.blur && /^(input|textarea)$/i.test(ae.tagName)) ae.blur();  // the keyboard goes down first
   var ov = document.createElement('div');
   ov.className = 'zi-overlay';
   ov.id = _ZI_OVERLAY_ID;
   ov.innerHTML =
-    '<div class="zi-panel" role="dialog" aria-modal="true" aria-label="' + escAttr(t('about_zim')) + '">' +
-    '<div class="zi-head"><span class="zi-head-title">' + tH('about_zim') + '</span>' +
-    '<button class="zi-close" aria-label="' + escAttr(t('close')) + '" onclick="_closeZimAbout()">✕</button>' +
+    '<div class="zi-panel" role="dialog" aria-modal="true" aria-label="' + escAttr(t(titleKey)) + '">' +
+    '<div class="zi-head"><span class="zi-head-title">' + tH(titleKey) + '</span>' +
+    '<button class="zi-close" aria-label="' + escAttr(t('close')) + '" onclick="_closeZimAbout()">\u2715</button>' +
     '</div><div class="zi-body"><div class="zi-none">' + tH('loading') + '</div></div></div>';
   document.body.appendChild(ov);
   // Freeze the library behind the panel. Without this the page kept scrolling
@@ -7069,12 +7090,19 @@ function _openZimAbout(zim) {
   _ziLockPage();
   ov.addEventListener('click', function (e) { if (e.target === ov) _closeZimAbout(); });
   document.addEventListener('keydown', _ziKeydown);
+  if (!(history.state && history.state.ziAbout)) history.pushState(Object.assign({}, history.state, { ziAbout: 1 }), '', location.href);
   var closeBtn = ov.querySelector('.zi-close');
   if (closeBtn) closeBtn.focus({ preventScroll: true });
-  var write = function (html) {
+  return function (html) {
     var body = document.querySelector('#' + _ZI_OVERLAY_ID + ' .zi-body');
     if (body) body.innerHTML = html;
   };
+}
+
+// Opens the panel immediately with a loading line, then fills it: the fetch
+// opens the archive, and on a cold library that is not instant.
+function _openZimAbout(zim) {
+  var write = _ziOpenPanel('about_zim');
   // A ZIM only the phone has (copied from Files): its About is the phone's own.
   var local = !_zimInfo(zim) && _keepMeta(zim);
   if (local && local.complete) {
@@ -7162,10 +7190,16 @@ function _shortAge(tsSec) {
 
 var _FAV_MARK_SVG = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3.5l2.6 5.3 5.9.9-4.3 4.1 1 5.8L12 16.9l-5.2 2.7 1-5.8-4.3-4.1 5.9-.9z" fill="currentColor"/></svg>';
 var _CARD_MORE_SVG = '<svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="6" cy="12" r="1.7"/><circle cx="12" cy="12" r="1.7"/><circle cx="18" cy="12" r="1.7"/></svg>';
+// The one ⋯: on every tile and row of Home, and on a Discover card (cls 'dc-more').
+function _cardMoreHtml(cls) {
+  return '<button type="button" class="' + (cls || 'card-more') + '" aria-label="' + escAttr(t('more_actions')) + '" title="' + escAttr(t('more_actions')) +
+    '" onclick="event.preventDefault();event.stopPropagation();_cardMore(this)">' + _CARD_MORE_SVG + '</button>';
+}
 // The card's ⋯: its menu, opened under the button.
 function _cardMore(btn) {
   var card = btn.closest('[data-zim]'), r = btn.getBoundingClientRect();
   if (!card) return;
+  _rememberMore(btn);
   var app = card.getAttribute('data-app');
   _openZimMenu(app ? (_OWN_APP_ZIM[app] || '') : card.getAttribute('data-zim'), r.left, r.bottom + 4, false, card, app);
 }
@@ -7195,9 +7229,7 @@ function renderCardGrid(items, showStars, showCategory, countOf, tail) {
     // anchor (#49), and a click inside a link otherwise follows its href.
     const favMark = showStars && isFav
       ? '<span class="fav-mark" role="img" aria-label="' + escAttr(t('favorites')) + '" title="' + escAttr(t('favorites')) + '">' + _FAV_MARK_SVG + '</span>' : '';
-    const moreBtn = showStars
-      ? '<button type="button" class="card-more" aria-label="' + escAttr(t('more_actions')) + '" title="' + escAttr(t('more_actions')) + '" onclick="event.preventDefault();event.stopPropagation();_cardMore(this)">' + _CARD_MORE_SVG + '</button>'
-      : '';
+    const moreBtn = showStars ? _cardMoreHtml() : '';
     const catPrefix = showCategory && z.category ? '<span class="card-cat">' + esc(z.category) + '</span> &middot; ' : '';
     const badge = _langBadge(z, false, isTiles);
     const qidIcon = _canSwitchLanguage(z)
@@ -8941,7 +8973,7 @@ function _renderDiscover(el, items) {
       var _dateTitle = _now.toLocaleDateString(_lang, { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric' });
       var _seasonStr = _todaySeason(_now, _almHemisphere());
       var _teaser = _todayTeaser();
-      h += '<a class="discover-card" href="/#almanac" onclick="return _spaNav(event, openAlmanac)">' +
+      h += '<a class="discover-card" href="/#almanac" data-app="almanac" data-zim="" onclick="return _spaNav(event, openAlmanac)">' +
         _renderTodayCard() +
         '<div class="dc-body">' +
           '<div class="dc-source"><span>' + tH('today') + '</span></div>' +
@@ -8949,7 +8981,7 @@ function _renderDiscover(el, items) {
           '<div class="dc-blurb">' + _localMoonName(_m.name) + (_seasonStr ? ' \u00b7 ' + _seasonStr : '') + '</div>' +
           '<div class="dc-blurb">' + fmtPct(_m.illumination, 1) + ' ' + tH('alm_illuminated') + '</div>' +
           (_teaser ? '<div class="dc-blurb" style="color:var(--amber)">' + _teaser + '</div>' : '') +
-        '</div></a>';
+        _cardMoreHtml('dc-more') + '</div></a>';
       continue;
     }
 
@@ -9030,7 +9062,7 @@ function _renderDiscover(el, items) {
           '<div dir="auto" class="dc-blurb dc-quote">' + esc(cleanQuote) + '</div>' +
           _discoverSayHtml(cleanQuote, it.zim, 'sentence') +
           attrLine +
-        '</div></a>';
+        _cardMoreHtml('dc-more') + '</div></a>';
 
     // ─── Card: Word of the Day ──────────────────────────────────────
     // Full-width card with headword, part of speech, and definition.
@@ -9043,7 +9075,7 @@ function _renderDiscover(el, items) {
           _discoverSayHtml(displayTitle, it.zim) +
           (it.part_of_speech ? '<div class="dc-pos">' + esc(it.part_of_speech) + '</div>' : '') +
           (it.blurb ? '<div dir="auto" class="dc-def">' + esc(it.blurb) + '</div>' : '') +
-        '</div></a>';
+        _cardMoreHtml('dc-more') + '</div></a>';
 
     // ─── Card: Standard ─────────────────────────────────────────────
     // Thumbnail + source + title + blurb. Used for APOD, On This Day,
@@ -9085,7 +9117,7 @@ function _renderDiscover(el, items) {
           '<div dir="auto" class="dc-title">' + esc(displayTitle) + '</div>' +
           speakerHtml +
           showBlurb +
-        '</div></a>';
+        _cardMoreHtml('dc-more') + '</div></a>';
     }
   }
   h += '</div></div>';
@@ -9335,14 +9367,19 @@ function _moveZimTo(zim, category) {
     var bd = document.getElementById('ctx-backdrop');
     if (bd) bd.hidden = true;
     _ctxZim = null; _ctxApp = null; _ctxCard = null; _kbSub = null; _ctxCustomAction = null;
+    _refocusMore();
   }
 
   // On a phone a ZIM's menu is a sheet that comes up from the bottom, with the
   // ZIM it is about at its head; its submenus open in place under their row
   // instead of flying out. A pointer and a wide screen keep the menu at the click.
   var CTX_SHEET_MQ = '(max-width: 600px) and (pointer: coarse)';
-  function _ctxSheetWanted() { return !!_ctxZim && !!(window.matchMedia && matchMedia(CTX_SHEET_MQ).matches); }
+  function _ctxSheetWanted() { return !!(_ctxZim || _ctxApp) && !!(window.matchMedia && matchMedia(CTX_SHEET_MQ).matches); }
   function _ctxSheetHeadHtml(zim) {
+    if (_ctxApp) {
+      return '<div class="ctx-head"><span class="ctx-head-icon ctx-head-app">' + _appIcon(_ctxApp) + '</span><span class="ctx-head-text"><b>' + esc(_appAboutTitle(_ctxApp)) + '</b>' +
+        '<span>' + esc(_appCountLine(_ctxApp)) + '</span></span></div>';
+    }
     var z = _zimInfo(zim) || { name: zim };
     var icon = z.has_icon
       ? '<img src="/w/' + encodeURIComponent(zim) + '/-/icon" alt="" width="36" height="36">'
@@ -9565,7 +9602,7 @@ function _moveZimTo(zim, category) {
     var zim = _ctxZim, own = zim && _zimInfo(zim);
     var h = '<div class="ctx-item" data-action="app-open">' + tH('open') + '</div>';
     if (own && !IS_DESKTOP) h += '<div class="ctx-item" data-action="newtab">' + tH('open_new_tab') + '</div>';
-    if (own) h += '<div class="ctx-item" data-action="about">' + tH('about_zim') + '</div>';
+    h += '<div class="ctx-item" data-action="about-app">' + tH('about') + '</div>';
     if (own && _keepAvailable()) h += '<div class="ctx-sep"></div>' + _keepMenuHtml(zim);
     if (_userSession) h += '<div class="ctx-item" data-action="app-hide">' + tH('hide_from_home') + '</div>';
     if (own && manageEnabled) h += '<div class="ctx-sep"></div><div class="ctx-item danger" data-action="delete">' + tH('delete') + '</div>';
@@ -9599,6 +9636,7 @@ function _moveZimTo(zim, category) {
     var colls = (collectionsCache && collectionsCache.collections) || {};
     var h = '<div class="ctx-item" data-action="open">' + tH('open') + '</div>';
     if (!IS_DESKTOP) h += '<div class="ctx-item" data-action="newtab">' + tH('open_new_tab') + '</div>';
+    h += '<div class="ctx-item" data-action="random-zim">' + tH('random') + '</div>';
     h += '<div class="ctx-sep"></div>';
     h += '<div class="ctx-item" data-action="favorite">' + (isFav ? tH('remove_from_favorites') : tH('add_to_favorites')) + '</div>';
     // Collections submenu (hover to expand)
@@ -9812,7 +9850,13 @@ function _moveZimTo(zim, category) {
     } else if (action === 'open') {
       closeCtx(); enterSource(zim, true);
     } else if (action === 'about') {
-      closeCtx(); _openZimAbout(zim);
+      var opener = _moreOpener;
+      closeCtx(); _rememberMore(opener); _openZimAbout(zim);
+    } else if (action === 'about-app') {
+      var aboutApp = _ctxApp, appOpener = _moreOpener;
+      closeCtx(); _rememberMore(appOpener); _openAppAbout(aboutApp);
+    } else if (action === 'random-zim') {
+      closeCtx(); _randomFrom(zim);
     } else if (action.indexOf('keep-') === 0) {
       closeCtx(); _keepDo(action, zim);
     } else if (action === 'newtab') {
@@ -16793,6 +16837,44 @@ function _setUserApp(app, on) {
   Promise.resolve(_setUserPref('apps', shown)).then(redraw);
   redraw();
 }
+// About an app: what it is and what it draws on, drawn from the library list already in hand
+// (nothing is fetched). Each source it reads is a row that opens that ZIM's own About.
+var _ABOUT_ICON = '<svg aria-hidden="true" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M12 11v5.5"/><circle cx="12" cy="7.6" r="0.6" fill="currentColor"/></svg>';
+function _appAboutTitle(app) { return app === 'fieldguide' ? t('fieldguide_help_now') : _appTitle(app); }
+function _appAboutZims(app) {
+  var own = _OWN_APP_ZIM[app] && _zimInfo(_OWN_APP_ZIM[app]);
+  return own ? [own] : (app === 'almanac' || app === 'fieldguide' ? [] : _appZims(app).filter(Boolean));
+}
+function _appAboutHtml(app) {
+  var zims = _appAboutZims(app);
+  var rows = zims.map(function(z) {
+    var count = app === 'maps' || _OWN_APP_TITLE[app] ? '' : _appItemsHtml(app, z) || _zimCountHtml(z);
+    var line = [count, fmtSize(z.size_gb)].filter(Boolean).join(' &middot; ');
+    return '<button type="button" class="zi-src" onclick="_openZimAbout(\'' + escAttr(z.name) + '\')"><span class="zi-src-text"><b>' + esc(z.title || z.name) + '</b>' +
+      (line ? '<span>' + line + '</span>' : '') + '</span><span class="zi-src-go" aria-hidden="true">›</span></button>';
+  }).join('');
+  return '<div class="zi-id"><span class="zi-icon zi-app-icon">' + _appIcon(app) + '</span><div class="zi-id-text"><div class="zi-title">' + esc(_appAboutTitle(app)) + '</div>' +
+    '<div class="zi-desc">' + tH('app_about_' + app) + '</div></div></div>' +
+    (app === 'almanac' ? _almanacAccuracyHtml() : '') +
+    (rows ? '<div class="zi-k zi-src-head">' + tH('about_reads') + '</div><div class="zi-srcs">' + rows + '</div>' : '');
+}
+var _ALM_ACCURACY_KEYS = ['moon', 'seasons', 'sun', 'eclipses', 'tides', 'planets', 'islamic', 'chinese', 'deeptime', 'timezones'];
+// What the Almanac's figures are good to, in its own words (the lines the Almanac's reference carries too).
+function _almanacAccuracyHtml() {
+  return '<div class="zi-k zi-src-head">' + tH('alm_about_data') + '</div><div class="zi-desc">' + tH('alm_about_intro') + '</div><ul class="zi-acc">' +
+    _ALM_ACCURACY_KEYS.map(function(k) { return '<li>' + tH('alm_about_' + k) + '</li>'; }).join('') + '</ul>';
+}
+function _openAppAbout(app) {
+  _ziOpenPanel('about')(_appAboutHtml(app));
+}
+// The app the page is showing now, for its ⋯ in the top bar; '' on Home, a search, an article, Create, Manage.
+function _openAppId() {
+  if (_almanacOpen) return 'almanac';
+  if (_createOpen || mode === 'manage' || !readerOpen) return '';
+  return _isTubePage() ? 'tube' : _isExchangePage() ? 'exchange' : _isReddotPage() ? 'reddot' : _isWikiPage() ? 'wiki'
+    : _isBooksPage() ? 'books' : _isDictPage() ? 'dictionary' : _isFieldguidePage() ? 'fieldguide'
+    : _isMapPage() ? 'maps' : _isGamesZimOpen() ? 'games' : '';
+}
 // The apps to choose from, as the tiles they are on the home page: an icon
 // and a name, lit when offered (Eric: "the lil app tiles with icons and i
 // can select or deselect which to show").
@@ -17003,18 +17085,9 @@ function _appOfReaderUrl(url) {
 function _appTileFootHtml(app) {
   var zims = _appZims(app).concat(_OWN_APP_ZIM[app] && !_appZims(app).length ? [_zimInfo(_OWN_APP_ZIM[app])] : []);
   var dot = _freshDotHtml(zims.filter(Boolean));
-  var more = _appMenuHasMore(app)
-    ? '<button type="button" class="card-more" aria-label="' + escAttr(t('more_actions')) + '" title="' + escAttr(t('more_actions')) + '" onclick="event.preventDefault();event.stopPropagation();_cardMore(this)">' + _CARD_MORE_SVG + '</button>'
-    : '';
+  var more = _cardMoreHtml();
   return '<span class="card-foot"><span class="card-marks">' + dot + '</span>' + more + '</span>';
 }
-// Whether an app's menu has more than Open (showAppMenu): its own ZIM's About and keep, or Hide for a signed-in
-// person. A ⋯ that opens a menu of one item, the tap the tile already is, is no control at all.
-function _appMenuHasMore(app) {
-  var own = _OWN_APP_ZIM[app];
-  return !!((own && _zimInfo(own)) || _userSession);
-}
-
 function _appTileHtml(app, title, icon, names, openFn) {
   names = names.filter(function(n, i) { return names.indexOf(n) === i; });
   if (names.length) {
@@ -22885,7 +22958,7 @@ function _buildTopbarMenuHtml() {
   // listed Random and Language twice in the same bar (#68).
   if (_isNarrow()) {
     navGroup += '<button class="topbar-menu-item" onclick="_closeTopbarMenu();randomArticle(event)"><span class="dice" style="font-size:16px">&#x1F3B2;</span> ' + tH(_isMapPage() ? 'random_place' : 'random') + '</button>';
-    if (!_langMenuHidden()) navGroup += '<button class="topbar-menu-item" onclick="_closeTopbarMenu();toggleLangDropdown(event)"><svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.2"><circle cx="8" cy="8" r="6.5"/><ellipse cx="8" cy="8" rx="3" ry="6.5"/><line x1="1.5" y1="8" x2="14.5" y2="8"/></svg> ' + tH('language') + '</button>';
+    if (!_langMenuHidden() && !_almanacOpen) navGroup += '<button class="topbar-menu-item" onclick="_closeTopbarMenu();toggleLangDropdown(event)"><svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.2"><circle cx="8" cy="8" r="6.5"/><ellipse cx="8" cy="8" rx="3" ry="6.5"/><line x1="1.5" y1="8" x2="14.5" y2="8"/></svg> ' + tH('language') + '</button>';
     // Manage row: while downloads are active, carry the count and route the tap
     // straight to the downloads view (the badge on the ⋯ button is only a dot).
     var _mgSvg = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>';
@@ -22896,7 +22969,8 @@ function _buildTopbarMenuHtml() {
     // unauthenticated visitor who taps Manage gets the unified sign-in modal
     // (named user OR admin), and a signed-in user lands on their minimal account
     // card (name, access, log out). See manageFetch's 401 handler + renderManage.
-    if (_userSession) {
+    // The Almanac keeps Language and its way out inline on a phone.
+    if (_almanacOpen) { /* nothing more to list */ } else if (_userSession) {
       navGroup += '<div class="topbar-menu-divider" role="separator"></div>';
       navGroup += '<div class="topbar-menu-label">' + tH('signed_in_as') + ' ' + esc(_userSession.name) + '</div>';
       navGroup += '<button class="topbar-menu-item" onclick="_closeTopbarMenu();toggleManage(event)">' + _ACCT_ICON + ' ' + tH('manage') + '</button>';
@@ -22905,7 +22979,14 @@ function _buildTopbarMenuHtml() {
     }
   }
 
-  h = readerGroup;
+  // An app's own page: its name, and About (what it is, what it is reading right now).
+  var appId = _openAppId();
+  if (appId) {
+    h = '<div class="topbar-menu-label">' + esc(_appAboutTitle(appId)) + '</div>' +
+      '<button class="topbar-menu-item" onclick="_closeTopbarMenu();_rememberMore(document.querySelector(\'.topbar-more\'));_openAppAbout(\'' + appId + '\')">' + _ABOUT_ICON + ' <span class="tbm-label">' + tH('about') + '</span></button>';
+    if (readerGroup || navGroup) h += '<div class="topbar-menu-divider" role="separator"></div>';
+  }
+  h += readerGroup;
   // Divider only when both groups are present, so neither a reader-only (desktop)
   // nor a nav-only (mobile home) menu ends up with a stray separator.
   if (readerGroup && navGroup) h += '<div class="topbar-menu-divider" role="separator"></div>';
@@ -23013,6 +23094,14 @@ function _closeTopbarMenu() {
 
 
 // ── Random ──
+// A random page of one source, opened (a Home card's Random).
+async function _randomFrom(zim) {
+  try {
+    var data = await (await fetch('/random?zim=' + encodeURIComponent(zim))).json();
+    if (data && !data.error) openArticle(data.zim, data.path, data.title, data.pos ? {pos: data.pos} : undefined);
+    else _showToast(t('error'));
+  } catch (e) { _showToast(t('error')); }
+}
 async function randomArticle(event) {
   if (event) event.preventDefault();
   if (_createOpen) closeCreate();
@@ -23082,6 +23171,7 @@ document.addEventListener('keydown', e => {
   if (e.key === 'Escape') {
     // Topmost popovers first — otherwise Escape falls through to goBack()/close
     // and dumps a keyboard user out of the reader instead of shutting the popover.
+    if (document.getElementById(_ZI_OVERLAY_ID)) return;  // an About sheet: its own Escape closes it (_ziKeydown)
     if (_findIsOpen()) { _findClose(); return; }
     if (_extCur) { _extHide(); return; }
     if (_definePopover && _definePopover.classList.contains('open')) { _defineHide(); return; }
@@ -23165,6 +23255,8 @@ async function _enterSourceNoReader(name) {
 }
 
 window.addEventListener('popstate', async (e) => {
+  // A sheet About opened is a step in history: Back closes it and stays.
+  if (_ziPop(e)) return;
   // Same page, different place on the same map: only the hash changed. The
   // hashchange handler moves the map; there is nothing here to route. Judged
   // against the article on screen, not against the last URL this handler saw:

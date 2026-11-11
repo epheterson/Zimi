@@ -3490,14 +3490,18 @@
   .qid-badge { display: inline-block; margin-left: 5px; vertical-align: middle; color: var(--text3); opacity: 0.5; }
 
   /* ── The card's one control: ⋯ opens its menu ── */
-  .card-more {
+  .card-more, .dc-more {
     flex-shrink: 0; width: 44px; height: 44px; margin-block: -10px; margin-inline: 0 -10px; padding: 0;
     display: inline-flex; align-items: center; justify-content: center; border: none; border-radius: 22px; background: none;
     color: var(--text2); opacity: 0.6; cursor: pointer; -webkit-tap-highlight-color: transparent; touch-action: manipulation;
   }
-  .card-more svg { width: 20px; height: 20px; fill: currentColor; }
-  .card-more:hover, .card-more:focus-visible { opacity: 1; color: var(--amber); background: var(--amber-glow); }
+  .card-more svg, .dc-more svg { width: 20px; height: 20px; fill: currentColor; }
+  .card-more:hover, .card-more:focus-visible, .dc-more:hover, .dc-more:focus-visible { opacity: 1; color: var(--amber); background: var(--amber-glow); }
   .stat-card { position: relative; }
+  /* On a Discover card the ⋯ sits on the source line at the end of the body, over no text. */
+  .dc-more { position: absolute; margin: 0; top: -6px; inset-inline-end: 2px; }
+  .dc-quote-card .dc-more { top: 7px; inset-inline-end: 6px; }
+  .dc-body .dc-source, .dc-body .dc-header { padding-inline-end: 30px; }
   /* While a long-press is armed/fired (#37), suppress text selection on the
      pressed cards so the hold opens the menu instead of highlighting a label.
      Scoped to the armed root and only for the press duration (user-select
@@ -3568,6 +3572,8 @@
   .ctx-head-icon { width: 36px; height: 36px; flex: none; border-radius: 9px; overflow: hidden; background: var(--surface2); display: flex; align-items: center; justify-content: center; }
   .ctx-head-icon img { width: 36px; height: 36px; object-fit: cover; }
   .ctx-head-icon .icon-letter { font-size: 16px; }
+  .ctx-head-app { color: var(--amber); }
+  .ctx-head-app svg { width: 22px; height: 22px; }
   .ctx-head-text { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
   .ctx-head-text b { font-size: 15px; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .ctx-head-text span { font-size: 12.5px; color: var(--text2); }
@@ -3937,6 +3943,19 @@
     color: var(--text2); font-size: 20px; font-weight: 600;
   }
   .zi-id-text { min-width: 0; flex: 1; }
+  /* An app's About: its mark, then the sources it reads, each a row that opens that ZIM's About. */
+  .zi-app-icon { display: flex; align-items: center; justify-content: center; width: 48px; height: 48px; flex: none; border-radius: 8px; background: var(--surface2); color: var(--amber); }
+  .zi-src-head { margin: 4px 0 6px; padding: 0; }
+  .zi-acc { margin: 6px 0 14px; padding-inline-start: 18px; font-size: 12.5px; color: var(--text2); line-height: 1.45; }
+  .zi-acc li { margin-bottom: 4px; }
+  .zi-srcs { display: flex; flex-direction: column; }
+  .zi-src { display: flex; align-items: center; gap: 10px; width: 100%; min-height: 44px; padding: 6px 2px; border: 0; border-top: 1px solid var(--border); background: none; color: var(--text); font: inherit; text-align: start; cursor: pointer; -webkit-tap-highlight-color: transparent; touch-action: manipulation; }
+  .zi-src:hover, .zi-src:focus-visible { color: var(--amber); outline: none; }
+  .zi-src-text { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 1px; }
+  .zi-src-text b { font-size: 13.5px; font-weight: 600; overflow-wrap: anywhere; }
+  .zi-src-text span { font-size: 12px; color: var(--text2); }
+  .zi-src-go { color: var(--text3); font-size: 18px; }
+  [dir="rtl"] .zi-src-go { transform: scaleX(-1); }
   .zi-title { font-size: 16px; font-weight: 600; color: var(--text); line-height: 1.3; }
   .zi-desc { font-size: 12.5px; color: var(--text2); line-height: 1.45; margin-top: 3px; }
   .zi-long {
@@ -4090,7 +4109,7 @@
   .discover-card.dc-no-click:hover { background: var(--surface); border-color: var(--border); box-shadow: none; transform: none; }
   .dc-thumb { width: 100%; min-height: 120px; height: 120px; object-fit: cover; display: block; background: var(--surface2); }
   .dc-thumb.dc-book-cover { object-fit: contain; background: #1a1a1e; }
-  .dc-body { padding: 10px 12px; flex: 1; display: flex; flex-direction: column; gap: 2px; }
+  .dc-body { position: relative; padding: 10px 12px; flex: 1; display: flex; flex-direction: column; gap: 2px; }
   .dc-source { font-size: 11px; color: var(--text2); display: flex; align-items: center; gap: 6px; }
   .dc-zim-icon { width: 16px; height: 16px; border-radius: 3px; background: #fff; flex-shrink: 0; }
   .dc-source span { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
@@ -4373,6 +4392,31 @@
   .dc-dismiss::after, .lang-banner-dismiss::after, .search-chip-x::after, .topbar-search .search-help::after {
     content: ''; position: absolute; inset: -12px;
   }
+  /* The hit area, not the look (Eric: "enlarge the touch area only"). A control under 44px either way gets an invisible
+     box that brings it up to 44 and centres it, so nothing drawn or laid out moves. The percentages are the control's own
+     size, so the box is exactly as big as it is short and a control already 44 gets none. */
+  :is(.topbar .logo, .bc-icon, .manage-tab, .ms-nav-item, .manage-btn-action, .set-btn, .pill, .mc-row-clickable,
+      .footer a, .cat-heading.clickable, .rc-dot.mark.why, .topbar :is(.library-btn, .reader-btn, .night-btn, .random-btn, .lang-selector-btn, .manage-btn, .newtab-btn), .topbar-more, .lib-view-btn, .card-more) { position: relative; }
+  :is(.topbar .logo, .bc-icon, .manage-tab, .ms-nav-item, .manage-btn-action, .set-btn, .pill, .mc-row-clickable,
+      .footer a, .rc-dot.mark.why, .topbar-search .search-clear, .lib-view-btn, .card-more, .dc-more, .dc-dismiss, .lang-banner-dismiss, .search-chip-x)::after {
+    content: ''; position: absolute; inset: calc(max(0px, 44px - 100%) / -2);
+  }
+  /* The breadcrumb's icon has the search box 8px to its end: its box leans toward the wordmark instead. */
+  .bc-icon::after { inset-inline: -14px -4px; }
+  /* The Discover x sits right above the cards: its box takes the room above, not the gap's far side. */
+  .dc-dismiss::after { inset-block: -20px -8px; }
+  /* A heading that opens its category: the room above it (32px) is free, the room below (10px) is the gap to the cards. */
+  .cat-heading.clickable:not(:has(button, label, select))::after { content: ''; position: absolute; inset: -18px 0 -10px; }
+  /* The tab row scrolls, so it clips what hangs outside it: it gets the room above its tabs (the underline is their foot). */
+  .manage-tabs { padding-top: 12px; margin-top: -12px; }
+  .manage-tab::after { inset: -12px 0 0; }
+  /* The buttons at the bar's end are 6px apart: each takes half the gap, so they reach 42-44 wide and never touch. */
+  :is(.topbar :is(.library-btn, .reader-btn, .night-btn, .random-btn, .lang-selector-btn, .manage-btn, .newtab-btn), .topbar-more)::after {
+    content: ''; position: absolute; inset-block: calc(max(0px, 44px - 100%) / -2); inset-inline: -3px;
+  }
+  /* The clear x and the tips mark share the box's end: 35 wide each, 44 tall, side by side. */
+  .topbar-search .search-clear::after { inset-block: -11px; inset-inline: -5px -8px; }
+  .topbar-search .search-help::after { inset-block: -11px; inset-inline: -8px -5px; }
 }
 
 /* Settings > Creator: an engine's version is a quiet link to what it is. */
@@ -4400,7 +4444,7 @@
 :root.night-red .dc-today, :root.night-red .dice { filter: var(--red-picture) brightness(.55); }
 :root.night-red .dc-today :is(img, canvas) { filter: none; }
 /* Quiet things stay readable: no 30% stars or faded close marks at night. */
-:root.night-red .dc-dismiss, :root.night-red .card-more, :root.night-red .cat-heading-other { opacity: 1; }
+:root.night-red .dc-dismiss, :root.night-red .card-more, :root.night-red .dc-more, :root.night-red .cat-heading-other { opacity: 1; }
 :root.night-red #reader-frame { background: #000; }
 /* Reader View's menu keeps no cream or white at night: the switch's knob and the four theme swatches are drawn in the mode's reds, the swatches in their order of lightness. */
 :root.night-red .rv-knob { background: var(--on-amber); }

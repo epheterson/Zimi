@@ -632,9 +632,14 @@ body.alm-moon-wait .almanac-moon-sprite { opacity: 0; }
 .alm-crossref-active { background: var(--surface2); }
 .alm-crossref-active .alm-crossref-label { color: var(--amber); }
 
+/* A finger's hit area on the invitation buttons (32px drawn): the box grows, the look stays. */
+@media (pointer: coarse) {
+  .alm-invite-btn { position: relative; }
+  .alm-invite-btn::after { content: ''; position: absolute; inset: -6px 0; }
+}
+
 /* ── Almanac mobile ── */
 @media (max-width: 600px) {
-  body.almanac-mode .topbar-more { display: none !important; }
   body.almanac-mode .lang-selector-btn { display: flex !important; }
   body.almanac-mode .manage-btn { display: flex !important; }
   .alm-cards { grid-template-columns: repeat(2, 1fr); }

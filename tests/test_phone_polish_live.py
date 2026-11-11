@@ -111,25 +111,26 @@ def test_what_is_typed_stops_short_of_the_clear_button(page, zimi):
     assert gap >= 0, f"the text box reaches {-gap:.0f}px under the ×"
 
 
-def test_an_app_tile_has_a_menu_only_when_it_holds_more_than_open(page, zimi):
+def test_every_app_tile_has_a_menu_with_an_about(page, zimi):
     _home(page, zimi)
-    # Signed out, an app with no ZIM of its own (Dictionary) has Open alone: no ⋯. The Almanac has its own ZIM.
+    # Eric: "I want ... menu on every tile on homepage, every app". Signed out, an app with no ZIM of its own
+    # (Dictionary) has Open and About: a ⋯ on every tile.
     feet = page.evaluate(
         "() => { const was = _userSession; _userSession = null;"
         " const r = [_appTileFootHtml('dictionary'), _appTileFootHtml('almanac')]; _userSession = was; return r; }"
     )
-    assert "card-more" not in feet[0], feet[0]
+    assert "card-more" in feet[0], feet[0]
     assert "card-more" in feet[1], feet[1]
-    # Every ⋯ on the page opens more than Open (read in one go: Home redraws its tiles as the library settles).
+    # Every ⋯ on the page opens Open and an About (read in one go: Home redraws its tiles as the library settles).
     menus = page.evaluate("""() => [...document.querySelectorAll('.app-tile:not(.app-empty) .card-more')].map(btn => {
       _cardMore(btn);
-      const n = [...document.querySelectorAll('#zim-ctx-menu > .ctx-item')].length;
+      const acts = [...document.querySelectorAll('#zim-ctx-menu > .ctx-item')].map(i => i.dataset.action);
       _closeMenu();
-      return [btn.closest('.app-tile').dataset.app, n];
+      return [btn.closest('.app-tile').dataset.app, acts];
     })""")
     assert menus, "no app tile has a menu"
-    one = [app for app, n in menus if n < 2]
-    assert not one, f"a menu of one item: {one}"
+    bad = [app for app, acts in menus if "app-open" not in acts or "about-app" not in acts]
+    assert not bad, f"a tile whose menu lacks Open or About: {bad}"
 
 
 def test_a_discover_card_whose_picture_fails_keeps_a_picture_of_its_source(page, zimi):
