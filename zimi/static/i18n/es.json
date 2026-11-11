@@ -3966,8 +3966,7 @@
   "alm_launch_credit": "Datos de lanzamientos: Jonathan McDowell, GCAT (CC BY 4.0), a {date}",
   "alm_launch_payloads": "{n} satélites",
   "alm_launch_back": "Volver a la lista",
-  "alm_launch_pad": "En la plataforma",
-  "alm_launch_from_here": "Desde aquí",
+  "alm_launch_from_here": "Desde mi lugar",
   "alm_launch_from_pad": "Desde la plataforma",
   "alm_launch_on_ground": "Estar aquí",
   "alm_launch_no_place": "Elige tu lugar en el Almanaque para ver lo que habrías visto.",
@@ -4015,7 +4014,6 @@
   "tb_kn_launch_spread": "Semirrango de las diferencias de altura de un lote (largo del tren)",
   "tb_kn_launch_release": "Paso entre vecinos al soltarse",
   "tb_kn_launch_shells": "Capas de Starlink por inclinación, altura",
-  "alm_launch_hint": "Plataforma: de dónde salió. Ojo: tu cielo entonces. Figura: el cielo en la plataforma.",
   "alm_launch_hidden_today": "Los satélites de hoy se ocultan para esta fecha; se muestran los de este lanzamiento, reconstruidos.",
   "tb_kn_launch_raise_days": "Un lote de Starlink llega a su capa tantos días después de soltarse",
   "tb_kn_launch_falcon_sep": "Falcon 9: separación de etapas a los",
@@ -4150,5 +4148,11 @@
   "pdf_too_large": "Este PDF es demasiado grande para abrirlo aquí: está guardado comprimido en su ZIM.",
   "zim_missing_chunk": "No se puede abrir: falta {file}",
   "zi_license": "Licencia",
-  "zi_relation": "Relacionado"
+  "zi_relation": "Relacionado",
+  "alm_sats_f_group": "Constelación",
+  "alm_sats_f_orbit": "Órbita",
+  "alm_sats_f_owner": "Propietario",
+  "alm_sats_unassigned": "Sin asignar",
+  "alm_launch_watch": "Ver el lanzamiento",
+  "alm_launch_watch_from": "Ver desde"
 }

@@ -3966,8 +3966,7 @@
   "alm_launch_credit": "Startdaten: Jonathan McDowell, GCAT (CC BY 4.0), Stand {date}",
   "alm_launch_payloads": "{n} Satelliten",
   "alm_launch_back": "Zurück zur Liste",
-  "alm_launch_pad": "An der Rampe",
-  "alm_launch_from_here": "Von hier",
+  "alm_launch_from_here": "Von meinem Ort",
   "alm_launch_from_pad": "Von der Rampe",
   "alm_launch_on_ground": "Hier stehen",
   "alm_launch_no_place": "Wähle deinen Ort im Almanach, um zu sehen, was du hättest sehen können.",
@@ -4015,7 +4014,6 @@
   "tb_kn_launch_spread": "Halbe Spanne der Höhenunterschiede einer Gruppe (Länge der Kette)",
   "tb_kn_launch_release": "Abstand zwischen Nachbarn bei der Freisetzung",
   "tb_kn_launch_shells": "Starlink-Schalen nach Bahnneigung, Höhe",
-  "alm_launch_hint": "Rampe: Startort. Auge: dein Himmel damals. Figur: der Himmel an der Rampe.",
   "alm_launch_hidden_today": "Die heutigen Satelliten sind für dieses Datum ausgeblendet; gezeigt werden die dieses Starts, rekonstruiert.",
   "tb_kn_launch_raise_days": "Eine Starlink-Gruppe erreicht ihre Schale so viele Tage nach der Freisetzung",
   "tb_kn_launch_falcon_sep": "Falcon 9: Stufentrennung bei",
@@ -4150,5 +4148,11 @@
   "pdf_too_large": "Dieses PDF ist zu groß, um es hier zu öffnen: Es ist in seiner ZIM komprimiert gespeichert.",
   "zim_missing_chunk": "Lässt sich nicht öffnen: {file} fehlt",
   "zi_license": "Lizenz",
-  "zi_relation": "Gehört zu"
+  "zi_relation": "Gehört zu",
+  "alm_sats_f_group": "Konstellation",
+  "alm_sats_f_orbit": "Umlaufbahn",
+  "alm_sats_f_owner": "Betreiber",
+  "alm_sats_unassigned": "Nicht zugeordnet",
+  "alm_launch_watch": "Start ansehen",
+  "alm_launch_watch_from": "Ansehen von"
 }

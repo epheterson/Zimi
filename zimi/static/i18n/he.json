@@ -3966,8 +3966,7 @@
   "alm_launch_credit": "נתוני שיגור: ג׳ונתן מקדואל, GCAT (CC BY 4.0), נכון ל-{date}",
   "alm_launch_payloads": "{n} לוויינים",
   "alm_launch_back": "חזרה לרשימה",
-  "alm_launch_pad": "ליד המשגר",
-  "alm_launch_from_here": "מכאן",
+  "alm_launch_from_here": "מהמקום שלי",
   "alm_launch_from_pad": "מהמשגר",
   "alm_launch_on_ground": "לעמוד כאן",
   "alm_launch_no_place": "בחרו את מקומכם באלמנך כדי לראות מה יכולתם לראות.",
@@ -4015,7 +4014,6 @@
   "tb_kn_launch_spread": "חצי טווח הפרשי הגובה בקבוצה (אורך הרכבת)",
   "tb_kn_launch_release": "מרווח בין שכנים בשחרור",
   "tb_kn_launch_shells": "שכבות Starlink לפי נטייה, גובה",
-  "alm_launch_hint": "משגר: מאיפה יצאה. עין: השמיים שלכם אז. דמות: השמיים במשגר.",
   "alm_launch_hidden_today": "הלוויינים של היום מוסתרים לתאריך זה; מוצגים אלה של השיגור הזה, משוחזרים.",
   "tb_kn_launch_raise_days": "קבוצת Starlink מגיעה לשכבתה כך וכך ימים לאחר השחרור",
   "tb_kn_launch_falcon_sep": "פלקון 9: הפרדת הדרגות ב-",
@@ -4150,5 +4148,11 @@
   "pdf_too_large": "קובץ ה-PDF הזה גדול מכדי להיפתח כאן: הוא שמור דחוס בתוך ה-ZIM שלו.",
   "zim_missing_chunk": "לא ניתן לפתוח: הקובץ {file} חסר",
   "zi_license": "רישיון",
-  "zi_relation": "קשור ל"
+  "zi_relation": "קשור ל",
+  "alm_sats_f_group": "קבוצת לוויינים",
+  "alm_sats_f_orbit": "מסלול",
+  "alm_sats_f_owner": "בעלים",
+  "alm_sats_unassigned": "לא הוקצה",
+  "alm_launch_watch": "לצפות בשיגור",
+  "alm_launch_watch_from": "לצפות מ"
 }

@@ -3966,8 +3966,7 @@
   "alm_launch_credit": "Données de lancement : Jonathan McDowell, GCAT (CC BY 4.0), au {date}",
   "alm_launch_payloads": "{n} satellites",
   "alm_launch_back": "Retour à la liste",
-  "alm_launch_pad": "Sur le pas de tir",
-  "alm_launch_from_here": "D’ici",
+  "alm_launch_from_here": "De chez moi",
   "alm_launch_from_pad": "Depuis le pas de tir",
   "alm_launch_on_ground": "Se tenir ici",
   "alm_launch_no_place": "Choisissez votre lieu dans l’Almanach pour voir ce que vous auriez vu.",
@@ -4015,7 +4014,6 @@
   "tb_kn_launch_spread": "Demi-étendue des écarts d’altitude d’un lot (longueur du chapelet)",
   "tb_kn_launch_release": "Écart entre voisins au largage",
   "tb_kn_launch_shells": "Couches Starlink par inclinaison, altitude",
-  "alm_launch_hint": "Pas de tir : d’où elle est partie. Œil : votre ciel à ce moment. Silhouette : le ciel au pas de tir.",
   "alm_launch_hidden_today": "Les satellites d’aujourd’hui sont masqués pour cette date ; ceux de ce lancement sont reconstitués.",
   "tb_kn_launch_raise_days": "Un lot Starlink atteint sa couche autant de jours après le largage",
   "tb_kn_launch_falcon_sep": "Falcon 9 : séparation des étages à",
@@ -4150,5 +4148,11 @@
   "pdf_too_large": "Ce PDF est trop gros pour s’ouvrir ici : il est stocké compressé dans son ZIM.",
   "zim_missing_chunk": "Impossible à ouvrir : {file} manque",
   "zi_license": "Licence",
-  "zi_relation": "Lié à"
+  "zi_relation": "Lié à",
+  "alm_sats_f_group": "Constellation",
+  "alm_sats_f_orbit": "Orbite",
+  "alm_sats_f_owner": "Propriétaire",
+  "alm_sats_unassigned": "Non attribué",
+  "alm_launch_watch": "Voir le lancement",
+  "alm_launch_watch_from": "Voir depuis"
 }

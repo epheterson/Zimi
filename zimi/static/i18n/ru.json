@@ -3966,8 +3966,7 @@
   "alm_launch_credit": "Данные о запусках: Джонатан Макдауэлл, GCAT (CC BY 4.0), на {date}",
   "alm_launch_payloads": "Спутников: {n}",
   "alm_launch_back": "К списку",
-  "alm_launch_pad": "На стартовой",
-  "alm_launch_from_here": "Отсюда",
+  "alm_launch_from_here": "Из моего места",
   "alm_launch_from_pad": "Со стартовой",
   "alm_launch_on_ground": "Встать здесь",
   "alm_launch_no_place": "Выберите своё место в Альманахе, чтобы увидеть, что можно было увидеть.",
@@ -4015,7 +4014,6 @@
   "tb_kn_launch_spread": "Половина размаха высот группы (длина «цепочки»)",
   "tb_kn_launch_release": "Шаг между соседями при отделении",
   "tb_kn_launch_shells": "Оболочки Starlink по наклонению, высота",
-  "alm_launch_hint": "Площадка: откуда ушла. Глаз: ваше небо тогда. Фигура: небо на площадке.",
   "alm_launch_hidden_today": "Сегодняшние спутники на эту дату скрыты; показаны спутники этого запуска, реконструированные.",
   "tb_kn_launch_raise_days": "Группа Starlink выходит на свою оболочку через столько дней после отделения",
   "tb_kn_launch_falcon_sep": "Falcon 9: разделение ступеней на",
@@ -4150,5 +4148,11 @@
   "pdf_too_large": "Этот PDF слишком большой, чтобы открыть его здесь: он хранится в своём ZIM в сжатом виде.",
   "zim_missing_chunk": "Не открывается: нет файла {file}",
   "zi_license": "Лицензия",
-  "zi_relation": "Связан с"
+  "zi_relation": "Связан с",
+  "alm_sats_f_group": "Группировка",
+  "alm_sats_f_orbit": "Орбита",
+  "alm_sats_f_owner": "Владелец",
+  "alm_sats_unassigned": "Не назначен",
+  "alm_launch_watch": "Смотреть запуск",
+  "alm_launch_watch_from": "Смотреть с"
 }

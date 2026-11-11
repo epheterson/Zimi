@@ -60,7 +60,7 @@ LIGHT = np.array(
 )  # toward the Sun: upper left, a little toward the viewer
 LIGHT = LIGHT / np.linalg.norm(LIGHT)
 WRAP = 0.38  # how much of the dark side still shows
-SATURN_R = 0.62  # Saturn's disc, as a fraction of the cell, leaving room for the rings
+SATURN_R = 0.44  # Saturn's disc, as a fraction of the cell: small enough that the whole ring (2.05 radii out) stays inside the cell
 RING_TILT = -0.32  # radians
 RING_FLATTEN = 0.32
 RING_INNER, RING_OUTER = (
@@ -142,7 +142,7 @@ def _rings(size, supersample, planet_r_px, front):
     return np.dstack([np.broadcast_to(tone, (n, n, 3)), alpha])
 
 
-SUN_R = 0.3          # the Sun's bright disc, as a fraction of the cell; the rest of the cell is its glow
+SUN_R = 0.3  # the Sun's bright disc, as a fraction of the cell; the rest of the cell is its glow
 SUN_CORE = np.array([1.0, 0.97, 0.82], dtype=np.float32)
 SUN_RIM = np.array([1.0, 0.62, 0.16], dtype=np.float32)
 
@@ -152,7 +152,9 @@ def _sun(size, supersample):
     n = size * supersample
     c = (n - 1) / 2.0
     ys, xs = np.mgrid[0:n, 0:n].astype(np.float32)
-    d = np.sqrt((xs - c) ** 2 + (ys - c) ** 2) / (size * supersample / 2)   # 0 at the centre, 1 at the cell's edge
+    d = np.sqrt((xs - c) ** 2 + (ys - c) ** 2) / (
+        size * supersample / 2
+    )  # 0 at the centre, 1 at the cell's edge
     t = np.clip(d / SUN_R, 0, 1)
     disc_rgb = SUN_CORE * (1 - t[..., None] ** 2.2) + SUN_RIM * t[..., None] ** 2.2
     edge = np.clip((SUN_R - d) * size * supersample / 2, 0, 1)

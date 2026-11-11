@@ -3966,8 +3966,7 @@
   "alm_launch_credit": "प्रक्षेपण डेटा: जोनाथन मैकडॉवेल, GCAT (CC BY 4.0), {date} तक",
   "alm_launch_payloads": "{n} उपग्रह",
   "alm_launch_back": "सूची पर वापस",
-  "alm_launch_pad": "लॉन्च पैड पर",
-  "alm_launch_from_here": "यहाँ से",
+  "alm_launch_from_here": "मेरी जगह से",
   "alm_launch_from_pad": "पैड से",
   "alm_launch_on_ground": "यहाँ खड़े हों",
   "alm_launch_no_place": "आप क्या देख सकते थे, यह जानने के लिए पंचांग में अपनी जगह चुनें।",
@@ -4015,7 +4014,6 @@
   "tb_kn_launch_spread": "समूह की ऊँचाई के अंतर का आधा विस्तार (कतार की लंबाई)",
   "tb_kn_launch_release": "छोड़े जाने पर पड़ोसियों के बीच अंतर",
   "tb_kn_launch_shells": "झुकाव के अनुसार Starlink परतें, ऊँचाई",
-  "alm_launch_hint": "पैड: जहाँ से गया। आँख: तब आपका आकाश। आकृति: पैड का आकाश।",
   "alm_launch_hidden_today": "आज के उपग्रह इस तारीख के लिए छिपे हैं; इस प्रक्षेपण के पुनर्निर्मित उपग्रह दिख रहे हैं।",
   "tb_kn_launch_raise_days": "Starlink का समूह छोड़े जाने के इतने दिन बाद अपनी परत पर पहुँचता है",
   "tb_kn_launch_falcon_sep": "फाल्कन 9: चरण अलग होते हैं",
@@ -4150,5 +4148,11 @@
   "pdf_too_large": "यह PDF यहाँ खोलने के लिए बहुत बड़ी है: यह अपनी ZIM में संपीड़ित रखी है।",
   "zim_missing_chunk": "खुल नहीं रहा: {file} नहीं मिली",
   "zi_license": "लाइसेंस",
-  "zi_relation": "संबंधित"
+  "zi_relation": "संबंधित",
+  "alm_sats_f_group": "समूह",
+  "alm_sats_f_orbit": "कक्षा",
+  "alm_sats_f_owner": "स्वामी",
+  "alm_sats_unassigned": "अनिर्धारित",
+  "alm_launch_watch": "प्रक्षेपण देखें",
+  "alm_launch_watch_from": "यहाँ से देखें"
 }

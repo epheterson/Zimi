@@ -3966,8 +3966,7 @@
   "alm_launch_credit": "发射数据：Jonathan McDowell，GCAT（CC BY 4.0），截至 {date}",
   "alm_launch_payloads": "{n} 颗卫星",
   "alm_launch_back": "返回列表",
-  "alm_launch_pad": "发射台",
-  "alm_launch_from_here": "从这里看",
+  "alm_launch_from_here": "从我这里看",
   "alm_launch_from_pad": "从发射台看",
   "alm_launch_on_ground": "站在这里",
   "alm_launch_no_place": "在年历中选择你的位置，看看当时能看到什么。",
@@ -4015,7 +4014,6 @@
   "tb_kn_launch_spread": "一批卫星高度差的半幅（决定“列车”长度）",
   "tb_kn_launch_release": "释放时相邻卫星的间隔",
   "tb_kn_launch_shells": "Starlink 轨道层（倾角，高度）",
-  "alm_launch_hint": "发射台：起飞处。眼睛：当时你那里的天空。人形：发射台的天空。",
   "alm_launch_hidden_today": "今日的卫星在此日期不显示；显示的是本次发射重建的卫星。",
   "tb_kn_launch_raise_days": "Starlink 一批卫星在释放后这么多天到达目标轨道层",
   "tb_kn_launch_falcon_sep": "猎鹰9号：级间分离时刻",
@@ -4150,5 +4148,11 @@
   "pdf_too_large": "此 PDF 太大，无法在此打开：它在 ZIM 中以压缩形式存储。",
   "zim_missing_chunk": "无法打开：缺少 {file}",
   "zi_license": "许可证",
-  "zi_relation": "相关"
+  "zi_relation": "相关",
+  "alm_sats_f_group": "星座组",
+  "alm_sats_f_orbit": "轨道",
+  "alm_sats_f_owner": "所有者",
+  "alm_sats_unassigned": "未指定",
+  "alm_launch_watch": "观看发射",
+  "alm_launch_watch_from": "观看位置"
 }

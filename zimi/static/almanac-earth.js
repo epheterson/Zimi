@@ -561,7 +561,7 @@ var AE_PANEL_BG = '#0e0e10', AE_PANEL_BG_RED = '#000';
 var AE_GO_DISC_URL = _almAsset('/static/earth/go-discs-v1.webp');
 var AE_GO_DISC_KEYS = ['sun', 'earth', 'moon', 'mercury', 'venus', 'mars', 'jupiter', 'saturn', 'uranus', 'neptune', 'pluto', 'ceres', 'vesta', 'io', 'europa',
   'ganymede', 'callisto', 'titan', 'mimas', 'enceladus', 'tethys', 'dione', 'rhea', 'iapetus', 'triton', 'charon', 'phobos'];
-var AE_GO_DISC_COLS = 7, AE_GO_DISC_ROWS = 4;
+var AE_GO_DISC_COLS = 7, AE_GO_DISC_ROWS = 4, AE_GO_DISC_FILL = '95.8%';   // the sprite's disc is 94 px of its 96 px cell (scripts/build_go_discs.py)
 var AE_CSS = [
   '.ae-stand-btn{display:inline-flex;align-items:center;gap:6px}',
   '.ae-stand-btn .ae-tool-svg{width:16px;height:16px;fill:none;stroke:currentColor;stroke-width:1.7;stroke-linecap:round;stroke-linejoin:round}',
@@ -680,8 +680,12 @@ var AE_CSS = [
   // is in, and for good on a low level or if it never comes). --s is its size; --c and --r its cell in the sheet.
   '.ae-go-thumb{--s:28px;flex:none;position:relative;width:var(--s);height:var(--s)}',
   '.ae-go-disc,.ae-go-glyph{display:block;width:100%;height:100%;border-radius:50%}',
-  '.ae-go-disc{box-shadow:0 0 0 1px rgba(255,255,255,.08);background-color:var(--cc);background-image:url(' + AE_GO_DISC_URL + '),var(--g);background-repeat:no-repeat;' +
-    'background-size:calc(var(--s) * ' + AE_GO_DISC_COLS + ') calc(var(--s) * ' + AE_GO_DISC_ROWS + '),100% 100%;background-position:calc(var(--s) * var(--c) * -1) calc(var(--s) * var(--r) * -1),0 0}',
+  // The gradient under the sprite is only what shows until the sheet is in: drawn as small as the sprite's own disc (AE_GO_DISC_FILL), with no colour
+  // behind it, so no rim of the body's colour shows round the sprite (it read as a stroke that changed with every body).
+  '.ae-go-disc{box-shadow:0 0 0 1px rgba(255,255,255,.08);background-image:url(' + AE_GO_DISC_URL + '),var(--g);background-repeat:no-repeat;' +
+    'background-size:calc(var(--s) * ' + AE_GO_DISC_COLS + ') calc(var(--s) * ' + AE_GO_DISC_ROWS + '),' + AE_GO_DISC_FILL + ' ' + AE_GO_DISC_FILL + ';background-position:calc(var(--s) * var(--c) * -1) calc(var(--s) * var(--r) * -1),center}',
+  // The one selection mark of the app: amber, round, the same for every body.
+  '.ae-go-row[aria-current="true"] .ae-go-thumb{border-radius:50%;box-shadow:0 0 0 2px var(--amber)}',
   '.ae-go-disc.ae-go-ring{border-radius:0;box-shadow:none;background-color:transparent;background-image:url(' + AE_GO_DISC_URL + ');background-size:calc(var(--s) * ' + AE_GO_DISC_COLS + ') calc(var(--s) * ' + AE_GO_DISC_ROWS + ');background-position:calc(var(--s) * var(--c) * -1) calc(var(--s) * var(--r) * -1)}',
   '.ae-go-flat .ae-go-disc,.ae-go-flat .ae-go-disc.ae-go-ring{border-radius:50%;box-shadow:0 0 0 1px rgba(255,255,255,.08);background-color:var(--cc);background-image:var(--g);background-size:100% 100%;background-position:0 0}',
   '.ae-go-glyph{display:flex;align-items:center;justify-content:center;background:rgba(255,255,255,.06);color:var(--gc,' + AE_PROBE_HEX + ')}',
@@ -6021,6 +6025,8 @@ function _aePreset(name) {
     // Back from the Sun, arrive over the day side, the Sun behind the camera.
     var fromSun = _ae.target === 'sun' && _ae.scene ? _aeAzElOf(_ae.scene.sun) : null;
     _aeFlyTo('earth', _aeFitDist(name === 'sats' ? AE_FIT_SATS : AE_FIT_EARTH), fromSun);
+    // The chip is named for what it shows: choosing it brings the layer up too (the camera alone showed an empty shell).
+    if (name === 'sats' && !_aeSatsAllOn()) _aeSatsAllSet(true);
   }
   _ae.preset = name;
   _aeMarkViews();
@@ -8235,27 +8241,19 @@ function _aeHandDrag(dx, dy) {
   if (!_aeIsOpen || !_ae.gl) { _aeWaitDrag(dx, dy); return; }
   _aeDragBy(dx, dy);
 }
-// The view is not up yet (its parts are still being made): the disc follows the finger at once, in 2D, and the
-// drag so far is kept to turn the Moon by when the view lifts it. Shown as the disc leaning toward the finger.
-var AE_WAIT_DRAG_LEAN = 0.35, AE_WAIT_DRAG_MAX_PX = 48;
+// The view is not up yet (its parts are still being made): the disc is a picture, with nothing to turn, so it stays where it
+// is (breathing, alm-moon-waking) and the drag so far is kept, to turn the Moon by once the view lifts it. It never slides
+// under the finger: that read as the Moon being pushed across the page, not turned.
 var _aeWaitDragPx = null;
 function _aeWaitDrag(dx, dy) {
-  // No view is coming (no WebGL here): nothing would let the disc go again.
-  if (_ae && _ae.failed) return;
-  var hero = document.querySelector(AE_HERO_SEL);
-  if (!hero) return;
+  if (_ae && _ae.failed) return;   // no view is coming (no WebGL here): nothing to keep the drag for
   var p = _aeWaitDragPx || (_aeWaitDragPx = { x: 0, y: 0 });
   p.x += dx; p.y += dy;
-  var lean = function (v) { return _aeClamp(v * AE_WAIT_DRAG_LEAN, -AE_WAIT_DRAG_MAX_PX, AE_WAIT_DRAG_MAX_PX); };
-  hero.style.transition = 'none';
-  hero.style.transform = 'translate(' + lean(p.x).toFixed(1) + 'px,' + lean(p.y).toFixed(1) + 'px)';
 }
 // The disc is let go (before the view lifts it, which reads where it stands); returns the drag kept, if any.
 function _aeWaitDragRelease() {
   var p = _aeWaitDragPx;
   _aeWaitDragPx = null;
-  var hero = document.querySelector(AE_HERO_SEL);
-  if (hero) { hero.style.transition = ''; hero.style.transform = ''; }
   return p;
 }
 // A finger's move, in screen pixels (right, down), as the camera's turn: the

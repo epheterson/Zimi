@@ -91,6 +91,7 @@ def _sec(date, zero):
 
 
 DAY = 86400.0
+LAUNCH_RATE, LAUNCH_CAM = 1800.0, {"body": "earth", "d": 6, "az": 0.5, "el": 0.3, "mix": 1.0}   # a probe's first hours: the Earth it leaves, as the clock runs
 
 
 def build_probe(key):
@@ -113,6 +114,9 @@ def build_probe(key):
         phases.append(d)
 
     cruise_cam = {"d": 1.5e10, "az": 0.4, "el": 0.35, "body": "sun", "mix": 0.0}
+    # A mission opens at its launch, at the Earth (T+0): the table starts a few hours later, so the first phase is the hours between.
+    if t0 > 0:
+        add_phase(0, "launch", "Launch", 0.4, LAUNCH_RATE, LAUNCH_CAM)
     cursor = t0
     for i, f in enumerate(flys):
         tc = (pr.when(f["jd"]) - zero).total_seconds()
@@ -137,12 +141,12 @@ def build_probe(key):
     return {
         "name": {"voyager1": "Voyager 1", "voyager2": "Voyager 2", "newhorizons": "New Horizons", "cassini": "Cassini"}[key],
         "zeroMs": round(zero.timestamp() * 1000),
-        "start": round(t0, 1),
+        "start": 0.0 if t0 > 0 else round(t0, 1),
         "end": round(end, 1),
         "follow": "probe",
         "ref": {"moon": []},
         "source": "JPL Horizons, the probe's and the planet's own vectors (zimi/static/earth/space-tracks-v1.json); closest approaches found by scripts/mission_probes.py",
-        "vehicles": [{"id": "probe", "on": round(t0, 1), "off": round(end, 1), "legs": [{"frame": "probe", "key": key, "s": [[round(t0, 1), 0, 0, 0, 0, 0, 0], [round(end, 1), 0, 0, 0, 0, 0, 0]]}],
+        "vehicles": [{"id": "probe", "on": 0.0 if t0 > 0 else round(t0, 1), "off": round(end, 1), "legs": [{"frame": "probe", "key": key, "s": [[round(t0, 1), 0, 0, 0, 0, 0, 0], [round(end, 1), 0, 0, 0, 0, 0, 0]]}],
                       "parts": [], "flames": [], "dot": False}],
         "phases": phases,
         "events": events,
