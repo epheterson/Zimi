@@ -187,7 +187,7 @@ vm.runInContext(
   'function _almClockHaltRaf() {} function _almEdEnd() {} function _almRunToStop() {} function _almLinkStop() {} var _almClockStale = false, _almClockRunning = false;' +
   'var _almRevealing = false, _almRevealTimer = 0, _almShownJobs = [];', S)
 for (const fn of ['_dateToJD', '_almEsc', '_jdnToGregorian', '_cnDeltaTdays',
-                  '_almanacTeardown', '_almVeilCancel', '_almFocusInstant']) vm.runInContext(extractFn(almSrc, fn), S);
+                  '_almanacTeardown', '_almFirstOpenCancel', '_almFocusInstant']) vm.runInContext(extractFn(almSrc, fn), S);
 vm.runInContext(extractFn(read('app.js'), '_smoothstep'), S);
 // The shared angle and Moon-orientation helpers the view borrows from the
 // Almanac's other files (one global scope in the browser).
