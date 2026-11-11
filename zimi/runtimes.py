@@ -9,7 +9,9 @@ the image, which fails when something declared bundled is not there.
 """
 
 import importlib.util
+import os
 import shutil
+import sys
 from collections import namedtuple
 
 DOCKER, DESKTOP, PORTABLE, PIP = "docker", "desktop", "portable", "pip"
@@ -322,6 +324,34 @@ def format_report(rows, kind):
     return "\n".join(lines)
 
 
+# What the machine's python3 prints: whether it can import ssl, and the library path it was handed.
+_OUTSIDE_PROBE = "import os, ssl; print(os.environ.get('LD_LIBRARY_PATH', ''))"
+
+
+def outside_python_problem(python=None):
+    """Frozen only: why a program that is not part of this app (the machine's
+    python3, which sets up voices) would not run properly from here, or None.
+    The bootloader's library path must not reach it (#151: its older libssl
+    broke pip on a Raspberry Pi)."""
+    if not getattr(sys, "frozen", False):
+        return None
+    python = python or shutil.which("python3")
+    if not python:
+        return None
+    from zimi import subproc
+
+    try:
+        done = subproc.run([python, "-c", _OUTSIDE_PROBE], capture_output=True, text=True, timeout=30)
+    except Exception as e:
+        return f"could not run {python}: {e}"
+    if done.returncode != 0:
+        return f"{python} cannot import ssl: {(done.stderr or '').strip()[-200:]}"
+    handed = [d for d in done.stdout.strip().split(os.pathsep) if d]
+    if any(subproc._in_bundle(d) for d in handed):
+        return f"{python} was handed the app's library path ({done.stdout.strip()})"
+    return None
+
+
 def cli_doctor(args):
     """`zimi doctor [--check]`. Exit 1 under --check when a bundled feature
     is missing."""
@@ -331,5 +361,10 @@ def cli_doctor(args):
     missing = problems(rows)
     if missing:
         print(f"\nnot ready, though this install should have them: {', '.join(missing)}")
+        if args.check:
+            raise SystemExit(1)
+    outside = outside_python_problem()
+    if outside:
+        print(f"\nthe machine's Python would not run properly from here: {outside}")
         if args.check:
             raise SystemExit(1)

@@ -2343,7 +2343,7 @@ def _probe(cmd):
     """A quiet yes/no docker probe."""
     try:
         return (
-            subprocess.run(
+            subproc.run(
                 cmd,
                 stdout=subprocess.DEVNULL,
                 stderr=subprocess.DEVNULL,
@@ -2369,7 +2369,7 @@ def _image_supports_flag(docker, image, flag):
     key = (docker, image)
     if key not in _zimit_help_cache:
         try:
-            done = subprocess.run(
+            done = subproc.run(
                 [docker, "run", "--rm", image, "zimit", "--help"],
                 capture_output=True,
                 text=True,

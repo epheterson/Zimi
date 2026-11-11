@@ -8,9 +8,11 @@ mouse slides too; flying to another body lets the slide go.
 Run: pytest tests/test_almanac_pan_browser.py -v
 """
 
+import json
 import os
 import sys
 import threading
+from datetime import datetime
 
 import pytest
 
@@ -27,6 +29,25 @@ PLACE = '{"lat":37.77,"lon":-122.42,"name":"San Francisco"}'
 READY_MS = 240_000
 # Per half degree of drag; the old convention made 180 at the zenith.
 MAX_ROLL_STEP_DEG = 30
+
+
+def _station_over_the_equator_ms():
+    """The instant the shipped elements' station next crosses the equator northward after their epoch, in ms.
+
+    The view is pinned there (its clock stopped): the station's place was the wall clock's, and within a few degrees
+    of its highest latitude (51.6) the zenith sweep below runs past the celestial pole, where roll is measured from a
+    north that turns over (180) though the picture does not. The tests use the shipped snapshot (ZIMI_OFFLINE and an
+    empty data directory: no cache, no fetch), so this instant and the station's place at it are the same every run.
+    """
+    with open(os.path.join(ROOT, "zimi", "assets", "satellites-snapshot.json")) as f:
+        iss = json.load(f)["iss"]
+    epoch = datetime.fromisoformat(iss["EPOCH"].replace("Z", "+00:00")).timestamp() * 1000
+    # Argument of latitude ~ perigee + mean anomaly (eccentricity ~0.0007); the node is a revolution's fraction away.
+    to_node = (-(iss["ARG_OF_PERICENTER"] + iss["MEAN_ANOMALY"])) % 360 / 360
+    return round(epoch + to_node / iss["MEAN_MOTION"] * 86_400_000)
+
+
+PIN_MS = _station_over_the_equator_ms()
 
 
 @pytest.fixture(scope="module")
@@ -83,6 +104,15 @@ def station(served):
             pg.wait_for_function(
                 "() => typeof _aeReady === 'function' && _aeReady() && _aeIsOpen && !_ae.fly",
                 timeout=READY_MS,
+                polling=200,
+            )
+            # One instant for the whole module, the clock stopped: the station is over the equator.
+            pg.evaluate("(ms) => { _almFocus = new Date(ms); _almClockSetRate(0); }", PIN_MS)
+            pg.wait_for_function(
+                "(ms) => { _ae.dirty = true; _aeKick(); return !_ae.fly && _aeDisplayMs() === ms && !!_ae.issPos"
+                " && Math.abs(_aeAzElOf(_aeNorm(_ae.issPos)).el) < 0.1; }",
+                arg=PIN_MS,
+                timeout=60_000,
                 polling=200,
             )
             yield pg, ctx.new_cdp_session(pg), errors
@@ -143,6 +173,11 @@ def test_two_fingers_slide_the_view_across_the_station_and_pinch_zooms(station):
     touches(cdp, "touchStart", [(135, 400), (255, 400)])
     touches(cdp, "touchMove", [(115, 415), (275, 415)])
     touches(cdp, "touchMove", [(155, 430), (315, 430)])
+    # Moves reach the page aligned to its frames: the state is read once the last one has, not while it is on its way.
+    pg.wait_for_function(
+        "() => !!_ae.pinch && _ae.pinch.span === 160 && _ae.pinch.mx === 235 && _ae.pinch.my === 430",
+        timeout=10_000,
+    )
     state = pg.evaluate(
         "() => ({ pan: _ae.pan, dist: _ae.dist, az: _ae.az, el: _ae.el_ })"
     )
@@ -151,9 +186,43 @@ def test_two_fingers_slide_the_view_across_the_station_and_pinch_zooms(station):
     assert state["pan"] and state["pan"]["t"] == "iss"
     assert state["dist"] < dist0  # fingers spread: closer
     # The station follows the fingers: right and down.
-    assert after[0] - before[0] > 10 and after[1] - before[1] > 10, (before, after)
+    # (The pinch ends at the station's nearest, where a slide of the fingers moves it least on screen: 9 px down at 30 px of finger.)
+    assert after[0] - before[0] > 5 and after[1] - before[1] > 5, (before, after)
     reach = pg.evaluate("() => AE_TARGETS.iss.surface")
     assert sum(x * x for x in state["pan"]["v"]) ** 0.5 <= reach * 1.0001
+    assert not errors, errors
+
+
+# One pinch spreading from 120 px to 160 px, its pointer events in a given order: each finger's move is its own event,
+# and the order a frame's touches arrive in is the browser's (it was a coin toss in CI).
+PINCH_IN_ORDER = """(order) => {
+    var cv = _aeById('ae-canvas'), ev = function (type, id, x, y) {
+        cv.dispatchEvent(new PointerEvent(type, { pointerId: id, clientX: x, clientY: y, pointerType: 'touch', isPrimary: id === 901, bubbles: true }));
+    };
+    cv.setPointerCapture = function () {};   // synthetic pointers have nothing to capture
+    _ae.fly = null; _ae.pan = null; _ae.dist = AE_TARGETS.iss.min * 1.2;
+    var dist0 = _ae.dist;
+    ev('pointerdown', 901, 135, 400); ev('pointerdown', 902, 255, 400);
+    order.forEach(function (m) { ev('pointermove', m[0], m[1], m[2]); });
+    var out = { dist0: dist0, dist: _ae.dist, min: AE_TARGETS.iss.min };
+    ev('pointercancel', 901, 0, 0); ev('pointercancel', 902, 0, 0);
+    delete cv.setPointerCapture;
+    return out;
+}"""
+
+
+def test_a_pinch_ends_where_the_fingers_do_whatever_order_their_moves_arrive_in(station):
+    """Spread from 120 to 160 px near the station's nearest: the view ends closer (at that nearest), in either order.
+
+    Each move zoomed by its own ratio, clamped at the nearest; one finger's step past it was clamped, the other's step
+    back out was not, and the same spread ended 4.5% farther than it began (CI's 1.928e-05 < 1.846e-05).
+    """
+    pg, _, errors = station
+    first = [[901, 115, 415], [902, 275, 415]]
+    for second in ([[901, 155, 430], [902, 315, 430]], [[902, 315, 430], [901, 155, 430]]):
+        got = pg.evaluate(PINCH_IN_ORDER, first + second)
+        assert got["dist"] < got["dist0"], (second, got)
+        assert got["dist"] == pytest.approx(got["min"], rel=1e-9), (second, got)
     assert not errors, errors
 
 

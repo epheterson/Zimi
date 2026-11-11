@@ -128,7 +128,7 @@
     Object.keys(snaps).forEach(function (path) {
       var src = snapSrc(snaps[path]);
       if (!src) return;
-      Array.prototype.forEach.call(doc.querySelectorAll('a.ar-game[href="' + path + '"]'), function (tile) {
+      tilesAt(path).forEach(function (tile) {
         var art = tile.querySelector('.ar-game-art');
         if (!art || art.tagName.toLowerCase() === 'img') return;
         var img = doc.createElement('img');
@@ -150,8 +150,18 @@
 
   // A tile for a game: the shelf's own, copied, so the art matches. A game the
   // shelf has no tile of borrows nothing: there is no tile to show.
+  // The shelf's tiles for a page. Kiwix's viewer (kiwix-serve 3.8) rewrites a book's links once the page has loaded, to its own
+  // "/viewer#<book>/<path>", before games.json has come back: a tile is found by the path its link ends in, written either way.
+  var VIEWER = '/viewer#';
+  function tilesAt(path) {
+    return Array.prototype.filter.call(doc.querySelectorAll('a.ar-game'), function (a) {
+      var h = a.getAttribute('href') || '', at = h.indexOf(VIEWER);
+      if (at >= 0) h = h.slice(h.indexOf('/', at + VIEWER.length) + 1);
+      return h === path;
+    });
+  }
   function tileFor(game) {
-    var tile = doc.querySelector('a.ar-game[href="' + canon(game.path) + '"]');
+    var tile = tilesAt(canon(game.path))[0];
     if (!tile) return null;
     var el = tile.cloneNode(true);
     var text = el.querySelector('.ar-game-text');
@@ -194,7 +204,8 @@
     var label = doc.createElement('span');
     label.className = 'ar-box-label';
     var name = doc.createElement('strong');
-    name.textContent = tile.querySelector('.ar-game-text strong').textContent;
+    // A box is small, like a Daily tile: the game's short name where it has one ("Шашки", not "Английские шашки").
+    name.textContent = named(canon(game.path), 'short', tile.querySelector('.ar-game-text strong').textContent);
     var small = doc.createElement('small');
     small.textContent = tag;
     if (played) small.dataset.ago = '1';
@@ -224,7 +235,24 @@
     tbl.appendChild(inner);
     s.appendChild(h);
     s.appendChild(tbl);
-    return inner.children.length ? s : null;
+    if (!inner.children.length) return null;
+    // Laid out once it is on the page, and again whenever its width changes (a turn, a view, a language's names).
+    if (root.ResizeObserver) new root.ResizeObserver(function () { fitNames(inner); }).observe(inner);
+    return s;
+  }
+  // A name on the table never breaks inside a word ("Checker s" on a 390 px phone, where the boxes overlap): a word wider
+  // than its label takes the name's type down half a pixel at a time, to NAME_MIN_PX at the least, and a word still wider
+  // than that (a long German or Russian name on a narrow box) ends in an ellipsis on one line instead of breaking.
+  var NAME_MIN_PX = 10, NAME_STEP_PX = 0.5;
+  function fitNames(scope) {
+    Array.prototype.forEach.call(scope.querySelectorAll('.ar-box-label strong'), function (n) {
+      n.style.fontSize = '';
+      n.classList.remove('ar-name-cut');
+      if (!n.clientWidth) return;
+      var px = parseFloat(root.getComputedStyle(n).fontSize);
+      while (n.scrollWidth > n.clientWidth && px > NAME_MIN_PX) { px -= NAME_STEP_PX; n.style.fontSize = px + 'px'; }
+      if (n.scrollWidth > n.clientWidth) n.classList.add('ar-name-cut');
+    });
   }
 
   function section(cls, label, tiles) {
@@ -307,6 +335,44 @@
       return s;
     });
   }
+  // The release that came last: the highest `added` games.json carries, so a ZIM is its own release's "current".
+  function newer(a, b) {
+    var x = String(a).split('.'), y = String(b).split('.');
+    for (var i = 0; i < Math.max(x.length, y.length); i++) {
+      var d = (parseInt(x[i], 10) || 0) - (parseInt(y[i], 10) || 0);
+      if (d) return d > 0;
+    }
+    return false;
+  }
+  // World favorites: the best-known games of the world that ours play best, the shelf's lead after the table (Eric: the games
+  // that use your library are not the ones to open on). A game the shelf has no tile of is left out.
+  var WORLD = CLASSICS.concat(['sudoku.html', 'minesweeper.html', 'backgammon.html', 'go.html', 'hearts.html', 'mahjong.html', '2048.html', 'fourinarow.html', 'dominoes.html', 'blackjack.html']);
+  function worldSection() {
+    var tiles = [];
+    WORLD.forEach(function (p) { var t = tileFor({ path: p }); if (t) tiles.push(ownIds(t)); });   // the idle table's three classics are here too: a person looking for chess finds it
+    if (!tiles.length) return null;
+    var s = section('ar-world', T('shelf.world'), tiles);
+    if (root.ZimiShell && root.ZimiShell.localizeTiles) root.ZimiShell.localizeTiles(s);
+    return s;
+  }
+  // New: the games that arrived with the release this shelf shipped in, one row under the table. Absent when no row has an `added`.
+  function newSection(rows) {
+    var latest = '';
+    (rows || []).forEach(function (r) { if (r && r.added && (!latest || newer(r.added, latest))) latest = r.added; });
+    if (!latest) return null;
+    // Dealt one kind at a time (ten solitaires in a row would be one picture), the smallest kinds leading.
+    var kinds = {}, tiles = [];
+    uniqueByPath(rows).forEach(function (g) {
+      var t = g.added === latest ? tileFor(g) : null;
+      if (t) (kinds[g.kind || ''] = kinds[g.kind || ''] || []).push(ownIds(t));
+    });
+    var lanes = Object.keys(kinds).map(function (k) { return kinds[k]; }).sort(function (a, b) { return a.length - b.length; });
+    for (var i = 0; lanes.some(function (l) { return i < l.length; }); i++) lanes.forEach(function (l) { if (i < l.length) tiles.push(l[i]); });
+    if (!tiles.length) return null;
+    var s = section('ar-new', T('shelf.new'), tiles);
+    if (root.ZimiShell && root.ZimiShell.localizeTiles) root.ZimiShell.localizeTiles(s);
+    return s;
+  }
   function markDone(t) {
     t.classList.add('ar-done');
     var tick = doc.createElement('span');
@@ -336,6 +402,16 @@
       if (t) first.parentNode.insertBefore(t, first);
       // shelf.js lays the sections out per view; it is told when they are in.
       doc.dispatchEvent(new Event('zimi-shelf-today'));
+      var world = worldSection();
+      if (world) {
+        first.parentNode.insertBefore(world, first);
+        doc.dispatchEvent(new Event('zimi-shelf-today'));
+      }
+      var fresh = newSection(rows);
+      if (fresh) {
+        first.parentNode.insertBefore(fresh, first);
+        doc.dispatchEvent(new Event('zimi-shelf-today'));
+      }
       return dailySection(rows);
     }).then(function (s) {
       if (!s) return;

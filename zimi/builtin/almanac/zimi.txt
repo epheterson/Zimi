@@ -1,8 +1,11 @@
 Title: Almanac · Zimi
-Description: Explore the sky, your planet and the universe, for any place and day, offline
+Description: Explore the sky, your planet and the universe, for any place and day
+LongDescription: A reference for space and time, worked out fresh for any place and any day. It runs from this file in a web browser, with no network: Moon phase, Sun and Moon rise and set, a live sky of stars and planets, the solar system, a 3D Earth, Moon and planets with the satellites over them, tides, calendars and tables. It follows the browser's language: Arabic, Chinese, English, French, German, Hebrew, Hindi, Portuguese, Russian or Spanish, with English where the browser speaks none of them. Every figure is computed in the page; the data it needs is inside the ZIM. This is the standard edition, without the high-resolution map tiles. In Kiwix JS it needs ServiceWorker mode (in Configuration); without scripts it shows a short note. It also opens in kiwix-serve. Code: GPL-3.0-or-later (Zimi). Data and libraries keep their own licences, listed in earth/SOURCES.txt inside the ZIM: NASA imagery and the Yale Bright Star Catalogue (public domain), ESO Milky Way panorama (CC BY 4.0), three.js and satellite.js (MIT), d3-celestial (BSD 3-Clause), Temml (MIT), CelesTrak satellite elements (a snapshot) and NOAA tide data (a snapshot). Voyager Golden Record pictures (golden-record/credits.json): all 49 shown, each with its credit; 8 are NASA photographs (public domain) and the other 41 are copyright their owners: Jon Lomberg, UN Photo, Frank Drake, the National Astronomy and Ionosphere Center, Jay M. Pasachoff and Picturepoint, London.
 Language: eng
 Creator: Zimi
 Publisher: Zimi
 Tags: _category:education;astronomy;zimi;zimi:own
+License: GPL-3.0-or-later; third-party licences inside the ZIM
+Source: https://github.com/epheterson/zimi
 Icon: icon.png
 Articles: index.html

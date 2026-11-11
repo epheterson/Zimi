@@ -106,6 +106,7 @@ def _almanac(browser, served, reduced=False, init=None):
     )
     if init:
         ctx.add_init_script(init)
+    ctx.add_init_script(EVENT_LOG)
     pg = ctx.new_page()
     errors = []
     pg.on("pageerror", lambda e: errors.append(str(e)))
@@ -330,6 +331,59 @@ def test_leaving_restores_the_page(browser, served, reduced):
         ctx.close()
 
 
+# A touch is the browser's to scroll with unless the page answers its first moves in time (Chromium gives a touch handler about
+# 200 ms, then lets the compositor scroll and cancels the pointer): on a runner whose software GL is still busy with the 3D view's
+# first frames the answer comes late, and the gesture ends as a scroll. The finger goes down once the page answers promptly: a
+# measured state (CALM_TICKS timer ticks in a row, each under CALM_GAP_MS late), not a fixed wait.
+CALM_TICKS = 12
+CALM_GAP_MS = 60
+CALM_CEILING_MS = 60_000
+CALM = """([ticks, gap, ceiling]) => new Promise((done) => { let last = performance.now(), calm = 0; const t0 = last;
+  const id = setInterval(() => { const now = performance.now(); calm = now - last - 16 < gap ? calm + 1 : 0; last = now;
+    if (calm >= ticks || now - t0 > ceiling) { clearInterval(id); done({ calm: calm, ms: Math.round(now - t0) }); } }, 16); })"""
+
+
+def _wait_for_the_veil_to_go(pg):
+    """The loading veil stands over the whole page until the first screen is drawn, and takes the pointer with it: a finger put
+    down before it has gone lands on the veil, not on the Moon (the failure's event log: pointerdown on alm-veil, then a cancel)."""
+    pg.wait_for_function(
+        "() => { const v = document.getElementById('alm-veil'); return !v || v.hidden || getComputedStyle(v).pointerEvents === 'none' || v.classList.contains('alm-veil-out'); }",
+        timeout=CALM_CEILING_MS,
+        polling=POLL_MS,
+    )
+    # And the Moon is what answers at its own middle.
+    pg.wait_for_function(
+        "(s) => { const r = document.querySelector(s).getBoundingClientRect(), e = document.elementFromPoint(r.x + r.width / 2, r.y + r.height / 2);"
+        " return !!e && !!e.closest(s); }",
+        arg=HERO,
+        timeout=CALM_CEILING_MS,
+        polling=POLL_MS,
+    )
+
+
+def _wait_until_the_page_answers_promptly(pg):
+    got = pg.evaluate(CALM, [CALM_TICKS, CALM_GAP_MS, CALM_CEILING_MS])
+    assert got["calm"] >= CALM_TICKS, "the page never settled: %r" % got
+
+
+# The pointer events the page saw, newest last: what a failed hand-off says it was given.
+EVENT_LOG = """(() => { window.__ev = []; const at = performance.now();
+  ['pointerdown', 'pointermove', 'pointerup', 'pointercancel', 'lostpointercapture', 'dragstart', 'touchcancel'].forEach(t =>
+    document.addEventListener(t, e => { const l = window.__ev; if (l.length > 60) l.shift(); l.push(t + '@' + Math.round(performance.now() - at) + (e.target && e.target.className ? ':' + String(e.target.className).slice(0, 18) : '')); }, true)); })();"""
+HANDOFF_STATE = """() => ({ open: typeof _aeIsOpen !== 'undefined' && _aeIsOpen, hand: !!(window._ae && _ae.hand), press: JSON.stringify(window._almMoonPress),
+  lifter: typeof window.openAlmanacEarth, ready: typeof _aeReady === 'function' && _aeReady(), lifted: !!document.querySelector('.alm-moon-lifted'),
+  ev: (window.__ev || []).slice(-14).join(' '), hidden: document.hidden, scroll: document.getElementById('almanac-content').scrollTop,
+  under: (function () { var e = document.querySelector('%s'); if (!e) return null; var r = e.getBoundingClientRect(), h = document.elementFromPoint(r.x + r.width / 2, r.y + r.height / 2); return h ? (h.className || h.tagName) : null; })() })""" % HERO
+
+
+def _handoff_done(pg):
+    """The 3D view is open and has let go of the hand-in: a state. When it does not come, the page's own state is in the message."""
+    try:
+        pg.wait_for_function("() => _aeIsOpen && !_ae.hand", timeout=HANDOFF_MS, polling=POLL_MS)
+    except Exception as e:
+        raise AssertionError("the hand-off did not finish: %s; the page: %r" % (type(e).__name__, pg.evaluate(HANDOFF_STATE))) from None
+
+
 def _touch_drag_turns(pg, cdp, x, y, steps, dx, dy):
     for i in range(1, steps + 1):
         cdp.send(
@@ -349,6 +403,7 @@ def test_one_finger_lifts_and_keeps_turning(browser, served, pointer):
         ctx = browser.new_context(
             viewport=VIEW, device_scale_factor=DPR, has_touch=True, is_mobile=True
         )
+        ctx.add_init_script(EVENT_LOG)
         pg = ctx.new_page()
         errors = []
         pg.on("pageerror", lambda e: errors.append(str(e)))
@@ -368,6 +423,10 @@ def test_one_finger_lifts_and_keeps_turning(browser, served, pointer):
         r = _rect(pg)
         x, y = r["x"] + r["width"] / 2, r["y"] + r["height"] / 2
         scroll0 = pg.evaluate("document.getElementById('almanac-content').scrollTop")
+        _wait_for_the_veil_to_go(pg)
+        r = _rect(pg)
+        x, y = r["x"] + r["width"] / 2, r["y"] + r["height"] / 2
+        _wait_until_the_page_answers_promptly(pg)
         if pointer == "touch":
             cdp = ctx.new_cdp_session(pg)
             cdp.send(
@@ -382,9 +441,7 @@ def test_one_finger_lifts_and_keeps_turning(browser, served, pointer):
             for i in range(1, 7):
                 pg.mouse.move(x + i * 4, y + i)
             x, y = x + 24, y + 6
-        pg.wait_for_function(
-            "() => _aeIsOpen && !_ae.hand", timeout=HANDOFF_MS, polling=POLL_MS
-        )
+        _handoff_done(pg)
         az0, el0 = pg.evaluate("[_ae.az, _ae.el_]")
         if pointer == "touch":
             x, y = _touch_drag_turns(pg, cdp, x, y, 10, 3, 6)

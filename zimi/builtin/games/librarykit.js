@@ -109,11 +109,11 @@
   };
 
   // Is this page being served by Zimi? One request to /health, which only Zimi answers with {status: "ok"}.
-  // From a folder (file:) there is nothing to ask. Asked once per page.
+  // From a folder (file:) or Kiwix JS (ZimiShell.kiwixJs) there is nothing to ask. Asked once per page.
   var zimiAnswer = null;
   Lib.isZimi = function () {
     if (!zimiAnswer) {
-      zimiAnswer = typeof location === 'undefined' || !/^https?:$/.test(location.protocol)
+      zimiAnswer = typeof location === 'undefined' || !/^https?:$/.test(location.protocol) || (root.ZimiShell && root.ZimiShell.kiwixJs)
         ? Promise.resolve(false)
         : Lib.json('/health', PROBE_MS).then(function (j) { return !!(j && j.status === 'ok'); }, function () { return false; });
     }
@@ -151,7 +151,16 @@
       var tok = (PROJECTS.exec(name) || [])[1] || '', lang = xmlText(e, 'language').split(',')[0].trim();
       var code = (/^[a-z]+_([a-z]{2,3})(?:_|$)/.exec(name) || [])[1];
       var wiki = tok && tok !== 'gutenberg';
-      out.push({ name: name, title: xmlText(e, 'title') || name, language: ISO3[lang] || (lang.length === 2 ? lang : code) || lang,
+      // A book's address in kiwix-serve is its file's name (wikipedia_en_all_maxi_2026-01), not its Name (wikipedia_en_all):
+      // the entry's text/html link says which. <name> still tells the project and the language.
+      // The link's attributes come in either order (type then href, or href then type).
+      var link = /<link\b[^>]*>/g, tag, found = null;
+      while ((tag = link.exec(e))) {
+        var kind = /\btype="([^"]*)"/.exec(tag[0]), where = /\bhref="[^"]*\/content\/([^"\/]+)"/.exec(tag[0]);
+        if (kind && kind[1] === 'text/html' && where) { found = where; break; }
+      }
+      link = found;
+      out.push({ name: link ? decodeURIComponent(link[1]) : name, title: xmlText(e, 'title') || name, language: ISO3[lang] || (lang.length === 2 ? lang : code) || lang,
         kind: wiki ? 'wiki' : 'zim', project: tok, article_count: +xmlText(e, 'articleCount') || 0, main_path: '' });
     }
     return out;
@@ -163,7 +172,7 @@
     if (!modeAnswer) {
       modeAnswer = Lib.isZimi().then(function (yes) {
         if (yes) { modeNow = 'zimi'; pathRoot = '/w/'; return modeNow; }
-        if (typeof location === 'undefined' || !/^https?:$/.test(location.protocol)) return 'builtin';
+        if (typeof location === 'undefined' || !/^https?:$/.test(location.protocol) || (root.ZimiShell && root.ZimiShell.kiwixJs)) return 'builtin';
         var prefix = Lib.kiwixPrefix(location.pathname);
         return Lib.text(prefix + '/catalog/v2/entries?count=1', PROBE_MS).then(function (x) {
           if (!/<feed[\s>]/.test(x)) return 'builtin';
@@ -187,6 +196,14 @@
       return Lib.text(kiwixPrefix + '/catalog/v2/entries?count=500').then(Lib.parseCatalog, function () { return []; });
     }).then(function (list) { list.forEach(function (z) { titles[z.name] = z.title || z.name; }); return list; });
     return libAnswer;
+  };
+
+  // The English Wiktionary the word games read: the biggest of the library's, so a full one (English sections, translations,
+  // every word) wins over the Simple English one when both are there. kiwix-serve lists books in no useful order, and the
+  // first was the Simple English one on a real library: Bluff found no English sections and fell back, Bee knew fewer words.
+  Lib.englishWiktionary = function (list) {
+    var p = Lib.pickZim(list, 'wiktionary', 'en');
+    return p && p.exact ? p.zim : null;
   };
 
   // A book whose name starts with `prefix` (Project Gutenberg's ZIMs are not wikis): the player's language, else the biggest.
@@ -223,6 +240,7 @@
 
   // A page's lead: its title, its first real paragraph's first sentences, and its first picture (an address).
   var STRIP = /<(script|style|table|sup|figure)[\s\S]*?<\/\1>/gi;
+  var DEFDATE = /<span[^>]*class="[^"]*\bdefdate\b[^"]*"[^>]*>[\s\S]*?<\/span>/gi;
   function plain(html) {
     return sweep(html, /<[^>]*>/g).replace(/&nbsp;/g, ' ').replace(/&#160;/g, ' ').replace(/&lt;/g, '<').replace(/&gt;/g, '>')
       .replace(/&quot;/g, '"').replace(/&#39;|&apos;/g, "'").replace(/&amp;/g, '&').replace(/\[\d+\]/g, '').replace(/\s+/g, ' ').trim();
@@ -280,7 +298,8 @@
   // The first definition on a Wiktionary page: the first numbered line, without the examples nested under it. '' if none.
   Lib.firstDefinition = function (html) {
     var m = /<ol[^>]*>\s*<li[^>]*>([\s\S]*?)(?:<ul|<ol|<dl|<\/li>)/i.exec(String(html || ''));
-    return m ? plain(m[1]) : '';
+    // A real Wiktionary puts a style block and a date ("[16th–19th c.]") inside some definitions: neither is the meaning.
+    return m ? plain(sweep(sweep(m[1], STRIP), DEFDATE)).replace(/\s+([.,;:])/g, '$1').trim() : '';
   };
 
   // ── tables ───────────────────────────────────────────────────────────────

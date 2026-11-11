@@ -223,7 +223,6 @@
  "bj.soft1": "{total} mole",
  "bj.split": "Dividir",
  "bj.stand": "Parar",
- "bl.choosing": "Escolhendo palavras do seu Wiktionary…",
  "bl.counter": "{n} de {max}",
  "bl.fakeLabel": "Seu significado falso",
  "bl.fakePlaceholder": "O que {word} poderia significar? Faça parecer de verdade",
@@ -5233,6 +5232,7 @@
  "shelf.length.l5": "Cerca de 5 minutos",
  "shelf.minutes": "{n} min",
  "shelf.minutes.plus": "{n} min+",
+ "shelf.new": "Novo",
  "shelf.noMatch": "Nenhum jogo combina com isso.",
  "shelf.play": "Jogar",
  "shelf.players.line": {
@@ -5296,6 +5296,7 @@
  "shelf.view.index": "Índice",
  "shelf.view.lobby": "Lobby",
  "shelf.viewSort": "Vista e ordem",
+ "shelf.world": "Favoritos do mundo",
  "shelf.year.bc": "c. {y} a.C.",
  "shell.about.credit": "Este quebra-cabeça faz parte da Portable Puzzle Collection de Simon Tatham, copyright 2004–2024 Simon Tatham e muitos colaboradores, sob a licença MIT. O ZimiGames acrescenta a página ao redor e o executa sem alterações.",
  "shell.about.licence": "A licença",
@@ -5570,7 +5571,6 @@
  "snake.bestWrap": "Melhor com passagem",
  "snake.readyKeys": "Aperte uma seta para começar",
  "snake.readyTouch": "Toque para começar e deslize para virar",
- "snake.wrap": "Passar pelas bordas",
  "sokoban.blocked": "Há algo no caminho",
  "sokoban.board": "Tabuleiro de Sokoban",
  "sokoban.boardLabel": "{level}: {done} de {total} caixas nos alvos, {moves} movimentos",
@@ -6140,5 +6140,9 @@
  "hex.rules.two": "Cada jogador liga as suas duas bordas, vermelha e azul. Vence a primeira cadeia.",
  "race.matchedShortest": "Você igualou a rota mais curta: {n}.",
  "race.matchedRoute": "Você igualou a rota conhecida: {n}.",
- "race.beatRoute": "Você superou a rota conhecida de {n}."
+ "race.beatRoute": "Você superou a rota conhecida de {n}.",
+ "game.checkers.short": "Damas",
+ "snake.walls": "Paredes",
+ "snake.walls.solid": "Sólidas",
+ "snake.walls.wrap": "Atravessar"
 }

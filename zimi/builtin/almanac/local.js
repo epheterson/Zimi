@@ -136,4 +136,16 @@
   };
   Local._prepare = prepare;
   root.ZimiAlmanacLocal = Local;
+
+  // Outside Zimi, the foot of the Almanac carries the credit line "© <year> Zimi" (zimihome.js's ZIMI_HOME_MARK can add the
+  // mark before or after the name, one link with it): the address is zimihome.js's (the Games' file, staged in), the year the
+  // build's (zimibuild.js, written into the ZIM by ownzims), never the reader's clock. Inside Zimi's reader nothing is drawn.
+  // Here, not in index.html: zimcheck reads an href written in the page's own script as a link of the page.
+  root._almHomeLine = function () {
+    var url = root.ZIMI_HOME, year = root.ZIMI_BUILT_YEAR, at = root.ZIMI_HOME_MARK, esc = root.esc, escAttr = root.escAttr;
+    if (root.HOSTED_IN_ZIMI || !url) return '';
+    var mark = at === 'before' || at === 'after' ? '<img src="mark.svg" alt="" width="13" height="13"' + (at === 'after' ? ' class="alm-mark-end"' : '') + '>' : '';
+    return '<div class="alm-home"><span>© ' + (year ? esc(year) + ' ' : '') + '<a href="' + escAttr(url) + '" target="_blank" rel="noopener">' +
+      (at === 'after' ? 'Zimi' + mark : mark + 'Zimi') + '</a></span></div>';
+  };
 })(typeof window !== 'undefined' ? window : globalThis);

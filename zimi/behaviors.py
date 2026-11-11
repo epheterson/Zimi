@@ -32,6 +32,7 @@ Which copy is used, first match wins:
 import logging
 import os
 import shutil
+import subprocess
 
 log = logging.getLogger("zimi.behaviors")
 
@@ -70,10 +71,10 @@ def behaviors_path():
             return candidate
     npm = shutil.which("npm")
     if npm:
-        import subprocess
+        from zimi import subproc
 
         try:
-            p = subprocess.run(
+            p = subproc.run(
                 [npm, "root", "-g"], capture_output=True, text=True, timeout=20
             )
             root = (p.stdout or "").strip()

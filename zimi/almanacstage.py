@@ -22,12 +22,29 @@ complete.
 """
 
 import gzip
+import json
 import os
 import re
 import shutil
 
 STATIC = os.path.join(os.path.dirname(os.path.abspath(__file__)), "static")
 HOST = os.path.join(os.path.dirname(os.path.abspath(__file__)), "builtin", "almanac")
+GAMES = os.path.join(os.path.dirname(os.path.abspath(__file__)), "builtin", "games")
+#: Taken from the Games' folder: Zimi's address (written only there) and its mark.
+FROM_GAMES = ("zimihome.js", "mark.svg")
+
+#: The Golden Record's pictures and their table (file, caption, credit, public domain or not).
+GOLDEN_RECORD = "golden-record"
+GOLDEN_CREDITS = os.path.join(GOLDEN_RECORD, "credits.json")
+#: zimi.txt's line about the pictures, and what it says in the community edition.
+GOLDEN_LINE_FULL = "all 49 shown, each with its credit; 8 are NASA photographs (public domain) and the other 41 are copyright their owners"
+GOLDEN_LINE_COMMUNITY = (
+    "the 8 public-domain NASA pictures are shown, and the other 41 are named in a list (number, title, credit), not shown. Their owners"
+)
+
+
+#: The page's languages, Zimi's ten: each one's strings are packed in (i18n/<code>.json), English standing under the rest.
+LANGUAGES = ("ar", "de", "en", "es", "fr", "he", "hi", "pt", "ru", "zh")
 
 #: What the Almanac loads, in order (they share one global scope). app.js's
 #: _ALMANAC_MODULES, then what it adds on open and on use.
@@ -56,12 +73,12 @@ LAZY = (
 STYLES = ("almanac.css",)
 #: Data and assets the pages fetch (files or whole folders under static/).
 DATA = (
-    os.path.join("i18n", "en.json"),
+    *(os.path.join("i18n", "%s.json" % lang) for lang in LANGUAGES),
     "tz-borders.json",
     "world-map.svg",
     "earth",
     "rosetta",
-    "golden-record",
+    GOLDEN_RECORD,
     "temml",
 )
 
@@ -377,8 +394,38 @@ def _snapshots(dest):
         f.write(raw)
 
 
-def stage(dest):
-    """Write the folder to build into ``dest`` (empty)."""
+def golden_record_images():
+    """The Golden Record table (static/golden-record/credits.json), in the record's order."""
+    with open(os.path.join(STATIC, GOLDEN_CREDITS), encoding="utf-8") as f:
+        return json.load(f)["images"]
+
+
+def _community_golden_record(dest):
+    """The community edition (openZIM/Kiwix take only free content): the copyrighted
+    Golden Record pictures left out, each marked ``omitted`` in the staged table so the
+    gallery names it in its list (number, title, credit) instead of showing it, and zimi.txt says so."""
+    path = os.path.join(dest, GOLDEN_CREDITS)
+    with open(path, encoding="utf-8") as f:
+        table = json.load(f)
+    for im in table["images"]:
+        if not im["pd"]:
+            os.remove(os.path.join(dest, GOLDEN_RECORD, im["file"]))
+            im["omitted"] = True
+    with open(path, "w", encoding="utf-8", newline="\n") as f:
+        json.dump(table, f, ensure_ascii=False, indent=1)
+        f.write("\n")
+    meta = os.path.join(dest, "zimi.txt")
+    with open(meta, encoding="utf-8") as f:
+        text = f.read()
+    if GOLDEN_LINE_FULL not in text:
+        raise StageError("zimi.txt no longer says %r" % GOLDEN_LINE_FULL)
+    with open(meta, "w", encoding="utf-8", newline="\n") as f:
+        f.write(text.replace(GOLDEN_LINE_FULL, GOLDEN_LINE_COMMUNITY))
+
+
+def stage(dest, community=False):
+    """Write the folder to build into ``dest`` (empty). ``community``: the edition for
+    openZIM/Kiwix, without the Golden Record pictures that are not public domain."""
     with open(os.path.join(STATIC, "app.js"), encoding="utf-8") as f:
         app_src = f.read().replace("\r\n", "\n")
     with open(os.path.join(HOST, "index.html"), encoding="utf-8") as f:
@@ -393,4 +440,9 @@ def stage(dest):
         f.write(shell_css)
     for fn in os.listdir(HOST):
         shutil.copyfile(os.path.join(HOST, fn), os.path.join(dest, fn))
+    # The line naming Zimi outside it: the address and the mark are the Games' (one place each), the same in both ZIMs.
+    for fn in FROM_GAMES:
+        shutil.copyfile(os.path.join(GAMES, fn), os.path.join(dest, fn))
     _snapshots(dest)
+    if community:
+        _community_golden_record(dest)

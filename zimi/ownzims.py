@@ -57,6 +57,7 @@ def display_title(title):
     """The name Zimi shows for one of its own ZIMs ("Games · Zimi" -> "Games")."""
     return title[: -len(_BRAND_SUFFIX)] if title.endswith(_BRAND_SUFFIX) else title
 
+
 SOURCE_ROOT = os.path.join(os.path.dirname(os.path.abspath(__file__)), "builtin")
 #: Where the built files are committed. A module global so tests build elsewhere.
 OUT_DIR = SOURCE_ROOT
@@ -95,8 +96,10 @@ def _released(path):
         run = lambda *a: subprocess.run(
             ("git",) + a, cwd=SOURCE_ROOT, capture_output=True, text=True, timeout=30
         ).stdout.strip()
-        added = run("log", "--diff-filter=A", "--format=%H", "-1", "--", rel)
-        return bool(added and run("tag", "--contains", added))
+        # Any tag's history that adds this path: a release merged by squash added it in its own commit, not this branch's.
+        return bool(
+            run("log", "--tags", "--diff-filter=A", "--format=%H", "-1", "--", rel)
+        )
     except (OSError, ValueError, subprocess.SubprocessError):
         # ValueError: on Windows a path on another drive has no relpath; it is no file of this repo's tags
         return False
@@ -134,7 +137,11 @@ def removed():
     except ImportError:  # zimi-mcp ships no Manage
         return frozenset()
     names = {o.name for o in OWN}
-    return frozenset(n for n in saved if isinstance(n, str) and n in names) if isinstance(saved, list) else frozenset()   # a hand-edited file may hold anything
+    return (
+        frozenset(n for n in saved if isinstance(n, str) and n in names)
+        if isinstance(saved, list)
+        else frozenset()
+    )  # a hand-edited file may hold anything
 
 
 _removed_lock = threading.Lock()  # one read-then-write of the list at a time
@@ -150,7 +157,9 @@ def set_removed(name, gone):
     with _removed_lock:
         now = set(removed())
         (now.add if gone else now.discard)(name)
-        manage._write_app_update_prefs(**{REMOVED_KEY: [o.name for o in OWN if o.name in now]})
+        manage._write_app_update_prefs(
+            **{REMOVED_KEY: [o.name for o in OWN if o.name in now]}
+        )
     return True
 
 
@@ -158,7 +167,9 @@ def is_own_path(path):
     """Whether ``path`` is one of the package's own files: it lives in the
     package's builtin folder. A file of the same name anywhere else (a copy
     someone put in their library) is an ordinary ZIM."""
-    return bool(path) and os.path.dirname(os.path.abspath(path)) == os.path.abspath(OUT_DIR)
+    return bool(path) and os.path.dirname(os.path.abspath(path)) == os.path.abspath(
+        OUT_DIR
+    )
 
 
 #: Folders of an own ZIM the phone does not keep ahead of time: the games' 214 puzzle files (16 MB) and their thumbnails
@@ -172,7 +183,8 @@ _OFFLINE_RUN = 64  # entries read per hold of the library lock
 def offline_paths(name):
     """What the phone keeps so an own ZIM opens with no signal (``GET /own-offline``): the address of each page, script,
     style and engine, less OFFLINE_SKIP. Empty when the ZIM is not in this request's library (removed, deleted, off the
-    account's list), so nothing is kept for what the person took away. Read once per file, then from memory."""
+    account's list), so nothing is kept for what the person took away. Read once per file, then from memory.
+    """
     from zimi import server as _srv
 
     path = _srv.get_zim_files().get(name)
@@ -194,7 +206,13 @@ def offline_paths(name):
             for i in range(start, min(start + _OFFLINE_RUN, total)):
                 entry = entry_by_id(archive, i)
                 # The ZIM's own metadata (Counter, Title, Illustration_48x48@1) has no extension and is no page.
-                if (not entry.is_redirect and "." in entry.path and not entry.path.startswith(OFFLINE_SKIP + ("_", "-/", "Illustration"))):
+                if (
+                    not entry.is_redirect
+                    and "." in entry.path
+                    and not entry.path.startswith(
+                        OFFLINE_SKIP + ("_", "-/", "Illustration")
+                    )
+                ):
                     out.append("/w/%s/%s" % (name, entry.path))
     with _offline_lock:
         _offline_cache[name] = (ident, out)
@@ -203,7 +221,8 @@ def offline_paths(name):
 
 def offline_version(name):
     """Which file version ``offline_paths`` describes (its size and time), so a phone that kept an earlier one knows to replace
-    what it has under the same paths. "" when the ZIM is not in this request's library."""
+    what it has under the same paths. "" when the ZIM is not in this request's library.
+    """
     from zimi import server as _srv
 
     path = _srv.get_zim_files().get(name)
@@ -247,9 +266,15 @@ def _file_row(path):
         if hit and hit[0] == key:
             return hit[1]
     fname = os.path.basename(path)
-    row = {"file": fname, "title": re.sub(_DATED, "", fname), "description": "", "icon": "",
-           "size_bytes": st.st_size, "entries": 0,
-           "date": (re.search(r"_(\d{4}-\d{2})", fname) or [""] * 2)[1]}
+    row = {
+        "file": fname,
+        "title": re.sub(_DATED, "", fname),
+        "description": "",
+        "icon": "",
+        "size_bytes": st.st_size,
+        "entries": 0,
+        "date": (re.search(r"_(\d{4}-\d{2})", fname) or [""] * 2)[1],
+    }
     try:
         a = Archive(path)
         row["title"] = display_title(a.get_metadata("Title").decode("utf-8", "replace"))
@@ -257,7 +282,9 @@ def _file_row(path):
         row["description"] = a.get_metadata("Description").decode("utf-8", "replace")
         if a.has_illustration(48):
             png = bytes(a.get_illustration_item(48).content)
-            row["icon"] = "data:image/png;base64," + base64.b64encode(png).decode("ascii")
+            row["icon"] = "data:image/png;base64," + base64.b64encode(png).decode(
+                "ascii"
+            )
     except Exception:
         pass
     with _rows_lock:
@@ -278,7 +305,9 @@ def catalog():
         if not path:
             continue
         try:
-            rows.append(dict(_file_row(path), name=o.name, installed=o.name not in gone))
+            rows.append(
+                dict(_file_row(path), name=o.name, installed=o.name not in gone)
+            )
         except OSError:
             continue
     return rows
@@ -329,14 +358,40 @@ def _with_source(own, fn):
         return fn(dest)
 
 
+#: Written into each own ZIM at build time, never into its source: the build's year, for the credit line the pages
+#: draw outside Zimi (games/shell.js, almanac/index.html). The same day as the ZIM's Date metadata, not the reader's clock;
+#: kept out of the source so the source hash, and with it --check, stays the source's alone.
+BUILD_FILE = "zimibuild.js"
+
+
+def with_build_year(extra_items=None):
+    from zimi.zimwriter import make_asset_item
+
+    body = ("window.ZIMI_BUILT_YEAR = %d;\n" % datetime.date.today().year).encode("ascii")
+
+    def add(creator):
+        creator.add_item(make_asset_item(BUILD_FILE, "text/javascript", body))
+        if extra_items:
+            extra_items(creator)
+
+    return add
+
+
 def write_zim(own, path, flavour=None, extra_items=None):
     """``own`` built into ``path``, from its source as it is now: another flavour of the same Name
-    (``flavour``, ``extra_items``: see creator.create_folder_zim). Nothing is committed or stamped."""
+    (``flavour``, ``extra_items``: see creator.create_folder_zim). Nothing is committed or stamped.
+    """
 
     def _write(folder):
         from zimi import creator
 
-        creator.create_folder_zim(folder, out_path=path, register=False, flavour=flavour, extra_items=extra_items)
+        creator.create_folder_zim(
+            folder,
+            out_path=path,
+            register=False,
+            flavour=flavour,
+            extra_items=with_build_year(extra_items),
+        )
         return path
 
     return _with_source(own, _write)
@@ -366,7 +421,7 @@ def build(own):
         for stale in (new, new + ".tmp"):
             if os.path.exists(stale):
                 os.remove(stale)
-        creator.create_folder_zim(folder, out_path=new, register=False)
+        creator.create_folder_zim(folder, out_path=new, register=False, extra_items=with_build_year())
         os.replace(new, path)
         with open(path + _STAMP_EXT, "w", encoding="ascii") as f:
             f.write(want + "\n")
@@ -384,7 +439,9 @@ def main(argv=None):
     list what is stale and exit 1."""
     argv = sys.argv[1:] if argv is None else argv
     if not all(os.path.isdir(os.path.join(SOURCE_ROOT, o.folder)) for o in OWN):
-        print("the ZIMs' source folders are in a repo checkout, not an installed package")
+        print(
+            "the ZIMs' source folders are in a repo checkout, not an installed package"
+        )
         return 2
     if "--check" in argv:
         stale = [o.name for o in OWN if not fresh(o)]

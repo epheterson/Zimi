@@ -235,7 +235,6 @@
  "bj.soft1": "мягкие {total}",
  "bj.split": "Разделить",
  "bj.stand": "Хватит",
- "bl.choosing": "Выбираю слова из вашего Викисловаря…",
  "bl.counter": "{n} из {max}",
  "bl.fakeLabel": "Ваше ложное значение",
  "bl.fakePlaceholder": "Что может значить {word}? Пусть звучит правдоподобно",
@@ -5343,6 +5342,7 @@
  "shelf.length.l5": "Около 5 минут",
  "shelf.minutes": "{n} мин",
  "shelf.minutes.plus": "{n} мин+",
+ "shelf.new": "Новое",
  "shelf.noMatch": "Нет подходящих игр.",
  "shelf.play": "Играть",
  "shelf.players.line": {
@@ -5408,6 +5408,7 @@
  "shelf.view.index": "Список",
  "shelf.view.lobby": "Холл",
  "shelf.viewSort": "Вид и порядок",
+ "shelf.world": "Любимые во всём мире",
  "shelf.year.bc": "ок. {y} г. до н. э.",
  "shell.about.credit": "Эта головоломка входит в Simon Tatham’s Portable Puzzle Collection, авторские права 2004–2024 Simon Tatham и многих участников, по лицензии MIT. ZimiGames добавляет страницу вокруг неё и запускает её без изменений.",
  "shell.about.licence": "Лицензия",
@@ -5683,7 +5684,6 @@
  "snake.bestWrap": "Рекорд с переходом через край",
  "snake.readyKeys": "Нажмите стрелку, чтобы начать",
  "snake.readyTouch": "Коснитесь, чтобы начать, затем смахивайте для поворота",
- "snake.wrap": "Через край",
  "sokoban.blocked": "Что-то мешает",
  "sokoban.board": "Доска Sokoban",
  "sokoban.boardLabel": "{level}: ящиков на кольцах {done} из {total}, ходов: {moves}",
@@ -6272,5 +6272,9 @@
  "hex.rules.two": "Каждый соединяет свои два края, красный и синий. Побеждает первая цепочка.",
  "race.matchedShortest": "Вы повторили кратчайший путь: {n}.",
  "race.matchedRoute": "Вы повторили известный путь: {n}.",
- "race.beatRoute": "Вы улучшили известный путь из {n}."
+ "race.beatRoute": "Вы улучшили известный путь из {n}.",
+ "game.checkers.short": "Шашки",
+ "snake.walls": "Стены",
+ "snake.walls.solid": "Сплошные",
+ "snake.walls.wrap": "Насквозь"
 }

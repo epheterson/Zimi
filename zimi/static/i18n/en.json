@@ -165,7 +165,7 @@
   "alm_galactic_orbit": "{pct}% through orbit #{n}",
   "alm_gps_coords": "GPS: {lat}, {lon}",
   "alm_gps_unavailable": "GPS unavailable",
-  "alm_gr_subtitle": "49 images selected by Carl Sagan's team, decoded from analog video signals on a gold-plated phonograph record, now 24+ billion km from Earth.",
+  "alm_gr_subtitle": "49 of the record's 116 pictures, in its order, chosen by Carl Sagan's team. The record is now more than 20 billion km from Earth.",
   "alm_gr_title": "Images Encoded on the Record",
   "alm_greatest_elongation": "Greatest Elongation",
   "alm_h_abbr": "h",
@@ -3693,5 +3693,9 @@
   "alm_blurb_cassini": "Spent years at Saturn and sent a lander down to Titan.",
   "alm_blurb_galileo": "The first spacecraft to orbit Jupiter, and it dropped a probe into its clouds.",
   "alm_blurb_europaclipper": "On its way to Jupiter to study Europa's hidden ocean.",
-  "clear_catalog_copies": "Clear catalog copies ({size})"
+  "clear_catalog_copies": "Clear catalog copies ({size})",
+  "voices_set_up_mb": "Set up ({mb} MB)",
+  "alm_gr_pd": "public domain",
+  "alm_gr_omitted": "In this edition, the pictures that are not public domain are named, not shown.",
+  "alm_gr_note": "Eight of these pictures are NASA photographs, in the public domain. The rest are copyright their owners, named beside each picture: Jon Lomberg, UN Photo, Frank Drake, the National Astronomy and Ionosphere Center, Jay M. Pasachoff and Picturepoint, London. They appear here so the record can be seen as it was sent; Zimi claims no rights in them. These are NASA's scans of the original pictures, not decoded from the record's sound. Source: NASA, science.nasa.gov."
 }

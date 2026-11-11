@@ -259,7 +259,6 @@
  "bj.soft1": "ناعم {total}",
  "bj.split": "افصل",
  "bj.stand": "ثبّت",
- "bl.choosing": "جارٍ اختيار الكلمات من Wiktionary لديك…",
  "bl.counter": "{n} من {max}",
  "bl.fakeLabel": "معناك المزيّف",
  "bl.fakePlaceholder": "ماذا قد تعني {word}؟ اجعله يبدو حقيقيًا",
@@ -5557,6 +5556,7 @@
  "shelf.length.l5": "نحو 5 دقائق",
  "shelf.minutes": "{n} د",
  "shelf.minutes.plus": "{n} د+",
+ "shelf.new": "جديد",
  "shelf.noMatch": "لا لعبة تطابق ذلك.",
  "shelf.play": "العب",
  "shelf.players.line": {
@@ -5626,6 +5626,7 @@
  "shelf.view.index": "الفهرس",
  "shelf.view.lobby": "الردهة",
  "shelf.viewSort": "العرض والترتيب",
+ "shelf.world": "المفضلة عالميًا",
  "shelf.year.bc": "نحو {y} ق.م",
  "shell.about.credit": "هذا اللغز جزء من Simon Tatham’s Portable Puzzle Collection، حقوق النشر 2004–2024 لـSimon Tatham ومساهمين كثيرين، بترخيص MIT. تضيف ZimiGames الصفحة حوله وتشغّله دون تغيير.",
  "shell.about.licence": "الترخيص",
@@ -5903,7 +5904,6 @@
  "snake.bestWrap": "الأفضل مع الالتفاف",
  "snake.readyKeys": "اضغط مفتاح سهم للبدء",
  "snake.readyTouch": "المس للبدء، ثم اسحب للانعطاف",
- "snake.wrap": "التفاف",
  "sokoban.blocked": "هناك شيء يعترض الطريق",
  "sokoban.board": "لوحة سوكوبان",
  "sokoban.boardLabel": "{level}: الصناديق على الحلقات {done} من {total}، الحركات: {moves}",
@@ -6528,5 +6528,9 @@
  "hex.rules.two": "يصل كل لاعب حافتيه، الحمراء والزرقاء. تفوز أول سلسلة.",
  "race.matchedShortest": "طابقتَ أقصر طريق: {n}.",
  "race.matchedRoute": "طابقتَ الطريق المعروف: {n}.",
- "race.beatRoute": "تفوقتَ على الطريق المعروف البالغ {n}."
+ "race.beatRoute": "تفوقتَ على الطريق المعروف البالغ {n}.",
+ "game.checkers.short": "الداما",
+ "snake.walls": "الجدران",
+ "snake.walls.solid": "صلبة",
+ "snake.walls.wrap": "عبور"
 }

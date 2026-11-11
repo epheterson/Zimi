@@ -28,5 +28,13 @@
   "zimi_games": [
    "ZimCity keeps your cities, plus about 40 fixes across the shelf."
   ]
+ },
+ "1.15.6": {
+  "zimi_almanac": [
+   "Ten languages, fixes and Kiwix compatibility, so the Almanac ZIM can be shared with the community."
+  ],
+  "zimi_games": [
+   "Fixes and Kiwix compatibility, so the Games ZIM can be shared with the community."
+  ]
  }
 }

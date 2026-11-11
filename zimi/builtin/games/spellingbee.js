@@ -197,7 +197,7 @@
 
   // The English Wiktionary of the library, if there is one: it judges words the lists lack.
   Lib.library().then(function (list) {
-    var w = (list || []).filter(function (z) { return z.project === 'wiktionary' && Lib.primaryLang(z.language) === 'en'; })[0];
+    var w = Lib.englishWiktionary(list);
     dict = w ? w.name : '';
     var kept = ZimiShell.saved();
     if (kept && kept.g && PUZZLES[kept.g.idx] && (kept.g.mode !== 'daily' || kept.g.date === today)) {

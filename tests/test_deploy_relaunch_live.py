@@ -109,6 +109,27 @@ def served(request, tmp_path, monkeypatch):
     _forget_served_files(ZimHandler)
 
 
+def _wait_for_the_almanac_kept_whole(page, server):
+    """Every file the worker keeps for the Almanac is in its cache, not just the first of them.
+
+    The worker fetches them on its own after the page asks, and closing the page does not stop it. A file still on
+    its way when the test goes on is asked for after the held state begins, so it is held, and a worker with a
+    request in flight is not replaced by the browser until that request ends (Chromium): the new worker then sits
+    waiting for a reason that is the test's own. The device this test describes has the Almanac kept whole.
+    """
+    # An async predicate is done when its promise settles, whatever it says, so the loop is in the page.
+    page.wait_for_function(
+        """async urls => {
+            for (;;) {
+                if ((await Promise.all(urls.map(u => caches.match(u)))).every(Boolean)) return true;
+                await new Promise(r => setTimeout(r, 100));
+            }
+        }""",
+        arg=server.http._almanac_pack_urls(),
+        timeout=90000,
+    )
+
+
 def _gen(page):
     return page.evaluate("() => window.__gen")
 
@@ -128,10 +149,7 @@ def test_relaunch_after_a_deploy_runs_the_new_code(served):
         pg.wait_for_function("() => typeof _almanacOpen !== 'undefined' && _almanacOpen", timeout=30000)
         # The worker in charge, and the Almanac kept whole
         pg.wait_for_function("() => navigator.serviceWorker.controller", timeout=30000)
-        pg.wait_for_function(
-            "() => caches.keys().then(ks => Promise.all(ks.map(k => caches.open(k).then(c => c.keys())))).then(r => r.flat().some(q => /almanac-earth\\.js/.test(q.url)))",
-            timeout=60000,
-        )
+        _wait_for_the_almanac_kept_whole(pg, server)
         assert _gen(pg) == 0
         pg.close()
 
@@ -141,6 +159,9 @@ def test_relaunch_after_a_deploy_runs_the_new_code(served):
         log = []
         pg = ctx.new_page()
         pg.on("request", lambda r: log.append(r.url) if r.resource_type == "document" and r.frame.parent_frame is None else None)
+        console = []
+        pg.on("console", lambda m: console.append("%s: %s" % (m.type, m.text[:160])))
+        pg.on("requestfailed", lambda r: console.append("failed: %s %s" % (r.url[-60:], r.failure)))
         pg.goto(server.base + "/", wait_until="commit")
         t0 = time.time()
         gens = []
@@ -165,7 +186,7 @@ def test_relaunch_after_a_deploy_runs_the_new_code(served):
         br.close()
     # The new code runs on the first launch, with the Almanac's files still held, and its reload followed the new
     # worker taking charge, never the page's wait for one that does not come.
-    assert first == 1 and by != "timeout", (engine, gens, by, diag)
+    assert first == 1 and by != "timeout", (engine, gens[-3:], by, diag, console[-12:])
 
 
 def _kept_almanac_on_device(ctx, server):
@@ -173,10 +194,7 @@ def _kept_almanac_on_device(ctx, server):
     pg.goto(server.base + "/#almanac")
     pg.wait_for_function("() => typeof _almanacOpen !== 'undefined' && _almanacOpen", timeout=30000)
     pg.wait_for_function("() => navigator.serviceWorker.controller", timeout=30000)
-    pg.wait_for_function(
-        "() => caches.keys().then(ks => Promise.all(ks.map(k => caches.open(k).then(c => c.keys())))).then(r => r.flat().some(q => /almanac-earth\\.js/.test(q.url)))",
-        timeout=60000,
-    )
+    _wait_for_the_almanac_kept_whole(pg, server)
     pg.close()
 
 

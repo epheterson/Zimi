@@ -199,7 +199,6 @@
  "bj.soft1": "软 {total}",
  "bj.split": "分牌",
  "bj.stand": "停牌",
- "bl.choosing": "正在从你的 Wiktionary 选词…",
  "bl.counter": "{n}/{max}",
  "bl.fakeLabel": "你编的释义",
  "bl.fakePlaceholder": "{word} 可能是什么意思？写得像真的",
@@ -5019,6 +5018,7 @@
  "shelf.length.l5": "约 5 分钟",
  "shelf.minutes": "{n} 分钟",
  "shelf.minutes.plus": "{n} 分钟+",
+ "shelf.new": "新",
  "shelf.noMatch": "没有符合的游戏。",
  "shelf.play": "开始",
  "shelf.players.line": {
@@ -5078,6 +5078,7 @@
  "shelf.view.index": "索引",
  "shelf.view.lobby": "大厅",
  "shelf.viewSort": "视图与排序",
+ "shelf.world": "全球热门",
  "shelf.year.bc": "约公元前 {y} 年",
  "shell.about.credit": "这款谜题属于 Simon Tatham’s Portable Puzzle Collection，版权所有 2004–2024 Simon Tatham 及众多贡献者，采用 MIT 许可证。ZimiGames 只为它加上外围页面，并原样运行。",
  "shell.about.licence": "许可证",
@@ -5350,7 +5351,6 @@
  "snake.bestWrap": "穿墙最佳",
  "snake.readyKeys": "按方向键开始",
  "snake.readyTouch": "点按开始，然后滑动转向",
- "snake.wrap": "穿墙",
  "sokoban.blocked": "路被挡住了",
  "sokoban.board": "仓库番棋盘",
  "sokoban.boardLabel": "{level}：{total} 个箱子中有 {done} 个在圆环上，{moves} 步",
@@ -5882,5 +5882,9 @@
  "hex.rules.two": "双方各连通自己的两条边，红和蓝。先连成链者胜。",
  "race.matchedShortest": "你走出了最短路线：{n}。",
  "race.matchedRoute": "你走出了已知路线：{n}。",
- "race.beatRoute": "你胜过了已知的 {n} 步路线。"
+ "race.beatRoute": "你胜过了已知的 {n} 步路线。",
+ "game.checkers.short": "跳棋",
+ "snake.walls": "墙",
+ "snake.walls.solid": "实墙",
+ "snake.walls.wrap": "穿墙"
 }

@@ -28,8 +28,9 @@ echo "zimi config (the portable folder decides the paths)..."
 "$Z" config | tee "$STICK/config.txt"
 grep -q "portable" "$STICK/config.txt" || { echo "FAIL: config does not show the portable folder"; exit 1; }
 
-echo "zimi doctor --check..."
-"$Z" doctor --check
+echo "zimi doctor --check (also: the machine's python3, started from the app, is not handed the bundle's libraries, #151)..."
+"$Z" doctor --check | tee "$STICK/doctor.txt"
+grep -q "would not run properly" "$STICK/doctor.txt" && { echo "FAIL: the app leaks its environment to outside programs"; exit 1; }
 
 echo "zimi service print (ExecStart must be this executable)..."
 "$Z" service print | tee "$STICK/unit.txt"

@@ -134,7 +134,7 @@
    "fact": "",
    "label": "shell new game",
    "moves": 0,
-   "sheet": "TriPeaksNew gameSettingsHow to playHistoryStatsAbout this game",
+   "sheet": "TriPeaksNew gameSettingsHow to playHistoryStatsAbout this game\u00a9 Zimi",
    "stat": "0:00",
    "state": "89683c36",
    "sub": "",
@@ -148,5 +148,5 @@
  "hseed": 47,
  "plays": "tap:37>waste tap:51>waste tap:0>waste tap:25>waste stray:20 stock drag:34>waste tap:35>waste tap:23>waste tap:24>waste stock stock tap:6>waste tap:5>waste tap:45>waste tap:46>waste stock stray:17 stock drag:27>waste drag:28>waste tap:16>waste tap:41>waste drag:1>waste stock stock stock drag:42>waste stock stray:22 stock drag:20>waste stock tap:22>waste stock stock stray:18 stray:2 tap:50>waste stock drag:29>waste tap:15>waste stock stock tap:17>waste stray:17 drag:18>waste tap:19>waste stock stock stock stock stray:9 stock stock stock stock tap:15>waste tap:16>waste tap:30>waste stock stock tap:1>waste stock stock stray:25 tap:39>waste",
  "seed": 36,
- "trace": "adf82fa0849aa15f3094467f4902fa8f719e1666cf6dab6314280ef3250d2599f658639dc8d4e47b67f93fe4da831d08de112904c0f393bc48928c5fed85e7ecf7fbe7113439b107fcb249f54a3171c3699898189aeeb9955bb8acf100ccfd548c9301531061c94fa856884c5e7cfaa8b3984215b06967cabad7a7f3be16dcadceac16e8e59dc97c48830cf06bae71032fd436f170d059d075d93e518475d216a45856b4fbd2a9ecf342544afa521e8f8c216fd7ed2678341f410a242ed9512df04824a39b6c4595357e18e8305e03e8d841a56e7b3aa5c39b487fedfc9db7f320387d68c13a344e52ff7e5f77572470cf9d84e7fd32f481bde027c3d2e95aacc17eb3208ce5efb1fc66348f7d9ff6fc5589f3b3e9dd60ff965889acd56c32452822e0630d8c63d35347702c651829a85b1bf6d9386a103f596c5e24aefc0adeddbe79c6e47dc251e66da989"
+ "trace": "adf82fa0849aa15f3094467f4902fa8f719e1666cf6dab6314280ef3250d2599f658639dc8d4e47b67f93fe4da831d08de112904c0f393bc48928c5fed85e7ecf7fbe7113439b107fcb249f54a3171c3699898189aeeb9955bb8acf100ccfd548c9301531061c94fa856884c5e7cfaa8b3984215b06967cabad7a7f3be16dcadceac16e8e59dc97c48830cf06bae71032fd436f170d059d075d93e518475d216a45856b4fbd2a9ecf342544afa521e8f8c216fd7ed2678341f410a242ed9512df04824a39b6c4595357e18e8305e03e8d841a56e7b3aa5c39b487fedfc9db7f320387d68c13a344e52ff7e5f77572470cf9d84e7fd32f481bde027c3d2e95aacc17eb3208ce5efb1fc66348f7d9ff6fc5589f3b3e9dd60ff965889acd56c32452822e0630d8c63d35347702c651829a85b1bf6d9386a103f596c5e24aefc0adeddbe79c610562d4701d96037"
 }

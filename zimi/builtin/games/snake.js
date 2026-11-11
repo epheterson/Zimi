@@ -90,7 +90,8 @@
   var ctx = els.cv.getContext('2d'), status = Play.status(els.msg);
   var settings = Play.load(SETTINGS_KEY, { wrap: false }), best = Play.load(BEST_KEY, {});
   var g, cs = 18, rows = ROWS, mode = 'ready', last = 0, acc = 0, pal = {}, armed = null, fx = { eat: null, dead: 0 };
-  function modeKey() { return settings.wrap ? 'wrap' : 'walls'; }
+  // The walls of the board in play (the setting changed mid-game applies to the next one), so a score lands under its own walls.
+  function modeKey() { return (g ? g.wrap : settings.wrap) ? 'wrap' : 'walls'; }
 
   function readPalette() {
     var s = getComputedStyle(document.documentElement);
@@ -213,6 +214,12 @@
     else draw();
     showEnd(false, still ? undefined : DEATH_MS + DEATH_BLINK_MS);
   }
+  function wallsRow() {
+    return Play.optionRow(T('snake.walls'), [[false, T('snake.walls.solid')], [true, T('snake.walls.wrap')]], !!settings.wrap, function (v) {
+      settings.wrap = v; Play.save(SETTINGS_KEY, settings);
+      if (mode === 'ready') { g = createGame(COLS, rows, settings.wrap); draw(); }
+    });
+  }
   els.newBtn.addEventListener('click', begin);
   els.pause.addEventListener('click', toggle);
   els.page.addEventListener('pointerdown', function () { if (mode === 'paused') resume(); });
@@ -220,10 +227,10 @@
   ZimiShell.game({
     inProgress: function () { return mode === 'playing' || mode === 'paused'; },
     stats: function () { return [[T('snake.bestWalls'), Play.num(best.walls || 0)], [T('snake.bestWrap'), Play.num(best.wrap || 0)]]; },
-    // Edges are a choice about the game, so they sit in the New game pane; the page takes them when it starts.
-    menu: function () {
-      return { options: [Play.optionRow(T('snake.wrap'), [[false, T('shell.off')], [true, T('shell.on')]], !!settings.wrap, function (v) { settings.wrap = v; Play.save(SETTINGS_KEY, settings); })] };
-    }
+    // The walls: solid (the snake stops at them) or wrap through (it comes out the other side). In Settings, where a player looks,
+    // and in the New game pane; remembered; a game on keeps its walls, the next one takes the choice.
+    settings: function () { return [wallsRow()]; },
+    menu: function () { return { options: [wallsRow()] }; }
   });
 
   var KEY_DIR = { ArrowUp: 'up', ArrowDown: 'down', ArrowLeft: 'left', ArrowRight: 'right', w: 'up', a: 'left', s: 'down', d: 'right', W: 'up', A: 'left', S: 'down', D: 'right' };

@@ -443,7 +443,7 @@ def _is_wav(path):
 
 def _list_output(cmd):
     try:
-        return subprocess.run(
+        return subproc.run(
             cmd, capture_output=True, timeout=SYNTH_TIMEOUT_S, check=False
         ).stdout.decode("utf-8", "replace")
     except (OSError, subprocess.TimeoutExpired):
@@ -2052,6 +2052,28 @@ def _bytes(tag):
     return sum(size for _name, _url, size in pin.files)
 
 
+def _needs_setup(tag, rec):
+    """A voice whose files are here but whose engine is not: a Docker image
+    that no longer carries the engines, updated over a data folder that does
+    have the voices. One tap sets the engine up; the files are not fetched
+    again."""
+    engine = VOICES[tag].engine
+    return bool(rec) and not runtime(engine) and _usable(engine)
+
+
+def _offer_bytes(tag):
+    """What fetching ``tag`` downloads now: the engines, where they are not
+    here yet, and each model file that is not already on disk."""
+    pin = VOICES[tag]
+    folder = _engine_dir(pin.engine)
+    files = sum(
+        size
+        for name, _url, size in pin.files
+        if not _have_file(os.path.join(folder, name), size)
+    )
+    return files + setup_bytes(pin.engine)
+
+
 def _is_current(tag, rec):
     pin = VOICES[tag]
     return (
@@ -2103,7 +2125,7 @@ def start_download(tag):
     if not _usable(VOICES[tag].engine):
         return False, "noengine"
     rec = installed().get(tag)
-    if rec and _is_current(tag, rec):
+    if rec and _is_current(tag, rec) and not _needs_setup(tag, rec):
         return False, "installed"
     if not runtime(VOICES[tag].engine) and setup_problem():
         return False, "blocked"  # said in words by setup_problem()
@@ -2133,8 +2155,10 @@ def _maybe_fetch(lang, accent):
     if POLICY.mode()[0] != outbound.AUTO:
         return
     tag = _offer_tag(lang, accent)
-    if tag and tag not in installed() and _usable(VOICES[tag].engine):
-        start_download(tag)
+    if tag and _usable(VOICES[tag].engine):
+        rec = installed().get(tag)   # one read: a removal between two cannot leave the second without its record
+        if rec is None or _needs_setup(tag, rec):
+            start_download(tag)
 
 
 def _fetch_file(url, dest, expect):
@@ -2289,16 +2313,16 @@ def page_payload():
     offers = {}
     for tag, pin in VOICES.items():
         # can_download(tag), the setting read once rather than per voice.
-        if tag in have or mode == outbound.NEVER or not _usable(pin.engine):
+        if mode == outbound.NEVER or not _usable(pin.engine):
+            continue
+        if tag in have and not _needs_setup(tag, have[tag]):
             continue
         for lang in _pin_langs(tag):
             # A language a downloaded voice already says needs nothing more:
             # which one says it is Manage's choice, not the Dictionary's.
             if (langs.get(lang) or {}).get("engine") not in DOWNLOADED:
                 # The engines first where they are not here: one figure.
-                offers.setdefault(
-                    lang, {"tag": tag, "bytes": _bytes(tag) + setup_bytes(pin.engine)}
-                )
+                offers.setdefault(lang, {"tag": tag, "bytes": _offer_bytes(tag)})
     return {
         "langs": langs,
         # Which voices are here, in the address of every word's audio: a
@@ -2334,6 +2358,7 @@ def _stamp_part(tag, rec):
 
 def _manage_row(tag, rec):
     pin = VOICES[tag]
+    setup = _needs_setup(tag, rec)
     if tag == KOKORO_TAG:
         engine = KOKORO if rec and runtime(KOKORO) else None
     else:
@@ -2345,14 +2370,15 @@ def _manage_row(tag, rec):
         "kind": pin.engine,
         "bytes": (
             rec.get("bytes", _bytes(pin))
-            if rec
-            else _bytes(pin) + setup_bytes(pin.engine)
+            if rec and not setup
+            else _offer_bytes(tag)
         ),
         "license": pin.license,
         "credit": pin.credit,
         "credit_required": needs_credit(pin.license),
         "runnable": _usable(pin.engine),
         "installed": bool(rec),
+        "needs_setup": setup,
         "newer": bool(rec) and not _is_current(tag, rec),
         "engine": engine,
     }
@@ -2379,12 +2405,14 @@ def _lang_row(primary, have, chosen, fetch_ok):
     offer = None
     if fetch_ok:
         stale = [t for t in here if not _is_current(t, have[t])]
-        want = stale or ([] if here else tags)
+        unrunnable = [t for t in here if _needs_setup(t, have[t])]
+        want = stale or unrunnable or ([] if here else tags)
         if want:
             offer = {
                 "tag": want[0],
-                "bytes": _bytes(want[0]) + setup_bytes(PIPER),
+                "bytes": _offer_bytes(want[0]),
                 "newer": bool(stale),
+                "setup": bool(unrunnable) and not stale,
             }
     return {
         "lang": primary,

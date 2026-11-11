@@ -15,6 +15,13 @@ import zimi.manage as manage  # noqa: E402
 import zimi.server as server  # noqa: E402
 
 
+def _empty_the_queue():
+    with library._download_lock:
+        library._active_downloads.clear()
+        library._download_queue.clear()
+        library._download_counter = 0
+
+
 @pytest.fixture(autouse=True)
 def _reset(tmp_path, monkeypatch):
     monkeypatch.setattr(server, "ZIM_DIR", str(tmp_path))
@@ -27,10 +34,7 @@ def _reset(tmp_path, monkeypatch):
         "disk_usage",
         lambda p: SimpleNamespace(total=10**13, used=0, free=10**13),
     )
-    with library._download_lock:
-        library._active_downloads.clear()
-        library._download_queue.clear()
-        library._download_counter = 0
+    _empty_the_queue()
     # Skip auth gate
     monkeypatch.setattr(manage, "_check_manage_auth", lambda h: None)
 
@@ -45,6 +49,9 @@ def _reset(tmp_path, monkeypatch):
     monkeypatch.setattr(library.threading, "Thread", _FakeThread)
     monkeypatch.setattr(library, "_fetch_mirrors", lambda url: [])
     yield
+    # The queue is process-wide: what these tests queued would otherwise be written into the next test's
+    # downloads.json by any persist (resume_pending_downloads) that runs in the same worker.
+    _empty_the_queue()
 
 
 def _fake_handler():

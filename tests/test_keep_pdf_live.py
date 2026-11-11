@@ -68,7 +68,9 @@ def test_a_kept_document_library_reads_offline(pw, world):
     poll(pg, "async (z) => !!(await caches.match('/catalog?zim=' + encodeURIComponent(z)))", timeout_s=30, arg=NAME)
     world.stop()
     pg.goto(world.base + "/", wait_until="load")
-    pg.wait_for_function("() => typeof enterSource === 'function'")
+    # enterSource reads the library list the boot fetches (here from the worker); asked before it lands, the ZIM is
+    # unknown and opens at its front page instead of its list of documents.
+    pg.wait_for_function("(z) => typeof enterSource === 'function' && !!_zimInfo(z)", arg=NAME, timeout=30000)
     pg.evaluate("(z) => enterSource(z)", NAME)
     pg.wait_for_selector("a.zg-doc", timeout=15000)
     titles = pg.eval_on_selector_all("a.zg-doc .title", "els => els.map(e => e.innerText)")

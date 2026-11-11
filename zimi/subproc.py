@@ -25,13 +25,14 @@ used by both runners, so there is one answer to "how does a child die here".
 
 import logging
 import os
+import shutil
 import signal
 import subprocess
 import sys
 
 log = logging.getLogger(__name__)
 
-__all__ = ["popen", "stop"]
+__all__ = ["popen", "run", "external_env", "stop"]
 
 # How long a child gets to leave politely before it is killed. Generous enough
 # for warc2zim to close a ZIM it is midway through writing, short enough that
@@ -42,6 +43,98 @@ TERMINATE_GRACE = 10.0
 KILL_GRACE = 5.0
 
 _WINDOWS = sys.platform == "win32"
+
+# What a PyInstaller bootloader points at its own folder so the frozen program
+# finds its own libraries. A program that is not part of the bundle (the
+# machine's python3, uv, node) given these loads the bundle's older libssl
+# instead of its own and cannot import ssl (issue #151). The bootloader keeps
+# the original of each library path in <NAME>_ORIG.
+_LOADER_PATHS = ("LD_LIBRARY_PATH", "LIBPATH", "SHLIB_PATH", "DYLD_LIBRARY_PATH", "DYLD_FRAMEWORK_PATH")
+_PYTHON_PATHS = ("PYTHONHOME", "PYTHONPATH")
+_PYI_PREFIX = "_PYI_"
+
+
+def _bundle_dirs():
+    """The frozen app's folders, as the bootloader wrote them and with symlinks resolved, each normalised for comparing."""
+    raw = {getattr(sys, "_MEIPASS", None), os.path.dirname(sys.executable)}
+    raw = {d for d in raw if d}
+    return sorted({_norm(d) for d in raw} | {_norm(os.path.realpath(d)) for d in raw})
+
+
+def _norm(path, mod=os.path):
+    """A path in one spelling: separators, case (on Windows) and ``..`` settled, no trailing separator."""
+    return mod.normcase(mod.normpath(path))
+
+
+def _under(path, root, mod=os.path):
+    """True when ``path`` is ``root`` or inside it, on either platform's rules (``mod``: posixpath or ntpath)."""
+    path, root = _norm(path, mod), _norm(root, mod)
+    return path == root or path.startswith(root + mod.sep)
+
+
+def _in_bundle(program):
+    """True when ``program`` is a file inside the frozen app's folder. A bare name is no path (see ``_resolved``)."""
+    try:
+        if not os.path.dirname(os.fspath(program)):
+            return False
+        paths = {_norm(program), _norm(os.path.realpath(program))}
+    except (TypeError, ValueError, OSError):
+        return False
+    return any(_under(p, d) for p in paths for d in _bundle_dirs())
+
+
+def _names_bundle(value):
+    """True when one entry of a path list (PYTHONHOME, PYTHONPATH) is the bundle or inside it."""
+    bundle = _bundle_dirs()
+    return any(_under(entry, d) for entry in value.split(os.pathsep) if entry for d in bundle)
+
+
+def external_env(env=None):
+    """The environment for a program that is NOT part of the bundle: ``env``
+    (default: ours) with the frozen app's loader and Python variables put back
+    to what the user had. Unchanged when not frozen, so a source or pip install
+    behaves exactly as before. Never changes ``env`` itself."""
+    env = dict(os.environ if env is None else env)
+    if not getattr(sys, "frozen", False):
+        return env
+    for name in _LOADER_PATHS:
+        orig = env.pop(name + "_ORIG", None)
+        if orig is None:
+            env.pop(name, None)
+        else:
+            env[name] = orig
+    for name in _PYTHON_PATHS:
+        if name in env:
+            kept = [e for e in env[name].split(os.pathsep) if e and not _names_bundle(e)]
+            if kept:
+                env[name] = os.pathsep.join(kept)   # the user's own entries stay
+            else:
+                env.pop(name)
+    for name in [k for k in env if k.startswith(_PYI_PREFIX)]:
+        del env[name]
+    return env
+
+
+def _resolved(program, env=None):
+    """``program`` as the child would find it: a bare name ("piper", "say") is looked up on the child's own PATH, not taken
+    as a file of the folder Zimi was started from."""
+    try:
+        program = os.fspath(program)
+    except TypeError:
+        return program
+    if os.path.dirname(program):
+        return program
+    path = (os.environ if env is None else env).get("PATH")
+    return shutil.which(program, path=path) or program
+
+
+def _for_program(cmd, kwargs):
+    """Give a child that is not part of the bundle the machine's environment."""
+    if getattr(sys, "frozen", False):
+        program = cmd[0] if isinstance(cmd, (list, tuple)) else cmd
+        if not _in_bundle(_resolved(program, kwargs.get("env"))):
+            kwargs["env"] = external_env(kwargs.get("env"))
+    return kwargs
 
 
 def popen(cmd, **kwargs):
@@ -61,7 +154,13 @@ def popen(cmd, **kwargs):
         )
     else:
         kwargs.setdefault("start_new_session", True)
-    return subprocess.Popen(cmd, **kwargs)
+    return subprocess.Popen(cmd, **_for_program(cmd, kwargs))
+
+
+def run(cmd, **kwargs):
+    """``subprocess.run`` for a short probe, with the same environment rule as
+    ``popen``."""
+    return subprocess.run(cmd, **_for_program(cmd, kwargs))
 
 
 def stop(proc, grace=TERMINATE_GRACE):

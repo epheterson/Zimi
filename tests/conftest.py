@@ -345,3 +345,16 @@ def _no_router_changes(request, monkeypatch):
     monkeypatch.setattr(p2p, "is_upnp_enabled", lambda: False)
     monkeypatch.setattr(p2p_nat, "add_port_mapping", lambda port: False)
     yield
+
+
+@pytest.fixture(autouse=True)
+def _p2p_prefs_path_is_put_back(monkeypatch):
+    """A test that points the BT prefs at its own temp file (p2p.set_prefs_path) leaves them there for the next test of the
+    worker, whose "seeding is on by default" then reads a stranger's file."""
+    try:
+        from zimi import p2p
+    except Exception:
+        yield
+        return
+    monkeypatch.setattr(p2p, "_prefs_path", p2p._prefs_path)
+    yield

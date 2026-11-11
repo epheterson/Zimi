@@ -34,6 +34,8 @@ def _env(tmp_path, monkeypatch):
     monkeypatch.setattr(server, "ZIM_DIR", str(zim_dir))
     monkeypatch.setattr(server, "ZIMI_DATA_DIR", str(tmp_path / "data"))
     monkeypatch.setattr(lib, "_opds_disk_loaded", True)
+    # Nothing a test earlier in this worker left in the catalog's memory: these tests start with no catalog at all.
+    monkeypatch.setattr(lib, "_opds_cache", {})
     # Offline tests assert the synchronous stale-serve path — no background
     # revalidation threads reaching for a (dead) network.
     monkeypatch.setattr(lib, "_OPDS_BG_REFRESH", False)
@@ -107,7 +109,9 @@ def test_catalog_torrent_archive_retries_next_run_when_offline(_env, monkeypatch
     lib._catalog_torrents_archived = False
     monkeypatch.setattr(p2p, "is_torrent_enabled", lambda: True)
     monkeypatch.setattr(p2p, "is_mirror_enabled", lambda: True)
-    # No cache at all: fetch fails offline -> archive defers, not marked done
+    # No cache at all: the catalog fetch fails offline -> archive defers, not marked done. The fetch itself is
+    # what is under test here, so no page left anywhere in the process can stand in for it.
+    monkeypatch.setattr(lib, "_fetch_kiwix_catalog", lambda *a, **k: (0, [], "network is gone"))
     assert lib.archive_catalog_torrents(spacing=0) == 0
     assert lib._catalog_torrents_archived is False
 

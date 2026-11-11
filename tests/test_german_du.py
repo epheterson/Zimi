@@ -18,6 +18,7 @@ I18N_DE = os.path.join(
 # The strings where "Sie"/"Ihr" is genuinely third person (they/it/their), each about a thing named in the same string.
 THIRD_PERSON_SIE = {
     "alm_dt_tilt_desc",  # Sie = die Neigung
+    "alm_gr_note",  # Sie = die Bilder
     "backup_mydata_intro",  # Sie = Lesezeichen, Verlauf, Einstellungen
     "backup_mydata_intro_account",
     "catalog_snapshot_note",  # Sie = die Bibliothek

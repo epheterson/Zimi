@@ -5,14 +5,18 @@
    pushes the dock that much further off the screen edge. The dock's own
    margins provide the flow spacing; 8px is just edge breathing for the
    footer. */
-.almanac-content { flex: 1; overflow-y: auto; overflow-x: hidden; -webkit-overflow-scrolling: touch; padding: var(--alm-pad-top) 16px 8px; overscroll-behavior: contain; }
+.almanac-content { flex: 1; overflow-y: auto; overflow-x: hidden; -webkit-overflow-scrolling: touch; padding: var(--alm-pad-top) 0 8px; overscroll-behavior: contain; }
 /* The Almanac keeps its own content still when a section arrives late
    (_almKeepStill in almanac.js); the browser's anchoring would add to it. */
 .almanac-content { overflow-anchor: none; }
 /* Sections that arrive late hold their margins inside them, so the height the
    keep-still watcher sees is the height they take. */
 #almanac-place, #almanac-rosetta { display: flow-root; }
-.almanac-inner { max-width: 600px; margin: 0 auto; }
+/* The page's side gutter is the inner column's own, not the scroller's: paper (almanac-reference.css) sets the
+   scroller's padding aside, and Chromium can keep that 0 after the print is over, which ran the tiles' and the
+   chips' -16px edges and the orrery (sized while the gutter was gone) past the screen's edge: a page that scrolled
+   sideways. 600px of text either way (border-box). */
+.almanac-inner { max-width: 632px; margin: 0 auto; padding: 0 16px; }
 /* The page's last line, clear of a phone's home indicator: the inset is the
    footer's, not the scroller's padding, which would lift the docked time
    machine off the screen's edge too. */
@@ -414,8 +418,16 @@
 #alm-hc-illum-card { order: 1; } .alm-sf-moon { order: 2; } #alm-hc-nextfull-card { order: 3; }
 .alm-sf-sunrise { order: 4; } .alm-sf-sunset { order: 5; } .alm-sf-daylight { order: 6; }
 #almanac-head .alm-cards { grid-template-columns: repeat(3, minmax(0, 1fr)); }
-#almanac-head .alm-card-lbl { letter-spacing: 0.03em; }   /* three across: "Next full moon" fits the tile */
+/* Three across: a label is never cut. It takes a second line (a long word breaks where its language hyphenates, or at the
+   tile's edge), every label has the two lines' room and rests on its value, so every tile is as tall as the next. */
+#almanac-head .alm-card-lbl { letter-spacing: 0.03em; display: flex; align-items: flex-end; justify-content: center; min-height: 24px; line-height: 12px; text-align: center; white-space: normal; overflow-wrap: anywhere; hyphens: auto; text-overflow: clip; }
 #almanac-head .alm-card-val { white-space: normal; overflow-wrap: anywhere; text-wrap: balance; }
+/* Where the browser has subgrid, the labels of one row share a line of the grid instead: the row is as tall as its tallest
+   label, so a row of one-line labels carries no empty line above them, and the values still sit on one line. */
+@supports (grid-template-rows: subgrid) {
+  #almanac-head .alm-card { display: grid; grid-template-rows: subgrid; grid-row: span 2; row-gap: 0; }
+  #almanac-head .alm-card-lbl { min-height: 0; }
+}
 .alm-about-credit { margin: 14px 0 0; font-size: 11px; color: var(--text3); }
 .alm-sky-gear { left: 4px; }
 .alm-sky-gear[aria-expanded="true"] { color: var(--amber); }
@@ -494,11 +506,21 @@
 .gr-gallery { margin-top: 20px; }
 .gr-gallery-title { font-size: 13px; font-weight: 600; color: var(--text); text-align: center; margin-bottom: 4px; }
 .gr-gallery-sub { font-size: 12px; color: var(--text3); text-align: center; line-height: 1.4; margin-bottom: 14px; max-width: 480px; margin-left: auto; margin-right: auto; }
-.gr-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(120px, 1fr)); gap: 6px; }
-.gr-thumb { aspect-ratio: 4/3; overflow: hidden; border-radius: 6px; cursor: pointer; position: relative; border: 1px solid var(--border); transition: border-color 0.2s, transform 0.15s; -webkit-touch-callout: none; }
-.gr-thumb:hover { border-color: var(--amber-border); transform: scale(1.03); }
-.gr-thumb:active { transform: scale(0.97); }
-.gr-thumb img { width: 100%; height: 100%; object-fit: cover; display: block; pointer-events: none; }
+.gr-list { list-style: none; margin: 0 auto; padding: 0; max-width: 640px; }
+.gr-row { display: flex; align-items: center; gap: 10px; padding: 6px 0; border-top: 1px solid var(--border); }
+.gr-row:first-child { border-top: none; }
+.gr-n { flex: 0 0 22px; font-size: 11px; color: var(--text3); text-align: end; font-variant-numeric: tabular-nums; }
+.gr-pic { flex: 0 0 128px; aspect-ratio: 4/3; padding: 0; overflow: hidden; border-radius: 6px; border: 1px solid var(--border); background: #000; cursor: pointer; -webkit-touch-callout: none; transition: border-color 0.2s; }
+.gr-pic:hover { border-color: var(--amber-border); }
+.gr-pic img { width: 100%; height: 100%; object-fit: cover; display: block; pointer-events: none; }
+.gr-txt { display: flex; flex-direction: column; min-width: 0; line-height: 1.35; }
+.gr-cap { font-size: 13px; color: var(--text); }
+.gr-by { font-size: 11px; color: var(--text3); overflow-wrap: anywhere; }
+/* A picture this edition leaves out (the Kiwix Almanac): one line, its title and credit */
+.gr-row-text { padding: 3px 0; }
+.gr-row-text .gr-txt { flex-direction: row; flex-wrap: wrap; column-gap: 8px; align-items: baseline; }
+.gr-row-text .gr-cap { font-size: 12px; color: var(--text2); }
+.gr-note { font-size: 11px; color: var(--text3); line-height: 1.5; margin: 14px auto 0; max-width: 560px; text-align: center; }
 /* Golden Record lightbox */
 .gr-lightbox { position: fixed; inset: 0; z-index: 10000; display: flex; align-items: center; justify-content: center; direction: ltr; }
 .gr-lb-bg { position: absolute; inset: 0; background: rgba(0,0,0,0.92); }
@@ -511,6 +533,7 @@
 .gr-lb-main { position: relative; z-index: 1; max-width: 90vw; max-height: 85vh; display: flex; flex-direction: column; align-items: center; }
 .gr-lb-main img { max-width: 100%; max-height: 75vh; object-fit: contain; border-radius: 4px; }
 .gr-lb-cap { color: #fff; font-size: 14px; font-weight: 500; margin-top: 12px; text-align: center; }
+.gr-lb-by { color: rgba(255,255,255,0.6); font-size: 12px; margin-top: 2px; text-align: center; }
 .gr-lb-num { color: rgba(255,255,255,0.45); font-size: 12px; margin-top: 4px; font-variant-numeric: tabular-nums; }
 /* Voyager "View Golden Record" button */
 .voyager-record-btn { display: block; width: 100%; margin-top: 10px; padding: 8px 0; background: rgba(255,255,255,0.04); border: 1px solid var(--border); border-radius: 6px; color: var(--amber); font-size: 12px; font-weight: 600; cursor: pointer; letter-spacing: 0.03em; transition: background 0.2s, border-color 0.2s; }
@@ -594,7 +617,7 @@
   .alm-rosetta-block { padding: 12px 14px; }
   .alm-rosetta-text { font-size: 13px; }
   .rosetta-compare { grid-template-columns: 1fr; }
-  .gr-grid { grid-template-columns: repeat(auto-fill, minmax(90px, 1fr)); gap: 4px; }
+  .gr-pic { flex-basis: 112px; }
   .gr-lb-arrow { width: 36px; height: 36px; font-size: 20px; }
   .gr-lb-prev { left: 8px; }
   .gr-lb-next { right: 8px; }
@@ -668,11 +691,16 @@
 .alm-ck-d { font-size: 22px; font-weight: 600; line-height: 28px; }   /* whole pixels: the Moon below stands on one, and the 3D view's first frame must match it */
 .alm-ck-l { display: flex; flex-wrap: wrap; justify-content: center; align-items: center; margin-top: 4px; font-size: 16px; line-height: 20px; color: var(--text2); }
 .alm-ck-l > .alm-ck-t { white-space: nowrap; }
+/* A clock reads 18:32 in every language: its digits are one left-to-right run, set apart from a right-to-left line (the parts are separate atoms, so left alone 18:32 reads 32:18); the zone and place beside it keep their own. */
+.alm-ck-t { direction: ltr; unicode-bidi: isolate; }
+.alm-ck-z { unicode-bidi: isolate; }
 .alm-ck-z { white-space: pre-wrap; overflow-wrap: anywhere; max-width: 100%; }   /* pre: the space before the dot is kept; a long place name breaks rather than leaving the screen */
 .alm-clock:not([data-v="head"]) .alm-ck-l { flex-wrap: nowrap; margin-top: 0; height: 24px; font-size: 14px; overflow: hidden; }
 .alm-clock:not([data-v="head"]) .alm-ck-d { font-size: 14px; flex: none; margin-inline-end: 8px; }
 .alm-clock:not([data-v="head"]) .alm-ck-t { flex: none; }
-.alm-clock:not([data-v="head"]) .alm-ck-z { flex: 0 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: pre; }
+.alm-clock:not([data-v="head"]) .alm-ck-z { display: flex; flex: 0 1 auto; min-width: 0; white-space: pre; }
+.alm-clock:not([data-v="head"]) .alm-ck-zn { flex: none; }
+.alm-clock:not([data-v="head"]) .alm-ck-pl { flex: 0 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
 .alm-ck-d, .alm-ck-t { color: var(--text); }
 .alm-ck-l > .alm-ck-t { color: var(--text2); }
 .alm-ck-r { flex: none; margin: 0 6px;   /* both sides: the rate reads left to right whatever the page's direction */

@@ -1238,7 +1238,9 @@ function _almClockPaint(focus) {
       set('.alm-ck-t', _almClockSegs(cp.tzId, focus, ALM_CK_TIME), 't');
     }
     // The zone, and for the header the place whose clock this is, with the crosshair that chooses it.
-    set('.alm-ck-z', (cp.tz ? (root.getAttribute('data-v') === 'foot' ? ' ' : ' &middot; ') + _almEsc(cp.tz) : '') + (cp.place ? ' &middot; ' + (head ? '<span id="almanac-head-place">' + _almEsc(cp.place) + '</span> ' + _almHereBtnHtml('alm-here-icon') : _almEsc(cp.place)) : ''), 'z');
+    // The zone keeps its room; the place is the part that gives way (ellipsis) in a strip too narrow for both.
+    set('.alm-ck-z', (cp.tz ? '<span class="alm-ck-zn">' + (root.getAttribute('data-v') === 'foot' ? ' ' : ' &middot; ') + _almEsc(cp.tz) + '</span>' : '') +
+      (cp.place ? '<span class="alm-ck-pl"> &middot; ' + (head ? '<span id="almanac-head-place">' + _almEsc(cp.place) + '</span> ' + _almHereBtnHtml('alm-here-icon') : _almEsc(cp.place)) + '</span>' : ''), 'z');
     var r = root.querySelector('.alm-ck-r');
     if (r) {
       var rh = _almEsc(text);   // the rate, away from real time; paused says so in the button (play, to resume)
@@ -2689,8 +2691,11 @@ function _renderAlmanacContent() {
 
 
   // Footer
+  // Outside Zimi (the Almanac's ZIM in Kiwix) the page that holds it defines _almHomeLine: the credit line, the page's very last.
+  // Zimi has none.
   html += '<div class="alm-footer">' +
     t('alm_footer') +
+    (typeof _almHomeLine === 'function' ? _almHomeLine() : '') +
     '</div>';
 
   html += '</div>';
@@ -7520,6 +7525,10 @@ function _almDayMonthYear(day, monthName, yearStr) {
     return fill[p.type] != null ? fill[p.type] : p.value;
   }).join('');
 }
+// In a right-to-left line a calendar's Latin month name ("Aban") is its own left-to-right run, or it takes the words around it with it.
+function _almLtrRuns(text) {
+  return text.replace(/[A-Za-z\u00c0-\u024f][A-Za-z\u00c0-\u024f' .-]*[A-Za-z\u00c0-\u024f]/g, '<bdi dir="ltr">$&</bdi>');
+}
 function _almRenderCrossRef(jdn) {
   var greg = _jdnToGregorian(jdn);
   var html = '<div class="alm-crossref">';
@@ -7536,6 +7545,7 @@ function _almRenderCrossRef(jdn) {
       var monthName = _calMonthName(sys, cal.year, cal.month);
       var yearStr = cal.year + _calYearSuffix(sys);
       dateStr = _almDayMonthYear(cal.day, monthName, yearStr);
+      if (document.documentElement.dir === 'rtl') dateStr = _almLtrRuns(dateStr);
       if (sys === 'chinese') {
         // Key the animal to the CHINESE year being displayed (era 2697), which is
         // the Gregorian year of that year's New Year \u2014 so the animal doesn't flip
@@ -8391,7 +8401,7 @@ function _renderDeepTime(now) {
 
 // ── Messages Across Time — enduring inscriptions in every language ──
 // Texts loaded async from /static/rosetta/*.json (manifest + per-inscription files)
-// Golden Record gallery images from /static/golden-record/ (NASA public domain)
+// Golden Record gallery images from /static/golden-record/ (credits.json: 8 NASA, public domain; the rest copyright their owners)
 // Future: this section could become its own ZIM — see project_zim_format.md breadcrumb
 
 var _rosettaManifest = null;
@@ -8406,23 +8416,29 @@ var _ALL_LANGS = [
 ];
 var _RTL_CODES = ['ar','he'];
 
-// Golden Record image gallery — ordered as encoded on the record
-var _GR_IMAGES = [
-  'cover.jpg', 'calibration-circle.gif', 'math-definitions.gif', 'physical-units.gif',
-  'solar-location-map.gif', 'solar-system-inner.gif', 'solar-system-outer.gif', 'solar-spectrum.gif',
-  'mercury.gif', 'mars.gif', 'jupiter.gif', 'earth.gif', 'egypt-nile.gif',
-  'chemical-definitions.gif', 'dna-structure.gif', 'dna-magnified.gif', 'structure-of-earth.gif',
-  'continental-drift.gif', 'heron-island.jpg', 'vertebrate-evolution.gif', 'bushmen-sketch.gif',
-  'man-guatemala.gif', 'human-anatomy.gif', 'conception.gif', 'fetus.gif', 'family-ages.gif',
-  'nursing-mother.gif', 'eating-drinking.gif', 'children-globe.gif', 'schoolroom.gif',
-  'fishing-boat.gif', 'house-africa.gif', 'house-construction.gif', 'house-new-mexico.gif',
-  'supermarket.gif', 'un-building-day.gif', 'un-building-night.gif', 'olympians.gif',
-  'microscope.gif', 'xray-hand.gif', 'street-scene.gif', 'rush-hour.gif', 'highway.gif',
-  'airplane.gif', 'arecibo.gif', 'newton-book.gif', 'violin-cavatina.gif',
-  'titan-launch.gif', 'astronaut.gif'
-];
-function _grCap(idx) { return t('gr_cap_' + idx); }
-
+// The Golden Record's pictures, in the record's order: golden-record/credits.json says each one's
+// file, caption, who it is by and whether it is public domain. The Almanac built for Kiwix
+// (almanacstage, community) marks the copyrighted ones omitted and leaves their files out:
+// those are named in the list as a line of text (number, title, credit), so the sequence stays whole.
+var _GR_CREDITS_URL = '/static/golden-record/credits.json';
+var _GR_DIR = '/static/golden-record/';
+var _grImages = null, _grFailed = false;
+// The table is kept once it has come; a failed fetch leaves an empty list for this render and is tried again at the next.
+async function _loadGrCredits() {
+  if (_grImages && !_grFailed) return _grImages;
+  try {
+    var resp = await fetch(_GR_CREDITS_URL);
+    _grImages = (await resp.json()).images || [];
+    _grFailed = false;
+  } catch (e) { _grImages = []; _grFailed = true; }
+  return _grImages;
+}
+function _grCap(idx) { return t('gr_cap_' + _grImages[idx].cap); }
+// "NASA · public domain" or "© Jon Lomberg": the credit printed on the picture itself.
+function _grCredit(idx) {
+  var im = _grImages[idx];
+  return im.pd ? im.by + ' \u00b7 ' + t('alm_gr_pd') : '\u00a9 ' + im.by;
+}
 var _grLightboxIdx = -1;
 var _grTouchStartX = 0;
 
@@ -8488,6 +8504,9 @@ async function _renderRosettaStone(now) {
 
   // Golden Record image gallery (only when that inscription is selected)
   if (entry.id === 'golden-record') {
+    await _loadGrCredits();
+    // Another inscription was chosen while the credits were coming: that one's render stands, not this one.
+    if ((manifest[_rosettaTextIdx] || manifest[0]) !== entry) return;
     html += _renderGoldenRecordGallery();
   }
 
@@ -8552,17 +8571,25 @@ async function _updateRosettaLangs() {
   if (texts) texts.innerHTML = _rosettaTextsHtml(data);
 }
 
+// One scrolling list in the record's order: each picture beside its number, title and credit (a tap
+// enlarges it); a picture this edition leaves out is one line of text in its place.
 function _renderGoldenRecordGallery() {
+  var omitted = _grImages.some(function (im) { return im.omitted; });
   var html = '<div class="gr-gallery">';
   html += '<div class="gr-gallery-title">' + t('alm_gr_title') + '</div>';
   html += '<div class="gr-gallery-sub">' + t('alm_gr_subtitle') + '</div>';
-  html += '<div class="gr-grid">';
-  for (var i = 0; i < _GR_IMAGES.length; i++) {
-    html += '<div class="gr-thumb" onclick="_openGrLightbox(' + i + ')">' +
-      '<img src="/static/golden-record/' + _GR_IMAGES[i] + '" alt="' + _grCap(i) + '" loading="lazy">' +
-      '</div>';
+  if (omitted) html += '<div class="gr-gallery-sub">' + _almEsc(t('alm_gr_omitted')) + '</div>';
+  html += '<ol class="gr-list">';
+  for (var i = 0; i < _grImages.length; i++) {
+    var cap = _almEsc(_grCap(i)), im = _grImages[i];
+    html += '<li class="gr-row' + (im.omitted ? ' gr-row-text' : '') + '"><span class="gr-n">' + (i + 1) + '</span>' +
+      (im.omitted ? '' : '<button class="gr-pic" onclick="_openGrLightbox(' + i + ')" aria-label="' + cap + '">' +
+        '<img src="' + _almEsc(_GR_DIR + im.file) + '" alt="" loading="lazy"></button>') +
+      '<span class="gr-txt"><span class="gr-cap">' + cap + '</span><span class="gr-by">' + _almEsc(_grCredit(i)) + '</span></span></li>';
   }
-  html += '</div></div>';
+  html += '</ol>';
+  html += '<p class="gr-note">' + _almEsc(t('alm_gr_note')) + '</p>';
+  html += '</div>';
   return html;
 }
 
@@ -8587,14 +8614,16 @@ function _grKeyHandler(e) {
   else if (e.key === 'ArrowLeft') { e.preventDefault(); _grNav(-1); }
 }
 
+// The next picture this edition carries (an omitted one has nothing to enlarge).
 function _grNav(dir) {
-  _grLightboxIdx = (_grLightboxIdx + dir + _GR_IMAGES.length) % _GR_IMAGES.length;
+  var n = _grImages.length;
+  do { _grLightboxIdx = (_grLightboxIdx + dir + n) % n; } while (_grImages[_grLightboxIdx].omitted);
   _renderGrLightbox();
 }
 
 function _renderGrLightbox() {
-  var file = _GR_IMAGES[_grLightboxIdx];
-  var cap = _grCap(_grLightboxIdx);
+  var im = _grImages[_grLightboxIdx];
+  var cap = _almEsc(_grCap(_grLightboxIdx));
   var lb = document.getElementById('gr-lightbox');
   if (!lb) {
     lb = document.createElement('div');
@@ -8615,9 +8644,10 @@ function _renderGrLightbox() {
     '<button class="gr-lb-close" onclick="_closeGrLightbox()">&times;</button>' +
     '<button class="gr-lb-arrow gr-lb-prev" onclick="event.stopPropagation();_grNav(-1)"><svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="10,2 4,8 10,14"/></svg></button>' +
     '<div class="gr-lb-main" onclick="event.stopPropagation()">' +
-      '<img src="/static/golden-record/' + file + '" alt="' + cap + '">' +
+      '<img src="' + _almEsc(_GR_DIR + im.file) + '" alt="' + cap + '">' +
       '<div class="gr-lb-cap">' + cap + '</div>' +
-      '<div class="gr-lb-num">' + (_grLightboxIdx + 1) + ' / ' + _GR_IMAGES.length + '</div>' +
+      '<div class="gr-lb-by">' + _almEsc(_grCredit(_grLightboxIdx)) + '</div>' +
+      '<div class="gr-lb-num">' + (_grLightboxIdx + 1) + ' / ' + _grImages.length + '</div>' +
     '</div>' +
     '<button class="gr-lb-arrow gr-lb-next" onclick="event.stopPropagation();_grNav(1)"><svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6,2 12,8 6,14"/></svg></button>';
 }
