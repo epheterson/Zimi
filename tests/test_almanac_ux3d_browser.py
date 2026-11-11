@@ -189,6 +189,30 @@ def test_the_owner_filter_says_unassigned_and_the_rows_wrap_inside_the_panel(thr
     assert "TBD" not in got["text"] and "Unassigned" in got["text"], got
 
 
+# ── Missions ──
+@pytest.mark.parametrize("mission", ["voyager1", "voyager2"])
+def test_a_probes_mission_opens_at_its_launch_at_the_earth(three_d, mission):
+    pg = three_d
+    pg.evaluate("(id) => _aeMissionStart(id)", mission)
+    pg.wait_for_function(
+        "(id) => _ae.mission && _ae.mission.id === id && _ae.mission.t !== undefined",
+        arg=mission,
+        timeout=GROUND_MS,
+    )
+    got = pg.evaluate(
+        "() => ({ start: _amMission().start, first: _amMission().phases[0].k, t: _ae.mission.t, body: _amMission().phases[0].cam.body, hud: document.querySelector('.am-hud, #am-hud').innerText })"
+    )
+    assert (
+        got["start"] == 0
+        and got["first"] == "alm_ms_ph_launch"
+        and got["body"] == "earth"
+    ), got
+    assert (
+        0 <= got["t"] < 3 * 3600
+    ), got  # the first seconds of the flight, not days or months in
+    assert "T+0:" in got["hud"], got
+
+
 # ── The hero disc ──
 def test_the_hero_disc_stays_put_under_a_drag_until_the_view_can_turn_it(no_map):
     """Before the 3D view is up the disc is a picture: it must not slide under the finger; the drag is kept to turn the Moon by."""
