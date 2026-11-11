@@ -444,8 +444,8 @@ VENUS_LANDINGS = [
     ("Venera 10", 15.42, 291.51, "Venera 10"),
     ("Venera 13", -7.5, 303.0, "Venera 13"),
     ("Venera 14", -13.25, 310.0, "Venera 14"),
-    ("Vega 1", 7.2, 177.8, "Vega program"),
-    ("Vega 2", -6.45, 181.5, "Vega program"),
+    ("Vega 1", 7.2, 177.8, "Vega 1"),
+    ("Vega 2", -6.45, 181.5, "Vega 2"),
 ]
 # 10.573 S, 192.335 W as ESA and NASA publish it (Titan's west-positive longitude): 167.665 E.
 TITAN_LANDINGS = [("Huygens", -10.573, 167.665, "Huygens (spacecraft)")]
@@ -486,7 +486,7 @@ EARTH_PLACES = [
     ("Wenchang", 19.6145, 110.9510, "launch", "Wenchang Space Launch Site"),
     ("Tanegashima", 30.4000, 130.9700, "launch", "Tanegashima Space Center"),
     ("Sriharikota", 13.7199, 80.2304, "launch", "Satish Dhawan Space Centre"),
-    ("Starbase", 25.9972, -97.1560, "launch", "Starbase"),
+    ("Starbase", 25.9972, -97.1560, "launch", "SpaceX Starbase"),
     ("Vostochny", 51.8844, 128.3339, "launch", "Vostochny Cosmodrome"),
 ]
 CHECK_DEG = 0.6  # a site's coordinates this far from Wikidata's are printed for a look
