@@ -185,7 +185,8 @@ function loadScripts(list) {
 
 (function() {
   var strings = fetch('i18n/en.json').then(function(r) { return r.json(); }).then(function(d) { _i18n = d; }, function() {});
-  strings.then(function() { return loadScripts(['shell.js'].concat(ALMANAC_SCRIPTS)); }).then(function() {
+  // The files and the strings come together (one round trip, not two); the page is drawn when both are in.
+  Promise.all([strings, loadScripts(['shell.js'].concat(ALMANAC_SCRIPTS))]).then(function() {
     _openAlmanacInner(true);
   }).catch(function(e) {
     var el = document.getElementById('almanac-content'), veil = document.getElementById('alm-veil');

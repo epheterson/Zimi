@@ -2313,7 +2313,6 @@ function _skyMaybeSettle() {
   var s = _skyState;
   if (!s || s.settled || !s.eph || !_skyIsFinal(s)) return;
   s.settled = true;
-  if (typeof _almSkySettled === 'function') _almSkySettled();
 }
 function _skyAwaitingGPU(s) {
   if (!_skyFirstSight(s)) return false;
