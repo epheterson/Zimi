@@ -120,6 +120,11 @@ moments.splice(4, 0,
     look: { az: 117.3, el: 58.9, spanDeg: SPAN }, see: 'site', source: { name: 'ESA, Cassini-Huygens', url: 'https://www.esa.int/Science_Exploration/Space_Science/Cassini-Huygens', licence: '' }, refs: ['https://www.esa.int/Science_Exploration/Space_Science/Cassini-Huygens'],
     notes: 'The probe on the ground at 12:43 UTC on 14 January 2005, the first landing in the outer solar system. The ground view has the probe where it came to rest.' });
 
-const out = { shape: 'id family title place{name,lat,lon,kind} instant(ms UTC) look{az,el,spanDeg} see source{name,url,licence} refs launch? notes', moments, backlog };
+// The ground at a launch pad (almanac-padview.js): the place is the pad, the instant thirty seconds before lift-off, the direction the pad's own.
+moments.push({ id: 'apollo-11-launch', family: 'spaceflight', title: 'Apollo 11 lifts off from Launch Complex 39A', place: { name: 'Launch Complex 39A, Cape Canaveral', lat: 28.6083, lon: -80.6041, kind: 'place' }, instant: -14552880000 - 30000,
+  look: { az: 20, el: 4, spanDeg: SPAN }, see: 'pad', padview: 'apollo11', source: { name: 'NASA, Apollo 11 mission report', url: 'https://www.nasa.gov/mission/apollo-11/', licence: 'public domain' }, refs: ['https://www.nasa.gov/mission/apollo-11/'],
+  notes: 'The Saturn V on its pad at 13:31:30 UTC on 16 July 1969, thirty seconds before lift-off, seen from about five kilometres away. The ground view runs the count, the ignition and the climb on the mission\'s own trajectory.' });
+
+const out = { shape: 'id family title place{name,lat,lon,kind} instant(ms UTC) look{az,el,spanDeg} see source{name,url,licence} refs launch? padview? notes', moments, backlog };
 fs.writeFileSync(path.join(H.STATIC, 'earth', 'thens-v1.json'), JSON.stringify(out, null, 1) + '\n');
 moments.forEach((m) => console.log(m.family.padEnd(12), m.id.padEnd(30), new Date(m.instant).toISOString(), 'az', m.look.az.toFixed(1), 'el', m.look.el.toFixed(1), m.see));

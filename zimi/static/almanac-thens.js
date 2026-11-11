@@ -116,6 +116,12 @@ function _atSelectLaunch(m) {
 // Stand there then: the clock at the instant (held, to look at), the place, the direction. 'stand' is the ground view where it is there
 // (the Earth), 'sky' the live sky at the place.
 function _atGo(m, how) {
+  if (m.padview && typeof _aePadOpen === 'function') {   // a launch pad: the ground view with the vehicle on it (almanac-padview.js), its Back arrow bringing this entry again
+    var id = m.id;
+    _alHideSheet();
+    _aePadOpen(m.padview, { back: { where: _aeT('then_title'), go: function () { _alThenAt.open = _alThenAt.data.moments.filter(function (x) { return x.id === id; })[0] || null; _al.view = 'thens'; _al.sheet = true; if (_al.sheetEl) _al.sheetEl.hidden = false; _alRender(); } } });
+    return;
+  }
   _atSelectLaunch(m);
   _aeGoTo(m.instant);
   if (typeof _almClockSetRate === 'function') _almClockSetRate(0);

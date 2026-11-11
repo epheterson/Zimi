@@ -4119,5 +4119,22 @@
   "lib_hd_where": "Se choisit dans les réglages de l’Almanach",
   "lib_hd_meta": "{n} fichiers · {size}",
   "older_copies_title": "Anciennes copies conservées",
-  "older_copies_row": "Remplacée par {file}"
+  "older_copies_row": "Remplacée par {file}",
+  "alm_pad_at": "Se tenir près du pas de tir",
+  "alm_pad_back": "Retour à {where}",
+  "alm_pad_restart": "Revenir à T−30",
+  "alm_pad_closer": "Se rapprocher",
+  "alm_pad_follow": "Suivre le vol",
+  "alm_pad_ignition": "Allumage",
+  "alm_pad_cleared": "Tour dégagée",
+  "tb_kn_pv_view": "Au pas de tir : où l'on se tient",
+  "tb_kn_pv_view_v": "À 2.5 km de LC-39A au cap 200° et à 4 km de SLC-41 au cap 215°, les yeux à 1,7 m du sol, face au pas de tir. Les distances sont supposées (celles d'une zone presse pour cette classe de lanceur), pas des lieux relevés. Le compte à rebours commence à T−30 s sur l'horloge propre à la mission.",
+  "tb_kn_pv_climb": "Au pas de tir : les premières secondes de la montée",
+  "tb_kn_pv_climb_v": "La table de la mission a une ligne toutes les 10 à 20 s, trop grossière pour le décollage. Du décollage à la première ligne 15 s plus tard (T+25 s pour Apollo 11, T+22 s pour Mars 2020), la montée est ajustée à cette ligne : verticale à à-coup constant, la dérive vers l'aval suivant une puissance du temps qui rejoint la table. Le lanceur reste immobile jusqu'au décollage (T+0,6 s pour Apollo 11) et dégage la tour quand son pied dépasse 122 m (vers T+10 s).",
+  "tb_kn_pv_pad": "Au pas de tir : les structures de lancement",
+  "tb_kn_pv_pad_v": "LC-39A est le modèle du site, lanceur mobile et tour ombilicale (122 m, paratonnerre jusqu'à 134 m) ; ses bras ne bougent pas. SLC-41 est fait de boîtes : une aire de 48 × 40 × 9 m, un pont de plateforme, une tour ombilicale de 56 m et quatre mâts paratonnerres de 100 m. Les proportions sont approximatives, pas une réplique.",
+  "tb_kn_pv_exhaust": "Au pas de tir : flamme, nuage et traînée",
+  "tb_kn_pv_exhaust_v": "Les longueurs de flamme sont celles de la mission (60 m pour le premier étage du Saturn V, plus longues quand l'air s'amincit). Le nuage au pas de tir, les étincelles et la traînée sont des bouffées de taille, vitesse et durée de vie supposées, pas une simulation de fluide : une bouffée de traînée tous les 12 m de trajet, jusqu'à 30 km d'altitude. Aucune météo n'est dessinée : le ciel est le ciel dégagé.",
+  "then_apollo_11_launch": "Apollo 11 décolle du complexe de lancement 39A",
+  "then_see_pad": "La fusée sur son pas de tir, le compte à rebours à trente secondes"
 }

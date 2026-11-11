@@ -302,7 +302,7 @@ function _asRebuildRocks(st, cx, cy) {
 }
 
 // ── Parts: a model standing in the frame, with its shadow ──
-function _asModelUrlKey(m) { return 'site-' + m; }
+function _asModelUrlKey(m) { return /^(ms|site)-/.test(m) ? m : 'site-' + m; }   // a mission's own model (ms-*, almanac-missions.js) stands in a visit too (almanac-padview.js)
 function _asModelReady(st, m) {
   var key = _asModelUrlKey(m);
   if (st.models[m]) return st.models[m];
@@ -398,6 +398,7 @@ function _asRoverPlace(st, R, x, y, hdg, z, pitch, roll, spin, gnd, airborne) {
 // A part stands only between its `from` and `until` instants (sites-v1.json, ms): nothing before a landing, the Lunar Module's
 // ascent stage until its liftoff (after it only the descent stage stays), a flag or a rover from the landing on.
 function _asPartsByTime(st) {
+  if (st.pvActive && typeof _pvShow === 'function') _pvShow(st);   // the pad view's vehicle parts (almanac-padview.js)
   var defs = st.def ? st.def.parts : [];
   if (!st.placed || !defs.some(function (pd) { return pd.from !== undefined || pd.until !== undefined; })) return;
   var ms = _aeDisplayMs();
