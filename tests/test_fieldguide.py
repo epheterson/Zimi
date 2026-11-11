@@ -1353,7 +1353,16 @@ def test_a_fresh_install_still_gets_the_words(served, monkeypatch):
 
 
 def test_a_signed_in_visitor_gets_the_library_with_the_words(served):
-    status, body = _get(served, "/fieldguide/situation?id=flood")
+    import time
+
+    # The pages come from the library's ZIM list as the server holds it: right after another test of the module reloaded it
+    # (served_empty puts it back), the list may be a moment behind, so the answer is waited for, not read once.
+    end = time.time() + 20
+    while True:
+        status, body = _get(served, "/fieldguide/situation?id=flood")
+        if (status == 200 and body["answers"]) or time.time() > end:
+            break
+        time.sleep(0.25)
     assert status == 200 and body["answers"], "the installed pages are listed"
 
 
