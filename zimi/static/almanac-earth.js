@@ -5989,6 +5989,8 @@ function _aePreset(name) {
     // Back from the Sun, arrive over the day side, the Sun behind the camera.
     var fromSun = _ae.target === 'sun' && _ae.scene ? _aeAzElOf(_ae.scene.sun) : null;
     _aeFlyTo('earth', _aeFitDist(name === 'sats' ? AE_FIT_SATS : AE_FIT_EARTH), fromSun);
+    // The chip is named for what it shows: choosing it brings the layer up too (the camera alone showed an empty shell).
+    if (name === 'sats' && !_aeSatsAllOn()) _aeSatsAllSet(true);
   }
   _ae.preset = name;
   _aeMarkViews();

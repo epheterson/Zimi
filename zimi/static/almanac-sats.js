@@ -28,6 +28,7 @@ var AS_GROUP_TERM = { starlink: 'term:starlink', oneweb: 'term:oneweb', iridium:
 var AS_ORBIT_TERM = { leo: 'term:leo', meo: 'term:meo', geo: 'term:geo' };
 // The owners SATCAT names, as the country whose flag stands for them (the rest show their code).
 var AS_OWNER_ISO = { US: 'US', UK: 'GB', PRC: 'CN', CIS: 'RU', JPN: 'JP', IND: 'IN', FR: 'FR', GER: 'DE', IT: 'IT', CA: 'CA', ESA: 'EU', SKOR: 'KR', ISRA: 'IL', AUS: 'AU', BRAZ: 'BR', SPN: 'ES', TURK: 'TR', UAE: 'AE', ARGN: 'AR', LUXE: 'LU', NETH: 'NL', SWTZ: 'CH', SWED: 'SE', NOR: 'NO', TWN: 'TW', THAI: 'TH', INDO: 'ID', SAUD: 'SA', EGYP: 'EG', MEX: 'MX', POL: 'PL', ISS: 'US' };
+var AS_OWNER_TBD = 'TBD';                             // SATCAT's code for an owner not yet assigned
 var AS_OWNER_CHIPS = 6;                               // the most numerous owners get a chip of their own
 var AS_GPS_KEY = 'zimi_ae_sats_gps', AS_ON = '1';   // the layer's own choice is SK.ALM_SATS_ALL (app.js)
 
@@ -632,6 +633,7 @@ function _asFlag(code) {
   if (!iso || iso.length !== 2) return '';
   return String.fromCodePoint(0x1F1E6 + iso.charCodeAt(0) - 65, 0x1F1E6 + iso.charCodeAt(1) - 65);
 }
+function _asOwnerLabel(code) { return code === AS_OWNER_TBD ? _aeT('alm_sats_unassigned') : code; }
 function _asOwnerName(code) {
   var iso = AS_OWNER_ISO[code];
   if (iso && typeof Intl !== 'undefined' && Intl.DisplayNames) {
@@ -641,7 +643,7 @@ function _asOwnerName(code) {
       if (n && n !== iso) return n;
     } catch (e) {}
   }
-  return code;
+  return _asOwnerLabel(code);
 }
 function _asGroupLabel(g) { return g === 'other' ? _aeT('alm_sats_other') : { starlink: 'Starlink', oneweb: 'OneWeb', iridium: 'Iridium', gnss: 'GNSS' }[g]; }
 // Drawn into the Earth view's card by almanac-earth.js _aeRenderCardBody; true when it is its card.
@@ -677,14 +679,14 @@ function _asUpdateCard(ms) {
 // ── The strip: filters, the count, the passes ──
 var AS_BAR_CSS = [
   '.ae-standing .as-bar,.ae-standing .as-sheet{display:none}',   // standing, the ground view owns the screen
-  '.as-bar{box-sizing:border-box;width:100%;display:flex;gap:6px;align-items:center;padding:0 16px;overflow-x:auto;scrollbar-width:none;pointer-events:auto;-webkit-mask-image:linear-gradient(90deg,transparent,#000 12px,#000 calc(100% - 12px),transparent);mask-image:linear-gradient(90deg,transparent,#000 12px,#000 calc(100% - 12px),transparent)}',
-  '.as-bar::-webkit-scrollbar{display:none}',
+  '.as-bar{box-sizing:border-box;width:100%;display:flex;flex-direction:column;gap:3px;padding:0 16px;pointer-events:auto}',
+  '.as-row{display:flex;flex-wrap:wrap;gap:4px 5px;align-items:center}',
+  '.as-lab{flex:none;font-size:10px;letter-spacing:.05em;text-transform:uppercase;color:var(--text2);margin-inline-end:2px}',
   '.as-bar[hidden],.as-sheet[hidden]{display:none}',
-  '.as-bar .ae-btn{flex:none;font-size:12px;padding:6px 10px;min-height:30px;display:inline-flex;align-items:center;gap:6px}',
-  '.as-bar .ae-round{width:30px;height:30px;padding:0}',
+  '.as-bar .ae-btn{flex:none;font-size:12px;padding:3px 9px;min-height:26px;display:inline-flex;align-items:center;gap:6px}',
+  '.as-bar .ae-round{width:26px;height:26px;padding:0}',
   '.as-dot{width:8px;height:8px;border-radius:50%;background:currentColor;flex:none}',
-  '.as-count{flex:none;font-size:12px;color:var(--text2);font-variant-numeric:tabular-nums;padding:0 4px}',
-  '.as-sep{flex:none;width:1px;height:18px;background:var(--border)}',
+  '.as-count{align-self:flex-start;font-size:12px;color:var(--text2);font-variant-numeric:tabular-nums;padding:0 4px}',
   '.as-flag{font-size:15px;line-height:1}',
   '.as-failed{opacity:.5}',
   '.as-sheet{position:absolute;left:50%;transform:translateX(-50%);bottom:calc(150px + env(safe-area-inset-bottom));width:min(420px,calc(100% - 32px));max-height:42vh;overflow-y:auto;overscroll-behavior:contain;box-sizing:border-box;background:rgba(18,18,20,.985);border:1px solid var(--border);border-radius:12px;padding:10px 12px;font-size:13px;color:var(--text2);pointer-events:auto}',
@@ -714,18 +716,19 @@ function _asBuildBar() {
     st.textContent = AS_BAR_CSS;
     document.head.appendChild(st);
   }
-  var d = _as.data, html = '<span class="as-count" id="as-count" aria-live="polite"></span><span class="as-sep"></span>';
+  var d = _as.data, html = '<span class="as-count" id="as-count" aria-live="polite"></span>';
+  var row = function (labelKey, chips) { return '<div class="as-row"><span class="as-lab">' + _almEsc(_aeT(labelKey)) + '</span>' + chips + '</div>'; };
+  var who = '', orbit = '', owner = '';
   AS_GROUPS.forEach(function (g) {
     var c = AS_GROUP_COLOR[g];
-    html += _asChip('group', g, '<i class="as-dot" style="background:rgb(' + c.map(function (x) { return Math.round(x * 255); }).join(',') + ')"></i>' + _almEsc(_asGroupLabel(g)));
+    who += _asChip('group', g, '<i class="as-dot" style="background:rgb(' + c.map(function (x) { return Math.round(x * 255); }).join(',') + ')"></i>' + _almEsc(_asGroupLabel(g)));
   });
-  html += '<span class="as-sep"></span>';
-  AS_ORBITS.forEach(function (o) { html += _asChip('orbit', o, o.toUpperCase()); });
-  html += '<span class="as-sep"></span>';
-  d.topOwners.forEach(function (o) {
-    html += _asChip('owner', o, _asFlag(o) ? '<span class="as-flag">' + _asFlag(o) + '</span>' : _almEsc(o), _asOwnerName(o));
+  AS_ORBITS.forEach(function (o) { orbit += _asChip('orbit', o, o.toUpperCase()); });
+  // SATCAT's "TBD" is an owner not yet assigned: said so, and last.
+  d.topOwners.slice().sort(function (a, b) { return (a === AS_OWNER_TBD) - (b === AS_OWNER_TBD); }).forEach(function (o) {
+    owner += _asChip('owner', o, _asFlag(o) ? '<span class="as-flag">' + _asFlag(o) + '</span>' : _almEsc(_asOwnerLabel(o)), _asOwnerName(o));
   });
-  html += '<span class="as-sep"></span><button type="button" class="ae-btn ae-round" id="as-passes" aria-label="' + _almEsc(_aeT('alm_sats_passes')) + '" title="' + _almEsc(_aeT('alm_sats_passes')) + '" aria-pressed="false">' + AS_PASSES_SVG + '</button>';
+  html += row('alm_sats_f_group', who) + row('alm_sats_f_orbit', orbit + '<button type="button" class="ae-btn ae-round" id="as-passes" aria-label="' + _almEsc(_aeT('alm_sats_passes')) + '" title="' + _almEsc(_aeT('alm_sats_passes')) + '" aria-pressed="false">' + AS_PASSES_SVG + '</button>') + row('alm_sats_f_owner', owner);
   var bar = document.createElement('div');
   bar.className = 'as-bar';
   bar.id = 'as-bar';
