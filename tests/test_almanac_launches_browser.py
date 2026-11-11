@@ -2,7 +2,7 @@
 
 A public example: Starlink Group 4-31 (Falcon 9, Vandenberg, 2022-10-27 6:14 pm PDT, GCAT tag 2022-141) watched from
 Los Angeles. The page loads nothing of the launches until the button is pressed, the list filters, a launch opens at
-its pad at lift-off with its ascent drawn, the place says what it could see, and "From here" lands in the live sky.
+its pad at lift-off with its ascent drawn, the place says what it could see, and "From my place" and "From the pad" stand there in the 3D view; "Watch the launch" plays it over the pad.
 LAUNCHES_SHOTS=<folder> saves a screenshot of each state there (the test does not read them: a person does).
 
 Run: pytest tests/test_almanac_launches_browser.py -v
@@ -157,19 +157,38 @@ def test_a_launch_opens_at_its_pad_and_says_what_la_could_see(browser, served):
         _shot(pg, "launch-batch.png")
         pg.evaluate("_aeGoTo(%d)" % (LIFTOFF_MS - 2_000))
         pg.wait_for_timeout(1200)
-        # "From here": the sky, at the place, at the rise.
+        # The card: one primary action and two plain choices; no icon is shared, and none of them closes the 3D view.
+        assert pg.evaluate("() => Array.from(document.querySelectorAll('.al-sheet .al-acts button')).map(b => b.id)") == [
+            "al-watch",
+            "al-here",
+            "al-frompad",
+        ]
+        assert pg.evaluate("() => document.querySelectorAll('.al-sheet .al-acts svg').length") == 1
+        # "From my place": the ground at the place, at the rise, with the 3D view still up.
         pg.click("#al-here")
-        pg.wait_for_function(
-            "() => typeof _aeIsOpen !== 'undefined' && !_aeIsOpen",
-            timeout=READY_MS,
-            polling=250,
-        )
+        pg.wait_for_function("() => _ae.stand && _ae.stand.mode === 'ground'", timeout=READY_MS, polling=500)
+        got = pg.evaluate("() => ({ open: _aeIsOpen, lat: _ae.stand.lat, lon: _ae.stand.lon })")
+        assert got["open"] and abs(got["lat"] - 34.05) < 1e-6 and abs(got["lon"] + 118.24) < 1e-6, got
+        _shot(pg, "launch-from-my-place.png")
+        pg.click("#ae-stand-back")  # Back returns to the launch card over the pad, not to the page
+        pg.wait_for_function("() => !_ae.stand", timeout=READY_MS, polling=500)
+        pg.wait_for_selector("#al-frompad", state="visible", timeout=10_000)
+        # "From the pad": the ground at the pad (Vandenberg), not at the person's place.
+        pg.click("#al-frompad")
+        pg.wait_for_function("() => _ae.stand && _ae.stand.mode === 'ground'", timeout=READY_MS, polling=500)
+        got = pg.evaluate("() => ({ open: _aeIsOpen, lat: _ae.stand.lat, pad: _al.cur.lat })")
+        assert got["open"] and abs(got["lat"] - got["pad"]) < 1e-6 and abs(got["lat"] - 34.05) > 0.3, got
+        _shot(pg, "launch-from-the-pad.png")
+        pg.click("#ae-stand-back")
+        pg.wait_for_function("() => !_ae.stand", timeout=READY_MS, polling=500)
+        # "Watch the launch": over the pad, a minute before lift-off, the clock running, in the 3D view.
+        pg.wait_for_selector("#al-watch", state="visible", timeout=10_000)
+        pg.click("#al-watch")
         pg.wait_for_timeout(1500)
-        pg.evaluate("_almScrubSettle(new Date(%d))" % (LIFTOFF_MS + 75_000))
-        pg.wait_for_timeout(2500)
-        pg.evaluate("_skyState.canvas.scrollIntoView({ block: 'center' })")
-        pg.wait_for_timeout(800)
-        _shot(pg, "launch-sky.png")
+        got = pg.evaluate("() => ({ open: _aeIsOpen, t: _aeDisplayMs(), rate: _almRate })")
+        assert got["open"] and got["rate"] == 1, got
+        assert abs(got["t"] - (LIFTOFF_MS - 60_000)) < 30_000, got
+        _shot(pg, "launch-watch.png")
         assert not [
             e for e in errors if "launch" in e.lower() or "_al" in e or "_lf" in e
         ], errors

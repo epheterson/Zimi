@@ -18,7 +18,6 @@ var AL_DEP_ORBIT_DAYS = 4;                   // GCAT's catalogued orbit is the d
 // ── Seen from a place ──
 var AL_WINDOW_HOURS = 72, AL_WINDOW_STEP_S = 30, AL_WINDOWS_SHOWN = 3;
 var AL_PEARL_PX = 1.1, AL_PEARL_ALPHA = 0.9;   // a released satellite in the sky: this radius (CSS px), this opaque
-var AL_HINT_KEY = 'zimi_al_hint';            // set once a launch's buttons have been used: the legend goes
 // ── In the 3D view ──
 var AL_FLY_TILT_RAD = 0.3;                   // the view looks this far south of the ascent's middle, so the ascent sits above the sheet
 var AL_FLY_MIDDLE = 0.4;                     // the share of the ascent the view is centred on: the pad and the far end both fit
@@ -27,6 +26,8 @@ var AL_TRACK_COLOR = 0xffc978, AL_TRACK_ALPHA = 0.8, AL_BOOSTER_COLOR = 0x9be7ff
 var AL_ROCKET_COLOR = [1, 0.8, 0.5], AL_PLUME_COLOR = [0.7, 0.9, 1], AL_BOOSTER_POINT = [0.8, 0.95, 1];
 var AL_DOT_COLOR = { recon: [1, 0.82, 0.45], exact: [0.62, 0.85, 1] }, AL_DOT_PX = 3, AL_ROCKET_PX = 7, AL_PLUME_PX = 30, AL_PLUME_ALPHA = 0.28;
 var AL_UNLIT_ALPHA = 0.35;                   // what a satellite in the Earth's shadow keeps
+var AL_WATCH_LEAD_S = 60;                    // "Watch the launch" starts the clock this long before lift-off
+var AL_FACE_EL_DEG = 25;                      // the ground view faces this far up toward where the rocket will be
 var AL_BEFORE_S = 20;                        // the clock opens this long before lift-off in "From here", so the watcher is in place
 var AL_SKY_RESCUE_MS = 400;                  // after the view closes, the page is given this long to settle before the sky is scrolled to
 var AL_SRC = { recon: 'recon', exact: 'exact' };
@@ -181,9 +182,7 @@ var AL_ICON = {
   site: '<path d="M12 21.5s-6.5-6.2-6.5-11.3a6.5 6.5 0 0 1 13 0c0 5.1-6.5 11.3-6.5 11.3z"/><circle cx="12" cy="10.2" r="2.3"/>',
   veh: '<path d="M12 2.5c3 2.6 4.3 6 4.3 9.6l-1.6 3.4H9.3l-1.6-3.4C7.7 8.5 9 5.1 12 2.5z"/><path d="M10.3 18.5v3M13.7 18.5v3"/>',
   orbit: '<circle cx="12" cy="12" r="9" opacity=".55"/><circle cx="17" cy="6.5" r="1.8" fill="currentColor" stroke="none"/>',
-  pad: '<path d="M4 20h16M7 20V9l5-6 5 6v11"/>',
-  eye: '<path d="M2 12s3.600-6.500 10-6.500S22 12 22 12s-3.600 6.500-10 6.500S2 12 2 12z"/><circle cx="12" cy="12" r="2.800"/>',
-  stand: '<circle cx="12" cy="5" r="2.200"/><path d="M12 8v7M8 11l4-1 4 1M9.500 21l2.500-6 2.500 6"/>',
+  pad: '<path d="M10 2.5c1.7 1.8 2.5 4 2.5 6.6V16h-5V9.1c0-2.6.8-4.8 2.5-6.6z"/><path d="M7.5 13l-1.8 3.2h1.8M12.5 13l1.8 3.2h-1.8"/><path d="M10 16v5.5M3 21.5h18M19.5 21.5V7M19.5 11.5h-3"/>',
   dots: '<circle cx="5" cy="15" r="1.600" fill="currentColor" stroke="none"/><circle cx="10" cy="12" r="1.600" fill="currentColor" stroke="none"/><circle cx="15" cy="9" r="1.600" fill="currentColor" stroke="none"/><circle cx="20" cy="6" r="1.600" fill="currentColor" stroke="none"/>',
   path: '<path d="M4 20c1-9 6-14 16-16"/><circle cx="20" cy="4" r="1.500" fill="currentColor" stroke="none"/>',
   then: '<path d="M12 3l2.4 5.6 6.1.5-4.6 4 1.4 6-5.3-3.2L6.7 19l1.4-6-4.6-4 6.1-.5z"/>'
@@ -361,7 +360,7 @@ function _alOpenLaunch(i) {
   _al.view = 'launch';
   _alRender();
   _al.sheetEl.scrollTop = 0;
-  _alGoPad();
+  _alGoPad(_al.cur.ms);
 }
 function _alBack() { _al.view = 'list'; _alClear(); _alRender(); }
 function _alFact(icon, text) { return '<li>' + _alSvg(icon) + '<span>' + _almEsc(text) + '</span></li>'; }
@@ -386,21 +385,15 @@ function _alLaunchHtml() {
     _alFact('orbit', (L.ok ? '' : _aeT('alm_launch_failed') + ' · ') + _alOrbitText(L) + (L.n ? ' · ' + _aeT('alm_launch_payloads', { n: L.n }) + (L.names.length ? ': ' + L.names.join(', ') : '') : '')) +
     _alFact('path', _alProfileText() + ' · ' + _orrNum(f.az, null, 0) + '°') + '</ul>' +
     '<p class="al-sight' + (sight.no ? ' no' : '') + '">' + _almEsc(sight.text) + '</p>' +
-    '<div class="al-acts">' +
-      _alAct('al-pad', 'pad', 'alm_launch_pad') + _alAct('al-here', 'eye', 'alm_launch_from_here') + _alAct('al-frompad', 'stand', 'alm_launch_from_pad') +
-      _alAct('al-ground', 'stand', 'alm_launch_on_ground') +
-    '</div>' + (_alHintSeen() ? '' : '<p class="al-note">' + _almEsc(_aeT('alm_launch_hint')) + '</p>');
+    '<div class="al-acts"><button type="button" class="ae-btn at-primary" id="al-watch">' + _alSvg('pad', 20) + _almEsc(_aeT('alm_launch_watch')) + '</button></div>' +
+    '<div class="al-acts al-from" role="group" aria-label="' + _almEsc(_aeT('alm_launch_watch_from')) + '">' +
+      '<button type="button" class="ae-btn" id="al-here">' + _almEsc(_aeT('alm_launch_from_here')) + '</button>' +
+      '<button type="button" class="ae-btn" id="al-frompad">' + _almEsc(_aeT('alm_launch_from_pad')) + '</button></div>';
   if (_al.dep) html += _alBatchHtml();
   return html;
 }
-function _alHintSeen() { try { return localStorage.getItem(AL_HINT_KEY) === '1'; } catch (e) { return false; } }
-function _alHintDone() { try { localStorage.setItem(AL_HINT_KEY, '1'); } catch (e) {} }
 // Whether a launch's reconstructed or exact satellites are what the view is drawing: the footer then says so.
 function _alBatchDrawn() { return !!(_al.sheet && _al.dep && _al.cur); }
-function _alAct(id, icon, key) {
-  var t = _almEsc(_aeT(key));
-  return '<button type="button" class="ae-btn ae-round" id="' + id + '" aria-label="' + t + '" title="' + t + '">' + _alSvg(icon, 18) + '</button>';
-}
 function _alBatchHtml() {
   var L = _al.cur, dep = _al.dep, src = _al.depSource;
   var html = '<div class="al-src" role="group" aria-label="' + _almEsc(_aeT('alm_launch_dots')) + '">' + _alSvg('dots') +
@@ -428,32 +421,34 @@ function _alWindowsHtml() {
 }
 function _alBindLaunch() {
   _aeById('al-back').onclick = _alBack;
-  _aeById('al-pad').onclick = function () { _alHintDone(); _alGoPad(); };
-  _aeById('al-here').onclick = function () { _alHintDone(); _alStandThen('here'); };
-  _aeById('al-frompad').onclick = function () { _alHintDone(); _alStandThen('pad'); };
-  var g = _aeById('al-ground');
-  if (g) g.onclick = function () {   // the sheet gives the view to the ground; its file loads on first use, so the sky hook is registered once it has
-    var L = _al.cur, at = _alPlace() || { lat: L.lat, lon: L.lon };
-    _alHintDone(); _alHideSheet(); _aeGoTo(L.ms);
-    Promise.resolve(_aeStandAt('earth', at.lat, at.lon)).then(_alStandRegister);
-  };
+  _aeById('al-watch').onclick = _alWatch;
+  _aeById('al-here').onclick = function () { _alStandThen('here'); };
+  _aeById('al-frompad').onclick = function () { _alStandThen('pad'); };
   var r = _aeById('al-recon'), x = _aeById('al-exact');
   if (r) r.onclick = function () { _al.depSource = AL_SRC.recon; _alRender(); _alKick(); };
   if (x) x.onclick = _alUseExact;
   Array.prototype.forEach.call(_al.sheetEl.querySelectorAll('.al-win'), function (b) {
-    b.onclick = function () { _alStandThenAt('here', Number(b.getAttribute('data-ms'))); };
+    b.onclick = function () { _alStandIn('here', Number(b.getAttribute('data-ms'))); };
   });
   var st = _aeById('al-st-save');
   if (st) st.onclick = _alSpaceTrackSave;
 }
 
-// ── Opening at the pad ──
-// The clock at lift-off and the view down over the pad, the ascent and the first stage's way back in frame.
-function _alGoPad() {
+// ── Watching it ──
+// "Watch the launch": the view down over the pad, the ascent and the first stage's way back in frame, the clock a minute before
+// lift-off and running, so the launch plays in the 3D view.
+function _alWatch() {
   var L = _al.cur;
   if (!L || L.lat == null) return;
-  _aeGoTo(L.ms);
-  var sc = _aeSceneAt(L.ms);
+  _alGoPad(L.ms - AL_WATCH_LEAD_S * 1000);
+  if (typeof _almClockSetRate === 'function') _almClockSetRate(1);
+}
+// The view down over the pad at the clock's moment `ms`.
+function _alGoPad(ms) {
+  var L = _al.cur;
+  if (!L || L.lat == null) return;
+  _aeGoTo(ms);
+  var sc = _aeSceneAt(ms);
   _ae.place = null; _ae.lm = null; _ae.selected = null; _ae.arrived = null;
   var pts = _al.flight.points, mid = pts[Math.floor(pts.length * AL_FLY_MIDDLE)];
   var azel = _aeAzElOf(_aeFixedToScene(_aeGeodeticToFixed(mid.lat, mid.lon), sc.gast));
@@ -461,26 +456,25 @@ function _alGoPad() {
   _aeFlyTo('earth', AL_FLY_DIST, azel);
   _alKick();
 }
-// "From here" and "From the pad": the place and the moment into the live sky. The pad is a place the page borrows (never
-// saved); the watcher's own place is the Almanac's.
+// "From my place" and "From the pad": the ground view there, at the launch's time, facing where the rocket will be (the 3D view stays up:
+// its Back returns to the launch card). The pad is a place for this visit only; the watcher's own place is the Almanac's.
 function _alStandThen(where) {
   var L = _al.cur;
   if (!L) return;
   var s = _al.sight, start = where === 'here' && s && s.seen ? L.ms + (s.first.t * 1000) - AL_BEFORE_S * 1000 : L.ms - AL_BEFORE_S * 1000;
-  _alStandThenAt(where, start);
+  _alStandIn(where, start);
 }
-function _alStandThenAt(where, ms) {
+function _alStandIn(where, ms) {
   var L = _al.cur;
   if (!L) return;
-  if (where === 'pad' && typeof _almLinkPlace !== 'undefined') _almLinkPlace = { lat: L.lat, lon: L.lon };
-  _aeGoTo(ms);
-  _aeClose();
-  setTimeout(function () {
-    if (typeof _renderAlmanacContent === 'function') _renderAlmanacContent();
-    var cv = typeof _skyState !== 'undefined' && _skyState && _skyState.canvas;
-    if (cv && cv.scrollIntoView) cv.scrollIntoView({ block: 'center' });
-    _alKick();
-  }, AL_SKY_RESCUE_MS);
+  var at = where === 'pad' ? { lat: L.lat, lon: L.lon } : _alPlace() || { lat: L.lat, lon: L.lon }, s = _al.sight;
+  var look = where === 'here' && s && s.seen ? { az: s.first.az, el: AL_FACE_EL_DEG } : { az: _al.flight.az, el: AL_FACE_EL_DEG };
+  _aeGoTo(ms);   // the card gives way to its chip while the ground is up (_alStandWatchTick) and is back when it is left
+  Promise.resolve(_aeStandAt('earth', at.lat, at.lon)).then(function (ok) {
+    if (ok === false) return;
+    _alStandRegister();
+    if (typeof _atFace === 'function') _atFace(look);
+  });
 }
 
 // ── Exact elements from Space-Track ──
