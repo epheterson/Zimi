@@ -8326,7 +8326,8 @@ function _almHeadCard(lbl, valHtml, valId, opts) {
 }
 function _almFirstFrameHtml() {
   var now = new Date(), m = _moonPhase(now), lang = _currentLang, fmt = function(o) { return esc(now.toLocaleString(lang, o)); };
-  var place = _almChosenPlace();
+  var place = _almChosenPlace(), zone = '';
+  try { Intl.DateTimeFormat(lang, { timeZoneName: 'short' }).formatToParts(now).forEach(function(p) { if (p.type === 'timeZoneName') zone = p.value; }); } catch (e) {}
   var cards = _almHeadCard(esc(t('alm_illuminated')), _moonLitPct(m.illumination), 'alm-hc-illum', { cardId: 'alm-hc-illum-card' }) +
     _almHeadCard(esc(t('alm_next_full')), ALM_FIRST_DASH, 'alm-hc-nextfull', { cardId: 'alm-hc-nextfull-card' }) +
     '<div id="almanac-sky-facts" class="alm-sky-facts"><div class="alm-sky-cards">' +
@@ -8335,7 +8336,7 @@ function _almFirstFrameHtml() {
     }).join('') + '</div></div>';
   return '<div class="almanac-inner alm-first">' +
     '<div id="almanac-head"><div class="alm-clock alm-ck-rest" data-v="head"><div class="alm-ck-d" id="almanac-head-date">' + fmt(ALM_FIRST_DATE) + '</div>' +
-    '<div class="alm-ck-l"><span class="alm-ck-t" id="almanac-head-time">' + fmt(ALM_FIRST_TIME) + '</span><span class="alm-ck-z"></span><span class="alm-ck-r" dir="ltr"></span></div></div>' +
+    '<div class="alm-ck-l"><span class="alm-ck-t" id="almanac-head-time">' + fmt(ALM_FIRST_TIME) + '</span><span class="alm-ck-z">' + (zone ? '<span class="alm-ck-zn"> &middot; ' + esc(zone) + '</span>' : '') + '</span><span class="alm-ck-r" dir="ltr"></span></div></div>' +
     '<div id="alm-head-body"><div class="almanac-hero">' +
     '<div class="almanac-moon-glow" style="background:radial-gradient(circle, rgba(232,224,208,' + (m.illumination / 100 * 0.15 + 0.02).toFixed(2) + ') 0%, transparent 65%)"></div>' +
     '<div class="almanac-moon-open"><div class="almanac-moon"><img class="almanac-moon-sprite moon-sprite" src="' + ALM_FIRST_DISC + '" alt="" width="200" height="200" /></div></div>' +

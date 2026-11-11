@@ -403,7 +403,7 @@ function _openAlmanacInner(replaceState) {
     if (sc) sc.scrollTop = 0;
     if (link) _almLinkRestoreView(link); else _almLinkStart();
     var disc = veiled && document.querySelector('#almanac-head .almanac-moon-sprite');
-    if (disc) disc.classList.add('alm-in');   // the first frame's disc was clear: this one comes in over its place
+    if (disc) { disc.classList.add('alm-in'); var glow = document.querySelector('#almanac-head .almanac-moon-glow'); if (glow) glow.classList.add('alm-in'); }   // the first frame's disc was clear: this one comes in over its place
     _almHeadDrawn();
   };
   draw();

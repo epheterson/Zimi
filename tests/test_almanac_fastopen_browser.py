@@ -181,9 +181,10 @@ def test_with_reduced_motion_the_clock_swaps_instead_of_travelling(browser, serv
 
 BOXES = """() => {
   const sc = document.getElementById('almanac-content');
+  const text = q => { const e = document.querySelector(q), r = document.createRange(); r.selectNodeContents(e); const b = r.getBoundingClientRect(); return [Math.round(b.left), Math.round(b.top), Math.round(b.width), Math.round(b.height)]; };
   const at = q => { const e = document.querySelector(q); if (!e) return null; const r = e.getBoundingClientRect(); return [Math.round(r.left), Math.round(r.top), Math.round(r.width), Math.round(r.height)]; };
   return ['#almanac-head .alm-clock', '#almanac-head .almanac-hero', '#almanac-head .almanac-moon-open', '#almanac-head .alm-cards', '#almanac-head .alm-card:nth-of-type(1)',
-    '.alm-sky-info', '#almanac-sky-canvas'].map(at);
+    '.alm-sky-info', '#almanac-sky-canvas'].map(at).concat(['#almanac-head-date', '#almanac-head .alm-ck-l'].map(text));
 }"""
 
 
