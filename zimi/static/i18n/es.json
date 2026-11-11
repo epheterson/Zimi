@@ -3693,5 +3693,6 @@
   "alm_blurb_cassini": "Pasó años en Saturno y envió un módulo de aterrizaje a Titán.",
   "alm_blurb_galileo": "La primera nave en orbitar Júpiter, y lanzó una sonda a sus nubes.",
   "alm_blurb_europaclipper": "Rumbo a Júpiter para estudiar el océano oculto de Europa.",
-  "clear_catalog_copies": "Borrar copias del catálogo ({size})"
+  "clear_catalog_copies": "Borrar copias del catálogo ({size})",
+  "voices_set_up_mb": "Preparar ({mb} MB)"
 }

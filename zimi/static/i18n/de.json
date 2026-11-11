@@ -3693,5 +3693,6 @@
   "alm_blurb_cassini": "Verbrachte Jahre bei Saturn und setzte eine Landesonde auf Titan ab.",
   "alm_blurb_galileo": "Die erste Sonde im Orbit um Jupiter, sie warf eine Sonde in seine Wolken ab.",
   "alm_blurb_europaclipper": "Unterwegs zu Jupiter, um den verborgenen Ozean des Europa zu erforschen.",
-  "clear_catalog_copies": "Katalogkopien löschen ({size})"
+  "clear_catalog_copies": "Katalogkopien löschen ({size})",
+  "voices_set_up_mb": "Einrichten ({mb} MB)"
 }

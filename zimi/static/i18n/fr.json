@@ -3693,5 +3693,6 @@
   "alm_blurb_cassini": "A passé des années autour de Saturne et envoyé un atterrisseur sur Titan.",
   "alm_blurb_galileo": "Le premier engin en orbite autour de Jupiter, qui a lâché une sonde dans ses nuages.",
   "alm_blurb_europaclipper": "En route vers Jupiter pour étudier l'océan caché d'Europe.",
-  "clear_catalog_copies": "Effacer les copies du catalogue ({size})"
+  "clear_catalog_copies": "Effacer les copies du catalogue ({size})",
+  "voices_set_up_mb": "Installer ({mb} Mo)"
 }

@@ -3693,5 +3693,6 @@
   "alm_blurb_cassini": "בילתה שנים ליד שבתאי ושלחה נחתת אל טיטאן.",
   "alm_blurb_galileo": "החללית הראשונה שהקיפה את צדק, והיא שחררה גשושית אל ענניו.",
   "alm_blurb_europaclipper": "בדרך לצדק כדי לחקור את האוקיינוס הנסתר של אירופה.",
-  "clear_catalog_copies": "מחיקת עותקי הקטלוג ({size})"
+  "clear_catalog_copies": "מחיקת עותקי הקטלוג ({size})",
+  "voices_set_up_mb": "הגדרה ({mb} MB)"
 }
