@@ -279,3 +279,15 @@ def test_the_hero_disc_stays_put_under_a_drag_until_the_view_can_turn_it(no_map)
             assert not pg.errors, pg.errors
         finally:
             br.close()
+
+
+# ── The ground's stones ──
+def test_the_grounds_stones_are_never_cut_circles_or_a_bare_hemisphere():
+    """Eric, 2026-11-10: "crater circles cut in half". The ground shader's stones kept only the nearest one at a point (a stone met by a
+    bigger one was cut in half), drew a perfect circle, and rose as a steep hemisphere (half a disc lit, half dark from the side)."""
+    src = open(os.path.join(os.path.dirname(HERE), "zimi", "static", "almanac-standgl.js"), encoding="utf-8").read()
+    a = src.index("vec2 rocks(vec3 p, float foot)")
+    body = src[a : src.index("void main()", a)]
+    assert "best" not in body, "only the nearest stone counted: a stone met by a bigger one is cut"
+    assert "wob" in body and "vnoise" in body, "the outline is wobbled: no stone is a circle"
+    assert "dome * dome" in body, "a soft profile at the ground, not a steep hemisphere"

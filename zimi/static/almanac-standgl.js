@@ -488,23 +488,26 @@ var AE_ST_GROUND_FRAG = [
   '  }',
   '  return h * uRough;',
   '}',
-  // Stones in three sizes, each a rounded lump of its own shape that is darker or paler than the ground: returns the height
-  // (metres) and the brightness they change the ground by.
+  // Stones in three sizes, each an irregular lump of its own shape that is darker or paler than the ground: returns the height
+  // (metres) and the brightness they change the ground by. Every stone near the point adds to it (the nearest alone cut a
+  // stone in half where it met a bigger one), the outline is wobbled by noise so none is a circle, the profile is soft where it
+  // meets the ground (a steep hemisphere lit from the side drew half-moons), and the larger classes are rarer.
   'vec2 rocks(vec3 p, float foot) {',
   '  if (uRock < 0.02) return vec2(0.0);',   // ground with next to no stones (the Earth's) skips the search
   '  float h = 0.0, shade = 0.0;',
   '  for (int k = 0; k < 3; k++) {',
-  '    float s = k == 0 ? 0.13 : (k == 1 ? 0.5 : 1.9), w = 1.0 - smoothstep(0.1, 0.4, 2.5 * foot / s);',
+  '    float s = k == 0 ? 0.13 : (k == 1 ? 0.5 : 1.9), w = 1.0 - smoothstep(0.1, 0.4, 2.5 * foot / s), rare = k == 0 ? 1.0 : (k == 1 ? 0.45 : 0.2);',
   '    if (w <= 0.0) continue;',
-  '    vec3 c = floor(p / s), f = fract(p / s); float best = 9.0, rr = 0.0, tone = 0.0;',
+  '    vec3 c = floor(p / s), f = fract(p / s);',
   '    for (int dx = -1; dx <= 1; dx++) for (int dy = -1; dy <= 1; dy++) {',
-  '      vec3 g = vec3(float(dx), float(dy), float(k)), id = c + g; float present = step(hash31(id + 3.1), uRock);',
+  '      vec3 g = vec3(float(dx), float(dy), float(k)), id = c + g; float present = step(hash31(id + 3.1), uRock * rare);',
+  '      if (present < 0.5) continue;',
   '      vec3 pos = g - vec3(0.0, 0.0, float(k)) + vec3(hash31(id), hash31(id + 1.7), 0.0) - f;',
-  '      float lump = 0.75 + 0.5 * hash31(id + 5.3), rad = (0.16 + 0.22 * hash31(id + 9.2)) * present;',
-  '      pos.x *= lump; float dd = length(pos.xy) / max(rad, 1e-4);',
-  '      if (present > 0.5 && dd < best) { best = dd; rr = rad * s; tone = hash31(id + 13.7); }',
+  '      float lump = 0.6 + 0.8 * hash31(id + 5.3), rad = 0.16 + 0.22 * hash31(id + 9.2);',
+  '      pos.x *= lump; float wob = 0.65 + 0.7 * vnoise(vec3(pos.xy * 9.0, hash31(id + 2.2) * 40.0));',
+  '      float dd = length(pos.xy) / max(rad * wob, 1e-4);',
+  '      if (dd < 1.0) { float dome = 1.0 - dd * dd; float tone = hash31(id + 13.7); h += rad * s * 0.45 * dome * dome * w; shade += (tone - 0.5) * 0.45 * w * dome; }',
   '    }',
-  '    if (best < 1.0) { float dome = 1.0 - best * best; h += rr * 0.9 * dome * w; shade += (tone - 0.5) * 0.55 * w * (1.0 - best * best); }',
   '  }',
   '  return vec2(h, shade);',
   '}',
