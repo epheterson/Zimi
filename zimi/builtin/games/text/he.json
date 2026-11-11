@@ -223,7 +223,6 @@
  "bj.soft1": "רך {total}",
  "bj.split": "פיצול",
  "bj.stand": "עצירה",
- "bl.choosing": "בוחרים מילים מהוויקימילון שלכם…",
  "bl.counter": "{n} מתוך {max}",
  "bl.fakeLabel": "הפירוש המזויף שלכם",
  "bl.fakePlaceholder": "מה יכול להיות הפירוש של {word}? שיישמע אמיתי",
@@ -5235,6 +5234,7 @@
  "shelf.length.l5": "כ־5 דקות",
  "shelf.minutes": "{n} דק׳",
  "shelf.minutes.plus": "{n}+ דק׳",
+ "shelf.new": "חדש",
  "shelf.noMatch": "אין משחק שמתאים לכך.",
  "shelf.play": "שחק",
  "shelf.players.line": {
@@ -5298,6 +5298,7 @@
  "shelf.view.index": "אינדקס",
  "shelf.view.lobby": "לובי",
  "shelf.viewSort": "תצוגה וסדר",
+ "shelf.world": "האהובים בעולם",
  "shelf.year.bc": "כ־{y} לפנה״ס",
  "shell.about.credit": "החידה הזו היא חלק מ-Portable Puzzle Collection של Simon Tatham, זכויות יוצרים 2004–2024 Simon Tatham ותורמים רבים, ברישיון MIT. ZimiGames מוסיף את הדף שסביבה ומריץ אותה ללא שינוי.",
  "shell.about.licence": "הרישיון",
@@ -5572,7 +5573,6 @@
  "snake.bestWrap": "שיא עם מעבר בקצוות",
  "snake.readyKeys": "הקישו על מקש חץ כדי להתחיל",
  "snake.readyTouch": "הקישו כדי להתחיל, ואז החליקו כדי לפנות",
- "snake.wrap": "מעבר בקצוות",
  "sokoban.blocked": "משהו חוסם את הדרך",
  "sokoban.board": "לוח סוקובן",
  "sokoban.boardLabel": "{level}: ארגזים על עיגולים {done} מתוך {total}, מהלכים: {moves}",
@@ -6142,5 +6142,9 @@
  "hex.rules.two": "כל שחקן מחבר את שני הצדדים שלו, אדום וכחול. השרשרת הראשונה מנצחת.",
  "race.matchedShortest": "השגתם את המסלול הקצר ביותר: {n}.",
  "race.matchedRoute": "השגתם את המסלול הידוע: {n}.",
- "race.beatRoute": "ניצחתם את המסלול הידוע של {n}."
+ "race.beatRoute": "ניצחתם את המסלול הידוע של {n}.",
+ "game.checkers.short": "דמקה",
+ "snake.walls": "קירות",
+ "snake.walls.solid": "מוצקים",
+ "snake.walls.wrap": "מעבר"
 }

@@ -211,7 +211,6 @@
  "bj.soft1": "soft {total}",
  "bj.split": "Split",
  "bj.stand": "Stand",
- "bl.choosing": "Choosing words from your Wiktionary…",
  "bl.counter": "{n} of {max}",
  "bl.fakeLabel": "Your fake meaning",
  "bl.fakePlaceholder": "What might {word} mean? Make it sound real",
@@ -5127,6 +5126,7 @@
  "shelf.length.l5": "About 5 minutes",
  "shelf.minutes": "{n} min",
  "shelf.minutes.plus": "{n} min+",
+ "shelf.new": "New",
  "shelf.noMatch": "No game matches that.",
  "shelf.play": "Play",
  "shelf.players.line": {
@@ -5188,6 +5188,7 @@
  "shelf.view.index": "Index",
  "shelf.view.lobby": "Lobby",
  "shelf.viewSort": "View and order",
+ "shelf.world": "World favorites",
  "shelf.year.bc": "c. {y} BC",
  "shell.about.credit": "This puzzle is part of Simon Tatham’s Portable Puzzle Collection, copyright 2004–2024 Simon Tatham and many contributors, under the MIT licence. ZimiGames adds the page around it and runs it unchanged.",
  "shell.about.licence": "The licence",
@@ -5461,7 +5462,6 @@
  "snake.bestWrap": "Best with wrap",
  "snake.readyKeys": "Press an arrow key to start",
  "snake.readyTouch": "Tap to start, then swipe to turn",
- "snake.wrap": "Wrap around",
  "sokoban.blocked": "Something is in the way",
  "sokoban.board": "Sokoban board",
  "sokoban.boardLabel": "{level}: {done} of {total} crates on rings, {moves} moves",
@@ -6012,5 +6012,9 @@
  "hex.rules.two": "Each player links their own two edges, red and blue. First chain across wins.",
  "race.matchedShortest": "You matched the shortest route: {n}.",
  "race.matchedRoute": "You matched the known route: {n}.",
- "race.beatRoute": "You beat the known route of {n}."
+ "race.beatRoute": "You beat the known route of {n}.",
+ "game.checkers.short": "Checkers",
+ "snake.walls": "Walls",
+ "snake.walls.solid": "Solid",
+ "snake.walls.wrap": "Wrap through"
 }

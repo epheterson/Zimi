@@ -211,7 +211,6 @@
  "bj.soft1": "सॉफ़्ट {total}",
  "bj.split": "स्प्लिट",
  "bj.stand": "स्टैंड",
- "bl.choosing": "आपके Wiktionary से शब्द चुने जा रहे हैं…",
  "bl.counter": "{max} में से {n}",
  "bl.fakeLabel": "आपका नकली अर्थ",
  "bl.fakePlaceholder": "{word} का क्या अर्थ हो सकता है? असली जैसा लिखें",
@@ -5127,6 +5126,7 @@
  "shelf.length.l5": "लगभग 5 मिनट",
  "shelf.minutes": "{n} मिनट",
  "shelf.minutes.plus": "{n}+ मिनट",
+ "shelf.new": "नया",
  "shelf.noMatch": "इससे कोई खेल मेल नहीं खाता।",
  "shelf.play": "खेलें",
  "shelf.players.line": {
@@ -5188,6 +5188,7 @@
  "shelf.view.index": "सूची",
  "shelf.view.lobby": "लॉबी",
  "shelf.viewSort": "दृश्य और क्रम",
+ "shelf.world": "दुनिया के पसंदीदा",
  "shelf.year.bc": "लगभग {y} ईसा पूर्व",
  "shell.about.credit": "यह पहेली Simon Tatham के Portable Puzzle Collection का हिस्सा है, कॉपीराइट 2004–2024 Simon Tatham और कई योगदानकर्ता, MIT लाइसेंस के तहत। ZimiGames इसके चारों ओर का पेज जोड़ता है और इसे बिना बदले चलाता है।",
  "shell.about.licence": "लाइसेंस",
@@ -5461,7 +5462,6 @@
  "snake.bestWrap": "आर-पार के साथ सबसे अच्छा",
  "snake.readyKeys": "शुरू करने के लिए तीर कुंजी दबाएँ",
  "snake.readyTouch": "शुरू करने के लिए टैप करें, फिर मोड़ने के लिए स्वाइप करें",
- "snake.wrap": "आर-पार निकलें",
  "sokoban.blocked": "रास्ते में कुछ है",
  "sokoban.board": "सोकोबान बोर्ड",
  "sokoban.boardLabel": "{level}: {total} में से {done} संदूक घेरों पर, {moves} चालें",
@@ -6012,5 +6012,9 @@
  "hex.rules.two": "हर खिलाड़ी अपने दो किनारे जोड़ता है, लाल और नीला। पहली श्रृंखला जीतती है।",
  "race.matchedShortest": "आपने सबसे छोटा रास्ता पकड़ा: {n}।",
  "race.matchedRoute": "आपने जाना-पहचाना रास्ता पकड़ा: {n}।",
- "race.beatRoute": "आपने {n} के जाने-पहचाने रास्ते को हरा दिया।"
+ "race.beatRoute": "आपने {n} के जाने-पहचाने रास्ते को हरा दिया।",
+ "game.checkers.short": "चेकर्स",
+ "snake.walls": "दीवारें",
+ "snake.walls.solid": "ठोस",
+ "snake.walls.wrap": "आर-पार"
 }
