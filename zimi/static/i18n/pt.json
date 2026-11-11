@@ -3787,5 +3787,9 @@
   "tb_kn_site_jump": "Velocidade de salto do rover",
   "alm_probe_replay": "Reproduzir o voo desde o lançamento",
   "tb_kn_site_msd": "Data solar marciana (o relógio de Marte)",
-  "tb_kn_site_drive_hour": "Hora em que os rovers conduzem (hora solar média local)"
+  "tb_kn_site_drive_hour": "Hora em que os rovers conduzem (hora solar média local)",
+  "alm_earth_webb_lit": "O lado do espelho está sempre na sombra do protetor solar: aqui aparece iluminado.",
+  "tb_kn_craft_models": "Modelos de naves",
+  "tb_kn_craft_sun": "Luz do Sol numa nave (irradiância)",
+  "tb_kn_craft_shine": "Luz planetária numa nave (parte de uma superfície virada para ele)"
 }

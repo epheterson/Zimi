@@ -3787,5 +3787,9 @@
   "tb_kn_site_jump": "Sprunggeschwindigkeit des Rovers",
   "alm_probe_replay": "Den Flug vom Start an abspielen",
   "tb_kn_site_msd": "Mars-Sol-Datum (die Marsuhr)",
-  "tb_kn_site_drive_hour": "Fahrstunde der Rover (mittlere Ortszeit)"
+  "tb_kn_site_drive_hour": "Fahrstunde der Rover (mittlere Ortszeit)",
+  "alm_earth_webb_lit": "Die Spiegelseite liegt immer im Schatten des Sonnenschilds: hier ist sie beleuchtet dargestellt.",
+  "tb_kn_craft_models": "Raumfahrzeug-Modelle",
+  "tb_kn_craft_sun": "Sonnenlicht auf einem Raumfahrzeug (Bestrahlungsstärke)",
+  "tb_kn_craft_shine": "Planetenlicht auf einem Raumfahrzeug (Anteil einer zugewandten Fläche)"
 }

@@ -3787,5 +3787,9 @@
   "tb_kn_site_jump": "Rover jump speed",
   "alm_probe_replay": "Replay its flight from launch",
   "tb_kn_site_msd": "Mars Sol Date (the Mars clock)",
-  "tb_kn_site_drive_hour": "Hour the rovers drive (local mean solar time)"
+  "tb_kn_site_drive_hour": "Hour the rovers drive (local mean solar time)",
+  "alm_earth_webb_lit": "The mirror side is always in the sunshield's shade: it is shown lit.",
+  "tb_kn_craft_models": "Spacecraft models",
+  "tb_kn_craft_sun": "Sun's light on a spacecraft (irradiance)",
+  "tb_kn_craft_shine": "Planetshine on a spacecraft (share of a facing surface)"
 }

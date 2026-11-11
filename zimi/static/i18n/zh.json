@@ -3787,5 +3787,9 @@
   "tb_kn_site_jump": "漫游车起跳速度",
   "alm_probe_replay": "从发射起回放它的飞行",
   "tb_kn_site_msd": "火星太阳日期（火星时钟）",
-  "tb_kn_site_drive_hour": "漫游车行驶时刻（当地平太阳时）"
+  "tb_kn_site_drive_hour": "漫游车行驶时刻（当地平太阳时）",
+  "alm_earth_webb_lit": "镜面一侧始终处于遮阳罩的阴影中：此处以被照亮的样子呈现。",
+  "tb_kn_craft_models": "航天器模型",
+  "tb_kn_craft_sun": "太阳照在航天器上的光（辐照度）",
+  "tb_kn_craft_shine": "行星反照光（正对表面所受光的比例）"
 }

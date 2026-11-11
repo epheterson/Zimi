@@ -4123,6 +4123,7 @@ function _aeInfoHtml(k, rows) {
       return '<div class="ae-info-row" data-bi="' + r.id + '"><dt>' + _almEsc(r.label) + '</dt><dd>' + r.html + '</dd></div>';
     }).join('') + '</dl>' +
     (_aeLinked(_aeArrivalKey(k)) ? '<p class="ae-info-read">' + _aeLink(_aeArrivalKey(k), _almEsc(_aeT('alm_bi_read', { body: _aeInfoName(k) }))) + '</p>' : '') +
+    (k === 'jwst' ? p('ae-info-credit', _aeT('alm_earth_webb_lit')) : '') +
     p('ae-info-credit', [_aeT('alm_earth_credit'), _aePlanetCredit()].filter(Boolean).join(' · ')) + '</div>';
 }
 function _aeRenderInfo() {
@@ -4327,6 +4328,9 @@ function _aeRefAxesRows() {
   add('place.alt', _aeT('tb_kn_place_alt'), (AE_PLACE_DIST - 1) * AE_EARTH_RADIUS_KM, 'km', 'Zimi');
   add('place.match', _aeT('tb_kn_place_match'), AE_PLACE_ARTICLE_KM, 'km', 'Zimi');
   add('craft.view', _aeT('tb_kn_craft_view'), AE_CRAFT_VIEW_SPANS, '×', 'Zimi');
+  add('craft.models', _aeT('tb_kn_craft_models'), 'NASA 3D Resources · scripts/build_craft_models.py, build_craft_hd.py', '', 'NASA (public domain)');
+  add('craft.sun', _aeT('tb_kn_craft_sun'), AE_CRAFT_SUN_E, '', 'Zimi (a Lambert albedo of 0.8 head on reads 0.76)');
+  add('craft.shine', _aeT('tb_kn_craft_shine'), AE_CRAFT_SHINE_REFLECT, '', 'Zimi (a world\'s albedo, disc size and phase seen from the craft)');
   // The landing sites: where the models, the sol and the Saturn V's flight come from.
   add('site.models', _aeT('tb_kn_site_models'), 'NASA 3D Resources · scripts/build_site_models.py', '', 'NASA (public domain); the rest written for Zimi');
   add('site.sol', _aeT('tb_kn_site_sol'), AE_SITE_FACTS.solSeconds, 's', 'NASA/JPL');
@@ -5418,6 +5422,43 @@ function _aeAngleDeltaRad(a, b) { return ((b - a + 3 * Math.PI) % (2 * Math.PI) 
 // How far off a flight to a craft of this span ends (the station too): the whole span inside the narrower side of the screen.
 function _aeCraftViewDist(span) { return Math.max(span * AE_CRAFT_VIEW_SPANS, _aeFitDist(span * AE_CRAFT_FIT_R)); }
 // `waitModel`: the span is a guess, the model (loading) will correct it (_aeRefitCraftFlight).
+// The world axes (toward what it points at, across, and the third) its model axes (aim, across, aim x across) turn onto at pos.
+function _aeCraftWorldBasis(model, pos) {
+  var goal = AE_CRAFT_POINTS[model] === 'sun' ? _aeSunShown(_ae.scene) : [0, 0, 0];
+  var jd = _ae.scene.ms / MS_PER_DAY + JD_UNIX_EPOCH, to = _aeNorm(_aeSub(goal, pos));
+  var north = typeof _ephEclJ2000ToEqOfDate === 'function' ? _ephEclJ2000ToEqOfDate([0, 0, 1], jd + _aeDeltaTDays(jd)) : [0, 0, 1];
+  var side = _aeCross(to, north);
+  if (_aeLen(side) < 1e-6) side = _aeCross(to, [1, 0, 0]);
+  side = _aeNorm(side);
+  return [to, side, _aeCross(to, side)];
+}
+// A craft's authored view: the direction to look from, in its own model axes (what the picture is of: Webb's mirror seen
+// three-quarter from the cold side, the sunshield edge-on below). Null for a craft without one, or before its model is here.
+// Webb's primary mirror: the middle of its 18 hexagonal segments in the model's units (y, z; the mirror faces x) and a
+// segment's 1.32 m flat to flat. The shader draws the lattice in the mirror material's object space, the centre one missing.
+var AE_CRAFT_MIRROR = { webb: { c: [6.275, 0.0], pitchM: 1.32 } };
+function _aeCraftMirrorHex(THREE, d, model) {
+  var m = AE_CRAFT_MIRROR[model];
+  return m ? new THREE.Vector3(m.c[0] * d.metres, m.c[1] * d.metres, m.pitchM) : new THREE.Vector3(0, 0, 0);
+}
+var AE_CRAFT_HERO_FRAME = { cassini: [0.35, 0.85, 0.5] };   // the same, in the world axes the craft's pointing sets (to its target, across, third)
+var AE_CRAFT_HERO = { webb: [1.0, 0.55, 0.45] };
+function _aeCraftHeroDir(name, pp) {
+  var model = AE_CRAFT_MODEL[name], hero = AE_CRAFT_HERO[model], frame = AE_CRAFT_HERO_FRAME[model];
+  if (frame && _ae.scene && pp) {   // along what it points at, across and the third: its dish is never seen end-on
+    var B = _aeCraftWorldBasis(model, pp);
+    return _aeNorm(_aeAdd(_aeAdd(_aeScale(B[0], frame[0]), _aeScale(B[1], frame[1])), _aeScale(B[2], frame[2])));
+  }
+  return hero ? _aeCraftModelToWorld(model, pp, hero) : null;
+}
+// A direction in a craft's model axes as the world sees it at pp (null before its model is here).
+function _aeCraftModelToWorld(model, pp, v) {
+  var d = _aeCraftData(model);
+  if (!d || !_ae.scene || !pp) return null;
+  var B = _aeCraftWorldBasis(model, pp), t = [d.aim[1] * d.across[2] - d.aim[2] * d.across[1], d.aim[2] * d.across[0] - d.aim[0] * d.across[2], d.aim[0] * d.across[1] - d.aim[1] * d.across[0]];
+  var c = [_aeDot(v, d.aim), _aeDot(v, d.across), _aeDot(v, t)];
+  return _aeNorm(_aeAdd(_aeAdd(_aeScale(B[0], c[0]), _aeScale(B[1], c[1])), _aeScale(B[2], c[2])));
+}
 function _aeFlyToCraft(name, pp, span, waitModel) {
   if (name === '__proto__' || name === 'constructor' || name === 'prototype') return;   // a name from a link is never a way into Object
   var target = Object.prototype.hasOwnProperty.call(AE_TARGETS, name) ? AE_TARGETS[name] : null;
@@ -5432,12 +5473,12 @@ function _aeFlyToCraft(name, pp, span, waitModel) {
     if (d < nearD) { nearD = d; near = q; }
   });
   var side = _aeNorm(_aeCross(toSun, [0, 0, 1])), dir;
-  if (AE_CRAFT_POINTS[AE_CRAFT_MODEL[name]] === 'sun') dir = _aeAdd(_aeAdd(_aeScale(side, 0.85), _aeScale(toSun, 0.35)), [0, 0, 0.3]);   // a shield in profile, lit
+  if (AE_CRAFT_POINTS[AE_CRAFT_MODEL[name]] === 'sun') dir = _aeAdd(_aeAdd(_aeScale(side, 0.85), _aeScale(toSun, AE_CRAFT_SHIELD_VIEW_SUN)), [0, 0, 0.3]);   // a shield in profile
   else if (near && nearD < AE_PROBE_FRAME_MAX) dir = _aeAdd(_aeScale(_aeNorm(_aeSub(pp, near)), 0.8), _aeScale(toSun, 0.5));
   else dir = _aeAdd(_aeScale(toSun, 0.6), _aeScale(side, 0.8));
   // Its whole span inside the narrower side of the screen (a phone held upright is narrow across: three spans along
   // the view left Voyager's booms off both edges).
-  _aeFlyTo(name, _aeCraftViewDist(span), _aeAzElOf(_aeNorm(dir)));
+  _aeFlyTo(name, _aeCraftViewDist(span), _aeAzElOf(_aeCraftHeroDir(name, pp) || _aeNorm(dir)));
   if (waitModel) _aeWaitForModel(waitModel);
   _aeArrive(name);
 }
@@ -5454,6 +5495,8 @@ function _aeRefitCraftFlight(f, name, model) {
   if (!span) return;
   if (AE_CRAFT_MODEL[name]) { AE_TARGETS[name].min = span * 0.9; AE_TARGETS[name].surface = span / 2; }
   f.toDist = _aeClampDist(_aeCraftViewDist(span));
+  var hero = _aeCraftHeroDir(name, _aeBodyPos(name));
+  if (hero) { var ae = _aeAzElOf(hero); f.toAz = ae.az; f.toEl = ae.el; }
   f.ms = _aeFlyMs(f.from, _aeTargetPos(), f.toDist, f.toAz, f.toEl);
   _aeFlyTables(f);
   f.bend = _aeBendAfter(f);
@@ -5911,23 +5954,21 @@ function _aeOrientMoon(sc) {
 var AE_ISS_URL = _almAsset('/static/earth/iss-v1.bin');
 var AE_ISS_SPAN_RE = 109 / 1000 / AE_EARTH_RADIUS_KM;     // the station's 109 m along its truss, in Earth radii
 var AE_ISS_VIEW_DIR = [-0.42, -0.55, 0.72];                 // from it, in its own axes (nadir, forward, starboard): above, behind, to starboard; the Earth below to the horizon
-var AE_ISS_EARTHSHINE = 0.3;                                // the day side below, as a light from the nadir
-// Shading per class (structure, truss, turning array, radiator, fixed array): colour, specular strength, sharpness.
-var AE_ISS_LOOK = [[[0.86, 0.85, 0.82], 0.25, 24], [[0.62, 0.62, 0.6], 0.3, 30], [[0.5, 0.34, 0.14], 1.8, 90],
-  [[0.94, 0.94, 0.96], 0.15, 12], [[0.12, 0.15, 0.3], 1.2, 70]];
 AE_TARGETS.iss = { min: AE_ISS_SPAN_RE * 0.9, max: 0.5, surface: AE_ISS_SPAN_RE / 2 };
 // A mark for the flights' circles (and a tap on the model close up), never a name: its own label (ae-lbl-iss) has that.
 AE_MARKED.push({ body: 'iss', flightOnly: true, name: function () { return _aeT('alm_earth_iss_short'); } });
 
 // ── Spacecraft models ──
-// The ISS (iss-v1.bin, "ZISS": five shading classes, its main arrays turning about the truss) and the probes
-// (craft-<model>-v1.bin, "ZCRF": their materials' colours as a palette, the axis that points stored), all from NASA 3D
-// Resources (free and without copyright) and built by scripts/build_craft_models.py. Each is fetched the first time
+// The ISS (iss-v1.bin, five classes, its main arrays turning about the truss) and the probes (craft-<model>-v1.bin: their
+// materials as a palette of colour, roughness and metalness, smooth normals, the axis that points stored; "ZCR2"), all
+// from NASA 3D Resources (free and without copyright) and built by scripts/build_craft_models.py. The landing sites'
+// models (craft-site-*.bin) may still be the older "ZCRF" (no normals: shaded flat). Each is fetched the first time
 // the view goes to it or comes near, and drawn from AE_CRAFT_MODEL_PX across, its dot giving way to it.
-var AE_CRAFT_PAL = 8;
+var AE_CRAFT_PAL = 12;                                      // palette entries a model may use
 // A gentle fill from the camera beside the Sun's key light: far out the Sun is a bright star, and a probe lit only by it
 // read as a dim grey shape. The station keeps less, so the Earth's shadow still reads as night.
-var AE_CRAFT_FILL = 0.3, AE_ISS_FILL = 0.08;                                       // palette entries a model may use
+var AE_CRAFT_FILL = 0.1, AE_ISS_FILL = 0.04;
+var AE_CRAFT_FILL_OF = { webb: 0.22 };                       // Webb's telescope lives in its sunshield's shade: lit by the camera, as every picture of it is
 var AE_CRAFT_MODEL_PX = [6, 14];                            // the model fades in across these widths, the dot out
 var AE_CRAFT_NEAR_MIN = 0.3 / 1000 / AE_EARTH_RADIUS_KM;    // 30 cm: a craft a few metres across, framed close
 // A probe's table key and its model (one model for both Voyagers and both Pioneers); one without a model stays a dot.
@@ -5935,6 +5976,7 @@ var AE_CRAFT_MODEL = { voyager1: 'voyager', voyager2: 'voyager', pioneer10: 'pio
   parker: 'parker', juno: 'juno', jwst: 'webb', cassini: 'cassini', galileo: 'galileo' };
 // What each points: its high-gain antenna at the Earth, or (Parker, Webb) its shield at the Sun.
 var AE_CRAFT_POINTS = { parker: 'sun', webb: 'sun' };
+var AE_CRAFT_SHIELD_VIEW_SUN = 0.35;                       // the shield in profile, from the Sun's side so it is lit
 var AE_CRAFT_VIEW_SPANS = 3;                                // a flight to a probe ends at least this many of its spans off
 var AE_CRAFT_FIT_R = 0.6;                                   // and far enough that this share of its span fits the narrow side
 var _aeCraft = {};                                          // model -> { data, loading }
@@ -5943,65 +5985,303 @@ var _aeCraft = {};                                          // model -> { data, 
 // view, for a model that is late: at most AE_CRAFT_WAIT_MS, after which it arrives as planned.
 var AE_CRAFT_PROVISIONAL_SPAN_RE = 15 / 1000 / AE_EARTH_RADIUS_KM;
 var AE_CRAFT_WAIT_MS = 4000;
+// ── Shading ──
+// Physically based, and small: the Sun a hard key light (GGX highlight and a Lambert body), the nearest world's light a
+// coloured fill from its side (its albedo's colour), a faint sky, the camera's gentle fill; a procedural environment (that
+// world's glow) for foil and mirrors to reflect; one tight shadow map around the craft in view; a soft shoulder, then the
+// same gamma as the planets. A mesh without normals (the landing sites' older models) is shaded flat, as it always was.
+var AE_CRAFT_SUN_E = 3.4;                                   // the Sun's irradiance (so an albedo of 0.8 head on reads 0.76)
+var AE_CRAFT_SKY = 0.03;                                    // the faint ambient and the dark of the environment
+var AE_CRAFT_ENV_FILL = 3.0;                                // the camera's fill, as the light foil and mirrors reflect (they have no diffuse to light)
+var AE_CRAFT_EXPOSURE = 1.5;                                // the tone curve 1 - exp(-k c): a sunlit white reads near white, shade stays readable
+var AE_CRAFT_AMBER = 'vec3(0.5, 0.26, 0.06)';              // a solar array's back: Kapton, amber
+var AE_CRAFT_GAMMA = 2.2;
+var AE_CRAFT_SHADOW_PX = 1024;                              // the shadow map, one for the craft in view
+var AE_CRAFT_SHADOW_MIN_PX = 90;                            // a craft narrower than this on screen casts none
+var AE_CRAFT_SHADOW_BIAS = 0.0012;                          // in the map's depth (a craft's radius is 1)
+var AE_CRAFT_SHADOW_NORMAL = 0.012;                         // the surface moved along its normal for the lookup, of the craft's radius
+var AE_CRAFT_ROUGH_MIN = 0.08;
+var AE_CRAFT_MAX_SHINE = 1.0;                               // the strongest planetshine
+var AE_CRAFT_SHINE_REFLECT = 1.7;                           // a world's own light, as a share of what lands on a surface facing it
+var AE_CRAFT_SOFTBOX = 'normalize(vec3(0.4, 0.5, 0.75))', AE_CRAFT_SOFTBOX_K = 0.9;   // a studio's soft light in the world, for shiny things to reflect (every picture of these has one)
+var AE_CRAFT_STARS = 0.35;                                  // the star field a mirror reflects, faintly
+var AE_CRAFT_KIND_STEP = 8;                                 // surf.z = flags + 8 * kind (cells, foil, quilt, radiator, metal: scripts/craftmesh.py KIND_*)
+var AE_CRAFT_CELL_M = 0.35, AE_CRAFT_CRINKLE_M = [0.15, 0.05], AE_CRAFT_SEAM_M = 0.6, AE_CRAFT_RIB_M = 0.04;   // the patterns' scales, in metres
+// Noise for the procedural surfaces: a hash, value noise, a vector of it, and a few stars on the reflection's direction.
+var AE_CRAFT_GLSL_NOISE = [
+  'float aeH13(vec3 p) { p = fract(p * 0.1031); p += dot(p, p.yzx + 33.33); return fract((p.x + p.y) * p.z); }',
+  'float aeVn(vec3 p) { vec3 i = floor(p), f = fract(p); f = f * f * (3.0 - 2.0 * f);',
+  '  return mix(mix(mix(aeH13(i), aeH13(i + vec3(1, 0, 0)), f.x), mix(aeH13(i + vec3(0, 1, 0)), aeH13(i + vec3(1, 1, 0)), f.x), f.y),',
+  '             mix(mix(aeH13(i + vec3(0, 0, 1)), aeH13(i + vec3(1, 0, 1)), f.x), mix(aeH13(i + vec3(0, 1, 1)), aeH13(i + vec3(1, 1, 1)), f.x), f.y), f.z); }',
+  'vec3 aeVnv(vec3 p) { return vec3(aeVn(p), aeVn(p + 17.3), aeVn(p + 41.7)) - 0.5; }',
+  'vec3 aeStars(vec3 r) {',
+  '  float band = exp(-pow(dot(normalize(r), normalize(vec3(0.3, 0.8, 0.5))) * 3.0, 2.0)) * (0.4 + 0.6 * aeVn(r * 5.0));',
+  '  float star = step(0.985, aeH13(floor(r * 70.0))) * (0.5 + aeH13(floor(r * 70.0) + 3.0));',
+  '  return vec3(0.9, 0.95, 1.0) * (0.25 * band + star);',
+  '}'
+].join('\n');
+// The procedural surface of a palette entry, in the craft's own (object) space so it stays on the model: the cells of a
+// solar array, the crinkle of foil, a blanket's seams, a radiator's ribs, the grain of bare metal. Each fades to its mean
+// where its detail is under a pixel (the pattern's scale against how far an object-space step is per pixel).
+var AE_CRAFT_GLSL_SURFACE = [
+  '  float kd = floor(sp.z / ' + AE_CRAFT_KIND_STEP.toFixed(1) + ');',
+  '  float envMul = 1.0;',
+  '  vec3 po = vObj * unitM;',
+  '  float pw = length(fwidth(po));',
+  '  vec3 on = abs(vONrm);',
+  '  vec2 q = on.x > max(on.y, on.z) ? po.yz : (on.y > on.z ? po.xz : po.xy);',
+  '  if (kd > 0.5 && kd < 1.5) {',   // cells
+  '    float fadeC = clamp(pw / ' + AE_CRAFT_CELL_M.toFixed(2) + ' * 2.5, 0.0, 1.0);',
+  '    vec2 g = q / ' + AE_CRAFT_CELL_M.toFixed(2) + ';',
+  '    vec2 f = fract(g);',
+  '    float line = min(1.0, step(f.x, 0.06) + step(0.94, f.x) + step(f.y, 0.06) + step(0.94, f.y));',
+  '    float bus = step(abs(f.x - 0.5), 0.02);',
+  '    float hc = aeH13(vec3(floor(g), 1.0));',
+  '    vec3 cell = a * (0.7 + 0.6 * hc);',
+  '    vec3 pat = mix(cell, vec3(0.42, 0.44, 0.5), max(line * 0.75, bus * 0.5));',
+  '    a = mix(pat, a, fadeC);',
+  '    rough = mix(0.12, rough, fadeC);',
+  '    metal = mix(0.35, metal, fadeC);',
+  '  } else if (kd > 1.5 && kd < 2.5) {',   // foil
+  '    float fadeF = clamp(pw / ' + AE_CRAFT_CRINKLE_M[0].toFixed(2) + ' * 1.5, 0.0, 1.0);',
+  '    vec3 bump = 1.1 * aeVnv(po / ' + AE_CRAFT_CRINKLE_M[0].toFixed(2) + ') + 0.7 * aeVnv(po / ' + AE_CRAFT_CRINKLE_M[1].toFixed(2) + ') + 0.4 * aeVnv(po / 0.9);',
+  '    n = normalize(n + (1.0 - fadeF) * bump);',
+  '    a *= 0.85 + 0.3 * aeVn(po / 0.1);',
+  '    rough = mix(rough * 0.8, rough, fadeF);',
+  '  } else if (kd > 2.5 && kd < 3.5) {',   // quilted blanket
+  '    float fadeQ = clamp(pw / ' + AE_CRAFT_SEAM_M.toFixed(2) + ' * 2.0, 0.0, 1.0);',
+  '    vec2 e = abs(fract(q / ' + AE_CRAFT_SEAM_M.toFixed(2) + ') - 0.5) * 2.0;',
+  '    float seam = smoothstep(0.9, 1.0, max(e.x, e.y));',
+  '    a *= 1.0 - 0.22 * seam * (1.0 - fadeQ);',
+  '    n = normalize(n + (1.0 - fadeQ) * 0.12 * aeVnv(po / 0.2));',
+  '  } else if (kd > 3.5 && kd < 4.5) {',   // radiator
+  '    float fadeR = clamp(pw / ' + AE_CRAFT_RIB_M.toFixed(2) + ' * 2.0, 0.0, 1.0);',
+  '    float rib = 0.5 + 0.5 * sin(q.x / ' + AE_CRAFT_RIB_M.toFixed(2) + ' * 6.2832);',
+  '    a *= 1.0 - 0.08 * rib * (1.0 - fadeR);',
+  '  } else if (kd > 6.5) {',   // a sunshield layer: smooth, billowed, magenta-silver
+  '    float fadeS = clamp(pw / 0.3 * 1.5, 0.0, 1.0);',
+  '    n = normalize(n + 0.45 * aeVnv(po / 1.4) + (1.0 - fadeS) * 0.1 * aeVnv(po / 0.3));',
+  '    a = mix(vec3(0.7, 0.7, 0.76), vec3(0.85, 0.35, 0.7), pow(1.0 - abs(facing), 2.2)) * (0.9 + 0.2 * aeVn(po / 0.6));',
+  '    metal = 0.65; rough = 0.28;',
+  '  } else if (kd > 5.5) {',   // a telescope mirror: a near perfect reflector, in hexagonal segments with gaps, the middle one missing
+  '    rough = 0.05; a *= 0.85;',
+  AE_CRAFT_GLSL_HEX,
+  '  } else if (kd > 4.5) {',   // bare metal
+  '    float fadeM = clamp(pw / 0.05 * 2.0, 0.0, 1.0);',
+  '    float streak = aeVn(vec3(q.x * 40.0, q.y * 1.5, 0.0));',
+  '    a *= 1.0 + (streak - 0.5) * 0.14 * (1.0 - fadeM);',
+  '    rough = mix(rough * (0.8 + 0.4 * streak), rough, fadeM);',
+  '  }'
+].join('\n');
+// The mirror's hexagonal segments (flat to flat mirrorHex.z, centred on mirrorHex.xy in the mirror's plane): a dark gap between
+// them, a hair's tilt for each (so each catches the sky differently), and the middle segment gone.
+var AE_CRAFT_GLSL_HEX = [
+  '  if (mirrorHex.z > 0.0) {',
+  '    vec2 pc = q - mirrorHex.xy; float P = mirrorHex.z;',
+  '    vec2 e1 = vec2(1.0, 0.0), e2 = vec2(0.5, 0.8660254);',
+  '    float hv = pc.y / (P * 0.8660254); float hu = pc.x / P - 0.5 * hv; float hy = -hu - hv;',
+  '    float rx = floor(hu + 0.5), ry = floor(hy + 0.5), rz = floor(hv + 0.5);',
+  '    float dx = abs(rx - hu), dy = abs(ry - hy), dz = abs(rz - hv);',
+  '    if (dx > dy && dx > dz) rx = -ry - rz; else if (dy > dz) ry = -rx - rz; else rz = -rx - ry;',
+  '    if (rx == 0.0 && rz == 0.0) discard;',
+  '    vec2 dd = pc - P * (rx * e1 + rz * e2);',
+  '    float edge = 0.5 * P - max(max(abs(dot(dd, e1)), abs(dot(dd, e2))), abs(dot(dd, vec2(-0.5, 0.8660254))));',
+  '    float gw = max(0.012, pw * 1.2);',
+  '    a = mix(a, vec3(0.012), 1.0 - smoothstep(0.35 * gw, gw, edge));',
+  '    n = normalize(n + 0.05 * (vec3(aeH13(vec3(rx, rz, 1.0)), aeH13(vec3(rx, rz, 2.0)), aeH13(vec3(rx, rz, 3.0))) - 0.5));',
+  '    envMul = 1.0 - 0.8 * smoothstep(0.9, 0.99, dot(n, v));',   // looking straight in, it mirrors its own secondary
+  '  }'
+].join('\n');
 var AE_CRAFT_VERT = [
   'attribute float cls;',
+  'uniform mat4 shadowMat;',
+  'uniform mat4 localMat;',
+  'uniform float shadowOffset;',
   'varying vec3 vView;',
+  'varying vec3 vNrm;',
   'varying float vCls;',
+  'varying vec2 vUv;',
+  'varying vec3 vShadow;',
+  'varying vec3 vObj;',
+  'varying vec3 vONrm;',
   'void main() {',
   '  vec4 mv = modelViewMatrix * vec4(position, 1.0);',
   '  vView = mv.xyz; vCls = cls;',
+  '  vec3 lp = (localMat * vec4(position, 1.0)).xyz;',
+  '#ifdef CRAFT_NRM',
+  '  vNrm = normalMatrix * normal;',
+  '  lp += normalize((localMat * vec4(normal, 0.0)).xyz) * shadowOffset;',
+  '#else',
+  '  vNrm = vec3(0.0);',
+  '#endif',
+  '#ifdef CRAFT_UV',
+  '  vUv = uv;',
+  '#else',
+  '  vUv = vec2(0.0);',
+  '#endif',
+  '  vShadow = (shadowMat * vec4(lp, 1.0)).xyz;',
+  '  vObj = position;',
+  '#ifdef CRAFT_NRM',
+  '  vONrm = normal;',
+  '#else',
+  '  vONrm = vec3(0.0, 0.0, 1.0);',
+  '#endif',
   '  gl_Position = projectionMatrix * mv;',
   '}'
 ].join('\n');
 var AE_CRAFT_FRAG = [
   'uniform vec3 sunView;',
   'uniform vec3 nadirView;',
+  'uniform vec3 shineCol;',
   'uniform float lit;',
   'uniform float earthLight;',
   'uniform float fade;',
   'uniform float fill;',
+  'uniform float sel;',
+  'uniform float shadowOn;',
+  'uniform float shadowTexel;',
+  'uniform sampler2D shadowMap;',
   'uniform vec3 albedo[' + AE_CRAFT_PAL + '];',
-  'uniform vec3 shine[' + AE_CRAFT_PAL + '];',
+  'uniform vec3 surf[' + AE_CRAFT_PAL + '];',   // roughness, metalness, flags
+  '#ifdef CRAFT_MAP',
+  'uniform sampler2D map;',
+  '#endif',
+  '#ifdef CRAFT_MR',
+  'uniform sampler2D mrMap;',
+  '#endif',
   'varying vec3 vView;',
+  'varying vec3 vNrm;',
   'varying float vCls;',
+  'varying vec2 vUv;',
+  'varying vec3 vShadow;',
+  'varying vec3 vObj;',
+  'varying vec3 vONrm;',
+  'uniform float unitM;',
+  'uniform vec3 mirrorHex;',
+  'const float PI = 3.14159265;',
+  AE_CRAFT_GLSL_NOISE,
+  'float aeShadow() {',
+  '  if (shadowOn < 0.5) return 1.0;',
+  '  vec3 p = vShadow * 0.5 + 0.5;',
+  '  if (p.x < 0.0 || p.x > 1.0 || p.y < 0.0 || p.y > 1.0) return 1.0;',
+  '  float s = 0.0;',
+  '  for (int x = -1; x <= 1; x++) for (int y = -1; y <= 1; y++)',
+  '    s += step(p.z - ' + AE_CRAFT_SHADOW_BIAS.toFixed(4) + ', texture2D(shadowMap, p.xy + vec2(float(x), float(y)) * shadowTexel).r);',
+  '  return s / 9.0;',
+  '}',
   'void main() {',
-  '  vec3 n = normalize(cross(dFdx(vView), dFdy(vView)));',   // flat: a spacecraft is panels, dishes and cylinders
   '  vec3 v = normalize(-vView);',
-  '  if (dot(n, v) < 0.0) n = -n;',
-  '  int k = int(vCls + 0.5);',
-  '  vec3 a = albedo[0]; vec3 sp = shine[0];',
-  '  for (int i = 1; i < ' + AE_CRAFT_PAL + '; i++) { if (i == k) { a = albedo[i]; sp = shine[i]; } }',
-  '  float d = max(dot(n, sunView), 0.0) * lit;',
+  '#ifdef CRAFT_NRM',
+  '  vec3 n = normalize(vNrm);',
+  '#else',
+  '  vec3 n = normalize(cross(dFdx(vView), dFdy(vView)));',   // flat: panels, dishes and boxes
+  '#endif',
+  '  float facing = dot(n, v);',
+  '  if (facing < 0.0) n = -n;',
+  '  int k = int((sel >= 0.0 ? sel : vCls) + 0.5);',
+  '  vec3 a = albedo[0]; vec3 sp = surf[0];',
+  '  for (int i = 1; i < ' + AE_CRAFT_PAL + '; i++) { if (i == k) { a = albedo[i]; sp = surf[i]; } }',
+  '  float rough = sp.x, metal = sp.y;',
+  '  if (facing < 0.0 && floor(mod(sp.z, 8.0) / 4.0) > 0.5) { a = ' + AE_CRAFT_AMBER + '; rough = 0.5; metal = 0.15; }',
+  '#ifdef CRAFT_MAP',
+  '  vec4 tc = texture2D(map, vUv);',
+  '  if (tc.a < 0.5 && mod(floor(mod(sp.z, 8.0) / 2.0), 2.0) > 0.5) discard;',
+  '  a *= pow(tc.rgb, vec3(' + AE_CRAFT_GAMMA.toFixed(1) + '));',
+  '#endif',
+  '#ifdef CRAFT_MR',
+  '  vec3 mr = texture2D(mrMap, vUv).rgb;',
+  '  rough *= mr.g; metal *= mr.b;',
+  '#endif',
+  AE_CRAFT_GLSL_SURFACE,
+  '  rough = clamp(rough, ' + AE_CRAFT_ROUGH_MIN.toFixed(2) + ', 1.0);',
+  '  vec3 f0 = mix(vec3(0.04), a, metal);',
+  '  vec3 diff = a * (1.0 - metal);',
+  '  float nv = max(dot(n, v), 1e-3);',
+  '  float nl = max(dot(n, sunView), 0.0);',
   '  vec3 h = normalize(sunView + v);',
-  '  float s = sp.x * pow(max(dot(n, h), 0.0), sp.y) * lit * step(0.0, dot(n, sunView));',
-  '  float e = max(dot(n, nadirView), 0.0) * earthLight;',
-  '  vec3 lin = a * (d + e * vec3(0.55, 0.7, 1.0) + 0.02 + fill * max(dot(n, v), 0.0)) + vec3(s);',   // fill: from the camera, gentle
-  '  gl_FragColor = vec4(sqrt(min(lin, vec3(1.0))), fade);',
+  '  float nh = max(dot(n, h), 0.0), vh = max(dot(v, h), 0.0);',
+  '  float al = rough * rough, a2 = al * al;',
+  '  float dd = nh * nh * (a2 - 1.0) + 1.0;',
+  '  float D = a2 / (PI * dd * dd);',
+  '  float kk = (rough + 1.0) * (rough + 1.0) / 8.0;',
+  '  float vis = 1.0 / (4.0 * (nl * (1.0 - kk) + kk) * (nv * (1.0 - kk) + kk));',
+  '  vec3 F = f0 + (1.0 - f0) * pow(1.0 - vh, 5.0);',
+  '  float sun = lit * aeShadow() * step(0.0, dot(n, sunView));',
+  '  vec3 col = diff * nl * sun * ' + (AE_CRAFT_SUN_E / Math.PI).toFixed(4) + ' + D * F * vis * nl * sun * ' + AE_CRAFT_SUN_E.toFixed(2) + ';',
+  '  vec3 ps = shineCol * earthLight;',                       // the nearest world's light: from its side, in its colour
+  '  col += diff * ps * (0.5 + 0.5 * dot(n, nadirView));',
+  '  vec3 r = reflect(-v, n);',
+  '  vec3 env = ps * (0.2 + 1.1 * smoothstep(-0.4, 1.0, dot(r, nadirView))) + vec3(' + AE_CRAFT_SKY.toFixed(3) + ' + fill * ' + AE_CRAFT_ENV_FILL.toFixed(1) + ') ;',
+  '  vec3 rw = transpose(mat3(viewMatrix)) * r;',
+  '  vec3 soft = pow(max(dot(rw, ' + AE_CRAFT_SOFTBOX + '), 0.0), 3.0) * vec3(1.0, 0.92, 0.78) * ' + AE_CRAFT_SOFTBOX_K.toFixed(2) + ' * (1.0 - rough);',
+  '  env = env * envMul + (aeStars(rw) * ' + AE_CRAFT_STARS.toFixed(2) + ' * (rough < 0.1 ? 4.0 : 1.0) + soft) * envMul;',
+  '  vec3 fe = f0 + (max(vec3(1.0 - rough), f0) - f0) * pow(1.0 - nv, 5.0);',
+  '  col += fe * env * (1.0 - 0.5 * rough);',
+  '  col += diff * (' + AE_CRAFT_SKY.toFixed(3) + ' + fill * nv);',   // fill: from the camera, gentle
+  '  vec3 c = 1.0 - exp(-' + AE_CRAFT_EXPOSURE.toFixed(2) + ' * col);',
+  '  gl_FragColor = vec4(pow(c, vec3(' + (1 / AE_CRAFT_GAMMA).toFixed(4) + ')), fade);',
   '}'
 ].join('\n');
+var AE_CRAFT_DEPTH_VERT = [
+  'uniform mat4 shadowMat;',
+  'uniform mat4 localMat;',
+  'void main() { gl_Position = shadowMat * localMat * vec4(position, 1.0); }'
+].join('\n');
+var AE_CRAFT_DEPTH_FRAG = 'void main() { gl_FragColor = vec4(1.0); }';
+var AE_CRAFT_FLAT_ROUGH_REF = 110, AE_CRAFT_FLAT_ROUGH_MIN = 0.15, AE_CRAFT_FLAT_ROUGH_MAX = 0.8;   // the older meshes' sharpness as a roughness
+var AE_CRAFT_FLAT_METAL_FROM = 0.5, AE_CRAFT_FLAT_METAL_SPAN = 1.5;                                  // and their specular strength as a metalness
+var AE_CRAFT_MAT_DOUBLE = 1, AE_CRAFT_MAT_CUTOUT = 2;
+var AE_CRAFT_NO_TURN = 255;
 function _aeCraftUrl(model) { return model === 'iss' ? AE_ISS_URL : _almAsset('/static/earth/craft-' + model + '-v1.bin'); }
-// Either format into one shape: positions centred on the box, a class (shading entry) per vertex, the look per class,
-// metres per unit and the widest extent in units; the ISS's turning axis, or a probe's pointing and across axes.
+// Either format into one shape: positions centred on the box, normals (ZCR2) or none (ZCRF: flat), a class (palette
+// entry) per vertex, the look per class ({ rgb, rough, metal, flags, tex, mr }), metres per unit, the widest extent in
+// units and the box's radius; a probe's pointing and across axes, the ISS's turning class and axis.
 function _aeCraftParse(buf) {
   var dv = new DataView(buf), f = function (o) { return dv.getFloat32(o, true); };
-  var zcrf = String.fromCharCode(dv.getUint8(0), dv.getUint8(1), dv.getUint8(2), dv.getUint8(3)) === 'ZCRF';
+  var magic = String.fromCharCode(dv.getUint8(0), dv.getUint8(1), dv.getUint8(2), dv.getUint8(3));
+  var v2 = magic === 'ZCR2';
+  if (!v2 && magic !== 'ZCRF') throw new Error('craft format ' + magic);   // another format (a file kept from an older release): not read as this one
   var lo = [f(12), f(16), f(20)], hi = [f(24), f(28), f(32)], mid = [0, 1, 2].map(function (k) { return (lo[k] + hi[k]) / 2; });
-  var d = { metres: f(8), span: Math.max(hi[0] - lo[0], hi[1] - lo[1], hi[2] - lo[2]), mid: mid }, o;   // mid: where the box's middle was (the sites' models are placed by their own frame, almanac-sites.js)
-  if (zcrf) {
-    var np = dv.getUint32(60, true);
-    d.aim = [f(36), f(40), f(44)]; d.across = [f(48), f(52), f(56)]; d.look = [];
-    for (o = 64; d.look.length < np; o += 20) d.look.push([[f(o), f(o + 4), f(o + 8)], f(o + 12), f(o + 16)]);
+  var d = { metres: f(8), span: Math.max(hi[0] - lo[0], hi[1] - lo[1], hi[2] - lo[2]), mid: mid, look: [],   // mid: where the box's middle was (the sites' models are placed by their own frame, almanac-sites.js)
+    radius: 0.5 * Math.hypot(hi[0] - lo[0], hi[1] - lo[1], hi[2] - lo[2]) }, o, i, k;
+  d.aim = [f(36), f(40), f(44)]; d.across = [f(48), f(52), f(56)];
+  var np = dv.getUint32(60, true), nv, nt, flags = 0, stride = 8;
+  if (v2) {
+    nv = dv.getUint32(64, true); nt = dv.getUint32(68, true); flags = dv.getUint32(72, true);
+    if (dv.getUint32(84, true) !== AE_CRAFT_NO_TURN) d.axis = [f(76) - mid[0], f(80) - mid[1]], d.turn = dv.getUint32(84, true);
+    for (o = 88, i = 0; i < np; i++, o += 24) {
+      d.look.push({ rgb: [f(o), f(o + 4), f(o + 8)], rough: dv.getUint8(o + 12) / 255, metal: dv.getUint8(o + 13) / 255, flags: dv.getUint8(o + 14),
+        tex: dv.getInt16(o + 16, true), mr: dv.getInt16(o + 20, true), kind: dv.getUint8(o + 15) });
+    }
+    if (flags & 2) {
+      var nn = dv.getUint16(o, true), names = [];
+      o += 2;
+      for (i = 0; i < nn; i++) { var len = dv.getUint8(o++); names.push(String.fromCharCode.apply(null, new Uint8Array(buf, o, len))); o += len; }
+      d.textures = names;
+    }
+    stride = 9 + (flags & 1 ? 8 : 0);
   } else {
-    d.axis = [f(36) - mid[0], f(40) - mid[1]]; d.span = hi[2] - lo[2]; d.look = AE_ISS_LOOK; o = 44;
+    for (o = 64, i = 0; i < np; i++, o += 20) {
+      var spec = f(o + 12), sharp = f(o + 16);
+      d.look.push({ rgb: [f(o), f(o + 4), f(o + 8)],
+        rough: _aeClamp(1 - sharp / AE_CRAFT_FLAT_ROUGH_REF, AE_CRAFT_FLAT_ROUGH_MIN, AE_CRAFT_FLAT_ROUGH_MAX),
+        metal: _aeClamp((spec - AE_CRAFT_FLAT_METAL_FROM) / AE_CRAFT_FLAT_METAL_SPAN, 0, 1), flags: AE_CRAFT_MAT_DOUBLE, tex: -1, mr: -1 });
+    }
   }
-  var nv = dv.getUint32(o, true), nt = dv.getUint32(o + 4, true);
-  var pos = new Float32Array(nv * 3), cls = new Float32Array(nv);
-  o += 8;
-  for (var i = 0; i < nv; i++, o += 8) {
-    for (var k = 0; k < 3; k++) pos[i * 3 + k] = lo[k] + (dv.getInt16(o + 2 * k, true) + 32767) / 65534 * (hi[k] - lo[k]) - mid[k];
-    cls[i] = dv.getUint8(o + 6);
+  if (!v2) { nv = dv.getUint32(o, true); nt = dv.getUint32(o + 4, true); o += 8; }
+  var pos = new Float32Array(nv * 3), cls = new Float32Array(nv), nrm = v2 ? new Float32Array(nv * 3) : null, uv = flags & 1 ? new Float32Array(nv * 2) : null;
+  for (i = 0; i < nv; i++, o += stride) {
+    for (k = 0; k < 3; k++) pos[i * 3 + k] = lo[k] + (dv.getInt16(o + 2 * k, true) + 32767) / 65534 * (hi[k] - lo[k]) - mid[k];
+    if (v2) {
+      var ex = dv.getInt8(o + 6) / 127, ey = dv.getInt8(o + 7) / 127, ez = 1 - Math.abs(ex) - Math.abs(ey), x = ex, y = ey;
+      if (ez < 0) { x = (1 - Math.abs(ey)) * (ex >= 0 ? 1 : -1); y = (1 - Math.abs(ex)) * (ey >= 0 ? 1 : -1); }
+      var il = 1 / (Math.hypot(x, y, ez) || 1);
+      nrm[i * 3] = x * il; nrm[i * 3 + 1] = y * il; nrm[i * 3 + 2] = ez * il;
+      cls[i] = dv.getUint8(o + 8);
+      if (uv) { uv[i * 2] = dv.getFloat32(o + 9, true); uv[i * 2 + 1] = dv.getFloat32(o + 13, true); }
+    } else cls[i] = dv.getUint8(o + 6);
   }
-  d.pos = pos; d.cls = cls;
+  d.pos = pos; d.cls = cls; d.nrm = nrm; d.uv = uv;
   d.idx = nv > 65535 ? new Uint32Array(buf.slice(o, o + nt * 12)) : new Uint16Array(buf.slice(o, o + nt * 6));
   return d;
 }
@@ -6011,7 +6291,7 @@ var AE_CRAFT_SLOW_MS = 400;
 function _aeCraftLoad(model, then) {
   var c = _aeCraft[model] = _aeCraft[model] || {};
   if (then) c.then = then;
-  if (c.data || c.loading || typeof fetch !== 'function') return;
+  if (c.data || c.loading || c.bad || typeof fetch !== 'function') return;   // c.bad: a file this parser does not read is not asked for again
   c.loading = true;
   c.slow = setTimeout(function () { if (c.loading && _ae && typeof _aeShowHint === 'function') { c.said = true; _aeShowHint(_aeT('alm_craft_loading')); } }, AE_CRAFT_SLOW_MS);
   var done = function () {
@@ -6021,7 +6301,7 @@ function _aeCraftLoad(model, then) {
     var t = c.then; c.then = null; if (t && _ae) t();
   };
   fetch(_aeCraftUrl(model)).then(function (r) { if (!r.ok) throw new Error(model); return r.arrayBuffer(); }).then(function (buf) {
-    c.data = _aeCraftParse(buf);
+    try { c.data = _aeCraftParse(buf); } catch (e) { c.bad = true; throw e; }
     if (_ae) { _ae.dirty = true; _aeKick(); }
     done();
   }).catch(function () {
@@ -6033,43 +6313,62 @@ function _aeCraftLoad(model, then) {
 function _aeCraftData(model) { return (_aeCraft[model] && _aeCraft[model].data) || null; }
 // Its span in Earth radii, once loaded (0 before).
 function _aeCraftSpanRe(model) { var d = _aeCraftData(model); return d ? d.span * d.metres / 1000 / AE_EARTH_RADIUS_KM : 0; }
+// The shared uniforms of one craft's materials: the light (set each frame by _aeCraftLight, and by the sites for theirs),
+// the palette, the shadow's matrix and map.
+function _aeCraftUniforms(S, d, model) {
+  var THREE = S.THREE, pal = [], i;
+  for (i = 0; i < AE_CRAFT_PAL; i++) pal.push(d.look[Math.min(i, d.look.length - 1)]);
+  return { sunView: { value: new THREE.Vector3(1, 0, 0) }, nadirView: { value: new THREE.Vector3(0, -1, 0) }, shineCol: { value: new THREE.Vector3(0.55, 0.7, 1.0) },
+    lit: { value: 1 }, fill: { value: model === 'iss' ? AE_ISS_FILL : AE_CRAFT_FILL_OF[model] || AE_CRAFT_FILL }, earthLight: { value: 0 }, fade: { value: 1 }, sel: { value: -1 },
+    shadowOn: { value: 0 }, shadowTexel: { value: 1 / AE_CRAFT_SHADOW_PX }, shadowMap: { value: null }, shadowMat: { value: new THREE.Matrix4() },
+    shadowOffset: { value: d.radius * AE_CRAFT_SHADOW_NORMAL }, unitM: { value: d.metres || 1 }, mirrorHex: { value: _aeCraftMirrorHex(THREE, d, model) },
+    albedo: { value: pal.map(function (l) { return new THREE.Vector3(l.rgb[0], l.rgb[1], l.rgb[2]); }) },
+    surf: { value: pal.map(function (l) { return new THREE.Vector3(l.rough, l.metal, l.flags + AE_CRAFT_KIND_STEP * (l.kind || 0)); }) } };
+}
+// One mesh of a craft: its triangles `list`, its own place relative to the craft (`local`, a Matrix4: a turning array's),
+// `sel` the palette entry it is all of (-1: each vertex says), `maps` its textures ({ map, mr }).
+function _aeCraftMesh(S, d, uni, list, local, sel, maps) {
+  var THREE = S.THREE, gg = new THREE.BufferGeometry(), defines = {};
+  gg.setAttribute('position', d.gpos || (d.gpos = new THREE.BufferAttribute(d.pos, 3)));
+  gg.setAttribute('cls', d.gcls || (d.gcls = new THREE.BufferAttribute(d.cls, 1)));
+  if (d.nrm) { gg.setAttribute('normal', d.gnrm || (d.gnrm = new THREE.BufferAttribute(d.nrm, 3))); defines.CRAFT_NRM = 1; }
+  if (d.uv) { gg.setAttribute('uv', d.guv || (d.guv = new THREE.BufferAttribute(d.uv, 2))); defines.CRAFT_UV = 1; }
+  gg.setIndex(new THREE.BufferAttribute(d.pos.length / 3 > 65535 ? new Uint32Array(list) : new Uint16Array(list), 1));
+  var uniforms = {}, key;
+  for (key in uni) uniforms[key] = uni[key];
+  uniforms.localMat = { value: local };
+  uniforms.sel = { value: sel };
+  if (maps && maps.map) { uniforms.map = { value: maps.map }; defines.CRAFT_MAP = 1; }
+  if (maps && maps.mr) { uniforms.mrMap = { value: maps.mr }; defines.CRAFT_MR = 1; }
+  var mat = new THREE.ShaderMaterial({ uniforms: uniforms, defines: defines, vertexShader: AE_CRAFT_VERT, fragmentShader: AE_CRAFT_FRAG, transparent: true, side: AE_THREE_DOUBLE_SIDE });
+  var mesh = new THREE.Mesh(gg, mat);
+  mesh.frustumCulled = false;
+  return mesh;
+}
 function _aeCraftBuild(S, model) {
-  var THREE = S.THREE, d = _aeCraftData(model);
-  var position = new THREE.BufferAttribute(d.pos, 3), cls = new THREE.BufferAttribute(d.cls, 1);
-  var geo = function (list) {
-    var gg = new THREE.BufferGeometry();
-    gg.setAttribute('position', position); gg.setAttribute('cls', cls);
-    gg.setIndex(new THREE.BufferAttribute(d.pos.length / 3 > 65535 ? new Uint32Array(list) : new Uint16Array(list), 1));
-    return gg;
-  };
-  var pal = [];
-  for (var i = 0; i < AE_CRAFT_PAL; i++) pal.push(d.look[Math.min(i, d.look.length - 1)]);
-  var uni = { sunView: { value: new THREE.Vector3(1, 0, 0) }, nadirView: { value: new THREE.Vector3(0, -1, 0) }, lit: { value: 1 },
-    fill: { value: model === 'iss' ? AE_ISS_FILL : AE_CRAFT_FILL },
-    earthLight: { value: 0 }, fade: { value: 1 },
-    albedo: { value: pal.map(function (l) { return new THREE.Vector3(l[0][0], l[0][1], l[0][2]); }) },
-    shine: { value: pal.map(function (l) { return new THREE.Vector3(l[1], l[2], 0); }) } };   // (the build has no Vector2)
-  var mat = new THREE.ShaderMaterial({ uniforms: uni, vertexShader: AE_CRAFT_VERT, fragmentShader: AE_CRAFT_FRAG, transparent: true, side: THREE.DoubleSide });
+  var THREE = S.THREE, d = _aeCraftData(model), uni = _aeCraftUniforms(S, d, model);
   var root = new THREE.Group(), pivot = new THREE.Group(), body = [], turning = [];
-  // The ISS's main arrays (class 2) turn about the truss to the Sun; a probe is one rigid body.
-  for (var t = 0; t < d.idx.length; t += 3) (d.axis && d.cls[d.idx[t]] === 2 ? turning : body).push(d.idx[t], d.idx[t + 1], d.idx[t + 2]);
-  var main = new THREE.Mesh(geo(body), mat);
-  main.frustumCulled = false;
+  // The ISS's main arrays (its turning class) turn about the truss to the Sun; a probe is one rigid body.
+  for (var t = 0; t < d.idx.length; t += 3) (d.axis && d.cls[d.idx[t]] === d.turn ? turning : body).push(d.idx[t], d.idx[t + 1], d.idx[t + 2]);
+  var identity = new THREE.Matrix4(), parts = [];
+  var main = _aeCraftMesh(S, d, uni, body, identity, -1);
   root.add(main);
+  parts.push({ mesh: main, local: identity });
+  var arrLocal = null;
   if (d.axis) {
-    var arr = new THREE.Mesh(geo(turning), mat);
+    var arr = _aeCraftMesh(S, d, uni, turning, arrLocal = new THREE.Matrix4(), -1);
     pivot.position.set(d.axis[0], d.axis[1], 0);
     arr.position.set(-d.axis[0], -d.axis[1], 0);
-    arr.frustumCulled = false;
     pivot.add(arr);
     root.add(pivot);
+    parts.push({ mesh: arr, local: arrLocal });
   }
   var record = AE_CRAFT_RECORD[model] ? _aeRecordMesh(THREE, d, AE_CRAFT_RECORD[model], uni) : null;
   if (record) root.add(record);
   root.scale.setScalar(d.metres / 1000 / AE_EARTH_RADIUS_KM);
   root.visible = false;
   S.scene.add(root);
-  return { root: root, pivot: pivot, uni: uni, model: model, record: record };
+  return { root: root, pivot: pivot, uni: uni, model: model, record: record, parts: parts, stock: parts, d: d };
 }
 // Voyager's Golden Record where it is on the craft: on the face of the bus, filling its round white plate, facing out
 // (+x in NASA's model; the plate is a disc 0.234 m in radius centred at y -1.961, z -2.372, its face at x 1.252: a circle
@@ -6122,19 +6421,205 @@ function _aeRecordTap(x, y) {
   window._scrollToGoldenRecord();
   return true;
 }
-// A model's light: the Sun (dark in the Earth's shadow), and the Earth's day side below when it flies over it (nadir),
-// both turned into the camera's frame for the shader.
+// The nearest world's light on a craft at pos: where it is (the way to it), its colour and how strong (its disc's size
+// from here, its phase as the craft sees it, its albedo's colour). Earth, the Moon, then each planet drawn.
+var AE_SHINE_EARTH = [0.45, 0.58, 0.8], AE_SHINE_MOON = [0.42, 0.4, 0.38];   // linear albedo colours: the blue marble, grey regolith
+var AE_SHINE_FAR = 0.002;                                                    // a world under this share of the craft's sky (r / d, squared) casts nothing
+function _aePlanetshine(pos, sunAt) {
+  var S = _ae.gl, sc = _ae.scene, best = null, bestK = 0;
+  var consider = function (center, r, col) {
+    var to = _aeSub(center, pos), dist = _aeLen(to);
+    if (dist < r * 1.0001 || (r / dist) * (r / dist) < AE_SHINE_FAR) return;
+    var away = _aeScale(to, -1 / dist), phase = 0.5 + 0.5 * _aeDot(away, _aeNorm(_aeSub(sunAt, center)));
+    var lum = 0.3 * col[0] + 0.55 * col[1] + 0.15 * col[2];
+    var k = lum * (r / dist) * (r / dist) * phase * AE_CRAFT_SHINE_REFLECT;
+    if (k > bestK) { bestK = k; best = { dir: _aeScale(to, 1 / dist), col: col }; }
+  };
+  consider([0, 0, 0], 1, AE_SHINE_EARTH);
+  consider(sc.moon, AE_MOON_RADIUS_RE, AE_SHINE_MOON);
+  for (var key in S.planets || {}) {
+    var p = S.planets[key];
+    if (p && p.pos) consider(p.pos, p.b.r, p.b.color.map(function (c) { return c * c; }));
+  }
+  if (best) { var m = Math.max(best.col[0], best.col[1], best.col[2]) || 1; best.col = best.col.map(function (c) { return c / m; }); best.k = Math.min(bestK, AE_CRAFT_MAX_SHINE); }
+  return best;
+}
+// The shadow map of the craft in view: a depth target, and a scene of one depth-only mesh for each of its parts (sharing
+// their geometry), drawn from the Sun in the craft's own frame, so its resolution is spent on the craft alone.
+function _aeCraftShadowTarget(S, I) {
+  var THREE = S.THREE, N = AE_CRAFT_SHADOW_PX;
+  var rt = new THREE.WebGLRenderTarget(N, N, { depthBuffer: true, depthTexture: new THREE.DepthTexture(N, N), minFilter: THREE.NearestFilter, magFilter: THREE.NearestFilter });
+  return { rt: rt, scene: new THREE.Scene(), parts: null };
+}
+function _aeCraftShadowScene(S, I, sh) {
+  var THREE = S.THREE;
+  if (sh.parts === I.parts) return;
+  sh.scene.children.slice().forEach(function (m) { sh.scene.remove(m); m.material.dispose(); });
+  I.parts.forEach(function (p) {
+    var m = new THREE.Mesh(p.mesh.geometry, new THREE.ShaderMaterial({ uniforms: { shadowMat: I.uni.shadowMat, localMat: { value: p.local } },
+      vertexShader: AE_CRAFT_DEPTH_VERT, fragmentShader: AE_CRAFT_DEPTH_FRAG, side: AE_THREE_DOUBLE_SIDE }));
+    m.frustumCulled = false;
+    sh.scene.add(m);
+  });
+  sh.parts = I.parts;
+}
+// The turning arrays' place in the craft's frame (the pivot's turn, then their own offset), for the light and its shadow.
+function _aeCraftLocals(I) {
+  I.parts.forEach(function (p) {
+    if (p.mesh.parent === I.root || !p.mesh.parent) { p.local.identity(); return; }
+    p.mesh.parent.updateMatrix(); p.mesh.updateMatrix();
+    p.local.copy(p.mesh.parent.matrix).multiply(p.mesh.matrix);
+  });
+}
+// Light from the Sun (unit, toward it, in the world) into the craft's shadow, when it is big enough to show it.
+function _aeCraftShadow(I, sun, px) {
+  var S = _ae.gl, uni = I.uni, THREE = S.THREE, R = I.shadowR || I.d.radius;
+  var on = I.root.visible && px >= AE_CRAFT_SHADOW_MIN_PX && uni.lit.value > 0.5 && !!I.d.nrm && typeof THREE.WebGLRenderTarget === 'function';
+  uni.shadowOn.value = on ? 1 : 0;
+  uni.shadowOffset.value = R * AE_CRAFT_SHADOW_NORMAL;
+  if (!on) return;
+  var V = THREE.Vector3, q = I.root.quaternion.clone().invert();
+  var s = new V(sun[0], sun[1], sun[2]).applyQuaternion(q).normalize();   // the Sun in the craft's own frame
+  var up = Math.abs(s.y) < 0.9 ? new V(0, 1, 0) : new V(1, 0, 0);
+  var u = new V().crossVectors(up, s).normalize(), w = new V().crossVectors(s, u), k = 1 / R;
+  uni.shadowMat.value.set(u.x * k, u.y * k, u.z * k, 0, w.x * k, w.y * k, w.z * k, 0, -s.x * k, -s.y * k, -s.z * k, 0, 0, 0, 0, 1);
+  _aeCraftLocals(I);
+  var sh = I.shadow || (I.shadow = _aeCraftShadowTarget(S, I));
+  _aeCraftShadowScene(S, I, sh);
+  var r = S.renderer, prev = r.getRenderTarget();
+  r.setRenderTarget(sh.rt);
+  r.clear();
+  r.render(sh.scene, S.camera);
+  r.setRenderTarget(prev);
+  uni.shadowMap.value = sh.rt.depthTexture;
+}
+// A model's light: the Sun (dark in the Earth's shadow), the nearest world's glow from its side (the Earth's day side
+// below the station, Jupiter's beside Juno), turned into the camera's frame for the shader, and its shadow on itself.
 function _aeCraftLight(I, pos, nadir, show) {
   var cam = _ae.gl.camera, sun = _aeNorm(_aeSub(_aeSunShown(_ae.scene), pos));
   var along = _aeDot(pos, sun), perp = _aeLen(_aeSub(pos, _aeScale(sun, along)));
   I.uni.lit.value = along > 0 || !nadir ? 1 : _smoothstep(0.995, 1.005, perp);
-  I.uni.earthLight.value = nadir ? AE_ISS_EARTHSHINE * _aeClamp(0.5 + 0.5 * _aeDot(_aeNorm(pos), sun), 0, 1) : 0;
+  var shine = _aePlanetshine(pos, _aeSunShown(_ae.scene));
+  I.uni.earthLight.value = shine ? shine.k : 0;
+  if (shine) I.uni.shineCol.value.set(shine.col[0], shine.col[1], shine.col[2]);
   I.uni.fade.value = show * _aeFadeU.value;
   I.root.updateMatrixWorld();
   var vInv = cam.matrixWorldInverse.elements;
   var toView = function (u, out) { out.set(vInv[0] * u[0] + vInv[4] * u[1] + vInv[8] * u[2], vInv[1] * u[0] + vInv[5] * u[1] + vInv[9] * u[2], vInv[2] * u[0] + vInv[6] * u[1] + vInv[10] * u[2]).normalize(); };
   toView(sun, I.uni.sunView.value);
-  toView(nadir || sun, I.uni.nadirView.value);
+  toView(shine ? shine.dir : sun, I.uni.nadirView.value);
+  _aeCraftShadow(I, sun, _aeCraftPx(I.d.span * I.d.metres / 1000 / AE_EARTH_RADIUS_KM, pos));
+  _aeCraftHdRequest(I, pos);
+}
+
+// ── Almanac HD craft ──
+// With the Almanac HD ZIM, the craft it holds are drawn from NASA's own full models (scripts/build_craft_hd.py): their
+// triangles untouched, their textures and materials (gold foil, cells, blankets), one mesh to a material, in the stock
+// model's frame so the pointing and the size hold. Fetched the first time a craft is close enough to show it, drawn in
+// place of the stock mesh when ready; without the ZIM (or for a craft it lacks) nothing changes. craft/index.json lists
+// them: { models: { <key>: { file } } }.
+var AE_CRAFT_SHARED_UNIFORMS = ['unitM', 'mirrorHex', 'sunView', 'nadirView', 'shineCol', 'lit', 'fill', 'earthLight', 'fade', 'shadowOn', 'shadowMap', 'shadowMat', 'shadowTexel', 'shadowOffset'];
+var AE_CRAFT_HD_DIR = 'craft/';
+var AE_CRAFT_HD_PX = 120;                                   // a craft this wide on screen asks for its full model
+var AE_CRAFT_HD_ANISO = 4;
+var _aeCraftHd = { index: undefined, loading: false };      // index: undefined (not asked), null (none), or the file's models
+function _aeCraftHdUrl(name) { return _aeHdBase() + AE_CRAFT_HD_DIR + name; }
+function _aeCraftHdTexture(S, name) {
+  var THREE = S.THREE;
+  return fetch(_aeCraftHdUrl(name)).then(function (r) { if (!r.ok) throw new Error(name); return r.blob(); }).then(function (blob) {
+    return createImageBitmap(blob, { imageOrientation: 'none', premultiplyAlpha: 'none', colorSpaceConversion: 'none' });   // glTF's UVs run from the top
+  }).then(function (bmp) {
+    var tx = new THREE.Texture(bmp);
+    tx.flipY = false; tx.wrapS = tx.wrapT = THREE.RepeatWrapping; tx.minFilter = THREE.LinearMipmapLinearFilter; tx.anisotropy = AE_CRAFT_HD_ANISO;
+    tx.needsUpdate = true;
+    return tx;
+  });
+}
+function _aeCraftHdMeshes(I, d2, textures) {
+  var S = _ae.gl, THREE = S.THREE, d = I.d;
+  var shift = [0, 1, 2].map(function (k) { return d2.mid[k] - d.mid[k]; });   // HD positions are about HD's own box middle: into the stock model's
+  for (var i = 0; i < d2.pos.length; i += 3) for (var k = 0; k < 3; k++) d2.pos[i + k] += shift[k];
+  var lists = {}, t;
+  for (t = 0; t < d2.idx.length; t += 3) (lists[d2.cls[d2.idx[t]]] = lists[d2.cls[d2.idx[t]]] || []).push(d2.idx[t], d2.idx[t + 1], d2.idx[t + 2]);
+  var group = new THREE.Group(), pivot = new THREE.Group(), parts = [], turning = false;
+  Object.keys(lists).forEach(function (key) {
+    var k = +key, look = d2.look[k], maps = { map: look.tex >= 0 ? textures[look.tex] : null, mr: look.mr >= 0 ? textures[look.mr] : null };
+    var uni = _aeCraftUniforms(S, { look: [look], radius: d2.radius, metres: d.metres }, I.model);   // each mesh is one material: the palette is its own
+    AE_CRAFT_SHARED_UNIFORMS.forEach(function (n) { uni[n] = I.uni[n]; });
+    var local = new THREE.Matrix4(), mesh = _aeCraftMesh(S, d2, uni, lists[key], local, 0, maps);
+    if (d2.axis && k === d2.turn) { mesh.position.set(-(d2.axis[0] + shift[0]), -(d2.axis[1] + shift[1]), 0); pivot.add(mesh); turning = true; }
+    else group.add(mesh);
+    parts.push({ mesh: mesh, local: local });
+  });
+  if (turning) { pivot.position.set(d2.axis[0] + shift[0], d2.axis[1] + shift[1], 0); group.add(pivot); }
+  return { group: group, pivot: pivot, parts: parts, turning: turning, shift: shift };
+}
+function _aeCraftHdBuild(I, d2, textures) {
+  var S = _ae.gl, d = I.d, m = _aeCraftHdMeshes(I, d2, textures), group = m.group, pivot = m.pivot, parts = m.parts, turning = m.turning, shift = m.shift;
+  I.stock.forEach(function (p) { p.mesh.visible = false; });
+  I.root.add(group);
+  I.hdGroup = group; I.hdPivot = turning ? pivot : null; I.parts = parts; I.hd = true;
+  I.shadowR = Math.max(d.radius, d2.radius + Math.hypot(shift[0], shift[1], shift[2]));
+  if (turning) I.pivot = pivot;
+  if (_ae) { _ae.dirty = true; _aeKick(); }
+}
+// craft/index.json once (null: the HD ZIM is not there, or has no craft).
+function _aeCraftHdIndexLoad() {
+  var H = _aeCraftHd;
+  if (H.index !== undefined) return Promise.resolve();
+  if (!H.promise) {
+    H.promise = fetch(_aeCraftHdUrl('index.json')).then(function (r) { if (!r.ok) throw new Error('hd'); return r.json(); })
+      .then(function (j) { H.index = j && j.models ? j.models : null; }, function () { H.index = null; });
+  }
+  return H.promise;
+}
+// A landing site's model with the HD ZIM's full one (almanac-sites-ground.js clones one root for every place the model
+// stands and calls this on each clone): the stock meshes stay in the clone, hidden, and the full model is added; the clones
+// that were made before the file arrived get it when it does. Without the file nothing changes.
+function _aeCraftSiteHd(I, root) {
+  var c = I.siteHd = I.siteHd || { roots: [], group: null, state: 0 };
+  c.roots.push(root);
+  if (c.group) { _aeCraftSiteHdAttach(c, root); return; }
+  if (c.state || typeof fetch !== 'function') return;
+  c.state = 1;
+  var S = _ae.gl;
+  _aeCraftHdIndexLoad().then(function () {
+    var entry = _aeCraftHd.index && _aeCraftHd.index[I.model];
+    if (!entry) return null;
+    return fetch(_aeCraftHdUrl(entry.file)).then(function (r) { if (!r.ok) throw new Error(I.model); return r.arrayBuffer(); }).then(function (buf) {
+      var d2 = _aeCraftParse(buf);
+      return Promise.all((d2.textures || []).map(function (name) { return _aeCraftHdTexture(S, name); })).then(function (tx) { return _aeCraftHdMeshes(I, d2, tx).group; });
+    });
+  }).then(function (group) {
+    if (!group) { c.state = 2; return; }
+    c.group = group; c.state = 3;
+    c.roots.forEach(function (r) { _aeCraftSiteHdAttach(c, r); });
+    if (_ae) { _ae.dirty = true; _aeKick(); }
+  }).catch(function () { c.state = 2; });
+}
+function _aeCraftSiteHdAttach(c, root) {
+  root.children.slice().forEach(function (ch) { if (ch.isMesh) ch.visible = false; });
+  root.add(c.group.clone());
+}
+function _aeCraftHdRequest(I, pos) {
+  if (I.hd !== undefined || I.hdLoading || typeof fetch !== 'function') return;
+  if (_aeCraftPx(I.d.span * I.d.metres / 1000 / AE_EARTH_RADIUS_KM, pos) < AE_CRAFT_HD_PX) return;
+  var H = _aeCraftHd;
+  if (H.index === undefined) {
+    _aeCraftHdIndexLoad().then(function () { if (_ae) { _ae.dirty = true; _aeKick(); } });
+    return;
+  }
+  var entry = H.index && H.index[I.model];
+  if (!entry) { I.hd = null; return; }
+  I.hdLoading = true;
+  var S = _ae.gl;
+  fetch(_aeCraftHdUrl(entry.file)).then(function (r) { if (!r.ok) throw new Error(I.model); return r.arrayBuffer(); }).then(function (buf) {
+    var d2 = _aeCraftParse(buf);
+    return Promise.all((d2.textures || []).map(function (name) { return _aeCraftHdTexture(S, name); })).then(function (tx) {
+      if (I.root.parent === S.scene) _aeCraftHdBuild(I, d2, tx);
+      I.hdLoading = false;
+    });
+  }).catch(function () { I.hd = null; I.hdLoading = false; });
 }
 // How wide a craft of span (Earth radii) at pos stands on screen, in CSS px.
 function _aeCraftPx(span, pos) {
@@ -6170,16 +6655,10 @@ function _aeProbeCraftAt(key, pos) {
   if (!I.root.visible) return 1;
   I.root.position.set(pos[0], pos[1], pos[2]);
   var d = _aeCraftData(model), V = S.THREE.Vector3;
-  var goal = AE_CRAFT_POINTS[model] === 'sun' ? _aeSunShown(_ae.scene) : [0, 0, 0];
-  var jd = _ae.scene.ms / MS_PER_DAY + JD_UNIX_EPOCH, to = _aeNorm(_aeSub(goal, pos));
-  var north = typeof _ephEclJ2000ToEqOfDate === 'function' ? _ephEclJ2000ToEqOfDate([0, 0, 1], jd + _aeDeltaTDays(jd)) : [0, 0, 1];
-  var side = _aeCross(to, north);
-  if (_aeLen(side) < 1e-6) side = _aeCross(to, [1, 0, 0]);
-  side = _aeNorm(side);
+  var basis = _aeCraftWorldBasis(model, pos), to = basis[0], side = basis[1], third = basis[2];
   // Model axes (aim, across, aim x across) onto world (to, side, to x side).
   var mA = new S.THREE.Matrix4().makeBasis(new V(d.aim[0], d.aim[1], d.aim[2]), new V(d.across[0], d.across[1], d.across[2]),
     new V(d.aim[0], d.aim[1], d.aim[2]).cross(new V(d.across[0], d.across[1], d.across[2])));
-  var third = _aeCross(to, side);
   var mW = new S.THREE.Matrix4().makeBasis(new V(to[0], to[1], to[2]), new V(side[0], side[1], side[2]), new V(third[0], third[1], third[2]));
   I.root.quaternion.setFromRotationMatrix(mW.multiply(mA.transpose()));
   _aeCraftLight(I, pos, null, show);

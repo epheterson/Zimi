@@ -3787,5 +3787,9 @@
   "tb_kn_site_jump": "Velocidad de salto del róver",
   "alm_probe_replay": "Reproducir su vuelo desde el lanzamiento",
   "tb_kn_site_msd": "Fecha solar marciana (el reloj de Marte)",
-  "tb_kn_site_drive_hour": "Hora en que conducen los róveres (hora solar media local)"
+  "tb_kn_site_drive_hour": "Hora en que conducen los róveres (hora solar media local)",
+  "alm_earth_webb_lit": "El lado del espejo siempre está a la sombra del parasol: aquí se muestra iluminado.",
+  "tb_kn_craft_models": "Modelos de naves",
+  "tb_kn_craft_sun": "Luz del Sol sobre una nave (irradiancia)",
+  "tb_kn_craft_shine": "Luz planetaria sobre una nave (parte de una superficie que lo mira)"
 }

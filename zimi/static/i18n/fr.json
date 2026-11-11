@@ -3787,5 +3787,9 @@
   "tb_kn_site_jump": "Vitesse de saut du rover",
   "alm_probe_replay": "Rejouer son vol depuis le lancement",
   "tb_kn_site_msd": "Date solaire martienne (l'horloge de Mars)",
-  "tb_kn_site_drive_hour": "Heure de conduite des rovers (heure solaire moyenne locale)"
+  "tb_kn_site_drive_hour": "Heure de conduite des rovers (heure solaire moyenne locale)",
+  "alm_earth_webb_lit": "Le côté du miroir est toujours à l'ombre du pare-soleil : il est montré éclairé.",
+  "tb_kn_craft_models": "Modèles d'engins",
+  "tb_kn_craft_sun": "Lumière du Soleil sur un engin (éclairement)",
+  "tb_kn_craft_shine": "Lumière planétaire sur un engin (part d'une surface qui lui fait face)"
 }
