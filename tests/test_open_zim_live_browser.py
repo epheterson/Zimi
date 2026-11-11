@@ -73,8 +73,22 @@ def test_a_replaced_zim_shows_new_at_the_same_place(served):
             assert pg.evaluate(heading) == "first"
             pg.evaluate("() => document.getElementById('reader-frame').contentWindow.scrollTo(0, 900)")
             pg.wait_for_function("() => typeof _liveSource !== 'undefined' && _liveSource && _liveSource.readyState === 1")   # the window has its stream open
+            from zimi import changes
+
+            seq0 = changes._seq
             served["swap"]()
-            pg.wait_for_function("() => { %s }" % ("const h = (%s)(); return h === 'second';" % heading), timeout=30000)
+            try:
+                pg.wait_for_function("() => { %s }" % ("const h = (%s)(); return h === 'second';" % heading), timeout=30000)
+            except Exception as e:
+                # Where it stopped: did the server announce, did the window hear, did its list change?
+                seen = pg.evaluate(
+                    "() => ({ since: _liveSince, state: _liveSource && _liveSource.readyState, hidden: document.hidden,"
+                    " zims: (zimsCache || []).map(z => [z.name, z.size_bytes, z.entries]) })"
+                )
+                raise AssertionError(
+                    "the open window did not reload onto the replaced ZIM: %s; announced since the swap: %d; the window: %r"
+                    % (type(e).__name__, changes._seq - seq0, seen)
+                ) from None
             y = pg.evaluate("() => document.getElementById('reader-frame').contentWindow.scrollY")
             assert abs(y - 900) < 60, y
         finally:
