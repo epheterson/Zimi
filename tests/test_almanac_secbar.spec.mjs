@@ -113,12 +113,12 @@ test.describe('the section bar', () => {
   });
 
   for (const theme of THEMES) {
-    test(`reads in ${theme}: the bar takes the page's own surface, not a fixed colour`, async ({ page }) => {
+    test(`reads in ${theme}: the strip the bar stands in takes the page's own surface, not a fixed colour`, async ({ page }) => {
       await openAlmanac(page, { theme });
       await scrollTo(page, 1500);
       await expect(bar(page)).toBeVisible();
       const c = await page.evaluate(() => ({
-        bar: getComputedStyle(document.getElementById('alm-secbar')).backgroundColor,
+        bar: getComputedStyle(document.getElementById('alm-pin')).backgroundColor,   // the strip the bar stands in (the pin) carries the surface
         page: getComputedStyle(document.querySelector('#almanac-view')).backgroundColor,
       }));
       expect(c.bar).toBe(c.page);

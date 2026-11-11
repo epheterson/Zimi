@@ -1140,6 +1140,3 @@ function _sgViewUniforms(gl, prog, p) {
   gl.uniform1f(u.uLensK, v.lensK);
 }
 
-// An Almanac being opened (its veil is up) gets its GPU compiling the moment this file has run, beside the rest of the
-// page's files and its drawing, not after them.
-if (typeof _almVeilIsUp === 'function' && _almVeilIsUp()) _sgInit();

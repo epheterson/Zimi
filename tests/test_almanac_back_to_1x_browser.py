@@ -128,7 +128,7 @@ def test_back_to_real_time_by_touch(served, dpr):
             pg.goto(served + "/#almanac", wait_until="load")
             pg.wait_for_selector("#almanac-head-date", timeout=60_000)
             pg.wait_for_function(
-                "() => typeof _almClockSetRate === 'function' && (document.getElementById('alm-veil') || {}).hidden !== false",
+                "() => typeof _almClockSetRate === 'function' && _almShownAt > 0",
                 timeout=60_000,
             )
             head = "#almanac-head"

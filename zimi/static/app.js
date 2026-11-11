@@ -3953,7 +3953,7 @@ function route(push) {
     // past the loader's onerror), drop the boot gate so the library isn't left
     // permanently hidden behind an empty shell.
     setTimeout(function () {
-      if (!_almanacOpen) { document.documentElement.classList.remove('almanac-boot'); _almVeilDown(true); }
+      if (!_almanacOpen) { document.documentElement.classList.remove('almanac-boot'); _almFirstFrameOff(); }
     }, 8000);
     return;
   }
@@ -8304,31 +8304,64 @@ function _createMenuRowAvailable() {
 // -- Almanac mini-app (lazy-loaded from /static/almanac.js) --
 var _almanacOpen = false;
 var _almanacLoaded = false;
-// The veil: what stands over the Almanac while its first screen is drawn behind it (almanac.js _almVeilBegin), so the
-// person sees one thing, the finished page, and never the page being built. It is up from the tap, before the files
-// arrive, and comes down in one fade when the first screen is on the canvas.
-var ALM_VEIL_FADE_MS = 240;
-function _almVeilUp() {
-  var v = document.getElementById('alm-veil');
-  if (!v) return null;
-  clearTimeout(v._gone);
-  v.classList.remove('alm-veil-out');
-  v.hidden = false;
-  v.setAttribute('aria-label', t('loading'));
-  return v;
+// The Almanac's first frame. almanac.js and its modules are a megabyte of script, and a phone at 4x takes seconds to read
+// them; the page is not made to wait. From the tap (the stylesheet is the only thing waited for) the Almanac's own head
+// stands in its final place, worked out here from what the app already knows (_moonPhase, the date, the clock): the date,
+// the time, the phase and how much of it is lit, every tile with its label, a clear square where the Moon will come in,
+// and the sky's place with its size and caption room. What is not known yet is a quiet dash of the right size. almanac.js
+// then draws the same head over it in the same boxes (almanac.js _renderAlmanacContent), and nothing moves.
+var ALM_FIRST_DATE = { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric' };
+var ALM_FIRST_TIME = { hour: 'numeric', minute: '2-digit' };
+var ALM_FIRST_DISC = 'data:image/gif;base64,R0lGODlhAQABAAAAACH5BAEKAAEALAAAAAABAAEAAAICTAEAOw==';
+var ALM_FIRST_DASH = '<span class="alm-ph">–</span>';
+// One card of the hero's grid: a label over a value. Every value node carries an id so the per-frame travel updater can
+// rewrite it in place instead of the whole grid. opts: cardId (id on the card, for hiding it), hidden, valClass.
+function _almHeadCard(lbl, valHtml, valId, opts) {
+  opts = opts || {};
+  return '<div class="alm-card"' + (opts.cardId ? ' id="' + opts.cardId + '"' : '') +
+    (opts.hidden ? ' hidden' : '') + '>' +
+    (lbl ? '<div class="alm-card-lbl">' + lbl + '</div>' : '') +
+    '<div class="alm-card-val' + (opts.valClass ? ' ' + opts.valClass : '') + '" id="' + valId + '">' +
+    valHtml + '</div></div>';
 }
-function _almVeilIsUp() {
-  var v = document.getElementById('alm-veil');
-  return !!v && !v.hidden && !v.classList.contains('alm-veil-out');
+function _almFirstFrameHtml() {
+  var now = new Date(), m = _moonPhase(now), lang = _currentLang, fmt = function(o) { return esc(now.toLocaleString(lang, o)); };
+  var place = _almChosenPlace();
+  var cards = _almHeadCard(esc(t('alm_illuminated')), _moonLitPct(m.illumination), 'alm-hc-illum', { cardId: 'alm-hc-illum-card' }) +
+    _almHeadCard(esc(t('alm_next_full')), ALM_FIRST_DASH, 'alm-hc-nextfull', { cardId: 'alm-hc-nextfull-card' }) +
+    '<div id="almanac-sky-facts" class="alm-sky-facts"><div class="alm-sky-cards">' +
+    [['tb_moonrise', 'moon'], ['alm_sunrise', 'sunrise'], ['alm_sunset', 'sunset'], ['alm_daylight', 'daylight']].map(function(r) {
+      return '<div class="alm-card alm-sf-' + r[1] + '"><div class="alm-card-lbl">' + esc(t(r[0])) + '</div><div class="alm-card-val">' + ALM_FIRST_DASH + '</div></div>';
+    }).join('') + '</div></div>';
+  return '<div class="almanac-inner alm-first">' +
+    '<div id="almanac-head"><div class="alm-clock alm-ck-rest" data-v="head"><div class="alm-ck-d" id="almanac-head-date">' + fmt(ALM_FIRST_DATE) + '</div>' +
+    '<div class="alm-ck-l"><span class="alm-ck-t" id="almanac-head-time">' + fmt(ALM_FIRST_TIME) + '</span><span class="alm-ck-z"></span><span class="alm-ck-r" dir="ltr"></span></div></div>' +
+    '<div id="alm-head-body"><div class="almanac-hero">' +
+    '<div class="almanac-moon-glow" style="background:radial-gradient(circle, rgba(232,224,208,' + (m.illumination / 100 * 0.15 + 0.02).toFixed(2) + ') 0%, transparent 65%)"></div>' +
+    '<div class="almanac-moon-open"><div class="almanac-moon"><img class="almanac-moon-sprite moon-sprite" src="' + ALM_FIRST_DISC + '" alt="" width="200" height="200" /></div></div>' +
+    '<div class="almanac-moon-name"><span id="alm-hc-phase">' + esc(_localMoonName(m.name)) + '</span></div>' +
+    (place ? '' : '<div class="almanac-moon-orient">' + esc(t('alm_moon_north_up')) + '</div>') +
+    '</div><div class="alm-cards">' + cards + '</div></div></div>' +
+    '<div class="alm-sky-info"><div id="almanac-sky-invite"' + (place ? '' : ' class="alm-ph-invite"') + '></div><div id="almanac-sky-cap" class="alm-sky-cap"></div></div>' +
+    '<div class="almanac-sky-wrap"><canvas id="almanac-sky-canvas" aria-hidden="true"></canvas></div></div>';
 }
-// Down: faded out, then hidden; at once (now) when the Almanac is closed or the fade would be seen by no one.
-function _almVeilDown(now) {
-  var v = document.getElementById('alm-veil');
-  if (!v) return;
-  clearTimeout(v._gone);
-  if (now) { v.classList.remove('alm-veil-out'); v.hidden = true; return; }
-  v.classList.add('alm-veil-out');
-  v._gone = setTimeout(function () { v.hidden = true; v.classList.remove('alm-veil-out'); }, ALM_VEIL_FADE_MS + 60);
+// Up under the boot shell once almanac.css is in (before it the page would draw unstyled); gone when almanac.js has drawn
+// its own (almanac.js _openAlmanacInner), or when the open fails.
+function _almFirstFrame() {
+  var sc = document.getElementById('almanac-content');
+  if (!sc || _almanacOpen || sc.querySelector('#almanac-head')) return;
+  sc.innerHTML = _almFirstFrameHtml();
+  document.documentElement.classList.add('alm-first');
+  var view = document.getElementById('almanac-view');
+  if (view) view.classList.add('open');   // already open when the real page opens: no fade of the whole view to start over it
+}
+function _almFirstFrameOff() {
+  var c = document.documentElement.classList;
+  if (!c.contains('alm-first')) return;
+  c.remove('alm-first');
+  if (!_almanacOpen) { var view = document.getElementById('almanac-view'); if (view) view.classList.remove('open'); }
+  var sc = document.getElementById('almanac-content');
+  if (sc && sc.querySelector('.almanac-inner.alm-first')) sc.innerHTML = '';
 }
 // The Almanac's tide section, loaded by almanac.js when it scrolls
 // near; written here so the server stamps their content version on them.
@@ -8388,30 +8421,50 @@ function _loadAlmanacCss() {
   }
   return _almanacCssLoading;
 }
+// A frame of the page painted: after the next paint, or at the latest ALM_PAINT_WAIT_MS (a tab that does not paint).
+var ALM_PAINT_WAIT_MS = 300;
+function _afterPaint() {
+  return new Promise(function(resolve) {
+    var done = false, go = function() { if (!done) { done = true; resolve(); } };
+    requestAnimationFrame(function() { requestAnimationFrame(function() { setTimeout(go, 0); }); });   // the second frame: the first has been painted
+    setTimeout(go, ALM_PAINT_WAIT_MS);
+  });
+}
 function _loadAlmanacModules() {
   if (_almanacLoaded) return Promise.resolve();
   if (!_almanacModulesLoading) {
     var css = _loadAlmanacCss();
-    var scripts = new Promise(function(resolve, reject) {
-      var failed = false;
-      _ALMANAC_MODULES.forEach(function(src, i) {
-        var s = document.createElement('script');
-        s.src = src;
-        s.async = false;
-        if (i === _ALMANAC_MODULES.length - 1) s.onload = function() { if (!failed) resolve(); };
-        // Offline with a cold cache: these modules were never fetched, so there is
-        // nothing to serve.
-        s.onerror = function() {
-          console.error('Failed to load ' + src);
-          if (failed) return;
-          failed = true;
-          _almanacModulesLoading = null;
-          reject(new Error(src));
-        };
-        document.head.appendChild(s);
+    // The files come down beside the stylesheet, and are read (a megabyte of script is seconds of a phone's main thread)
+    // after the page's first frame has been painted, so that frame is not behind them.
+    _ALMANAC_MODULES.forEach(function(src) {
+      var l = document.createElement('link');
+      l.rel = 'preload';
+      l.as = 'script';
+      l.href = src;
+      document.head.appendChild(l);
+    });
+    var scripts = css.then(function() { _almFirstFrame(); return _afterPaint(); }).then(function() {
+      return new Promise(function(resolve, reject) {
+        var failed = false;
+        _ALMANAC_MODULES.forEach(function(src, i) {
+          var s = document.createElement('script');
+          s.src = src;
+          s.async = false;
+          if (i === _ALMANAC_MODULES.length - 1) s.onload = function() { if (!failed) resolve(); };
+          // Offline with a cold cache: these modules were never fetched, so there is
+          // nothing to serve.
+          s.onerror = function() {
+            console.error('Failed to load ' + src);
+            if (failed) return;
+            failed = true;
+            _almanacModulesLoading = null;
+            reject(new Error(src));
+          };
+          document.head.appendChild(s);
+        });
       });
     });
-    _almanacModulesLoading = Promise.all([css, scripts]).catch(function(e) {
+    _almanacModulesLoading = scripts.catch(function(e) {
       _almanacModulesLoading = null;
       throw e;
     });
@@ -8432,11 +8485,10 @@ function openAlmanac(replaceState) {
   _markZimOpened(_ALMANAC_ZIM);   // the tile's dot is for what has not been opened
   // The tap answers in the next frame: the Almanac's dark shell (the reload gate's, almanac-boot) goes up before
   // its files load or its page is drawn, and the open follows the paint (Eric, 2026-10-30: "tapping almanac app
-  // icon on main page doesn't go right there it hangs back").
+  // icon on main page doesn't go right there it hangs back"). The first frame follows with the stylesheet.
   var root = document.documentElement;
   var answered = root.classList.contains('almanac-boot');
   root.classList.add('almanac-boot');
-  if (!_almanacOpen) _almVeilUp();
   if (_almanacLoaded && !answered) {
     _almanacOpenPending = true;
     requestAnimationFrame(function() { setTimeout(function() { _almanacOpenPending = false; _openAlmanacInner(replaceState); }, 0); });
@@ -8458,7 +8510,7 @@ function openAlmanac(replaceState) {
       // instead of an empty dark shell.
       _almanacOpenPending = false;
       document.documentElement.classList.remove('almanac-boot');
-      _almVeilDown(true);
+      _almFirstFrameOff();
       _showToast(t('almanac_unavailable_offline'));
     });
     return;
