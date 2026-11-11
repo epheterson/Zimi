@@ -425,6 +425,12 @@
    tile's edge), every label has the two lines' room and rests on its value, so every tile is as tall as the next. */
 #almanac-head .alm-card-lbl { letter-spacing: 0.03em; display: flex; align-items: flex-end; justify-content: center; min-height: 24px; line-height: 12px; text-align: center; white-space: normal; overflow-wrap: anywhere; hyphens: auto; text-overflow: clip; }
 #almanac-head .alm-card-val { white-space: normal; overflow-wrap: anywhere; text-wrap: balance; }
+/* Where the browser has subgrid, the labels of one row share a line of the grid instead: the row is as tall as its tallest
+   label, so a row of one-line labels carries no empty line above them, and the values still sit on one line. */
+@supports (grid-template-rows: subgrid) {
+  #almanac-head .alm-card { display: grid; grid-template-rows: subgrid; grid-row: span 2; row-gap: 0; }
+  #almanac-head .alm-card-lbl { min-height: 0; }
+}
 .alm-about-credit { margin: 14px 0 0; font-size: 11px; color: var(--text3); }
 .alm-sky-gear { left: 4px; }
 /* Look, Stand here and There and then: one row of round buttons, 44 px each and equally spaced, at the picture's far corner (its start in a right-to-left language). */
