@@ -499,6 +499,8 @@ const run = (code) => vm.runInContext(code, S);
     check(panel.hidden === false && gear.getAttribute('aria-expanded') === 'true', 'the gear opens "Satellite data from the internet"');
     check(/value="ask" checked/.test(html) && !/disabled/.test(html), 'an admin sees Ask first chosen, and may change it');
     check(['alm_earth_sat_ask', 'alm_earth_sat_auto', 'alm_earth_sat_never'].every((k) => html.includes(k)), 'with all three choices');
+    check((html.match(/class="ae-set-ico"/g) || []).length === 3 && !/<small/.test(html), 'each a picture and a short label, the hints only in tooltips');
+    check(/title="[^"]*alm_earth_sat_auto_hint/.test(html), 'the longer words are the tooltip');
     const n0 = requests.length;
     fetches.push({ mode: 'auto', locked: null, choices: ['ask', 'auto', 'never'] });
     fetches.push(stale({ mode: 'auto', refreshing: true }));

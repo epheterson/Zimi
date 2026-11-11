@@ -160,13 +160,20 @@ def test_the_moons_numbers_and_the_skys_are_one_grid_with_the_caption_over_the_s
         # Two rows of three, one idea each: the Moon (how lit, when it rises or sets, when it is next full), then the
         # Sun (when it rises, when it sets, how long the day is).
         assert got["reading"] == [
-            "alm-hc-illum-card", "alm-sf-moon", "alm-hc-nextfull-card", "alm-sf-sunrise", "alm-sf-sunset", "alm-sf-daylight",
+            "alm-hc-illum-card",
+            "alm-sf-moon",
+            "alm-hc-nextfull-card",
+            "alm-sf-sunrise",
+            "alm-sf-sunset",
+            "alm-sf-daylight",
         ], got["reading"]
         assert got["rows"] == [3, 3], got["rows"]
         assert got["cap"] and got["facts"] == 4, got
         # None says how lit the Moon is twice (the hero's tile does), and none is the Sun's time by the clock.
         assert "lit" not in got["factText"].lower(), got["factText"]
-        assert not any("solar" in l or "dark" in l for l in got["factLabels"]), got["factLabels"]
+        assert not any("solar" in l or "dark" in l for l in got["factLabels"]), got[
+            "factLabels"
+        ]
         # Six tiles, every one a label and one value: no third line, and no tile taller than another in its row.
         assert got["tiles"] == 6 and got["subs"] == 0, got
         assert got["rowsEven"], got
@@ -207,7 +214,10 @@ def test_the_moon_is_its_picture_and_the_solar_system_has_no_flown_view(
     ctx, pg, errors = _page(browser, served)
     try:
         # The 3D view is made ready when the Moon is touched, not behind the page (a page only looked at never loads it).
-        pg.evaluate("() => new Promise(r => { const t = setInterval(() => { if (typeof _almMoonPrepare === 'function') { clearInterval(t); _almMoonPrepare(); r(); } }, 50); })")
+        pg.wait_for_function(
+            "() => typeof _almMoonPrepare === 'function'", timeout=60_000
+        )
+        pg.evaluate("_almMoonPrepare()")
         pg.wait_for_function(
             "() => typeof _aeReady === 'function' && _aeReady()",
             timeout=240_000,
@@ -280,30 +290,54 @@ def test_opening_the_almanac_holds_still(browser, served, dark):
     filled them), the canvas waited at its default size, and the sky's caption was empty until its first tick, each
     moving the sky when it came."""
     ctx = browser.new_context(
-        viewport=VIEW, device_scale_factor=2, has_touch=True, is_mobile=True, service_workers="block",
-        timezone_id="America/Los_Angeles", color_scheme="dark" if dark else "light",
+        viewport=VIEW,
+        device_scale_factor=2,
+        has_touch=True,
+        is_mobile=True,
+        service_workers="block",
+        timezone_id="America/Los_Angeles",
+        color_scheme="dark" if dark else "light",
     )
-    ctx.add_init_script("localStorage.setItem('zimi_almanac_place', %s);" % json.dumps(json.dumps(PLACE)))
+    ctx.add_init_script(
+        "localStorage.setItem('zimi_almanac_place', %s);"
+        % json.dumps(json.dumps(PLACE))
+    )
     pg = ctx.new_page()
     errors = []
     pg.on("pageerror", lambda e: errors.append(str(e)))
     try:
         pg.goto(served + "/", wait_until="load")
-        pg.wait_for_function("() => typeof openAlmanac === 'function'", timeout=60_000, polling=POLL_MS)
+        pg.wait_for_function(
+            "() => typeof openAlmanac === 'function'", timeout=60_000, polling=POLL_MS
+        )
         for entry in ("cold", "again"):
             pg.evaluate(_ENTRY_SAMPLER)
             pg.evaluate("openAlmanac()")
-            pg.wait_for_function("() => window.__entry.length && performance.now() > 0", timeout=60_000, polling=POLL_MS)
+            pg.wait_for_function(
+                "() => window.__entry.length && performance.now() > 0",
+                timeout=60_000,
+                polling=POLL_MS,
+            )
             pg.wait_for_function(  # settled: the sky's own state has written its tiles and caption
                 "() => typeof _skyState !== 'undefined' && _skyState && _skyState.eph && _skyState.factsAt",
-                timeout=60_000, polling=POLL_MS,
+                timeout=60_000,
+                polling=POLL_MS,
             )
             pg.wait_for_timeout(600)
             frames = pg.evaluate("window.__entry")
             final = frames[-1]
             assert final["cards"] == 6, (entry, final)
-            moved = [f for f in frames if (f["cards"], f["top"], f["h"]) != (final["cards"], final["top"], final["h"])]
-            assert not moved, (entry, "first frame %s, settled %s" % (frames[0], final), moved[:5])
+            moved = [
+                f
+                for f in frames
+                if (f["cards"], f["top"], f["h"])
+                != (final["cards"], final["top"], final["h"])
+            ]
+            assert not moved, (
+                entry,
+                "first frame %s, settled %s" % (frames[0], final),
+                moved[:5],
+            )
             pg.evaluate("closeAlmanac()")
             pg.wait_for_timeout(300)
         assert not errors, errors

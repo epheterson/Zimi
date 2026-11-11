@@ -68,13 +68,16 @@ def served(tmp_path_factory):
     (tmp / "data").mkdir()
     old = (srv.ZIM_DIR, srv.ZIMI_DATA_DIR)
     srv.ZIM_DIR, srv.ZIMI_DATA_DIR = str(tmp / "zims"), str(tmp / "data")
-    srv.load_cache(force=True)
-    httpd = ThreadingHTTPServer(("127.0.0.1", 0), ZimHandler)
-    threading.Thread(target=httpd.serve_forever, daemon=True).start()
-    yield "http://127.0.0.1:%d" % httpd.server_address[1]
-    httpd.shutdown()
-    srv.ZIM_DIR, srv.ZIMI_DATA_DIR = old
-    env.undo()
+    try:
+        srv.load_cache(force=True)
+        httpd = ThreadingHTTPServer(("127.0.0.1", 0), ZimHandler)
+        threading.Thread(target=httpd.serve_forever, daemon=True).start()
+        yield "http://127.0.0.1:%d" % httpd.server_address[1]
+        httpd.shutdown()
+    finally:
+        srv.ZIM_DIR, srv.ZIMI_DATA_DIR = old
+        srv.load_cache(force=True)
+        env.undo()
 
 
 def _open(browser, base, slow=True, reduced=False):
@@ -147,7 +150,7 @@ def _check(frames, end, key):
     assert flying, frames
     # It starts at once and holds for the model, which is late.
     assert any(f["wait"] for f in flying), "the flight did not wait for the late model"
-    # Once the camera has turned to it, no frame of the flight where the target is neither its dot nor its model on the screen.
+    # From the first frame it is on the screen (the camera turns to it first), no frame of the flight where the target is off the screen, or neither its dot nor its model.
     seen = [i for i, f in enumerate(flying) if _on_screen(f)]
     assert seen, flying
     for f in flying[seen[0] :]:
@@ -202,14 +205,17 @@ def test_with_reduced_motion_it_goes_straight_to_the_model(served):
         br = pw.chromium.launch(args=GL_ARGS)
         try:
             ctx, pg, errors = _open(br, served, reduced=True)
-            pg.evaluate("_aePreset('voyager1')")
+            pg.evaluate(
+                "() => { window.__flew = false; (function look() { if (_ae.fly) window.__flew = true; requestAnimationFrame(look); })(); _aePreset('voyager1'); }"
+            )
             # No flight at all: it waits for the model, and is there.
             pg.wait_for_function(
                 "() => { _ae.dirty = true; _aeKick(); var I = _ae.gl.crafts && _ae.gl.crafts.voyager1; return !_ae.fly && _ae.target === 'voyager1' && !!I && I.root.visible; }",
                 timeout=90_000,
                 polling=200,
             )
-            assert pg.evaluate("_ae.dist / _aeCraftSpanRe('voyager')") < 6
+            assert not pg.evaluate("window.__flew"), "a flight was made under reduced motion"
+            assert 2 <= pg.evaluate("_ae.dist / _aeCraftSpanRe('voyager')") < 6
             assert not errors, errors
             ctx.close()
         finally:

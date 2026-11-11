@@ -250,6 +250,9 @@ def test_nonsense_in_the_address_changes_nothing_and_breaks_nothing(
         assert pg.evaluate("() => _almanacOpen") is True
         r = pg.evaluate("() => _almRate")
         assert r == 1 or abs(r) <= 31557600, r
+        # A bad p= brought no place; a bad t= left the clock live or on a real instant, never an Invalid Date.
+        assert pg.evaluate("() => _almLinkPlace") is None
+        assert pg.evaluate("() => _almFocus === null || !isNaN(_almFocus.getTime())") is True
         assert not errors, errors
         if "v=mars" in bad:
             _view_ready(pg)

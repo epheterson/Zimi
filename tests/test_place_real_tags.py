@@ -42,9 +42,25 @@ NAME = "maps_en_real_2026-06"
 MAP = "maps_en_real"
 
 
+# The country's own point, as the real tiles carry one (class=country, iso_a2): the sample has none, and without one
+# "a country point is not a place to be near" would be true of any index.
+COUNTRY_POINT = {
+    "z": 9,
+    "lat": 42.5,
+    "lng": 12.5,
+    "tags": {
+        "name": "Italia",
+        "name:en": "Italy",
+        "class": "country",
+        "iso_a2": "IT",
+        "rank": ["sint", 1],
+    },
+}
+
+
 def _sample():
     with open(SAMPLE, encoding="utf-8") as f:
-        return json.load(f)["features"]
+        return json.load(f)["features"] + [COUNTRY_POINT]
 
 
 def _layer(z, features):
@@ -182,3 +198,4 @@ def test_size_is_the_tiles_rank_then_a_capital(library):
 
 def test_a_country_point_is_not_a_place_to_be_near(library):
     assert _suggest(library, "Italia") == []
+    assert _suggest(library, "Italy") == []

@@ -2278,7 +2278,7 @@
   "alm_earth_sat_ask_hint": "Nada é buscado até ser pedido",
   "alm_earth_sat_auto": "Automaticamente",
   "alm_earth_sat_auto_hint": "Dados precisos da {src}",
-  "alm_earth_sat_never": "Aproximar com dados offline",
+  "alm_earth_sat_never": "Dados offline",
   "alm_earth_sat_never_hint": "Posições a partir dos dados que este Zimi já tem, menos exatas com o tempo",
   "alm_earth_sat_admin_only": "Só um administrador pode alterar isto",
   "alm_earth_sat_offline": "O Zimi está offline (ZIMI_OFFLINE), então nunca baixa nada",
