@@ -54,17 +54,36 @@ _PYI_PREFIX = "_PYI_"
 
 
 def _bundle_dirs():
-    dirs = {getattr(sys, "_MEIPASS", None), os.path.dirname(os.path.realpath(sys.executable))}
-    return [os.path.realpath(d) for d in dirs if d]
+    """The frozen app's folders, as the bootloader wrote them and with symlinks resolved, each normalised for comparing."""
+    raw = {getattr(sys, "_MEIPASS", None), os.path.dirname(sys.executable)}
+    raw = {d for d in raw if d}
+    return sorted({_norm(d) for d in raw} | {_norm(os.path.realpath(d)) for d in raw})
+
+
+def _norm(path, mod=os.path):
+    """A path in one spelling: separators, case (on Windows) and ``..`` settled, no trailing separator."""
+    return mod.normcase(mod.normpath(path))
+
+
+def _under(path, root, mod=os.path):
+    """True when ``path`` is ``root`` or inside it, on either platform's rules (``mod``: posixpath or ntpath)."""
+    path, root = _norm(path, mod), _norm(root, mod)
+    return path == root or path.startswith(root + mod.sep)
 
 
 def _in_bundle(program):
     """True when ``program`` is a file inside the frozen app's folder."""
     try:
-        path = os.path.realpath(program)
+        paths = {_norm(program), _norm(os.path.realpath(program))}
     except (TypeError, ValueError, OSError):
         return False
-    return any(path == d or path.startswith(d + os.sep) for d in _bundle_dirs())
+    return any(_under(p, d) for p in paths for d in _bundle_dirs())
+
+
+def _names_bundle(value):
+    """True when one entry of a path list (PYTHONHOME, PYTHONPATH) is the bundle or inside it."""
+    bundle = _bundle_dirs()
+    return any(_under(entry, d) for entry in value.split(os.pathsep) if entry for d in bundle)
 
 
 def external_env(env=None):
@@ -81,9 +100,8 @@ def external_env(env=None):
             env.pop(name, None)
         else:
             env[name] = orig
-    bundle = _bundle_dirs()
     for name in _PYTHON_PATHS:
-        if any(d in env.get(name, "") for d in bundle):
+        if _names_bundle(env.get(name, "")):
             env.pop(name)
     for name in [k for k in env if k.startswith(_PYI_PREFIX)]:
         del env[name]

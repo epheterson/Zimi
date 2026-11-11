@@ -240,7 +240,9 @@ def test_the_games_shelf_and_a_game_of_each_kind_start_in_kiwix(browser, kiwix):
         # The viewer's own script reads the framed page's body for its scroll position and throws "Cannot read properties of
         # null (reading 'scrollTop')" when the frame has no body yet (kiwix-tools 3.8.2, viewer, not a game page): only that
         # error is dropped, and only from the viewer step; every game page below is opened bare, on its own.
-        assert [e for e in errors if "'scrollTop'" not in e] == [], errors
+        # And "on_content_load is not defined": the viewer's own page names that function in the frame's onload attribute (line 98 of
+        # /viewer) and defines it 330 lines later, so a frame that loads first (a fast runner) calls it too early.
+        assert [e for e in errors if "'scrollTop'" not in e and "on_content_load" not in e] == [], errors
         del errors[:]
         for page in GAME_PAGES:
             pg.goto(kiwix["base"] + "/content/%s/%s" % (book, page), wait_until="load")

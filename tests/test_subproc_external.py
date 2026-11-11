@@ -96,3 +96,25 @@ def test_doctor_probe_is_silent_when_not_frozen(monkeypatch):
 
     monkeypatch.delattr(sys, "frozen", raising=False)
     assert runtimes.outside_python_problem() is None
+
+
+def test_inside_the_bundle_by_either_platforms_rules():
+    import ntpath
+    import posixpath
+
+    assert subproc._under("/opt/zimi/_internal/lib/x", BUNDLE, posixpath)
+    assert subproc._under("/opt/zimi/_internal", BUNDLE + "/", posixpath)
+    assert not subproc._under("/opt/zimi/_internal2", BUNDLE, posixpath)
+    win = "C:\\Program Files\\Zimi\\_internal"
+    assert subproc._under("c:/program files/zimi/_internal/python314.dll", win, ntpath), "slashes and case are one spelling"
+    assert subproc._under("C:\\Program Files\\Zimi\\_internal\\", win, ntpath)
+    assert not subproc._under("C:\\Program Files\\Zimi\\_internal_x", win, ntpath)
+    assert not subproc._under("D:\\Program Files\\Zimi\\_internal", win, ntpath)
+
+
+def test_a_python_path_list_naming_the_bundle_is_dropped_whatever_its_spelling(monkeypatch):
+    _frozen(monkeypatch)
+    out = subproc.external_env({"PYTHONPATH": os.pathsep.join(["/somewhere/else", BUNDLE + "/lib-dynload"]), "PYTHONHOME": BUNDLE + "/"})
+    assert "PYTHONPATH" not in out and "PYTHONHOME" not in out
+    kept = subproc.external_env({"PYTHONPATH": "/somewhere/else", "PYTHONHOME": "/usr/lib/python3"})
+    assert kept == {"PYTHONPATH": "/somewhere/else", "PYTHONHOME": "/usr/lib/python3"}
