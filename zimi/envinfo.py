@@ -120,7 +120,7 @@ VARS: dict[str, tuple[str, str]] = {
         "Best answer",
     ),
     "ZIMI_MCP_TOOLS": (
-        "MCP tools: lean (search, read, read_section) or full (every tool)",
+        "MCP tools: lean (search, read, read_section), full (every tool), or a comma list of tool names such as search,read,list_entries or lean,list_entries",
         "MCP",
     ),
     "ZIMI_APPS": (

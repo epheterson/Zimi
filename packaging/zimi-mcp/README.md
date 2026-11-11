@@ -15,7 +15,7 @@ zimi-mcp /path/to/zims
 }
 ```
 
-Three tools by default (search, read a page as Markdown, read one section), about 330 tokens of schema, sized for small local models. `zimi-mcp --tools full` serves every tool Zimi has. Nothing listens on a port.
+Three tools by default (search, read a page as Markdown, read one section), about 330 tokens of schema, sized for small local models. `zimi-mcp --tools full` serves every tool Zimi has; `--tools lean,list_entries` adds one to the default, `--tools search,read,list_entries` picks exactly. Nothing listens on a port.
 
 zimi-mcp is built from the same source as Zimi and released with it, same version. It depends on libzim and mcp only: no web app, downloads, BitTorrent, LAN discovery or desktop window. For text out of the PDFs in zimgit ZIMs, `pip install "zimi-mcp[pdf]"`.
 

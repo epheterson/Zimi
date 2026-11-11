@@ -5231,7 +5231,12 @@ def _add_mcp_args(p):
     p.add_argument(
         "--tools",
         default=None,
-        help="lean: search, read, read_section (default); full: every tool (overrides ZIMI_MCP_TOOLS)",
+        help=(
+            "lean: search, read, read_section (default); full: every tool; or a comma "
+            "list of tool names, e.g. search,read,list_entries or lean,list_entries. "
+            "A named set fixes its tools' flavour; a bare name alone is the full tool "
+            "(overrides ZIMI_MCP_TOOLS)"
+        ),
     )
     p.add_argument("--data-dir", default=None, help="Directory for Zimi's own state")
     p.add_argument("--config", default=None, help="Path to a JSON config file")
@@ -5344,7 +5349,7 @@ def _run_mcp(args, settings):
 
 
 def mcp_main(argv=None):
-    """`zimi-mcp [ZIM_DIR] [--tools lean|full]`: `zimi mcp` as a command of
+    """`zimi-mcp [ZIM_DIR] [--tools TOOLS]`: `zimi mcp` as a command of
     its own, the entry point of the zimi-mcp package. It builds no other
     subcommand's parser, so nothing outside the search-and-read core loads."""
     _make_stdio_resilient()

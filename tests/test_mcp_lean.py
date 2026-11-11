@@ -280,6 +280,71 @@ def test_an_unknown_tool_set_is_refused():
     assert mcp_server.tools_setting(" FULL ", "lean") == "full"
 
 
+def _flavours(spec):
+    return [(n, lean) for n, _f, lean in mcp_server.resolve_tools(spec)]
+
+
+@needs_mcp
+def test_a_tool_list_picks_tools_and_a_named_set_fixes_the_flavour():
+    # A bare name is the full tool; read_section only lean has.
+    assert _flavours("search,read,list_entries") == [
+        ("search", False),
+        ("read", False),
+        ("list_entries", False),
+    ]
+    assert _flavours("read_section") == [("read_section", True)]
+    # lean plus one full tool: lean's search and read stay lean.
+    assert _flavours("lean,list_entries") == [
+        ("search", True),
+        ("read", True),
+        ("read_section", True),
+        ("list_entries", False),
+    ]
+    # A name a set already brought is not offered twice, nor flipped.
+    assert _flavours("lean,search") == _flavours("lean")
+    assert set(_flavours("search,full")) == {(n, False) for n, _ in _flavours("full")}
+    assert _flavours(" Lean , LIST_ENTRIES ") == _flavours("lean,list_entries")
+
+
+@needs_mcp
+@pytest.mark.parametrize(
+    "bad", ["", ",", "search,", "search,,read", "nope", "search,nope", "lean,full"]
+)
+def test_a_bad_tool_list_is_refused_with_the_valid_names(bad):
+    with pytest.raises(ValueError) as err:
+        mcp_server.build(bad)
+    if bad and "nope" in bad:
+        assert "unknown tool 'nope'" in str(err.value)
+        assert "list_entries" in str(err.value) and "read_section" in str(err.value)
+    with pytest.raises(SystemExit) as exit_:
+        mcp_server.tools_setting(bad or " ", "")
+    assert "--tools" in str(exit_.value)
+
+
+@needs_mcp
+def test_tools_setting_takes_lists_and_the_env_default():
+    assert mcp_server.tools_setting("Search, Read", "lean") == "search,read"
+    assert mcp_server.tools_setting("", "lean,list_entries") == "lean,list_entries"
+    with pytest.raises(SystemExit):
+        mcp_server.tools_setting(",", "lean")
+
+
+@needs_mcp
+def test_the_built_server_lists_the_selection():
+    tools = _tools("search,read,list_entries")
+    assert [t["name"] for t in tools] == ["search", "read", "list_entries"]
+    assert all("outputSchema" in t for t in tools if t["name"] == "list_entries")
+    read = next(t for t in tools if t["name"] == "read")
+    assert read["description"].startswith("Read an article from a ZIM source as plain text.")
+
+    mixed = _tools("lean,list_entries")
+    assert [t["name"] for t in mixed] == ["search", "read", "read_section", "list_entries"]
+    by_name = {t["name"]: t for t in mixed}
+    assert "outputSchema" not in by_name["search"]
+    assert "outputSchema" in by_name["list_entries"]
+    assert sorted(by_name["read"]["inputSchema"]["properties"]) == ["path", "references", "zim"]
+
+
 @needs_mcp
 def test_read_names_a_source_by_part_and_reads_markdown(installed):
     got = mcp_server.lean_read("devdocs", "index")
@@ -466,3 +531,32 @@ def test_zimi_mcp_on_an_empty_library_keeps_stdout_clean(tmp_path):
     finally:
         proc.kill()
         proc.wait(timeout=10)
+
+
+@needs_mcp
+def test_zimi_mcp_serves_a_tool_list_from_the_flag_and_the_env(library):
+    want = ["search", "read", "read_section", "list_entries"]
+    for args, env in (
+        (["mcp", library, "--tools", "lean,list_entries"], None),
+        (["mcp", library], {"ZIMI_MCP_TOOLS": "lean,list_entries"}),
+    ):
+        proc = _start(args, env)
+        try:
+            deadline = time.time() + STARTUP_BOUND
+            _handshake(proc, deadline)
+            tools = _rpc(proc, deadline, 2, "tools/list")["result"]["tools"]
+            assert [t["name"] for t in tools] == want, args
+        finally:
+            proc.kill()
+            proc.wait(timeout=10)
+
+
+@needs_mcp
+def test_zimi_mcp_refuses_an_unknown_tool_at_startup(library):
+    proc = _start(["mcp", library, "--tools", "search,nope"])
+    try:
+        err = proc.communicate(timeout=STARTUP_BOUND)[1]
+    finally:
+        proc.kill()
+    assert proc.returncode != 0
+    assert "unknown tool 'nope'" in err and "list_entries" in err

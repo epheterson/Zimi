@@ -129,7 +129,7 @@ zimi-mcp /path/to/zims
 }
 ```
 
-`zimi-mcp` is the MCP server and search alone, built from this repository and released with it. `pip install "zimi[mcp]"` gives the full install the same command, and `zimi mcp`. Three tools by default (search, read a page as Markdown, read one section), about 360 tokens of schema, sized for small local models; `--tools full` serves every tool. No web server is started. For Docker on another machine, run `docker exec -i zimi python3 -m zimi mcp` over ssh. See [API & MCP](docs/features/api-and-mcp.md#just-the-basics) for the tools and measured numbers, and the [SearXNG](docs/integrations/searxng.md) and [OpenWebUI](docs/integrations/openwebui.md) guides.
+`zimi-mcp` is the MCP server and search alone, built from this repository and released with it. `pip install "zimi[mcp]"` gives the full install the same command, and `zimi mcp`. Three tools by default (search, read a page as Markdown, read one section), about 360 tokens of schema, sized for small local models; `--tools full` serves every tool, and `--tools search,read,list_entries` just the ones you name. No web server is started. For Docker on another machine, run `docker exec -i zimi python3 -m zimi mcp` over ssh. See [API & MCP](docs/features/api-and-mcp.md#just-the-basics) for the tools and measured numbers, and the [SearXNG](docs/integrations/searxng.md) and [OpenWebUI](docs/integrations/openwebui.md) guides.
 
 ## Contributing
 

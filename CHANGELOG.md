@@ -13,6 +13,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 - Games: leaving any board, dice or tile game under way keeps a picture of its table as the shelf's tile (live tiles were cards and canvas games only), and Stats lists what you have reached in plain facts.
 ### Added
 
+- MCP: `--tools` (and `ZIMI_MCP_TOOLS`) also takes tool names, for example `--tools lean,list_entries` or `--tools search,read,list_entries`; an unknown name stops the server at startup.
 - Games: Pig, Shut the Box and Ten Thousand (dice), Color Trail (a color race for small children) and Who Is It (find Zimi's face with yes-or-no questions), in ten languages.
 ### Added
 
