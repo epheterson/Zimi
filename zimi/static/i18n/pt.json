@@ -3664,6 +3664,8 @@
   "alm_row_landings": "Pousos",
   "alm_lm_night_until": "Noite lá até {date} · chegar ao nascer do Sol",
   "alm_hd_installed": "Instalado",
+  "alm_hd_kind_hd": "HD",
+  "alm_hd_kind_max": "Máximo",
   "alm_hd_ask_admin": "quem gere este Zimi pode adicioná-lo",
   "alm_blurb_sun": "Uma estrela tão grande que tem quase toda a massa do Sistema Solar.",
   "alm_blurb_earth": "O único mundo conhecido com vida e oceanos de água líquida.",

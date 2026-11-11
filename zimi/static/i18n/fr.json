@@ -3664,6 +3664,8 @@
   "alm_row_landings": "Atterrissages",
   "alm_lm_night_until": "Nuit là-bas jusqu’au {date} · arriver au lever du Soleil",
   "alm_hd_installed": "Installé",
+  "alm_hd_kind_hd": "HD",
+  "alm_hd_kind_max": "Maximum",
   "alm_hd_ask_admin": "la personne qui gère ce Zimi peut l’ajouter",
   "alm_blurb_sun": "Une étoile si grande qu'elle contient presque toute la masse du Système solaire.",
   "alm_blurb_earth": "Le seul monde connu avec de la vie et des océans d'eau liquide.",

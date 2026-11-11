@@ -3664,6 +3664,8 @@
   "alm_row_landings": "Landungen",
   "alm_lm_night_until": "Dort Nacht bis {date} · zum Sonnenaufgang ankommen",
   "alm_hd_installed": "Installiert",
+  "alm_hd_kind_hd": "HD",
+  "alm_hd_kind_max": "Maximum",
   "alm_hd_ask_admin": "wer dieses Zimi betreibt, kann es hinzufügen",
   "alm_blurb_sun": "Ein Stern so groß, dass er fast die ganze Masse des Sonnensystems enthält.",
   "alm_blurb_earth": "Die einzige bekannte Welt mit Leben und Ozeanen aus flüssigem Wasser.",
