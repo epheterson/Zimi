@@ -123,17 +123,29 @@ def test_the_almanac_carries_the_same_address():
         assert (
             '<script src="zimihome.js"></script>' in page
             and '<script src="zimibuild.js"></script>' in page
-            and "function _almHomeLine" in page
         )
+        # The line is drawn by local.js: an href written in index.html's own script is a dead link to zimcheck.
+        assert "href=" not in page.split("<script>", 1)[1]
+        with open(os.path.join(tmp, "local.js"), encoding="utf-8") as f:
+            assert "root._almHomeLine = function" in f.read()
 
 
-def test_the_mark_and_the_name_are_one_link_and_the_switch_moves_the_mark(browser, served):
+def test_the_mark_and_the_name_are_one_link_and_the_switch_moves_the_mark(
+    browser, served
+):
     url = home_url()
-    for at, want in (("before", ["IMG", "Zimi"]), ("after", ["Zimi", "IMG"]), ("none", ["Zimi"])):
+    for at, want in (
+        ("before", ["IMG", "Zimi"]),
+        ("after", ["Zimi", "IMG"]),
+        ("none", ["Zimi"]),
+    ):
         ctx = browser.new_context(viewport=VIEW)
         page = ctx.new_page()
         body = "window.ZIMI_HOME = '%s';\nwindow.ZIMI_HOME_MARK = '%s';\n" % (url, at)
-        def serve(body):   # Playwright hands a two-argument handler the request too: one argument only
+
+        def serve(
+            body,
+        ):  # Playwright hands a two-argument handler the request too: one argument only
             return lambda r: r.fulfill(body=body, content_type="text/javascript")
 
         page.route("**/zimihome.js", serve(body))
@@ -143,7 +155,11 @@ def test_the_mark_and_the_name_are_one_link_and_the_switch_moves_the_mark(browse
             "Array.from(document.querySelector('.ar-shelf header .gs-home a').childNodes).map(n => n.nodeType === 3 ? n.textContent : n.tagName)"
         )
         assert got == want, (at, got)
-        assert page.locator(".ar-shelf header .gs-home").inner_text().strip() == "© Zimi"
+        assert (
+            page.locator(".ar-shelf header .gs-home").inner_text().strip() == "© Zimi"
+        )
         if at != "none":
-            assert abs(page.evaluate(MARK_OFFSET, ".ar-shelf header .gs-home")) <= 0.5, at
+            assert (
+                abs(page.evaluate(MARK_OFFSET, ".ar-shelf header .gs-home")) <= 0.5
+            ), at
         ctx.close()

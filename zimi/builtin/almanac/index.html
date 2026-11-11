@@ -136,16 +136,6 @@ var KIWIX_JS_TOOLBAR_PX = 48;
 if (!HOSTED_IN_ZIMI && window.parent !== window && location.pathname.indexOf('/content/') < 0) {
   document.documentElement.style.setProperty('--host-bottom', KIWIX_JS_TOOLBAR_PX + 'px');
 }
-// Outside Zimi, the foot of the Almanac carries the credit line "© <year> [mark] Zimi", the mark and the name one link to Zimi's
-// address (zimihome.js, the Games' file, staged in). The year is the build's (zimibuild.js, written into the ZIM by ownzims),
-// never the reader's clock. Inside Zimi's reader nothing is drawn.
-function _almHomeLine() {
-  var url = window.ZIMI_HOME, year = window.ZIMI_BUILT_YEAR, at = window.ZIMI_HOME_MARK;
-  if (HOSTED_IN_ZIMI || !url) return '';
-  var mark = at === 'before' || at === 'after' ? '<img src="mark.svg" alt="" width="13" height="13"' + (at === 'after' ? ' class="alm-mark-end"' : '') + '>' : '';
-  return '<div class="alm-home"><span>© ' + (year ? esc(year) + ' ' : '') + '<a href="' + escAttr(url) + '" target="_blank" rel="noopener">' +
-    (at === 'after' ? 'Zimi' + mark : mark + 'Zimi') + '</a></span></div>';
-}
 var PDF_URL = '/almanac/pdf';
 if (HOSTED_IN_ZIMI) {
   window.openReader = function(url) { window.parent.openReader(url); };
