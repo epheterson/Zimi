@@ -26,12 +26,29 @@ DEFAULT_NAME = "zimi_eng_almanac"
 DEFAULT_TITLE = "Zimi Almanac"
 FILE_FMT = "%s_%s.zim"
 _NAME = re.compile(r"^zimi_([a-z]{3})_([a-z0-9][a-z0-9_-]*)$")
-_TITLE_LINE = re.compile(r"(?m)^Title:.*$")
+#: Text for the ZIM's Description or LongDescription instead of zimi.txt's (None keeps zimi.txt's). Change a line, rebuild.
+DESCRIPTION = None
+LONG_DESCRIPTION = None
 
 
-def build(out_dir, file_name=None, name=DEFAULT_NAME, title=DEFAULT_TITLE, month=None):
+def set_fields(folder, **fields):
+    """Rewrite lines of the folder's zimi.txt; each field must already be there exactly once. None leaves it alone."""
+    meta = os.path.join(folder, "zimi.txt")
+    with open(meta, encoding="utf-8") as f:
+        text = f.read()
+    for key, value in fields.items():
+        if value is None:
+            continue
+        text, n = re.subn(r"(?m)^%s:.*$" % key, lambda m: "%s: %s" % (key, value), text)
+        if n != 1:
+            raise SystemExit("zimi.txt has no single %s line" % key)
+    with open(meta, "w", encoding="utf-8", newline="\n") as f:
+        f.write(text)
+
+
+def build(out_dir, file_name=None, name=DEFAULT_NAME, title=DEFAULT_TITLE, month=None, description=None, long_description=None):
     """The community Almanac, built from the source as it is now. Returns its path."""
-    from zimi import almanacstage, creator
+    from zimi import almanacstage, creator, ownzims
 
     m = _NAME.match(name)
     if not m:
@@ -46,12 +63,8 @@ def build(out_dir, file_name=None, name=DEFAULT_NAME, title=DEFAULT_TITLE, month
         dest = os.path.join(tmp, m.group(2))
         os.mkdir(dest)
         almanacstage.stage(dest, community=True)
-        meta = os.path.join(dest, "zimi.txt")
-        with open(meta, encoding="utf-8") as f:
-            text = f.read()
-        with open(meta, "w", encoding="utf-8", newline="\n") as f:
-            f.write(_TITLE_LINE.sub("Title: " + title, text, count=1))
-        creator.create_folder_zim(dest, out_path=path, register=False)
+        set_fields(dest, Title=title, Description=description or DESCRIPTION, LongDescription=long_description or LONG_DESCRIPTION)
+        creator.create_folder_zim(dest, out_path=path, register=False, extra_items=ownzims.with_build_year())
     return path
 
 
@@ -67,8 +80,10 @@ def main(argv=None):
     ap.add_argument(
         "--title", default=DEFAULT_TITLE, help="the ZIM's Title (default %(default)s)"
     )
+    ap.add_argument("--description", help="the ZIM's Description (default zimi.txt's)")
+    ap.add_argument("--long-description", help="the ZIM's LongDescription (default zimi.txt's)")
     a = ap.parse_args(argv)
-    path = build(a.out, a.file, a.name, a.title)
+    path = build(a.out, a.file, a.name, a.title, description=a.description, long_description=a.long_description)
     print("built %s (%.1f MB)" % (path, os.path.getsize(path) / 1e6))
     return 0
 
