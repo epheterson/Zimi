@@ -6683,7 +6683,9 @@ function _almanacHdRowHtml(row) {
     return '<div class="ci-hd-part"><span dir="ltr">' + esc(p.file) + '</span><span>' + esc(fmtSize(p.size_bytes / 1073741824)) + '</span></div>';
   }).join('');
   return '<div class="manage-installed-group ci-hd-group">' + _zimCardHtml({ title: t('net_almanac_hd'), name: '' }, {
-    metaHtml: '<span>' + esc(t('lib_hd_meta', { n: fmtNum(row.packs.length), size: fmtSize(row.size_bytes / 1073741824) })) + '</span> &middot; <span>' + esc(t('lib_hd_where')) + '</span>'
+    // Which size is installed (almanachd.py: HD or Maximum, one at a time), then its files and where it is chosen.
+    metaHtml: (row.kind ? '<span>' + esc(t('alm_hd_kind_' + row.kind)) + '</span> &middot; ' : '') +
+      '<span>' + esc(t('lib_hd_meta', { n: fmtNum(row.packs.length), size: fmtSize(row.size_bytes / 1073741824) })) + '</span> &middot; <span>' + esc(t('lib_hd_where')) + '</span>'
   }) + '<div class="ci-hd-parts">' + parts + '</div></div>';
 }
 // Manage > Storage: the files no name serves any more, each with what replaced it and the usual remove.

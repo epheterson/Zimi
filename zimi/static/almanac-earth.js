@@ -4886,40 +4886,32 @@ function _aeHdOfferSize(offer) {
   return fmtBytes(offer.size);
 }
 // Almanac HD in the gear, whatever the line under the controls says: after Not now this is where it is found again.
-// Installed; downloading and how far; a Download with its size for someone who may; for anyone else, who can.
-// Nothing under Never (or ZIMI_OFFLINE), or when this version names no file.
+// Two sizes, one installed at a time (almanachd.py): HD and Maximum, each with its size; the one in use is checked,
+// the other one replaces it once it is in. Downloading, how far. Nothing under Never (or ZIMI_OFFLINE), or when this
+// version names no file and none is installed.
+var AE_HD_KINDS = ['hd', 'max'];
 function _aeHdRowHtml() {
   var st = _ae.hdSt;
-  if (!st || (!st.installed && (!st.offer || st.mode === 'never'))) return '';
-  var head = '<b>' + _almEsc(_aeT('alm_hd_offer')) + '</b>', tail;
-  if (st.installed || _ae.hdInstalled) tail = _almEsc(_aeT('alm_hd_installed'));
-  else if (st.downloading) tail = _almEsc(_aeT('alm_hd_getting', { pct: Math.floor(100 * st.downloading.done / Math.max(1, st.downloading.size)) }));
-  else {
-    var size = _aeHdOfferSize(st.offer);
-    tail = st.can_change ? _almEsc(size) + ' · <button type="button" class="ae-fresh" id="ae-set-hd-get">' + _almEsc(_aeT('alm_hd_get')) + '</button>'
-      : _almEsc(size) + ' · ' + _almEsc(_aeT('alm_hd_ask_admin'));
-  }
-  return '<p class="ae-set-data ae-set-hd">' + head + '<br>' + tail + '</p>' + _aeUltraHtml();
-}
-// The Ultra parts, a short list under the core's row: each body's full resolution, with its size and a switch. Off
-// removes the file from the library, on fetches it; the view draws whatever is installed. Only for whoever may change it.
-function _aeUltraName(part) { return part === 'moon' ? _aeT('alm_moon') : _tp(part.charAt(0).toUpperCase() + part.slice(1)); }
-function _aeUltraHtml() {
-  var st = _ae.hdSt, list = st && st.ultra;
-  if (!list || !list.length) return '';
-  var rows = list.map(function (u) {
-    var busy = !!u.downloading, tail = busy ? Math.floor(100 * u.downloading.done / Math.max(1, u.downloading.size)) + '%' : _aeHdOfferSize({ size: u.size });
-    return '<label class="ae-set-choice' + (st.can_change && !busy ? '' : ' ae-off') + '"><input type="checkbox" class="ae-ultra-sw" data-part="' + _almEsc(u.part) + '" data-file="' + _almEsc(u.file) + '"' +
-      (u.installed && !busy ? ' checked' : '') + (st.can_change && !busy ? '' : ' data-locked="1"') + '><span><b>' + _almEsc(_aeUltraName(u.part)) + '</b><small>' + _almEsc(tail) + '</small></span></label>';
+  var offers = (st && st.offers) || {};
+  if (!st || (!st.installed && (st.mode === 'never' || !Object.keys(offers).length))) return '';
+  var busy = st.downloading, edit = !!st.can_change && !busy;
+  var rows = AE_HD_KINDS.map(function (k) {
+    var mine = st.kind === k, o = offers[k];
+    if (!mine && !o) return '';
+    var tail = busy && busy.kind === k ? Math.floor(100 * busy.done / Math.max(1, busy.size)) + '%'
+      : mine ? _aeT('alm_hd_installed') : _aeHdOfferSize(o);
+    return '<label class="ae-set-choice' + (edit && !mine ? '' : ' ae-off') + '"><input type="radio" name="ae-hd-kind" class="ae-hd-kind" value="' + k + '"' +
+      (mine ? ' checked' : '') + (edit && !mine ? '' : ' disabled') + '><span><b>' + _almEsc(_aeT('alm_hd_kind_' + k)) + '</b><small>' + _almEsc(tail) + '</small></span></label>';
   }).join('');
-  return '<div class="ae-set-data ae-set-ultra" role="group" aria-label="' + _almEsc(_aeT('alm_hd_ultra')) + '"><b>' + _almEsc(_aeT('alm_hd_ultra')) + '</b>' + rows + '</div>';
+  var who = st.can_change || st.installed ? '' : '<small>' + _almEsc(_aeT('alm_hd_ask_admin')) + '</small>';
+  return '<div class="ae-set-data ae-set-ultra" role="radiogroup" aria-label="' + _almEsc(_aeT('alm_hd_offer')) + '"><b>' + _almEsc(_aeT('alm_hd_offer')) + '</b>' + rows + who + '</div>';
 }
-function _aeUltraToggle(box) {
-  var part = box.getAttribute('data-part'), file = box.getAttribute('data-file');
-  if (box.getAttribute('data-locked')) { box.checked = !box.checked; return; }   // not yours to change, or on its way: it looks as it is and stays
-  box.disabled = true;
+// A size chosen: its download starts; it replaces the one installed once it is in and checked.
+function _aeHdKind(input) {
+  if (input.disabled) return;
+  Array.prototype.forEach.call(document.querySelectorAll('.ae-hd-kind'), function (r) { r.disabled = true; });
   var done = function () { _aeHdPollNow(); };
-  (box.checked ? _aePost(AE_HD_SET_URL, { start: true, part: part }) : _aePost(AE_HD_DELETE_URL, { filename: file })).then(done, done);
+  _aePost(AE_HD_SET_URL, { start: true, kind: input.value }).then(done, done);
 }
 function _aeHdGet() {
   _aeById('ae-hd-get').disabled = true;
@@ -6046,7 +6038,7 @@ function _aeRenderSettings() {
   if (typeof ZimiCap !== 'undefined') ZimiCap.gearBind(panel);
   var get = _aeById('ae-set-hd-get');
   if (get) get.onclick = _aeHdGet;
-  if (panel.querySelectorAll) Array.prototype.forEach.call(panel.querySelectorAll('.ae-ultra-sw'), function (box) { box.onchange = function () { _aeUltraToggle(box); }; });
+  if (panel.querySelectorAll) Array.prototype.forEach.call(panel.querySelectorAll('.ae-hd-kind'), function (r) { r.onchange = function () { _aeHdKind(r); }; });
 }
 // An admin's choice, saved on the server; then the view asks again, since
 // the choice changes what a stale answer brings (Automatically fetches
