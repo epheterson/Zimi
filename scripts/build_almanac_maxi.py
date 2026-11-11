@@ -144,20 +144,70 @@ def build(tiles_zim, out_dir, month=None, craft_dir=None):
     )
 
 
-def write_manifest(path, tag, out_dir=None):
-    """What Zimi reads from the release ``tag``: the file, its size and checksum."""
+#: Maximum's chunks: under GitHub's 2 GiB a release file, with room.
+CHUNK_BYTES = 2_000_000_000
+
+
+def cluster_offsets(path):
+    """Where each cluster of the ZIM at ``path`` starts, from its header and cluster pointer list
+    (https://wiki.openzim.org/wiki/ZIM_file_format)."""
+    import struct
+
+    header = struct.Struct("<IHH16sIIQQQQIIQ")
+    with open(path, "rb") as f:
+        fields = header.unpack(f.read(header.size))
+        clusters, cluster_ptr = fields[5], fields[8]
+        f.seek(cluster_ptr)
+        return list(struct.unpack("<%dQ" % clusters, f.read(8 * clusters)))
+
+
+def split_book(path, out_dir, part=CHUNK_BYTES):
+    """The ZIM at ``path`` as zimsplit's chunks in ``out_dir`` (``name.zimaa``, ``name.zimab``...), cut only between
+    clusters, each up to ``part`` bytes (a cluster bigger than that is a chunk of its own). A cut through a cluster
+    leaves libzim unable to read the full-text index (tests/test_split_zim.py shows it). Returns the chunk paths."""
+    from zimi import zimparts
+
+    size = os.path.getsize(path)
+    bounds = sorted(set([0, size] + cluster_offsets(path)))
+    cuts, start = [0], 0
+    for lo, hi in zip(bounds, bounds[1:]):
+        if lo > start and hi - start > part:
+            cuts.append(lo)
+            start = lo
+    cuts.append(size)
+    os.makedirs(out_dir, exist_ok=True)
+    out = []
+    with open(path, "rb") as src:
+        for suffix, (lo, hi) in zip(zimparts._SUFFIXES, zip(cuts, cuts[1:])):
+            dest = os.path.join(out_dir, os.path.basename(path) + suffix)
+            src.seek(lo)
+            left = hi - lo
+            with open(dest + ".part", "wb") as f:
+                while left:
+                    block = src.read(min(left, HASH_CHUNK * 8))
+                    f.write(block)
+                    left -= len(block)
+            os.replace(dest + ".part", dest)
+            out.append(dest)
+    return out
+
+
+def write_manifest(path, tag, out_dir=None, max_book=None, max_chunks=None):
+    """What Zimi reads from the release ``tag``: the file, its size and checksum; with ``max_book`` (the Maximum
+    flavour) and its ``max_chunks`` (split_book), Maximum's entry: the book's size and sha256 and each chunk's."""
     manifest = {
         "file": os.path.basename(path),
         "size": os.path.getsize(path),
         "sha256": sha256_file(path),
         "tag": tag,
     }
-    try:  # a split set: the other ZIMs, attached to the release as they are (scripts/build_almanac_hd.py --split)
-        parts = read_pin().get("parts")
-    except (OSError, ValueError, SystemExit):
-        parts = None
-    if parts:
-        manifest["parts"] = parts
+    if max_book:
+        manifest["max"] = {
+            "file": os.path.basename(max_book),
+            "size": os.path.getsize(max_book),
+            "sha256": sha256_file(max_book),
+            "chunks": [{"file": os.path.basename(c), "size": os.path.getsize(c), "sha256": sha256_file(c)} for c in max_chunks],
+        }
     target = os.path.join(out_dir or os.path.dirname(path), MANIFEST)
     with open(target, "w", encoding="utf-8") as f:
         json.dump(manifest, f, indent=2)
