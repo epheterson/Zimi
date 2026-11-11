@@ -479,12 +479,13 @@ var AE_ST_GROUND_FRAG = [
   'uniform vec3 uAmbient, uSkyHor, uSkyZen, uE2, uDir2;',
   'uniform vec2 uHead; uniform float uCloudDim; uniform float uGrass, uTundra, uCanopy; uniform float uLommel, uRough, uRock, uDetail, uCover, uDiffuse, uVis, uDirect; uniform vec3 uDiffSky;',
   'varying vec3 vP, vN, vDir; varying float vH, vSea, vShade;',
-  // Rock, fractal bumps and mottling at the scales a pixel can show, all fixed to the ground (the camera never moves on it).
+  // Rock, fractal bumps and mottling at the scales a pixel can show, all fixed to the ground (the camera never moves on it). Each octave's lattice is
+  // turned by its own angle: with all of them square to the same axes a grazing Sun drew their cells as squares.
   'float fine(vec3 p, float foot) {',
   '  float h = 0.0;',
   '  for (int i = 0; i < 7; i++) {',
   '    float s = 0.05 * pow(3.1, float(i)), w = 1.0 - smoothstep(0.08, 0.35, 2.2 * foot / s);',
-  '    if (w > 0.0) h += vnoise(p / s + float(i) * 7.3) * ' + AE_ST_FINE_SLOPE.toFixed(3) + ' * s * w;',
+  '    if (w > 0.0) { float a = 0.83 * float(i), ca = cos(a), sa = sin(a); vec3 q = vec3(ca * p.x - sa * p.y, sa * p.x + ca * p.y, p.z); h += vnoise(q / s + float(i) * 7.3) * ' + AE_ST_FINE_SLOPE.toFixed(3) + ' * s * w; }',
   '  }',
   '  return h * uRough;',
   '}',
@@ -573,8 +574,11 @@ var AE_ST_GROUND_FRAG = [
   '    float tree = smoothstep(0.0, 0.45, c1 * 0.55 + c2 * 0.5 + (uCanopy - 0.5) * 0.9 - (uCanopy < 0.5 ? c3 * 0.0 : 0.0)) * (uCanopy < 0.5 ? smoothstep(0.1, 0.0, c3 - 0.05) + 0.25 * smoothstep(0.2, 0.7, c2) : 1.0);',
   '    alb = mix(alb, vec3(0.03, 0.06, 0.026) * (0.7 + 0.6 * dot(alb, vec3(0.33))), clamp(dd * tree * min(1.0, uCanopy * 1.3 + 0.35), 0.0, 0.8));',
   '  }',
-  '  vec2 rk = (vSea > 0.5 || dist > ' + AE_ST_ROCK_FADE_M[1].toFixed(1) + ') ? vec2(0.0) : rocks(vP, foot) * (1.0 - smoothstep(' + AE_ST_ROCK_FADE_M[0].toFixed(1) + ', ' + AE_ST_ROCK_FADE_M[1].toFixed(1) + ', dist)); float hb = vSea > 0.5 ? 0.0 : fine(vP, foot) + rk.x; alb *= clamp(1.0 + 0.5 * rk.y, 0.5, 1.35);',
-  '  vec3 dpx = dFdx(vP), dpy = dFdy(vP); float hx = dFdx(hb), hy = dFdy(hb);',
+  '  vec2 rk = (vSea > 0.5 || dist > ' + AE_ST_ROCK_FADE_M[1].toFixed(1) + ') ? vec2(0.0) : rocks(vP, foot) * (1.0 - smoothstep(' + AE_ST_ROCK_FADE_M[0].toFixed(1) + ', ' + AE_ST_ROCK_FADE_M[1].toFixed(1) + ', dist)); float hf = vSea > 0.5 ? 0.0 : fine(vP, foot), hb = hf + rk.x; alb *= clamp(1.0 + 0.5 * rk.y, 0.5, 1.35);',
+  // The fine relief's slope is taken by stepping one pixel along the ground, not by the screen derivative: that one is the same for a
+  // 2 x 2 block of pixels, and under a grazing Sun it showed as squares. The stones' own relief keeps the screen derivative.
+  '  vec3 dpx = dFdx(vP), dpy = dFdy(vP); float hx = dFdx(rk.x), hy = dFdy(rk.x);',
+  '  if (vSea < 0.5 && uRough > 0.0) { hx += fine(vP + dpx, foot) - hf; hy += fine(vP + dpy, foot) - hf; }',
   '  vec3 r1 = cross(dpy, N), r2 = cross(N, dpx); float det = dot(dpx, r1);',
   '  vec3 gr = sign(det) * (hx * r1 + hy * r2) * smoothstep(0.03, 0.3, dot(N, V)), Nb = abs(det) * N + gr; if (dot(Nb, Nb) > 0.0) N = normalize(Nb);',
   '  vec3 L;',

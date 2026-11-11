@@ -291,3 +291,16 @@ def test_the_grounds_stones_are_never_cut_circles_or_a_bare_hemisphere():
     assert "best" not in body, "only the nearest stone counted: a stone met by a bigger one is cut"
     assert "wob" in body and "vnoise" in body, "the outline is wobbled: no stone is a circle"
     assert "dome * dome" in body, "a soft profile at the ground, not a steep hemisphere"
+
+
+# ── A grazing Sun on airless ground ──
+def test_a_grazing_sun_does_not_blow_the_ground_out_or_draw_the_grids_squares():
+    static = os.path.join(os.path.dirname(HERE), "zimi", "static")
+    stand = open(os.path.join(static, "almanac-stand.js"), encoding="utf-8").read()
+    gl = open(os.path.join(static, "almanac-standgl.js"), encoding="utf-8").read()
+    shade = open(os.path.join(static, "almanac-terrainshade.js"), encoding="utf-8").read()
+    assert "AE_STAND_EXPOSURE_MU_FLOOR" in stand and "expoG" in stand, "the eye does not open for the sliver of Sun the flat ground gets"
+    assert "AE_SHADE_PENUMBRA_CELLS" in shade and "_aeShadeCellOut)" in shade, "a shadow's edge is never sharper than the grid's cell"
+    fine = gl[gl.index("float fine(vec3 p, float foot)") : gl.index("vec2 rocks(")]
+    assert "cos(a)" in fine, "each octave's lattice is turned: aligned, they drew squares"
+    assert "fine(vP + dpx" in gl, "the fine relief's slope is a step along the ground, not a 2 x 2 pixel derivative"

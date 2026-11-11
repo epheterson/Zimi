@@ -20,6 +20,7 @@ var AE_STAND_SUN_FACE_DEG = -6;            // the view faces the Sun when it is 
 var AE_STAND_GROUND_AMBIENT_SHARE = 0.8;   // the ground takes this much of the sky's light at its brightest
 var AE_STAND_NEAR_SUN_SHARE = 0.35;       // the exposure is set by the brightest sky short of the Sun's own glare: this much of the sky a little over it
 var AE_STAND_NEAR_SUN_ABOVE_DEG = 8, AE_STAND_NEAR_SUN_MIN_DEG = 6;
+var AE_STAND_EXPOSURE_MU_FLOOR = 0.2;   // the sine of the Sun's height under which an airless ground's exposure stops opening up (about 11.5 degrees)
 var AE_STAND_AMBIENT_GAIN = 1.6;
 var AE_STAND_BOUNCE = 0.03;                // an airless ground in shadow, over the Sun-lit ground's radiance (alb x this): light from the terrain round it             // the sky's light on the ground, over its light overhead (it comes from the whole dome and the ground)
 var AE_STAND_HORIZON_GAIN = 1.8;           // the horizon's sky over the zenith's
@@ -365,7 +366,7 @@ function _aeStandGroundMesh(st, pend, U, mat) {
 var AE_STAND_GREY_MAP = { moon: true };   // maps of one channel (the Moon's), read as grey
 // What the ground's colour map is multiplied by (linear): the Mars map is a salmon grey where the ground is rust, Titan's is grey
 // under orange light and a darker ground than it.
-var AE_STAND_TINT = { mars: [1.9, 0.85, 0.34], titan: [4.2, 3.0, 1.6], earth: [2.2, 2.2, 2.2] };
+var AE_STAND_TINT = { moon: [0.6, 0.6, 0.6], mars: [1.9, 0.85, 0.34], titan: [4.2, 3.0, 1.6], earth: [2.2, 2.2, 2.2] };
 var AE_STAND_SKY_SCALE = 0.5;              // the sky is drawn at this share of the screen's size and stretched (the ground is not)
 var AE_STAND_SKY_BY_LEVEL = [0.33, 0.5, 0.75];   // ... by capability level's skyQuality (capability.js): a light device draws it smaller, a roomy one sharper
 function _aeStandSkyScale() { return typeof ZimiCap !== 'undefined' ? AE_STAND_SKY_BY_LEVEL[ZimiCap.get('skyQuality')] : AE_STAND_SKY_SCALE; }
@@ -771,6 +772,7 @@ function _aeStPhoto(st, fr) {
   var p = { zen: [0, 0, 0], hor: [0, 0, 0], amb: [0, 0, 0], sunE: [S, S, S], diffSky: [0, 0, 0], trans: null, lim: AE_ST_LM_MAX, extinct: 0, mw: 1 };
   var e2 = fr.light2 ? fr.light2.flux : 0;
   var directG = S * Math.max(mu, 0);   // airless: all of the Sun
+  var expoG = S * Math.max(mu, a ? 0 : AE_STAND_EXPOSURE_MU_FLOOR);   // the exposure's own: a grazing Sun on airless ground lights the slopes that face it fully, so the eye does not open for the flat ground's sliver of it
   if (!a) p.amb = [S * AE_STAND_BOUNCE, S * AE_STAND_BOUNCE, S * AE_STAND_BOUNCE];   // and what the ground's own surroundings send back
   if (d) {
     var day = 0.03 + 0.97 * _smoothstep(-0.2, 0.45, mu), lum = d.frac * S / Math.PI * 0.9 * day;
@@ -797,7 +799,7 @@ function _aeStPhoto(st, fr) {
     p.lim = AE_ST_LM_MAX - (AE_ST_LM_MAX - AE_STAND_AIRLESS_DAY_LIM) * dayLoss; p.mw = 1 - dayLoss;
   }
   // Light of other bodies as a second sun for the ground.
-  var ref = Math.max(AE_ST_GROUND_ALBEDO_REF * ((directG + e2) / Math.PI + AE_STAND_GROUND_AMBIENT_SHARE * Math.max(p.amb[0], p.amb[1], p.amb[2])),
+  var ref = Math.max(AE_ST_GROUND_ALBEDO_REF * ((Math.max(directG, expoG) + e2) / Math.PI + AE_STAND_GROUND_AMBIENT_SHARE * Math.max(p.amb[0], p.amb[1], p.amb[2])),
     1.2 * Math.max(p.zen[0], p.zen[1], p.zen[2]), AE_STAND_NEAR_SUN_SHARE * Math.max(p.near ? p.near[0] : 0, p.near ? p.near[1] : 0, p.near ? p.near[2] : 0), AE_ST_NIGHT_FLOOR);
   p.k = AE_ST_EXPOSURE_TARGET / ref;
   // The Earth's sky is the 2D sky's, and so is its exposure there by day (the same eye: almanac-skygl.js _sgExposure, converted to this

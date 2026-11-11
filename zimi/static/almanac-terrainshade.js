@@ -13,6 +13,7 @@ var AE_SHADE_START_M = 8, AE_SHADE_STEP = 0.12, AE_SHADE_STEP_MIN_M = 6, AE_SHAD
 var AE_SHADE_ORIGIN_M = 0.3;   // a place stands this far over the grid's ground when it looks at the Sun
 var AE_SHADE_BIAS_M = 0.5, AE_SHADE_BIAS_PER_M = 0.002;                        // a ray this far under the ground is let through (the grid is not the mesh)
 var AE_SHADE_MIN_SUN_Z = 0.004;                                               // a Sun lower than this (the sine of its height) casts no shadow worth the march
+var AE_SHADE_PENUMBRA_CELLS = 1.5;   // a shadow's edge is never sharper than this many cells of the grid that cast it (a sharp one drew the grid's squares)
 var AE_SHADE_TAN_SUN = 0.0047;                                                // the tangent of the Sun's angular radius (at the Earth)
 
 // The grids' heights, built in slices: { step(ms) -> done, levels }. height(x, y) is the ground's height over the viewer's
@@ -67,7 +68,7 @@ function _aeShadeVisible(grids, x, y, z, sun, tanSun) {
     if (g === null) break;
     var clear = qz - g + AE_SHADE_BIAS_M + AE_SHADE_BIAS_PER_M * t;
     if (clear < 0) {
-      var v = Math.max(0, Math.min(1, 0.5 + 0.5 * clear / (t * tanSun + 0.5)));   // the ridge covers the Sun's disc to this much
+      var v = Math.max(0, Math.min(1, 0.5 + 0.5 * clear / (t * tanSun + AE_SHADE_PENUMBRA_CELLS * _aeShadeCellOut)));   // the ridge covers the Sun's disc to this much
       if (v < vis) vis = v;
       if (vis <= 0) return 0;
     }
