@@ -8201,6 +8201,18 @@ function _aeAdoptPointer(id, x, y) {
   canvas.classList.add('ae-dragging');
   return true;
 }
+// Two fingers `span` px apart: the zoom is the one their spread since the pinch began asks for, not the product of each
+// move's, so the order a frame's touches arrive in cannot change where it ends (a step clamped at the nearest the view
+// goes, then the other finger's step out by its full ratio, ended a spreading pinch farther than it began). Mid-flight
+// (the flight sets the distance) the step's own ratio rescales the flight, as before.
+function _aePinchZoom(p, span) {
+  var k = p.span0 / span;
+  if (_ae.stand) {
+    var st = _ae.stand;
+    if (p.zoom0 != null && st.zoom > 0) _aeStandZoom(p.zoom0 * k / st.zoom); else _aeStandZoom(p.span / span);
+  } else if (_ae.fly || !(_ae.dist > 0)) _aeZoomBy(p.span / span);
+  else _aeZoomBy(_aeClampDist(p.dist0 * k) / _ae.dist);
+}
 // The canvas's own listeners: bound again to the fresh canvas that replaces
 // one whose context was given back (_aeDisposeGl).
 function _aeBindCanvas(canvas) {
@@ -8218,7 +8230,8 @@ function _aeBindCanvas(canvas) {
       _ae.drag = { x: e.clientX, y: e.clientY, x0: e.clientX, y0: e.clientY, moved: slide, pan: slide };
     } else if (ids.length === 2) {
       var a = _ae.pointers[ids[0]], b = _ae.pointers[ids[1]];
-      _ae.pinch = { span: Math.hypot(a.x - b.x, a.y - b.y), mx: (a.x + b.x) / 2, my: (a.y + b.y) / 2 };
+      var span0 = Math.hypot(a.x - b.x, a.y - b.y);
+      _ae.pinch = { span: span0, mx: (a.x + b.x) / 2, my: (a.y + b.y) / 2, span0: span0, dist0: _ae.dist, zoom0: _ae.stand ? _ae.stand.zoom : null };
       _ae.drag = null;
     }
     canvas.classList.add('ae-dragging');
@@ -8231,7 +8244,7 @@ function _aeBindCanvas(canvas) {
     if (_ae.pinch && ids.length >= 2) {
       var a = _ae.pointers[ids[0]], b = _ae.pointers[ids[1]];
       var span = Math.hypot(a.x - b.x, a.y - b.y);
-      if (span > 0 && _ae.pinch.span > 0) { if (_ae.stand) _aeStandZoom(_ae.pinch.span / span); else _aeZoomBy(_ae.pinch.span / span); }
+      if (span > 0 && _ae.pinch.span > 0) _aePinchZoom(_ae.pinch, span);
       _ae.pinch.span = span;
       // The midpoint slides the view, whether or not the fingers also spread or close; not mid-flight, where a zoom
       // lets the flight finish (a pan would end it where it stands).

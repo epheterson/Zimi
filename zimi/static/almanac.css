@@ -5,14 +5,18 @@
    pushes the dock that much further off the screen edge. The dock's own
    margins provide the flow spacing; 8px is just edge breathing for the
    footer. */
-.almanac-content { flex: 1; overflow-y: auto; overflow-x: hidden; -webkit-overflow-scrolling: touch; padding: var(--alm-pad-top) 16px 8px; overscroll-behavior: contain; }
+.almanac-content { flex: 1; overflow-y: auto; overflow-x: hidden; -webkit-overflow-scrolling: touch; padding: var(--alm-pad-top) 0 8px; overscroll-behavior: contain; }
 /* The Almanac keeps its own content still when a section arrives late
    (_almKeepStill in almanac.js); the browser's anchoring would add to it. */
 .almanac-content { overflow-anchor: none; }
 /* Sections that arrive late hold their margins inside them, so the height the
    keep-still watcher sees is the height they take. */
 #almanac-place, #almanac-rosetta { display: flow-root; }
-.almanac-inner { max-width: 600px; margin: 0 auto; }
+/* The page's side gutter is the inner column's own, not the scroller's: paper (almanac-reference.css) sets the
+   scroller's padding aside, and Chromium can keep that 0 after the print is over, which ran the tiles' and the
+   chips' -16px edges and the orrery (sized while the gutter was gone) past the screen's edge: a page that scrolled
+   sideways. 600px of text either way (border-box). */
+.almanac-inner { max-width: 632px; margin: 0 auto; padding: 0 16px; }
 /* The page's last line, clear of a phone's home indicator: the inset is the
    footer's, not the scroller's padding, which would lift the docked time
    machine off the screen's edge too. */
