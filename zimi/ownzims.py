@@ -364,7 +364,7 @@ def _with_source(own, fn):
 BUILD_FILE = "zimibuild.js"
 
 
-def _with_build_year(extra_items=None):
+def with_build_year(extra_items=None):
     from zimi.zimwriter import make_asset_item
 
     body = ("window.ZIMI_BUILT_YEAR = %d;\n" % datetime.date.today().year).encode("ascii")
@@ -390,7 +390,7 @@ def write_zim(own, path, flavour=None, extra_items=None):
             out_path=path,
             register=False,
             flavour=flavour,
-            extra_items=_with_build_year(extra_items),
+            extra_items=with_build_year(extra_items),
         )
         return path
 
@@ -421,7 +421,7 @@ def build(own):
         for stale in (new, new + ".tmp"):
             if os.path.exists(stale):
                 os.remove(stale)
-        creator.create_folder_zim(folder, out_path=new, register=False, extra_items=_with_build_year())
+        creator.create_folder_zim(folder, out_path=new, register=False, extra_items=with_build_year())
         os.replace(new, path)
         with open(path + _STAMP_EXT, "w", encoding="ascii") as f:
             f.write(want + "\n")

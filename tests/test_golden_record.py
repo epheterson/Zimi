@@ -78,7 +78,9 @@ def test_the_gallery_says_no_picture_is_nasa_public_domain_wholesale():
     assert "_GR_IMAGES" not in src, "the gallery draws from credits.json"
     gallery = src[src.index("function _renderGoldenRecordGallery") :]
     gallery = gallery[: gallery.index("\n}\n")]
-    assert "gr-list" in gallery and "gr-row-text" in gallery, "one list; an omitted picture is a line of text"
+    assert (
+        "gr-list" in gallery and "gr-row-text" in gallery
+    ), "one list; an omitted picture is a line of text"
 
 
 @pytest.fixture(scope="module")
@@ -158,8 +160,22 @@ def test_the_built_zims_hold_49_and_8(tmp_path):
     from libzim.reader import Archive
 
     meta = Archive(str(tmp_path / "kiwix.zim"))
-    assert meta.get_metadata("Name").decode() == build_almanac_kiwix.DEFAULT_NAME == "zimi_eng_almanac"
-    assert meta.get_metadata("Title").decode() == build_almanac_kiwix.DEFAULT_TITLE == "Zimi Almanac"
+    assert (
+        meta.get_metadata("Name").decode()
+        == build_almanac_kiwix.DEFAULT_NAME
+        == "zimi_eng_almanac"
+    )
+    assert (
+        meta.get_metadata("Title").decode()
+        == build_almanac_kiwix.DEFAULT_TITLE
+        == "Zimi Almanac"
+    )
+    # The credit line's year ("© 2026 Zimi") comes with the edition, the year of its Date.
+    year = meta.get_metadata("Date").decode()[:4]
+    built = bytes(
+        meta.get_entry_by_path(ownzims.BUILD_FILE).get_item().content
+    ).decode()
+    assert built == "window.ZIMI_BUILT_YEAR = %s;\n" % year
 
 
 # The gallery's own code, run in node on each edition's table: what the list holds.
@@ -186,8 +202,16 @@ def _render(folder):
     if not node:
         pytest.skip("node is not installed")
     r = subprocess.run(
-        [node, "-e", _RENDER, os.path.join(STATIC, "almanac.js"), os.path.join(folder, "credits.json")],
-        capture_output=True, text=True, timeout=60,
+        [
+            node,
+            "-e",
+            _RENDER,
+            os.path.join(STATIC, "almanac.js"),
+            os.path.join(folder, "credits.json"),
+        ],
+        capture_output=True,
+        text=True,
+        timeout=60,
     )
     assert r.returncode == 0, r.stderr
     return json.loads(r.stdout)
@@ -200,4 +224,9 @@ def test_the_list_holds_49_pictures_in_zimi(staged):
 
 def test_the_kiwix_list_shows_8_pictures_and_names_41(staged):
     got = _render(os.path.join(staged[True], almanacstage.GOLDEN_RECORD))
-    assert got == {"rows": ALL, "text": ALL - PUBLIC_DOMAIN, "pictures": PUBLIC_DOMAIN, "omittedLine": True}
+    assert got == {
+        "rows": ALL,
+        "text": ALL - PUBLIC_DOMAIN,
+        "pictures": PUBLIC_DOMAIN,
+        "omittedLine": True,
+    }

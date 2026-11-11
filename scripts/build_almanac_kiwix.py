@@ -31,7 +31,7 @@ _TITLE_LINE = re.compile(r"(?m)^Title:.*$")
 
 def build(out_dir, file_name=None, name=DEFAULT_NAME, title=DEFAULT_TITLE, month=None):
     """The community Almanac, built from the source as it is now. Returns its path."""
-    from zimi import almanacstage, creator
+    from zimi import almanacstage, creator, ownzims
 
     m = _NAME.match(name)
     if not m:
@@ -51,7 +51,7 @@ def build(out_dir, file_name=None, name=DEFAULT_NAME, title=DEFAULT_TITLE, month
             text = f.read()
         with open(meta, "w", encoding="utf-8", newline="\n") as f:
             f.write(_TITLE_LINE.sub("Title: " + title, text, count=1))
-        creator.create_folder_zim(dest, out_path=path, register=False)
+        creator.create_folder_zim(dest, out_path=path, register=False, extra_items=ownzims.with_build_year())
     return path
 
 
