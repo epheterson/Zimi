@@ -585,6 +585,8 @@ var AE_CSS = [
   '.ae-btn[disabled]{opacity:.45;cursor:default;pointer-events:none}',
   '.ae-btn[aria-pressed="true"]{color:var(--amber);border-color:var(--amber-border);background:rgba(245,158,11,.14)}',
   '.ae-btn[hidden]{display:none}',
+  // A finger's hit area (the look and the layout stay): an invisible box up to 44px; the round column is 6px apart, so it grows sideways instead.
+  '@media (pointer:coarse){.ae-btn{position:relative}.ae-btn::after{content:"";position:absolute;inset:calc(max(0px,44px - 100%)/-2)}.ae-round::after{inset:-3px -5px}}',
   '[dir="rtl"] .ae-chev{display:inline-block;transform:scaleX(-1)}',
   '.ae-top-end{display:flex;align-items:flex-start;gap:8px;min-width:0;margin-inline-start:auto}',   // alone in the top row: at its end
   '.ae-tools{display:flex;flex-direction:column;gap:6px}',

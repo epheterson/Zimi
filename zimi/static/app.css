@@ -4396,9 +4396,9 @@
      box that brings it up to 44 and centres it, so nothing drawn or laid out moves. The percentages are the control's own
      size, so the box is exactly as big as it is short and a control already 44 gets none. */
   :is(.topbar .logo, .bc-icon, .manage-tab, .ms-nav-item, .manage-btn-action, .set-btn, .pill, .mc-row-clickable,
-      .footer a, .cat-heading.clickable, .rc-dot.mark.why, .topbar :is(.library-btn, .reader-btn, .night-btn, .random-btn, .lang-selector-btn, .manage-btn, .newtab-btn), .topbar-more, .lib-view-btn, .card-more) { position: relative; }
+      .footer a, .cat-heading.clickable, .rc-dot.mark.why, .topbar .back-btn, .topbar :is(.library-btn, .reader-btn, .night-btn, .random-btn, .lang-selector-btn, .manage-btn, .newtab-btn), .topbar-more, .lib-view-btn, .card-more) { position: relative; }
   :is(.topbar .logo, .bc-icon, .manage-tab, .ms-nav-item, .manage-btn-action, .set-btn, .pill, .mc-row-clickable,
-      .footer a, .rc-dot.mark.why, .topbar-search .search-clear, .lib-view-btn, .card-more, .dc-more, .dc-dismiss, .lang-banner-dismiss, .search-chip-x)::after {
+      .footer a, .rc-dot.mark.why, .topbar .back-btn, .topbar-search .search-clear, .lib-view-btn, .card-more, .dc-more, .dc-dismiss, .lang-banner-dismiss, .search-chip-x)::after {
     content: ''; position: absolute; inset: calc(max(0px, 44px - 100%) / -2);
   }
   /* The breadcrumb's icon has the search box 8px to its end: its box leans toward the wordmark instead. */
