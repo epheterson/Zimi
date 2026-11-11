@@ -23,7 +23,13 @@ J2000 = 2451545.0
 OBLIQUITY = math.radians(23.4392911)
 AU_KM = 149597870.7
 # IAU WGCCRE 2015 north poles (right ascension, declination of date J2000, degrees).
-POLES = {"Jupiter": (268.056595, 64.495303), "Saturn": (40.589, 83.537)}
+POLES = {
+    "Jupiter": (268.056595, 64.495303),
+    "Saturn": (40.589, 83.537),
+    "Mars": (317.269202, 54.432516),
+    "Neptune": (299.36, 43.46),
+    "Pluto": (132.993, -6.163),
+}
 # The last column is the published mean motion (deg/day), only to unwrap the
 # angle across 2-day samples; the fit replaces it.
 MOONS = [
@@ -32,6 +38,15 @@ MOONS = [
     ("Ganymede", "503", "599", "Jupiter", 50.3176),
     ("Callisto", "504", "599", "Jupiter", 21.5711),
     ("Titan", "606", "699", "Saturn", 22.5770),
+    ("Mimas", "601", "699", "Saturn", 381.9945),
+    ("Enceladus", "602", "699", "Saturn", 262.7319),
+    ("Tethys", "603", "699", "Saturn", 190.6979),
+    ("Dione", "604", "699", "Saturn", 131.5349),
+    ("Rhea", "605", "699", "Saturn", 79.6900),
+    ("Iapetus", "608", "699", "Saturn", 4.5380),
+    ("Triton", "801", "899", "Neptune", -61.2573),
+    ("Charon", "901", "999", "Pluto", 56.3625),
+    ("Phobos", "401", "499", "Mars", 1128.8445),
 ]
 
 
@@ -106,7 +121,10 @@ def orbit_row(f):
 
 def main():
     print("// paste each over the moon's orbit in AE_PLANETS in zimi/static/almanac-earth.js (the Moon's own is the Meeus series)")
+    only = {a.lower() for a in sys.argv[1:]}   # python3 scripts/fit_moon_orbits.py triton charon: just those
     for name, cmd, center, planet, seed in MOONS:
+        if only and name.lower() not in only:
+            continue
         print(orbit_row(fit(name, cmd, center, planet, seed)))
 
 

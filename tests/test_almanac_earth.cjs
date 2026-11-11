@@ -58,6 +58,7 @@ function extractFn(src, name) {
 // A page with no orrery drawn: the Earth view's load asks it to update its hint.
 const S = { Math, Date, Intl, Object, JSON, console, String, Number, Array, isNaN, window: {}, document: { getElementById: () => null } };
 vm.createContext(S);
+S._almAsset = (p) => p;   // app.js: a /static address with its version; here, as it is
 vm.runInContext(require("./sk.cjs")(), S);   // app.js SK, loaded before every Almanac file
 vm.runInContext(
   'var JD_UNIX_EPOCH = 2440587.5; var JD_J2000 = 2451545.0; var MS_PER_DAY = 86400000;' +
@@ -280,5 +281,78 @@ const utc = (iso) => Date.parse(iso);
   check(r.daz < 0 && r.del === 0 && d.del > 0 && Math.abs(d.daz) < 1e-15, 'right and down, north up');
 }
 
-if (failures) { console.error(failures + ' failure(s)'); process.exit(1); }
-console.log('all passed');
+// ── 7. The globe's geodesy: a place is the true WGS84 point, in every layer ─────────────────────────────────────
+// The Earth is drawn as a unit sphere squashed along its pole by the flattening, and a map's rows are geodetic
+// latitude. So a texel, a map tile's corner, a landmark and a pin at (lat, lon) must all stand at the ellipsoid point of
+// that geodetic latitude: the squashed sphere point of _aeLatLonVec(lat, lon, f) is exactly _aeGeodeticToFixed(lat, lon).
+{
+  const f = S.AE_EARTH_FLATTENING;
+  const PLACES = [['Honolulu', 21.3069, -157.8583], ['Paris', 48.8566, 2.3522], ['Suva', -18.1416, 178.4419], ['Anchorage', 61.2181, -149.9003],
+    ['Everest', 27.9881, 86.925], ['Cape Horn', -55.9833, -67.2667], ['Longyearbyen', 78.2232, 15.6267], ['Quito', -0.1807, -78.4678]];
+  let worstPoint = 0, worstBack = 0, worstTex = 0, worstLm = 0;
+  for (const [, lat, lon] of PLACES) {
+    const s = S._aeLatLonVec(lat, lon, f), want = S._aeGeodeticToFixed(lat, lon);
+    worstPoint = Math.max(worstPoint, Math.hypot(s[0] - want[0], s[1] - want[1], s[2] * (1 - f) - want[2]));
+    // the inverse, from the sphere point the mesh has, back to geodetic degrees
+    const back = S._aeSphereLatLon(s[0], s[1], s[2], f);
+    worstBack = Math.max(worstBack, Math.abs(back.lat - lat), Math.abs(back.lon - lon));
+    // the vertex shader's row (atan2(z, (1 - f) |xy|)) is the point's geodetic latitude, as _aeFixedToGeodetic reads it
+    const row = Math.atan2(s[2], (1 - f) * Math.hypot(s[0], s[1])) / DEG * DEG;
+    worstTex = Math.max(worstTex, Math.abs(row * DEG - lat));
+    // a landmark on the Earth (its matrix squashes the pole by f) points along the true point's direction from the centre
+    const d = S._aeLmDir({ key: 'earth', m: [1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1 - f, 0] }, lat, lon);
+    worstLm = Math.max(worstLm, Math.hypot(d[0] - want[0], d[1] - want[1], d[2] - want[2]));
+  }
+  check(worstPoint < 1e-12, 'a place on the drawn globe is the WGS84 ellipsoid point (worst ' + worstPoint.toExponential(1) + ' Earth radii)');
+  check(worstBack < 1e-9, 'sphere point and geodetic degrees are inverse (worst ' + worstBack.toExponential(1) + ' deg)');
+  check(worstTex < 1e-9, "the texture's row for a vertex is the geodetic latitude (worst " + worstTex.toExponential(1) + ' deg)');
+  check(worstLm < 1e-12, 'a landmark on the Earth stands at the true ellipsoid point (worst ' + worstLm.toExponential(1) + ')');
+  // The old way, for the size of what was fixed: the sphere's own latitude put Honolulu this far from its true point.
+  const naive = S._aeLatLonVec(21.3069, -157.8583), true_ = S._aeGeodeticToFixed(21.3069, -157.8583);
+  const offKm = Math.hypot(naive[0] - true_[0], naive[1] - true_[1], naive[2] * (1 - f) - true_[2]) * S.AE_EARTH_RADIUS_KM;
+  check(offKm > 5 && offKm < 12, 'without the geodetic row the texture sat ' + offKm.toFixed(1) + ' km from Honolulu');
+  // The satellites' ground tracks are geodetic degrees on WGS84 (a = 6378.137 km, 1/f = 298.257223563): a subpoint's
+  // Earth-fixed position by the textbook formula is the point the globe stands a place at.
+  const a = 6378.137, e2 = 6.69437999014e-3;
+  let worstIss = 0;
+  for (const [lat, lon] of [[51.6, 12.0], [-30.5, 140.2], [0.0, -60.0], [45.2, 170.1]]) {
+    const la = lat / DEG, lo = lon / DEG, N = a / Math.sqrt(1 - e2 * Math.sin(la) * Math.sin(la));
+    const ecf = [N * Math.cos(la) * Math.cos(lo), N * Math.cos(la) * Math.sin(lo), N * (1 - e2) * Math.sin(la)];
+    const s = S._aeLatLonVec(lat, lon, f);
+    worstIss = Math.max(worstIss, Math.hypot(ecf[0] - s[0] * a, ecf[1] - s[1] * a, ecf[2] - s[2] * (1 - f) * a));
+  }
+  check(worstIss < 0.001, "a ground track's point and the globe's share one ellipsoid (worst " + (worstIss * 1000).toFixed(2) + ' m)');
+}
+
+// Almanac HD as a set of ZIMs: the view's list of layers is every installed ZIM's, each layer remembering whose folder it is
+// in; a part that does not answer leaves its layers out (the body keeps its map); the core's list is required.
+async function hdSetTests() {
+  const lists = {
+    '/w/core/hd/hd.json': { layers: { 'earth/day': { max: 7 }, 'planets/io': { max: 4 }, 'moon/albedo': { max: 5 } } },
+    '/w/moon/hd.json': { layers: { 'moon/albedo': { max: 7, from: 6, inserts: [{ z: 8 }] }, 'terrain/moon': { max: 5 } } },
+    '/w/mars/hd.json': null
+  };
+  S.fetch = (url) => Promise.resolve(lists[url] ? { ok: true, json: () => Promise.resolve(JSON.parse(JSON.stringify(lists[url]))) } : { ok: false, json: () => Promise.reject(new Error('no')) });
+  S._ae = { hdSt: { base: '/w/core/hd/', parts: { moon: '/w/moon/', mars: '/w/mars/' } } };
+  const man = await S._aeHdManifest();
+  const keys = Object.keys(man.layers).sort().join(',');
+  check(keys === 'earth/day,moon/albedo,planets/io,terrain/moon', 'the set\'s layers are the installed ZIMs\' together (' + keys + ')');
+  check(man.layers['earth/day'].base === '/w/core/hd/' && man.layers['terrain/moon'].base === '/w/moon/', 'each layer remembers the folder it is in');
+  const moon = man.layers['moon/albedo'];
+  check(moon.max === 7 && moon.base === '/w/core/hd/' && moon.deep.from === 6 && moon.deep.base === '/w/moon/' && moon.inserts.length === 1, 'a layer split between the core and a part reads the core to its level and the part from there');
+  const url = (z) => S._aeHdTileUrl({ layer: 'moon/albedo', base: moon.base, deep: moon.deep }, { z: z, x: 1, y: 2 });
+  check(url(5) === '/w/core/hd/moon/albedo/5/1/2.webp' && url(6) === '/w/moon/moon/albedo/6/1/2.webp' && url(9) === '/w/moon/moon/albedo/9/1/2.webp', 'a tile is asked of the folder that holds its level');
+  check(S._aeHdBases().join() === '/w/core/hd/,/w/mars/,/w/moon/', 'the folders are read in a fixed order');
+  S._ae = { hdSt: { base: '/w/gone/hd/', parts: { moon: '/w/moon/' } } };
+  let failed = false;
+  try { await S._aeHdManifest(); } catch (e) { failed = true; }
+  check(failed, 'without the core\'s list there is no set');
+  S._ae = { hdSt: { base: '/w/core/hd/', parts: {} } };
+  const alone = await S._aeHdManifest();
+  check(Object.keys(alone.layers).length === 3 && alone.layers['moon/albedo'].max === 5 && !alone.layers['moon/albedo'].deep, 'a core alone is what it was, the Moon to its own level');
+}
+
+hdSetTests().then(() => {
+  if (failures) { console.error(failures + ' failure(s)'); process.exit(1); }
+  console.log('all passed');
+});

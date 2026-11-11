@@ -57,7 +57,7 @@ TWO_MAPS = """() => {
 }"""
 
 
-def _open(browser, base, view, scheme="light", maps=True):
+def _open(browser, base, view, scheme="light", maps=True, lang=None):
     ctx = browser.new_context(
         viewport=view,
         device_scale_factor=2,
@@ -67,6 +67,8 @@ def _open(browser, base, view, scheme="light", maps=True):
         color_scheme=scheme,
     )
     ctx.add_init_script(KEYBOARD_STAND_IN)
+    if lang:
+        ctx.add_init_script('try { localStorage.setItem("zimi_ui_lang", %r); } catch (e) {}' % lang)
     ctx.add_init_script(
         "try { localStorage.setItem('zimi_almanac_place', %r); sessionStorage.setItem('zimi_almanac_location', %r); } catch (e) {}"
         % (PLACE, PLACE)
@@ -166,6 +168,64 @@ def test_go_to_search_stands_on_the_keyboard_with_its_answers_in_view(
             pg.evaluate("_aeShowGo(false)")
             assert pg.evaluate("document.querySelector('.ae-bottom').style.bottom") == ""
             assert not errors, errors
+            ctx.close()
+        finally:
+            br.close()
+
+
+def test_in_short_landscape_the_go_to_list_shows_at_least_six_rows(library):
+    """844 x 390: the sheet used to be capped at half the height, with the field at its foot: one and a half rows."""
+    from playwright.sync_api import sync_playwright
+
+    with sync_playwright() as pw:
+        br = pw.chromium.launch(args=GL_ARGS)
+        try:
+            ctx, pg, errors = _open(br, library, LANDSCAPE)
+            pg.click("#ae-go-btn")
+            pg.wait_for_selector("#ae-go-q", state="visible")
+            pg.wait_for_function("() => !!_aeLm", timeout=60_000)
+            rows = pg.evaluate("""() => {
+                var sheet = document.getElementById('ae-go').getBoundingClientRect(), find = document.getElementById('ae-go-q').getBoundingClientRect();
+                var tops = {};
+                document.querySelectorAll('#ae-go .ae-go-list:not([hidden]) .ae-go-row').forEach(function (b) {
+                    var r = b.getBoundingClientRect();
+                    if (r.top >= sheet.top - 1 && r.bottom <= find.top + 1) tops[Math.round(r.top)] = 1;
+                });
+                return { n: Object.keys(tops).length, sheet: [Math.round(sheet.top), Math.round(sheet.bottom)], find: Math.round(find.top), all: document.querySelectorAll('#ae-go .ae-go-row').length };
+            }""")
+            if os.environ.get('ALM_SHOTS'):
+                pg.screenshot(path=os.path.join(os.environ['ALM_SHOTS'], 'go_landscape.png'))
+            assert rows['n'] >= 6, rows
+            ctx.close()
+        finally:
+            br.close()
+
+
+def test_in_a_right_to_left_language_the_controls_do_not_sit_on_the_minimap(library):
+    """Hebrew: the control column is on the left, where the minimap used to be (it was placed by `left`, not by the side);
+    a landing's long name stays inside the screen."""
+    from playwright.sync_api import sync_playwright
+
+    with sync_playwright() as pw:
+        br = pw.chromium.launch(args=GL_ARGS)
+        try:
+            ctx, pg, errors = _open(br, library, PORTRAIT, lang="he")
+            assert pg.evaluate("document.documentElement.dir") == "rtl"
+            pg.evaluate("_aePreset('moon')")
+            pg.wait_for_function("() => !!_aeLm", timeout=60_000)
+            pg.wait_for_timeout(1500)
+            if os.environ.get("ALM_SHOTS"):
+                pg.screenshot(path=os.path.join(os.environ["ALM_SHOTS"], "hebrew_moon.png"))
+            hit = pg.evaluate("""() => {
+                var m = document.querySelector('.ae-mini'), t = document.querySelector('.ae-tools');
+                if (!m || !t) return null;
+                var a = m.getBoundingClientRect(), b = t.getBoundingClientRect();
+                return a.left < b.right && b.left < a.right && a.top < b.bottom && b.top < a.bottom;
+            }""")
+            assert hit is False, hit
+            outside = pg.evaluate("""() => Array.from(document.querySelectorAll('#ae-lms .ae-lm')).filter(b => !b.hidden).map(b => b.getBoundingClientRect())
+                .filter(r => r.left < -1 || r.right > innerWidth + 1).length""")
+            assert outside == 0, outside
             ctx.close()
         finally:
             br.close()

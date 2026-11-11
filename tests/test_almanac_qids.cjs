@@ -116,6 +116,11 @@ const PLAIN_ROWS = {
   zero_c: 'a conversion of one scale into another',
   clock_stops: 'the clock slider\'s own stops, not a named thing',
   clock_span: 'how far the clock travels, a limit of this page',
+  sun_rotation: 'the rate of one reference frame, not an article of its own',
+  sun_diff_rot: 'three coefficients of one fit',
+  sun_granules: 'how many cells this view draws, not a named thing',
+  sun_prom_height: 'the height this view draws prominences at',
+  sun_flare: 'the rise and fade this view draws a flare with',
   cloud_clear: 'a clearing round the Sun and Moon, not a named thing',
   heli_beacon: 'the flash rate of a light, not a named thing'
 };
