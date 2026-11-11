@@ -113,11 +113,10 @@ for (const fn of ['_dateToJD', '_jdToJulianCentury', '_solveKepler', '_orrDeepRa
                   '_parseHex', '_hexToRgba', '_lighten', '_darken', '_jdnToGregorian', '_cnDeltaTdays', '_computeEclipses']) {
   vm.runInContext(extractFn(almSrc, fn), S);
 }
-for (const v of ['_VOYAGERS', '_HELIO_TERMINATION_AU', '_HELIOPAUSE_AU', '_KUIPER_INNER_AU', '_ORBIT_VIS']) {
+for (const v of ['_VOYAGERS', '_HELIO_TERMINATION_AU', '_HELIOPAUSE_AU', '_KUIPER_INNER_AU']) {
   vm.runInContext(extractVar(almSrc, v), S);
 }
-const auToVis = extractFn(almSrc, '_auToVis');
-vm.runInContext(almSrc.slice(almSrc.indexOf('var _AU_VIS_X'), almSrc.indexOf(auToVis) + auToVis.length), S);
+vm.runInContext(extractFn(almSrc, '_solarSqueeze'), S);
 vm.runInContext(read('almanac-orrery.js'), S);
 vm.runInContext(require('./moon_model.cjs')(), S);   // app.js's Moon model, which the shader is written from
 vm.runInContext(read('almanac-ephem.js'), S);

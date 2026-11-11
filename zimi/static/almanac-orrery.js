@@ -60,7 +60,7 @@ function _planetOrbit(name, T) {
   var E = _solveKepler(M * DEG_TO_RAD, e);
   return {
     xp: a * (Math.cos(E) - e), yp: a * Math.sqrt(1 - e * e) * Math.sin(E),
-    LP: LP, N: p.N + p.dN * T, I: p.I + p.dI * T
+    a: a, e: e, LP: LP, N: p.N + p.dN * T, I: p.I + p.dI * T
   };
 }
 
@@ -80,12 +80,16 @@ function _planetPosition(name, T) {
 // Positions of the Major Planets" (Standish), eq. 8.
 function _planetHelio3D(name, T) {
   var o = _planetOrbit(name, T);
+  return _orbitToEcliptic(o, o.xp, o.yp);
+}
+// A point (xp, yp) of an orbit's own plane, as o (a _planetOrbit) turns it into the J2000 ecliptic, AU.
+function _orbitToEcliptic(o, xp, yp) {
   var w = (o.LP - o.N) * DEG_TO_RAD, N = o.N * DEG_TO_RAD, I = o.I * DEG_TO_RAD;
   var cw = Math.cos(w), sw = Math.sin(w), cN = Math.cos(N), sN = Math.sin(N), cI = Math.cos(I), sI = Math.sin(I);
   return {
-    x: (cw * cN - sw * sN * cI) * o.xp + (-sw * cN - cw * sN * cI) * o.yp,
-    y: (cw * sN + sw * cN * cI) * o.xp + (-sw * sN + cw * cN * cI) * o.yp,
-    z: sw * sI * o.xp + cw * sI * o.yp
+    x: (cw * cN - sw * sN * cI) * xp + (-sw * cN - cw * sN * cI) * yp,
+    y: (cw * sN + sw * cN * cI) * xp + (-sw * sN + cw * cN * cI) * yp,
+    z: sw * sI * xp + cw * sI * yp
   };
 }
 
@@ -427,13 +431,13 @@ function _orreryCamTarget(z, T) {
   var rk = _orreryRide();
   if (!rk || (rk.arrived && !(rk.pathFade > 0)) || _orreryReduceMotion()) return _ORRERY_CAM_REST;
   var zoom = Math.min(_ORRERY_RIDE_MAX_ZOOM, Math.max(1,
-    _ORRERY_RIDE_FIT / Math.max(_orreryPlanetR('Earth', z), _orreryPlanetR(rk.target, z))));
+    _ORRERY_RIDE_FIT / Math.max(_orreryPlanetR('Earth'), _orreryPlanetR(rk.target))));
   if (rk.arrived) {   // hold on the planet itself, which keeps moving
-    var tp = _planetPosition(rk.target, T), a = Math.atan2(tp.y, tp.x), vr = _orreryPlanetR(rk.target, z);
+    var tp = _planetPosition(rk.target, T), a = Math.atan2(tp.y, tp.x), vr = _orreryPlanetR(rk.target);
     return { x: 0.5 + Math.cos(a) * vr, y: 0.5 - Math.sin(a) * vr, zoom: zoom };
   }
   var p = _orreryRideScreen(rk, Math.min(1, rk.elapsed / rk.duration),
-    _orreryPlanetR('Earth', z), _orreryPlanetR(rk.target, z), 0.5, 0.5);
+    _orreryPlanetR('Earth'), _orreryPlanetR(rk.target), 0.5, 0.5);
   return { x: p.x, y: p.y, zoom: zoom };
 }
 
@@ -465,15 +469,61 @@ function _orreryEarthViewAvailable() {
   if (typeof window.openAlmanacEarth === 'function') return !window.openAlmanacEarth.unsupported;
   return typeof _almLoadEarth === 'function' && _almLowPower();
 }
-// Into the 3D view: over the Earth, or on the Sun.
+// Into the 3D view: the orrery lifts into it, over the body tapped (the Earth when none is named): the 3D camera starts
+// on this drawing (the same projection, the same scale) and flies in from there (almanac-orrery3d.js).
 function _orreryOpenEarthView(target) {
   if (!_orreryEarthViewAvailable()) return;
   _orreryMarkTried('earth');
-  if (typeof window.openAlmanacEarth !== 'function') {
-    _almLoadEarth().then(function () { if (typeof window.openAlmanacEarth === 'function') window.openAlmanacEarth(target ? { target: target } : undefined); }, function () {});
+  _orreryCommitScenery();
+  var opts = { target: target || 'earth', fromOrrery: true };
+  if (typeof window.openAlmanacEarth !== 'function') {   // held back on a low-power device: the tap fetches it
+    _almLoadEarth().then(function () { if (typeof window.openAlmanacEarth === 'function') window.openAlmanacEarth(opts); }, function () {});
     return;
   }
-  window.openAlmanacEarth(target ? { target: target } : undefined);
+  window.openAlmanacEarth(opts);
+}
+
+// ── The hand-over to the 3D view and back ──
+// What the 3D view needs of this drawing to stand where it stands: the canvas on the screen (a square) and the camera
+// (_orreryCam: the ride's follow and zoom; the rest state is the identity). Null when the drawing is not on the page.
+function _orreryFrameState() {
+  if (!_orreryCanvas || !_orreryCanvas.isConnected) return null;
+  var r = _orreryCanvas.getBoundingClientRect();
+  if (!r.width) return null;
+  return { left: r.left, top: r.top, size: r.width, cam: { x: _orreryCam.x, y: _orreryCam.y, zoom: _orreryCam.zoom } };
+}
+// The opening spin is scenery, an offset on the drawn moment and never the page's: a drawing that is about to become the
+// 3D view's moment gives its moment to the page's clock first, so the two show the same instant.
+function _orreryCommitScenery() {
+  if (!_orreryScenery && !_orrerySceneryMs) return;
+  var ms = _orrerySimTime();
+  _orreryClockTouched();
+  if (typeof _almScrubSettle === 'function') _almScrubSettle(new Date(ms));
+}
+// The 3D view is coming back to this drawing: it is brought on screen, at rest and painted at the page's moment, and the
+// canvas is returned for the view to settle onto (null when it is not there).
+function _orreryHandBack() {
+  if (!_orreryCanvas || !_orreryCanvas.isConnected) return null;
+  _orreryCamReset();
+  _orreryCanvas.scrollIntoView({ block: 'center' });   // at once: a smooth scroll is cut short behind the view
+  if (typeof _almSecBarSync === 'function') _almSecBarSync();
+  _drawOrrery(_orreryCanvas, _orreryDpr);
+  return _orreryFrameState();
+}
+// A line where the hint stands, for a moment: what the tap could not do (no 3D here).
+var _ORRERY_NOTE_MS = 5000;
+var _orreryNoteTimer = 0;
+function _orreryNote(text) {
+  var el = document.getElementById('orrery-hint');
+  if (!el) return;
+  clearTimeout(_orreryNoteTimer);
+  el.textContent = text;
+  el.hidden = false;
+  _orreryNoteTimer = setTimeout(_orreryRenderHint, _ORRERY_NOTE_MS);
+}
+// The canvas breathes while the 3D view is being made ready behind it (the first tap on a cold page).
+function _orreryWake(on) {
+  if (_orreryCanvas) _orreryCanvas.classList.toggle('alm-orrery-waking', on);
 }
 
 // ── Saying what the orrery does, until it has been done ──
@@ -981,15 +1031,54 @@ function _ensureOrreryStars(W, dpr) {
 }
 
 // ── The solar system as the orrery draws it, for the orrery and for the 3D view's minimap ──
-// The same picture at any size: orbit rings at the shared squeeze (_ORBIT_VIS, _solarSqueeze), the Sun, the planets
-// where _planetPosition has them. W is the drawing's width in device px, u one CSS px in it.
-function _orreryPaintOrbits(ctx, cx, cy, W, z, u, names, alpha) {
+// The same picture at any size: orbit rings at the shared squeeze (_solarSqueeze), the Sun, the planets where
+// _orreryDrawnOffset puts them. W is the drawing's width in device px, u one CSS px in it.
+// Where the drawing puts a body (the 3D view puts it in the same place, almanac-earth.js _aeUpdatePlanets): in its true
+// direction from the Sun, at the one squeeze (_solarSqueeze) of its true distance, seen from above the ecliptic. The
+// positions are the ephemeris's (almanac-ephem.js, the elements the Earth view reads) once that file is here. Offsets are
+// shares of the drawing's width, east and north of the Sun.
+var JD_J2000_ORR = 2451545, DAYS_PER_CENTURY_ORR = 36525;
+function _orreryHelioAU(name, T) {
+  if (typeof _ephBodyJ2000 === 'function') return _ephBodyJ2000(name, JD_J2000_ORR + T * DAYS_PER_CENTURY_ORR);
+  var p = _planetHelio3D(name, T);
+  return [p.x, p.y, p.z];
+}
+function _orreryDrawnOffset(h) {
+  var r = Math.sqrt(h[0] * h[0] + h[1] * h[1] + h[2] * h[2]);
+  if (!r) return { x: 0, y: 0 };
+  var k = _solarSqueeze(r) / r;
+  return { x: h[0] * k, y: h[1] * k };
+}
+// How far from the Sun each planet was drawn last (shares of the width): the rides and the camera aim at the planet
+// where it stands, not at the mean of its orbit.
+var _orreryDrawnR = {};
+
+// Each orbit as the drawing shows it: its own ellipse squeezed like everything else, so Mercury and Mars show the shape
+// of theirs and every planet stands on its line. Worked out once a month (the 3D view redraws its own as often).
+var _ORR_ORBIT_SEGMENTS = 120, _ORR_ORBIT_REUSE_DAYS = 30;
+var _orreryOrbitCache = {};
+function _orreryOrbitPoints(name, T) {
+  var day = T * DAYS_PER_CENTURY_ORR, c = _orreryOrbitCache[name];
+  if (c && Math.abs(c.day - day) < _ORR_ORBIT_REUSE_DAYS) return c.pts;
+  var o = _planetOrbit(name, T), b = o.a * Math.sqrt(1 - o.e * o.e), pts = new Float32Array(2 * (_ORR_ORBIT_SEGMENTS + 1));
+  for (var i = 0; i <= _ORR_ORBIT_SEGMENTS; i++) {
+    var E = 2 * Math.PI * i / _ORR_ORBIT_SEGMENTS, h = _orbitToEcliptic(o, o.a * (Math.cos(E) - o.e), b * Math.sin(E));
+    var off = _orreryDrawnOffset([h.x, h.y, h.z]);
+    pts[2 * i] = off.x; pts[2 * i + 1] = off.y;
+  }
+  _orreryOrbitCache[name] = { day: day, pts: pts };
+  return pts;
+}
+function _orreryPaintOrbits(ctx, cx, cy, W, T, u, names, alpha) {
+  ctx.strokeStyle = 'rgba(255,255,255,' + (alpha || 0.07) + ')';
+  ctx.lineWidth = 0.7 * u;
   for (var i = 0; i < names.length; i++) {
-    var orbitR = _orreryPlanetR(names[i], z) * W;
+    var pts = _orreryOrbitPoints(names[i], T);
     ctx.beginPath();
-    ctx.arc(cx, cy, orbitR, 0, Math.PI * 2);
-    ctx.strokeStyle = 'rgba(255,255,255,' + (alpha || 0.07) + ')';
-    ctx.lineWidth = 0.7 * u;
+    for (var k = 0; k < pts.length; k += 2) {
+      if (k) ctx.lineTo(cx + pts[k] * W, cy - pts[k + 1] * W); else ctx.moveTo(cx + pts[0] * W, cy - pts[1] * W);
+    }
+    ctx.closePath();
     ctx.stroke();
   }
 }
@@ -1138,11 +1227,10 @@ function _orreryPaintPlanet(ctx, name, px, py, pr, cx, cy, dpr, u, opts) {
 function _orreryPaintPlanets(ctx, cx, cy, W, T, z, dpr, u, names, opts) {
   var out = [];
   for (var i = 0; i < names.length; i++) {
-    var pos = _planetPosition(names[i], T);
-    var angle = Math.atan2(pos.y, pos.x);
-    var visR = _orreryPlanetR(names[i], z) * W;
-    var px = cx + Math.cos(angle) * visR;
-    var py = cy - Math.sin(angle) * visR;
+    var off = _orreryDrawnOffset(_orreryHelioAU(names[i], T));
+    _orreryDrawnR[names[i]] = Math.sqrt(off.x * off.x + off.y * off.y);
+    var px = cx + off.x * W;
+    var py = cy - off.y * W;
     var p = _PLANETS[names[i]];
     var pr = p.vr * W; // planet radius as fraction of canvas
     out.push(_orreryPaintPlanet(ctx, names[i], px, py, pr, cx, cy, dpr, u, opts));
@@ -1192,13 +1280,13 @@ function _drawOrrery(canvas, dpr) {
   ctx.setTransform(cam.zoom, 0, 0, cam.zoom, W / 2 - cam.x * W * cam.zoom, W / 2 - cam.y * W * cam.zoom);
 
   // Orbit rings — Apple Watch style: visible but understated
-  _orreryPaintOrbits(ctx, cx, cy, W, z, u, names);
+  _orreryPaintOrbits(ctx, cx, cy, W, T, u, names);
 
   // Faint labelled band helper (asteroid + Kuiper belts). Records each band's
   // annulus (CSS px) so the tap/hover hit-test can open its article.
   _orreryBeltZones = [];
   var _belt = function (auIn, auOut, fill, labelCol, label, key, labelKey) {
-    var rIn = _orrR(auIn, z) * W, rOut = _orrR(auOut, z) * W, rMid = (rIn + rOut) / 2;
+    var rIn = _orrR(auIn) * W, rOut = _orrR(auOut) * W, rMid = (rIn + rOut) / 2;
     ctx.save();
     ctx.beginPath();
     ctx.arc(cx, cy, rOut, 0, Math.PI * 2);
@@ -1221,7 +1309,7 @@ function _drawOrrery(canvas, dpr) {
     ctx.save();
     ctx.globalAlpha = z;
     var _refRing = function (au, col, dash, label, key, labelKey) {
-      var rr = _orrR(au, z) * W;
+      var rr = _orrR(au) * W;
       ctx.save();
       ctx.beginPath(); ctx.arc(cx, cy, rr, 0, Math.PI * 2);
       ctx.strokeStyle = col; ctx.lineWidth = 0.8 * u;
@@ -1264,7 +1352,7 @@ function _drawOrrery(canvas, dpr) {
     var dist = _voyagerDist(v, simTime);
     if (dist <= 0) continue; // pre-launch
     var angle = v.lon * DEG_TO_RAD;
-    var visR = _orrR(dist, z) * W;
+    var visR = _orrR(dist) * W;
     var vx = cx + Math.cos(angle) * visR;
     // Match the planets' Y convention (cy − sin): the probes were mirrored
     // across the horizontal axis, plotting each one 2×longitude off.
@@ -1300,8 +1388,8 @@ function _drawOrrery(canvas, dpr) {
     // Smooth visual-space path (_orreryRidePolar): the orrery uses compressed
     // distances, so a physical Kepler ellipse looks warped; a cosine-eased
     // radius is tangent to both orbits at the ends, like a real transfer.
-    var earthVisR = _orreryPlanetR('Earth', z) * W;
-    var targetVisR = _orreryPlanetR(rk.target, z) * W;
+    var earthVisR = _orreryPlanetR('Earth') * W;
+    var targetVisR = _orreryPlanetR(rk.target) * W;
 
     // Draw transfer path (fades after arrival)
     var pathAlpha = (rk.pathFade !== undefined ? rk.pathFade : 1) * 0.18;
@@ -1500,16 +1588,13 @@ function _orrerySyncToFocus() {
 // vs-deep balance stays a one-line tuning knob.)
 function _orreryDeepFactor() { return 1; }
 
-// Planet orbit radius (fraction of half-width), blended between the hand-tuned
-// planet view (_ORBIT_VIS) and the log deep-space map by the zoom factor z.
-function _orreryPlanetR(name, z) {
-  var near = _ORBIT_VIS[name] != null ? _ORBIT_VIS[name] : _auToVis(_PLANETS[name].a);
-  return near * (1 - z) + _orrDeepRadius(_PLANETS[name].a) * z;
+// How far from the Sun a planet is drawn, as a share of the canvas width: where it was drawn last, else its orbit's mean.
+function _orreryPlanetR(name) {
+  return _orreryDrawnR[name] != null ? _orreryDrawnR[name] : _solarSqueeze(_PLANETS[name].a);
 }
 
-// Same blend for an arbitrary distance (rings, belts, probes): near-view uses
-// the planet map (which pins everything past Neptune to the rim), deep uses log.
-function _orrR(au, z) { return _auToVis(au) * (1 - z) + _orrDeepRadius(au) * z; }
+// The drawn radius of an arbitrary distance (rings, belts, probes), as a share of the canvas width.
+function _orrR(au) { return _solarSqueeze(au); }
 
 var _orreryRockets = [];         // all rocket missions (in-flight + orbiting)
 

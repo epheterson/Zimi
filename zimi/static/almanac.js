@@ -3300,79 +3300,15 @@ function _solveKepler(M, e) {
 
 
 
-// Orbit radii as fraction of canvas half-width (max ~0.46 to fit within square)
-var _ORBIT_VIS = {
-  Mercury: 0.06, Venus: 0.10, Earth: 0.14, Mars: 0.19,
-  Jupiter: 0.27, Saturn: 0.34, Uranus: 0.41, Neptune: 0.47
-};
-
-
 // ── Orrery time controls & rocket easter egg ──
 
 
 
-// AU → visual radius mapping: monotone cubic Hermite (Fritsch-Carlson) through
-// planet data points. Smooth C1 curve with no kinks at planet boundaries, while
-// preserving exact planet positions and guaranteeing monotonicity (no overshoot).
-var _AU_VIS_X = [0, 0.387, 0.723, 1.000, 1.524, 5.203, 9.555, 19.19, 30.07];
-var _AU_VIS_Y = [0, 0.06,  0.10,  0.14,  0.19,  0.27,  0.34,  0.41,  0.47 ];
-
-// Precompute Fritsch-Carlson monotone tangents + cubic coefficients
-var _AU_VIS_C = (function() {
-  var n = _AU_VIS_X.length;
-  var dx = [], dy = [], m = [], t = [];
-  for (var i = 0; i < n - 1; i++) {
-    dx[i] = _AU_VIS_X[i + 1] - _AU_VIS_X[i];
-    dy[i] = (_AU_VIS_Y[i + 1] - _AU_VIS_Y[i]) / dx[i];
-  }
-  // Tangents at each point
-  t[0] = dy[0];
-  for (var i = 1; i < n - 1; i++) {
-    if (dy[i - 1] * dy[i] <= 0) { t[i] = 0; }
-    else { t[i] = (dy[i - 1] + dy[i]) / 2; }
-  }
-  t[n - 1] = dy[n - 2];
-  // Fritsch-Carlson: clamp tangents for monotonicity
-  for (var i = 0; i < n - 1; i++) {
-    if (Math.abs(dy[i]) < 1e-12) { t[i] = t[i + 1] = 0; continue; }
-    var a = t[i] / dy[i], b = t[i + 1] / dy[i];
-    var s = a * a + b * b;
-    if (s > 9) { var tau = 3 / Math.sqrt(s); t[i] = tau * a * dy[i]; t[i + 1] = tau * b * dy[i]; }
-  }
-  // Cubic Hermite coefficients per segment: c0 + c1*u + c2*u^2 + c3*u^3
-  var segs = [];
-  for (var i = 0; i < n - 1; i++) {
-    var h = dx[i];
-    segs.push({
-      x0: _AU_VIS_X[i], h: h,
-      c0: _AU_VIS_Y[i],
-      c1: t[i] * h,
-      c2: 3 * (_AU_VIS_Y[i + 1] - _AU_VIS_Y[i]) - 2 * t[i] * h - t[i + 1] * h,
-      c3: 2 * (_AU_VIS_Y[i] - _AU_VIS_Y[i + 1]) + t[i] * h + t[i + 1] * h
-    });
-  }
-  return segs;
-})();
-
-// The solar system's one squeeze: the orrery's radii (above), and past Neptune a gentle continuation, so the 3D
-// view's planets, belt and probes and the orrery stand at the same shares of the way out (almanac-earth.js scales it
-// so the Earth is where it is).
-var _SQUEEZE_TAIL_POW = 0.2;
-function _solarSqueeze(au) {
-  var last = _AU_VIS_X.length - 1;
-  return au <= _AU_VIS_X[last] ? _auToVis(au) : _AU_VIS_Y[last] * Math.pow(au / _AU_VIS_X[last], _SQUEEZE_TAIL_POW);
-}
-function _auToVis(au) {
-  if (au <= 0) return 0;
-  var segs = _AU_VIS_C;
-  if (au >= _AU_VIS_X[_AU_VIS_X.length - 1]) return _AU_VIS_Y[_AU_VIS_Y.length - 1];
-  // Binary search for segment
-  var lo = 0, hi = segs.length - 1;
-  while (lo < hi) { var mid = (lo + hi + 1) >> 1; if (segs[mid].x0 <= au) lo = mid; else hi = mid - 1; }
-  var s = segs[lo];
-  var u = (au - s.x0) / s.h;
-  return s.c0 + u * (s.c1 + u * (s.c2 + u * s.c3));
-}
+// The solar system's one squeeze: the orrery's radii (_orrDeepRadius, a log map that leaves room for the probes), the
+// share of the drawing's half-width a distance from the Sun is drawn at. The 3D view's planets, belt, probes and minimap
+// stand at the same shares of the way out (almanac-earth.js scales it so the Earth is where it is), so a body is in the
+// same place in the orrery and in the Planets view.
+function _solarSqueeze(au) { return _orrDeepRadius(au); }
 
 // ── Transit speed profile ──
 // Rockets use an adaptive 3-phase speed profile:
