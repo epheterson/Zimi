@@ -2313,6 +2313,7 @@ async function setLanguage(lang) {
     } catch (e) {}
   }
   if (_isDictPage()) _dictFollowLanguage(lang);
+  else _appFollowLanguage();
   // Sync almanac: re-render all content with new translations
   if (typeof _onGlobalLanguageChanged === 'function') _onGlobalLanguageChanged(lang);
   if (_almanacOpen && typeof _renderAlmanacContent === 'function') _renderAlmanacContent();
@@ -2565,9 +2566,9 @@ const output = document.getElementById('output');
 // alone doesn't survive a double-quote in attribute position).
 output.addEventListener('click', function(e) {
   var link = e.target.closest('.did-you-mean a[data-sugg]');
-  if (!link) return;
-  e.preventDefault();
-  applyDidYouMean(link.getAttribute('data-sugg'));
+  if (link) { e.preventDefault(); applyDidYouMean(link.getAttribute('data-sugg')); return; }
+  var typed = e.target.closest('.did-you-mean a[data-typed]');
+  if (typed) { e.preventDefault(); searchTypedInstead(typed.getAttribute('data-typed')); }
 });
 const mainView = document.getElementById('main-view');
 const statsBar = document.getElementById('stats-bar');
@@ -7327,13 +7328,16 @@ function _localMoonName(name) { return _MOON_PHASE_I18N[name] ? t(_MOON_PHASE_I1
 // one whole-disc rotation, so a sprite depends only on the phase and the
 // libration and stays cacheable while the sky wheels around it.
 //
-// Two maps. The 1024 one (54 KB) comes with app.js and paints the first disc.
-// The 4096 one (730 KB) is asked for only once the page has painted and gone
-// idle (_moonAfterFirstPaint), and from then on every disc wide enough to
-// show it is drawn from it; the Today card's disc is too small to.
+// Three maps. The 1024 one (54 KB) comes with app.js and paints the first disc.
+// The 2048 one (200 KB) is asked for once the page has painted and gone idle
+// (_moonAfterFirstPaint): the hero, at its drawn size, needs no more, and the
+// Today card's disc is too small to use it. The 4096 one (730 KB) is asked for
+// only by what is wider than that: the 3D Moon (almanac-earth.js).
 var _MOON_MAP_URL = '/static/earth/moon-v1.webp';
+var _MOON_MAP_MID_URL = '/static/earth/moon-2k-v1.webp';
 var _MOON_MAP_HI_URL = '/static/earth/moon-4k-v1.webp';
 var _MOON_TEX = new Image();
+var _MOON_TEX_MID = null;         // the 2048 map's Image, once it has loaded and its tone table is built
 var _MOON_TEX_HI = null;          // the 4096 map's Image, once it has loaded
 var _moonTexReady = false;
 _MOON_TEX.onload = function() {
@@ -7366,6 +7370,7 @@ var _MOON_TINT_B = [1.18, -0.18];
 // (a disc N wide spans pi * N map pixels round the whole Moon), doubling from
 // the small map's width up to the 4096 one's once that is in.
 var _MOON_MAP_FULL_W = 1024;
+var _MOON_MAP_MID_W = 2048;
 var _MOON_MAP_HI_W = 4096;
 var _MOON_MAP_SMALL_W = 256;
 var _MOON_MAP_SMALL_UPTO_PX = 160;
@@ -7474,8 +7479,25 @@ function quietBreath() {
 // one decode. Resolves with the Image, or null if it could not be had.
 var _moonHiLoad = null;
 var _MOON_SLICE_MS = 12;   // the longest a slice of background drawing runs before it lets the page breathe
+var _moonMidLoad = null;
+var _MOON_TEX_MID_IMG = null;  // the 2048 map's Image while its tone table is built; _MOON_TEX_MID once it is
 var _MOON_TEX_HI_IMG = null;   // the 4096 map's Image while its tone tables are built; _MOON_TEX_HI once they are
 function _moonIdle(fn, priority) { whenQuiet(fn, { priority: priority == null ? QUIET_PRI_LOAD : priority }); }
+// The 2048 map: what a disc the hero's size is drawn from, asked for after the first paint. Same road as the 4096 one.
+function _moonLoadMidMap() {
+  if (_moonMidLoad) return _moonMidLoad;
+  var im = new Image();
+  im.src = _MOON_MAP_MID_URL;
+  _moonMidLoad = im.decode().then(function () {
+    _MOON_TEX_MID_IMG = im;
+    _moonMapDataSliced(_MOON_MAP_MID_W).then(function () {
+      _MOON_TEX_MID = im;
+      return repaintMoonsSliced();
+    });
+    return im;
+  }, function () { return null; });
+  return _moonMidLoad;
+}
 function _moonLoadHiMap() {
   if (_moonHiLoad) return _moonHiLoad;
   var im = new Image();
@@ -7501,7 +7523,7 @@ function _moonAfterFirstPaint(fn) {
   if (document.readyState === 'complete') go();
   else window.addEventListener('load', go, { once: true });
 }
-_moonAfterFirstPaint(_moonLoadHiMap);
+_moonAfterFirstPaint(_moonLoadMidMap);
 
 // Hermite ease between two edges. Also used by the lazy-loaded almanac
 // scripts, which app.js always loads first.
@@ -7587,9 +7609,9 @@ function _moonSpriteN(sizePx) {
 function _moonMapWidthFor(N) {
   if (!_moonTexReady) return 0;
   if (N <= _MOON_MAP_SMALL_UPTO_PX) return _MOON_MAP_SMALL_W;
-  if (!_MOON_TEX_HI) return _MOON_MAP_FULL_W;
+  var widest = _MOON_TEX_HI ? _MOON_MAP_HI_W : _MOON_TEX_MID ? _MOON_MAP_MID_W : _MOON_MAP_FULL_W;
   var W = _MOON_MAP_FULL_W;
-  while (W < Math.PI * N && W < _MOON_MAP_HI_W) W *= 2;
+  while (W < Math.PI * N && W < widest) W *= 2;
   return W;
 }
 
@@ -7611,7 +7633,12 @@ function _moonMapBand(m, y0, y1) {
   var src = m.ctx.getImageData(0, y0, m.w, y1 - y0).data, g = m.g, o = y0 * m.w;
   for (var i = 0, n = (y1 - y0) * m.w; i < n; i++) g[o + i] = Math.min(255, _MOON_ALBEDO_LIFT + _MOON_ALBEDO_GAIN * src[i * 4]);
 }
-function _moonMapSource(W) { return W > _MOON_MAP_FULL_W ? _MOON_TEX_HI_IMG || _MOON_TEX_HI : _MOON_TEX; }
+function _moonMapSource(W) {
+  if (W <= _MOON_MAP_FULL_W) return _MOON_TEX;
+  // The 2048 width from the 2048 picture when it is in (the 4096 one is the 3D Moon's, and may not be).
+  if (W <= _MOON_MAP_MID_W && (_MOON_TEX_MID_IMG || _MOON_TEX_MID)) return _MOON_TEX_MID_IMG || _MOON_TEX_MID;
+  return _MOON_TEX_HI_IMG || _MOON_TEX_HI;
+}
 function _moonMapData(W) {
   if (_moonMapCache[W]) return _moonMapCache[W];
   var m = _moonMapPlan(W, _moonMapSource(W));
@@ -8317,6 +8344,7 @@ var _ALMANAC_MODULES = [
   '/static/almanac-skygl.js?v=45',
   '/static/zone-places.js?v=45',
   '/static/almanac-skyfacts.js?v=45',
+  '/static/almanac-skyscene.js?v=45',
   '/static/almanac.js?v=45'
 ];
 // Its stylesheet comes with them, not on the home page's first paint; the
@@ -10184,11 +10212,22 @@ q.addEventListener('keydown', e => {
 
 
 // Re-run the search with a "Did you mean" correction the user clicked.
-function applyDidYouMean(suggestion) {
+// A search that found nothing runs its suggestion itself: {typed, shown} while
+// the suggestion's results are on screen, so they say what they are and the
+// typed words stay a tap away. kept: the typed words someone chose over it.
+var _dymRun = null, _dymKept = null;
+function applyDidYouMean(suggestion, typed) {
   if (!suggestion) return;
   var q = document.getElementById('q');
+  _dymRun = typed ? { typed: typed, shown: suggestion } : null;
   if (q) q.value = suggestion;
-  doSearch(suggestion, 'new');
+  doSearch(suggestion, typed ? true : 'new');
+}
+function searchTypedInstead(typed) {
+  _dymKept = typed;
+  var q = document.getElementById('q');
+  if (q) q.value = typed;
+  doSearch(typed, 'new');
 }
 
 // push: true records the search in the address (replacing a search already
@@ -10203,6 +10242,8 @@ async function doSearch(query, push, perSource) {
   perSource = perSource || SEARCH_PER_SOURCE;
   if (!query) return;
   if (!more) { _searchCardClear(); _gamesRowClear(); } // a new question: the old card goes, its request with it
+  if (!more && !(_dymRun && _dymRun.shown === query)) _dymRun = null;
+  if (_dymKept !== null && _dymKept !== query) _dymKept = null;
   _currentSearchQuery = query;
   clearTimeout(suggestTimer);
   hideSuggest();
@@ -10673,7 +10714,13 @@ function renderSearchResults(data, scope) {
   // 1.8.0: "einstien" still matched 13 things); a second gate here at 3 hid
   // nearly every suggestion it sent.
   var dymHtml = '';
-  if (data.did_you_mean) {
+  var ran = _dymRun && _dymRun.shown === data._query ? _dymRun : null;
+  if (ran) {
+    // Its results are below: one quiet line, and the way back to what was typed.
+    dymHtml = '<div class="did-you-mean dym-ran">' +
+      t('dym_showing', {s: '<b>' + esc(ran.shown) + '</b>', o: '<a href="#" data-typed="' + escAttr(ran.typed) + '">' + esc(ran.typed) + '</a>'}) +
+      '</div>';
+  } else if (data.did_you_mean) {
     var sugg = data.did_you_mean;
     dymHtml = '<div class="did-you-mean">' +
       t('did_you_mean', {s: '<a href="#" data-sugg="' + escAttr(sugg) + '">' + esc(sugg) + '</a>'}) +
@@ -10691,6 +10738,13 @@ function renderSearchResults(data, scope) {
     const guided = !!(!scope && data.fieldguide) || !!(_searchCard && _searchCard.el && _searchCard.el.dataset.card === 'fieldguide');
     // A near: whose place no installed map names says so (near_not_found), not "No results found".
     const nearOnly = data.near && !data.near.found;
+    // Nothing found and a spelling that might: run it rather than argue with it.
+    if (data.did_you_mean && !data.partial && !guided && !nearOnly && !ran && _dymKept !== data._query) {
+      // After this answer's own handler has returned: the new search ends the request that brought it.
+      const from = data._query, sugg = data.did_you_mean;
+      setTimeout(function() { if (_currentSearchQuery === from) applyDidYouMean(sugg, from); }, 0);
+      return;
+    }
     output.innerHTML = chipsHtml + _nearHtml(data.near) + (guided || nearOnly ? dymHtml : '<div class="empty">' + dymHtml + '<p>' + tH('no_results') + '</p><p class="hint">' + tH(asksNothing ? 'search_needs_word' : 'try_different') + '</p></div>');
     _searchCardMount();
     _gamesRowMount();
@@ -11355,6 +11409,7 @@ function showHistoryDropdown(filter) {
     (anySearch ? '<button type="button" class="sg-recent-clear" onmousedown="event.preventDefault();event.stopPropagation();_recentClearSearches()">' + tH('recent_clear_searches') + '</button>' : '') +
     '</div>';
   // What you searched and read first; the library's filter rows under it.
+  _suggestSheet(false);
   suggestDropdown.innerHTML = recentHeader +
     items.map(function(it, i) {
       var forget = t('remove') + ': ' + it.label;
@@ -11401,6 +11456,7 @@ function _recentClearSearches() {
 
 function showSuggest() {
   suggestIndex = -1;
+  _suggestSheet(false);
   suggestDropdown.innerHTML = suggestItems.map((s, i) =>
     '<div class="suggest-item' + (s._place || s._nearPick ? ' sg-place' : '') + '" data-i="' + i + '" onmousedown="selectSuggest(' + i + ')">' +
     '<div class="sg-title"><bdi>' + esc(s.title) + '</bdi></div>' +
@@ -11411,7 +11467,13 @@ function showSuggest() {
   suggestDropdown.style.display = 'block';
 }
 
+// The tips are a sheet from the bar's foot to the screen's, full width; the suggestions stay under the field.
+function _suggestSheet(on) {
+  suggestDropdown.classList.toggle('tips-sheet', on);
+  suggestDropdown.style.top = on ? Math.round(q.closest('.topbar').getBoundingClientRect().bottom) + 'px' : '';
+}
 function hideSuggest() {
+  _suggestSheet(false);
   suggestDropdown.style.display = 'none';
   suggestIndex = -1;
   _searchHelpExpanded(false);
@@ -11428,7 +11490,7 @@ function selectSuggest(i) {
   const s = suggestItems[i];
   if (!s) return;
   hideSuggest();
-  if (s._example) { _searchAgain(s.query); return; }
+  if (s._example) { _useSearchExample(s.query); return; }
   if (s._nearPick) { _pickNearPlace(s); return; }
   // History search item: re-execute the search
   if (s._histSearch) {
@@ -12170,6 +12232,15 @@ function _searchExampleHtml(ex) {
   return '<bdi class="search-example-q" dir="' + (rtl ? 'rtl' : 'ltr') + '">' + out + esc(ex.slice(at)) + '</bdi>';
 }
 
+// A tip tapped: its syntax goes into the box, to be changed and sent. The catalog's box filters as it is typed, so there it runs.
+function _useSearchExample(query) {
+  if (mode === 'manage') { _searchAgain(query); return; }
+  hideSuggest();
+  q.value = query;
+  q.focus();
+  q.setSelectionRange(query.length, query.length);
+}
+
 function toggleSearchTips(e) {
   if (_searchTipsOpen()) { hideSuggest(); return; }
   // From the keyboard, into the box, where the arrows and Enter pick one; a
@@ -12185,9 +12256,10 @@ function toggleSearchTips(e) {
     examples.map((ex, i) =>
       '<div class="suggest-item search-example" data-i="' + i + '" onmousedown="selectSuggest(' + i + ')">' +
         _searchExampleHtml(ex) +
-        searchQueryChips(ex).map(c => _searchChipHtml(c, pool, false)).join('') +
+        '<span class="search-example-note">' + searchQueryChips(ex).map(c => _searchChipLabel(c, pool, true)).join(' ') + '</span>' +
       '</div>').join('') + '</div>';
   suggestDropdown.style.display = 'block';
+  _suggestSheet(true);
   _searchHelpExpanded(true);
 }
 
@@ -15008,6 +15080,31 @@ function _dictFollowLanguage(lang) {
     // the strings and the word ride there.
     try { win.location.reload(); } catch (e) {}
   }, function() {});
+}
+
+// An open app page (not the Dictionary, which follows by translating its word) takes the new language: the strings and
+// the direction ride in its hash, so the hash is written again from the shell's words (what it was opened with beyond
+// the words stays) and the page loaded afresh; a change after the '#' alone is only a scroll until it is reloaded.
+function _openAppStrings() {
+  if (!readerOpen || _almanacOpen || _createOpen) return null;
+  if (_tubeOpen) return _tubeStrings('');
+  if (_exchangeOpen) return _exchangeStrings('');
+  if (_reddotOpen) return _reddotStrings('');
+  if (_wikiOpen) return _wikiStrings();
+  if (_booksOpen) return _booksStrings();
+  if (_fieldguideOpen) return _fieldguideStrings('');
+  return null;
+}
+function _appFollowLanguage() {
+  var fresh = _openAppStrings();
+  if (!fresh) return;
+  try {
+    var win = document.getElementById('reader-frame').contentWindow;
+    var now = JSON.parse(decodeURIComponent(win.location.hash.slice(1) || '{}')), next = JSON.parse(decodeURIComponent(fresh));
+    for (var k in next) if (next[k] !== '' && k !== '__proto__') now[k] = next[k];
+    win.location.hash = encodeURIComponent(JSON.stringify(now));
+    win.location.reload();
+  } catch (e) {}
 }
 
 // ── Reading settings: the book reader's and Zimipedia's ──

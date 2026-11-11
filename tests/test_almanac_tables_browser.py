@@ -61,7 +61,7 @@ CALCS = [
     "convert",
     "zones",
 ]
-CONSTS = ["k_earth", "k_sunmoon", "k_bodies", "k_poles", "k_time", "k_nav", "k_physics", "k_units"]
+CONSTS = ["k_earth", "k_sunmoon", "k_bodies", "k_poles", "k_time", "k_nav", "k_physics", "k_scene", "k_units"]
 DRAWN = (
     "() => { var o = document.getElementById('tb-out'); var a = document.getElementById('tk-answer');"
     " return (o && !o.classList.contains('tb-busy') && o.firstChild && !o.querySelector('.tb-wait'))"

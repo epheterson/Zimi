@@ -115,7 +115,9 @@ const PLAIN_ROWS = {
   light_au: 'a sum of two things (light, the AU), not one article',
   zero_c: 'a conversion of one scale into another',
   clock_stops: 'the clock slider\'s own stops, not a named thing',
-  clock_span: 'how far the clock travels, a limit of this page'
+  clock_span: 'how far the clock travels, a limit of this page',
+  cloud_clear: 'a clearing round the Sun and Moon, not a named thing',
+  heli_beacon: 'the flash rate of a light, not a named thing'
 };
 const rowsSrc = grab(tbSrc, /var TB_CONST_ROWS = \{[\s\S]*?\n\};/, 'TB_CONST_ROWS');
 const rowKeys = [...rowsSrc.matchAll(/^\s+\['([a-z0-9_]+)', /gm)].map((m) => m[1]);

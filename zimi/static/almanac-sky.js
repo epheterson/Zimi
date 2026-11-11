@@ -2043,11 +2043,14 @@ function _skyWind() {
   var sp = _skyRandIn(_skyRand, SKY_CONTRAIL_WIND_KM_S), dir = _skyRand() * 2 * Math.PI;
   return [sp * Math.sin(dir), sp * Math.cos(dir)];
 }
-function _skyPlane(s, flying) {
-  var h = _skyRandIn(_skyRand, SKY_PLANE_KM), b = _skyRandIn(_skyRand, SKY_PLANE_PASS_KM), v = _skyRandIn(_skyRand, SKY_PLANE_KM_S);
+// kit: the height, nearest approach and speed ranges of what crosses (an airliner's by default; the helicopter's in almanac-skyscene.js).
+var SKY_AIRLINER = { km: SKY_PLANE_KM, pass: SKY_PLANE_PASS_KM, kms: SKY_PLANE_KM_S };
+function _skyPlane(s, flying, kit, type) {
+  kit = kit || SKY_AIRLINER;
+  var h = _skyRandIn(_skyRand, kit.km), b = _skyRandIn(_skyRand, kit.pass), v = _skyRandIn(_skyRand, kit.kms);
   var half = Math.sqrt(Math.max(0, Math.pow(_skyPlaneReach(h), 2) - b * b)), from = -half + (flying ? 2 * half * SKY_PLANE_SEEN_FROM * _skyRand() : 0);
-  return { type: 'plane', start: performance.now(), dur: (half - from) / v * 1000, dir: _skyRand() < 0.5 ? 1 : -1, h: h, b: b,
-    theta: s.center + (_skyRand() - 0.5) * s.span, L0: from, L1: half, contrail: _skyRand() < SKY_PLANE_CONTRAIL_SHARE,
+  return { type: type || 'plane', start: performance.now(), dur: (half - from) / v * 1000, dir: _skyRand() < 0.5 ? 1 : -1, h: h, b: b,
+    theta: s.center + (_skyRand() - 0.5) * s.span, L0: from, L1: half, contrail: !type && _skyRand() < SKY_PLANE_CONTRAIL_SHARE,
     wind: _skyWind(), phase: _skyRand() * SKY_PLANE_STROBE_MS };
 }
 // Which of its lights this side of it shows (each 0 to 1): a wingtip light
@@ -2125,6 +2128,7 @@ function _skyPaintPlane(ctx, s, a, ts) {
 }
 function _skyPaintActor(ctx, s, a, ts) {
   if (a.type === 'plane') { _skyPaintPlane(ctx, s, a, ts); return; }
+  if (a.type === 'heli') { _skyPaintHeli(ctx, s, a, ts); return; }   // almanac-skyscene.js
   var p = _skyActorAt(a, ts), dpr = s.dpr;
   var az = a.az0 + (a.az1 - a.az0) * p, alt = a.alt0 + (a.alt1 - a.alt0) * p;
   var x = _skyX(s, az), y = _skyY(s, alt), u = s.scale * dpr, light = _skyDaylight(s.eph.sunGeoAlt);
@@ -2202,7 +2206,8 @@ function _skySpawnMeteor() {
   _skyKick();
   _skyScheduleMeteor(s);
 }
-var SKY_SPAWNERS = { plane: _skySpawnPlane, birds: _skySpawnBirds, meteor: _skySpawnMeteor, whale: _skySpawnWhale };
+function _skySpawnHeli() { _skySpawn('heli'); }
+var SKY_SPAWNERS = { plane: _skySpawnPlane, birds: _skySpawnBirds, meteor: _skySpawnMeteor, whale: _skySpawnWhale, heli: _skySpawnHeli };
 function _skySpawn(kind) {
   var s = _skyState;
   _skyTimers[kind] = 0;
@@ -2212,6 +2217,10 @@ function _skySpawn(kind) {
     s.actors.push(_skyPlane(s, !s.planeSpawned));
     s.planeSpawned = true;
     gap = _skyRandIn(_skyRand, SKY_PLANE_GAP_S) * 1000;
+  } else if (kind === 'heli') {
+    if (typeof _skyHeli === 'function' && (g < 2 || _skyRand() < SKY_HELI_DAY_SHARE)) s.actors.push(_skyHeli(s, !s.heliSpawned));   // almanac-skyscene.js
+    s.heliSpawned = true;
+    gap = _skyRandIn(_skyRand, SKY_HELI_GAP_S) * 1000;
   } else if (kind === 'birds') {
     if (g > 2) { var b = _skyCrossing(s, 'birds', SKY_BIRD_S, SKY_BIRD_ALT); b.n = 3 + Math.floor(_skyRand() * 5); s.actors.push(b); }
     gap = _skyRandIn(_skyRand, SKY_BIRD_GAP_S) * 1000;
@@ -2511,7 +2520,7 @@ function _skyPaintBase(s, ts) {
   _skyPaintSun(ctx, s);
   _skyPaintMoon(ctx, s, _skyMoonAt(s, ts));
   if (s.hosted) _skyPaintBelowLens(ctx, s);   // the phone's Look: what is under the ground, under glass
-  if (beach) _skyPaintGround(ctx, s); else _skyPaintHorizon(ctx, s, !!gl);
+  if (beach) { if (typeof _skyPaintClouds === 'function') _skyPaintClouds(ctx, s); _skyPaintGround(ctx, s); } else _skyPaintHorizon(ctx, s, !!gl);   // clouds: almanac-skyscene.js
   s.baseBodies = s.bodies;
   s.baseDirty = !!s.moonAnim;
   s.paintedTime = s.nowTime;
@@ -2834,11 +2843,11 @@ function _skyKick() {
   if (!_almanacSkyRAF && _skyState) _almanacSkyRAF = requestAnimationFrame(_skyLoop);
 }
 
-var _skyTimers = { live: 0, iss: 0, sway: 0, sats: 0, actor: 0, plane: 0, birds: 0, meteor: 0, whale: 0 };
+var _skyTimers = { live: 0, iss: 0, sway: 0, sats: 0, actor: 0, plane: 0, birds: 0, meteor: 0, whale: 0, heli: 0 };
 var SKY_ISS_MS = 500;               // the ISS crosses the sky in minutes: a frame twice a second keeps it moving
 // The first of each after the sky is seen again (opening, coming back to the app).
 // A plane is likely already crossing (it is seen part-way along its track); a meteor's wait is its rate's.
-var SKY_FIRST_SPAWN_MS = { plane: 25000, birds: 30000, whale: 60000 };
+var SKY_FIRST_SPAWN_MS = { plane: 25000, birds: 30000, whale: 60000, heli: 40000 };
 function _skyDisarm() {
   for (var k in _skyTimers) { clearTimeout(_skyTimers[k]); _skyTimers[k] = 0; }
 }
@@ -3183,7 +3192,7 @@ function _skySegDist(px, py, x0, y0, x1, y1) {
 }
 // What a tap at (x, y) CSS px lands on: the nearest body within reach of its
 // edge, the Sun, Moon and planets before the stars.
-var SKY_TAP_RANK = { sun: 0, moon: 0, planet: 0, iss: 0, plane: 1, birds: 1, meteor: 1, boat: 1, whale: 1, star: 2, dso: 2, aurora: 3, sea: 4 };
+var SKY_TAP_RANK = { sun: 0, moon: 0, planet: 0, iss: 0, plane: 1, heli: 1, birds: 1, meteor: 1, boat: 1, whale: 1, star: 2, cloud: 3, dso: 2, aurora: 3, sea: 4 };
 function _skyHitTest(x, y) {
   var s = _skyState;
   if (!s) return null;
@@ -3209,10 +3218,10 @@ function _skyBodyKey(b) {
   return SKY_LIFE_KEYS[b.type] || null;
 }
 // What lives on the horizon and in the air, and its article (almanac-links.js SKY).
-var SKY_LIFE_KEYS = { sea: 'sky:sea', boat: 'sky:ship', whale: 'sky:whale', plane: 'sky:airliner', birds: 'sky:birds',
+var SKY_LIFE_KEYS = { sea: 'sky:sea', boat: 'sky:ship', whale: 'sky:whale', plane: 'sky:airliner', heli: 'sky:helicopter', cloud: 'sky:cloud', birds: 'sky:birds',
   meteor: 'sky:meteor', aurora: 'sky:aurora' };
 var SKY_NAME_KEYS = { sun: 'alm_sun', moon: 'alm_moon', iss: 'alm_earth_iss_name', sea: 'alm_sky_sea',
-  boat: 'alm_sky_boat', whale: 'alm_sky_whale', plane: 'alm_sky_plane', birds: 'alm_sky_birds', meteor: 'alm_sky_meteor', aurora: 'alm_sky_aurora' };
+  boat: 'alm_sky_boat', whale: 'alm_sky_whale', plane: 'alm_sky_plane', heli: 'alm_sky_heli', cloud: 'alm_sky_cloud', birds: 'alm_sky_birds', meteor: 'alm_sky_meteor', aurora: 'alm_sky_aurora' };
 function _skyBodyName(b) {
   if (b.type === 'planet') return _tp(b.name);
   if (b.type === 'star') {
@@ -3232,6 +3241,8 @@ function _skyLifeLines(b) {
     return [t('alm_sky_boat_line', { d: _orrNum(km, 'kilometer', 0) }), t('alm_sky_boat_lights'), t('alm_sky_illustration')];
   }
   if (b.type === 'plane') return [t('alm_sky_plane_line'), t('alm_sky_plane_note')];
+  if (b.type === 'heli') return [t('alm_sky_heli_line'), t('alm_sky_plane_note')];
+  if (b.type === 'cloud') return _skyCloudLines(b);   // almanac-skyscene.js
   if (b.type === 'whale') return [t('alm_sky_whale_line'), t('alm_sky_illustration')];
   if (b.type === 'birds') return [t('alm_sky_birds_line'), t('alm_sky_illustration')];
   if (b.type === 'meteor') {

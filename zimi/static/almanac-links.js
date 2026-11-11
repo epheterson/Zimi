@@ -948,6 +948,8 @@
     'sky:aurora':  { q: 'Q40609', en: 'Aurora' },
     'sky:whale':   { q: 'Q132905', en: 'Humpback whale' },
     'sky:airliner': { q: 'Q210932', en: 'Airliner' },
+    'sky:helicopter': { q: 'Q34486', en: 'Helicopter' },
+    'sky:cloud':   { q: 'Q8074', en: 'Cloud' },
     'sky:meteor':  { q: 'Q7012', en: 'Meteoroid' },
     'sky:sea':     { q: 'Q165', en: 'Sea' },
     'sky:ship':    { q: 'Q11446', en: 'Ship' },

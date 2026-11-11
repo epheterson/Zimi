@@ -63,7 +63,8 @@
     pdf_zoom_out: 'Zoom out', pdf_dark_pages: 'Dark pages', pdf_dark_in_red: 'Always on in Red', pdf_single_page: 'Single page', pdf_two_pages: 'Two pages', pdf_rotate: 'Rotate',
     pdf_about: 'About this PDF', pdf_keywords: 'Keywords', pdf_created: 'Created', pdf_modified: 'Modified',
     pdf_application: 'Application', pdf_producer: 'PDF producer', pdf_version: 'PDF version', pdf_page_size: 'Page size',
-    pdf_library: 'Library', books_author: 'Author', books_subject: 'Subject', zi_size: 'Size', zi_file: 'File', pdf_page: 'Page', pdf_failed: 'This PDF could not be opened.'
+    pdf_library: 'Library', books_author: 'Author', books_subject: 'Subject', zi_size: 'Size', zi_file: 'File', pdf_page: 'Page', pdf_failed: 'This PDF could not be opened.',
+    pdf_failed_body: 'The file is missing or damaged. The rest of the collection is fine.', pdf_failed_file: 'The file you asked for', pdf_failed_back: 'Back to the collection'
   };
   function t(k, vars) {
     var s = '';
@@ -366,9 +367,15 @@
     var task = app.pdfLoadingTask;
     if (!task) { if (n < LOAD_WAIT_TRIES) setTimeout(function () { watchLoad(n + 1); }, LOAD_WAIT_MS); return; }
     task.promise.catch(function () {
+      // The missing-page card the reader's other failures use: what, why,
+      // the file in a box, and the way back.
       var m = document.createElement('div');
       m.className = 'zp-msg';
-      m.textContent = t('pdf_failed');
+      m.innerHTML = '<main><h1>' + esc(t('pdf_failed')) + '</h1><p>' + esc(t('pdf_failed_body')) + '</p>' +
+        '<span class="zp-msg-label">' + esc(t('pdf_failed_file')) + '</span>' +
+        '<code dir="ltr">' + esc(path || fileName) + '</code>' +
+        '<button type="button" class="zp-msg-back">' + esc(t('pdf_failed_back')) + '</button></main>';
+      m.querySelector('.zp-msg-back').addEventListener('click', function () { $('.zp-back').click(); });
       ui.appendChild(m);
       showBars(true);
     });
