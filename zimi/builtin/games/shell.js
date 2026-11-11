@@ -1760,7 +1760,8 @@
     return h('div', { class: 'gs-home' }, [h('span', {}, [COPYRIGHT + ' ' + (year ? year + ' ' : ''), link])]);
   }
   Shell.homeLine = homeLine;
-  function loadScript(name, then) {
+  // Not loadScript: that name is the page's own loader above (Watch and learn), and a second declaration would replace it.
+  function loadHomeScript(name, then) {
     var s = d.createElement('script');
     s.src = HOME + name;
     s.onload = s.onerror = then;
@@ -1773,8 +1774,8 @@
       if (line) shelf.appendChild(line);
     };
     // The files can arrive before the shelf's header is parsed (shell.js runs in the head): then it waits for the page.
-    loadScript('zimihome.js', function () {
-      loadScript('zimibuild.js', function () { if (d.readyState === 'loading') d.addEventListener('DOMContentLoaded', placeHome); else placeHome(); });
+    loadHomeScript('zimihome.js', function () {
+      loadHomeScript('zimibuild.js', function () { if (d.readyState === 'loading') d.addEventListener('DOMContentLoaded', placeHome); else placeHome(); });
     });
   }
   // Measured now, again once the page is laid out (before that a phone may still report the default 980 px layout's

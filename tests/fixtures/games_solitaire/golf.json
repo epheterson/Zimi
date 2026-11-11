@@ -134,7 +134,7 @@
    "fact": "",
    "label": "shell new game",
    "moves": 0,
-   "sheet": "GolfNew gameSettingsHow to playHistoryStatsAbout this game",
+   "sheet": "GolfNew gameSettingsHow to playHistoryStatsAbout this game\u00a9 Zimi",
    "stat": "0:00",
    "state": "6b2cb8e5",
    "sub": "",
@@ -148,5 +148,5 @@
  "hseed": 45,
  "plays": "stray:7 stock stock stock tap:44>waste tap:32>waste tap:7>waste tap:34>waste stock stock stock tap:29>waste drag:41>waste stock stock tap:10>waste drag:50>waste tap:38>waste stock stock stock stock drag:22>waste stray:30 stock tap:39>waste tap:40>waste drag:15>waste tap:16>waste stock stray:42 drag:20>waste stray:5 tap:47>waste tap:46>waste stock tap:48>waste stock drag:28>waste tap:3>waste drag:3>waste tap:47>waste stock tap:8>waste stock stock stock stock tap:6>waste stock tap:36>waste tap:19>waste",
  "seed": 35,
- "trace": "ff1346e04e53ea3e4e60bbb1dc0cb86f20b795763778332cf857274983a3432c081dc85267e853a1430906fa617e301fad66aa23794f2782002fe09760210a0d8bd02e66a496cbe122cc39e91450e7f27ec32c3131ccf6fae8c572593831b3f44c6bbac4de87f6523f8a4a7241ebaa54977a410746153f1283ef3d8e31411b417965cc371b01f6dd24f78446fe350199937bbcdd1a00b0f7ba07b0c3876321a5963ad10f4bbe9384371f7107f2665517aa5b33ce63ffcf488e7de81f34f1dec042d89ea0c00f9780713e827de3d9f5b081e10f4103f4a8c4cbf746da70e595977f2fea89fb2f72d29a5c4030448540d9c224d2cf36c3c62e78ab38fbcd6ec56f34fb96565fbfd1917d1a35de4c981e51"
+ "trace": "ff1346e04e53ea3e4e60bbb1dc0cb86f20b795763778332cf857274983a3432c081dc85267e853a1430906fa617e301fad66aa23794f2782002fe09760210a0d8bd02e66a496cbe122cc39e91450e7f27ec32c3131ccf6fae8c572593831b3f44c6bbac4de87f6523f8a4a7241ebaa54977a410746153f1283ef3d8e31411b417965cc371b01f6dd24f78446fe350199937bbcdd1a00b0f7ba07b0c3876321a5963ad10f4bbe9384371f7107f2665517aa5b33ce63ffcf488e7de81f34f1dec042d89ea0c00f9780713e827de3d9f5b081e10f4103f4a8c4cbf746da70e595977f2fea89fb2f72d29a5c4030448540d9c224d2cf36c3c62e78ab38fbcd6ec56f34fb96565fbfd19185517a709061113b"
 }
