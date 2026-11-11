@@ -127,9 +127,10 @@ def test_a_bare_program_name_is_looked_up_on_the_childs_path_not_in_the_bundle(m
     app, outside = tmp_path / "app", tmp_path / "bin"
     app.mkdir()
     outside.mkdir()
+    name = "piper.exe" if sys.platform == "win32" else "piper"   # Windows finds a program by its extension (PATHEXT)
     for folder in (app, outside):
-        exe = folder / "piper"
-        exe.write_text("#!/bin/sh\n")
+        exe = folder / name
+        exe.write_text("#!/bin/sh\n", encoding="utf-8")
         exe.chmod(0o755)
     monkeypatch.setattr(sys, "frozen", True, raising=False)
     monkeypatch.setattr(sys, "_MEIPASS", str(app), raising=False)
@@ -142,5 +143,5 @@ def test_a_bare_program_name_is_looked_up_on_the_childs_path_not_in_the_bundle(m
     monkeypatch.chdir(app)
     subproc.popen(["piper", "--help"])
     assert seen[-1]["env"]["LD_LIBRARY_PATH"] == "/usr/local/lib"
-    assert subproc._resolved("piper") == str(outside / "piper")
+    assert os.path.normcase(subproc._resolved("piper")) == os.path.normcase(str(outside / name))
     assert not subproc._in_bundle("piper")

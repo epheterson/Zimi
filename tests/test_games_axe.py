@@ -65,8 +65,9 @@ def scan(browser, served, path, width, theme, lang):
         page.goto("%s/%s#lang=%s" % (served, path, lang))
         page.wait_for_load_state("load")
         quiet(page, 1200)   # built: nothing changing, nothing animating (at most the 1.2 s this once waited)
-        page.mouse.click(width // 2, 420)
-        quiet(page, 500)
+        if path != "index.html":   # the shelf's middle is a game's tile at desktop width: a tap there leaves the page
+            page.mouse.click(width // 2, 420)
+            quiet(page, 500)
         page.add_script_tag(content=AXE)
         return page.evaluate(RUN)
     finally:
