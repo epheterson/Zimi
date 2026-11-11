@@ -106,16 +106,16 @@
   }
 
   // ── Layout ──────────────────────────────────────────────────────────────
-  // A covered card shows its index row and nothing more: never its body's suit or a court's picture cut by the two cards on it
-  // (the rows step at most Z.courtStep, a court's index row).
-  var HEIGHT_SHARE = 0.125;
+  // A pyramid is not a fan: each card shows enough of itself to be recognised and tapped, the rows overlapping. The rows step so
+  // the seven fill the room under the piles, no less than a covered card's index row and no more than half a card.
+  var ROW_STEP_MAX_SHARE = 0.5, HEIGHT_SHARE = 0.125;
 
   function place(state, m, view) {
     var P = state.piles, cw = m.cw, ch = m.ch, picked = view && view.picked;
     var x = function (col) { return m.left + col * m.step; };
-    // Stock, waste and the taken pile are one row right under the bar; the pyramid under it, each covered card showing its index row.
+    // Stock, waste and the taken pile are one row right under the bar; the pyramid under it, its rows stepping to fill the height.
     var rows = Z.solitaireRows(m), y2 = rows.top, y1 = rows.cols, slots = [], cards = [];
-    var rowStep = Z.courtStep(ch);
+    var rowStep = Math.max(Z.indexStep(ch), Math.min(ch * ROW_STEP_MAX_SHARE, (rows.room - ch) / (ROWS - 1)));
     var height = Math.max(m.H, y1 + rowStep * (ROWS - 1) + ch + m.pad);
     var at = function (p) { return { x: x(COLS / 2 - 0.5 - rowOf(p) / 2 + colOf(p)), y: y1 + rowOf(p) * rowStep }; };
 

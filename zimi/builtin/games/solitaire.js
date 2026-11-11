@@ -226,7 +226,7 @@
       var yy = y2;
       P[t].forEach(function (c, i) {
         cards.push({ id: c.id, pile: t, idx: i, x: tx(n), y: yy, up: c.up, hidden: false });
-        if (i < P[t].length - 1) yy += c.up ? Z.stepAfter(c.id, step, ch) : down;
+        if (i < P[t].length - 1) yy += c.up ? step : down;
       });
       bottom = Math.max(bottom, yy + ch);
     });

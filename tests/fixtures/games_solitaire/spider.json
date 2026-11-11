@@ -8,7 +8,7 @@
    "stat": "0:00",
    "state": "4a477fb2",
    "sub": "",
-   "table": "a658ec50",
+   "table": "76e65b82",
    "undoOff": true,
    "watch": "",
    "won": false
@@ -21,7 +21,7 @@
    "stat": "0:14",
    "state": "95216a23",
    "sub": "",
-   "table": "2f9ab147",
+   "table": "f55a739",
    "undoOff": false,
    "watch": "",
    "won": false
@@ -34,7 +34,7 @@
    "stat": "0:14",
    "state": "91ae781a",
    "sub": "",
-   "table": "da129b15",
+   "table": "c4d3597",
    "undoOff": false,
    "watch": "",
    "won": false
@@ -47,7 +47,7 @@
    "stat": "0:15",
    "state": "36c52e32",
    "sub": "",
-   "table": "3ce143bd",
+   "table": "68185e80",
    "undoOff": false,
    "watch": "",
    "won": false
@@ -60,7 +60,7 @@
    "stat": "0:17",
    "state": "36c52e32",
    "sub": "",
-   "table": "b2ce2124",
+   "table": "18b71c23",
    "undoOff": false,
    "watch": "",
    "won": false
@@ -73,7 +73,7 @@
    "stat": "0:00",
    "state": "1379e860",
    "sub": "",
-   "table": "97b0eecf",
+   "table": "fe76d593",
    "undoOff": true,
    "watch": "",
    "won": false
@@ -86,7 +86,7 @@
    "stat": "0:00",
    "state": "77e0b005",
    "sub": "",
-   "table": "76307e00",
+   "table": "3bd1b8b2",
    "undoOff": true,
    "watch": "",
    "won": true
@@ -99,7 +99,7 @@
    "stat": "0:00",
    "state": "e95c585",
    "sub": "",
-   "table": "5581aaa0",
+   "table": "241e2588",
    "undoOff": true,
    "watch": "",
    "won": false
@@ -112,7 +112,7 @@
    "stat": "0:00",
    "state": "e95c585",
    "sub": "",
-   "table": "5581aaa0",
+   "table": "241e2588",
    "undoOff": true,
    "watch": "",
    "won": false
@@ -125,7 +125,7 @@
    "stat": "0:00",
    "state": "e95c585",
    "sub": "",
-   "table": "5581aaa0",
+   "table": "241e2588",
    "undoOff": true,
    "watch": "",
    "won": false
@@ -135,5 +135,5 @@
  "hseed": 43,
  "plays": "tap:358>c6 tap:92>c4 stray:41 stray:96 tap:255>c0 drag:43>c3 tap:255>c5 tap:255>c0 drag:91>c2 tap:355>c7 drag:255>c5 tap:301>c8 tap:412>c4 tap:301>c9 tap:301>c8 drag:406>c3 drag:100>c8 tap:356>c0 tap:42>c0 tap:255>c8 tap:406>c7 tap:91>c6 drag:301>c0 stray:300 tap:406>c3 tap:42>c7 tap:253>c8 tap:253>c0 stray:355 drag:39>c2 stray:198 tap:301>c3 tap:255>c4 tap:356>c5 stray:199 tap:406>c5 tap:91>c5 tap:42>c3 tap:44>c0 drag:39>c6 tap:253>c4 drag:39>c2 tap:406>c7 stock tap:310>c7 tap:403>c3 stock tap:250>c0 drag:354>c1 tap:45>c2 tap:252>c2 drag:50>c4 drag:308>c8 drag:354>c5 tap:354>c1 tap:309>c4 drag:45>c0 stock tap:50>c6 tap:304>c1 tap:308>c5 tap:308>c6 tap:252>c3 tap:304>c0 drag:205>c9 tap:45>c2 drag:355>c2 tap:250>c2 tap:45>c0 drag:254>c6 drag:414>c4 tap:149>c2 tap:411>c8 tap:411>c6 tap:252>c1 tap:250>c1 tap:411>c8 tap:304>c2 tap:304>c0 tap:201>c8 tap:50>c7 tap:355>c5 tap:50>c6 tap:355>c0 tap:355>c5 tap:308>c4 stock tap:154>c1 stock drag:360>c3 tap:247>c4 drag:150>c7 tap:150>c8 tap:99>c2 tap:150>c7 tap:150>c2 tap:409>c2 drag:99>c3 drag:361>c0 drag:47>c2 stray:403 drag:411>c6 drag:360>c3 tap:48>c0 tap:47>c8 tap:413>c1 tap:47>c0 tap:150>c0 tap:154>c2 tap:254>c2 tap:99>c8 tap:47>c2 drag:99>c0 drag:307>c8 tap:248>c9 drag:150>c6 tap:150>c2 tap:254>c6 drag:150>c0 drag:201>c4 drag:410>c2 tap:409>c6 drag:410>c8 tap:150>c2 drag:47>c4 tap:409>c4 drag:307>c2 stray:154 tap:201>c6 stray:404 drag:150>c0 tap:254>c4 tap:411>c8 tap:409>c1 tap:414>c2 stray:257 drag:409>c0 tap:307>c6 drag:410>c8 tap:414>c4 tap:47>c1 tap:362>c2 drag:303>c0 tap:414>c7 tap:47>c7 tap:356>c2 drag:411>c1 stray:299 tap:411>c1 tap:307>c8 tap:356>c5 tap:410>c8 tap:304>c2 tap:154>c4 tap:150>c4 tap:201>c8 tap:356>c0 drag:254>c2 tap:356>c5 tap:304>c0 drag:47>c6 stray:43 drag:411>c7 tap:306>c6 tap:411>c4 tap:362>c1 drag:93>c0 drag:45>c1 tap:99>c7 tap:304>c4 drag:308>c9 stray:408 tap:409>c6 tap:100>c7 tap:100>c8 tap:47>c1 tap:99>c6 tap:152>c7 tap:99>c9 drag:47>c7 drag:154>c2 drag:146>c5 drag:414>c4 drag:201>c2 drag:307>c1 drag:201>c1 drag:307>c8 tap:45>c2 tap:184>c6 tap:360>c1 tap:153>c3 stray:257 drag:351>c1 tap:353>c8 stock tap:291>c2 stray:48 stock tap:148>c4 tap:393>c2 stock tap:354>c2 tap:80>c2 stock tap:258>c4 tap:146>c2 stray:248 tap:356>c4 tap:290>c4 dead-end tap:290>c4 dead-end tap:290>c4 dead-end drag:290>c4 dead-end tap:290>c4 dead-end tap:290>c4 dead-end drag:290>c4 dead-end tap:290>c4 dead-end tap:290>c4 dead-end tap:290>c4 dead-end tap:290>c4 dead-end tap:290>c4 dead-end drag:290>c4 dead-end drag:290>c4 dead-end drag:290>c4 dead-end tap:290>c4 dead-end drag:290>c4 dead-end tap:290>c4 dead-end tap:290>c4 dead-end tap:290>c4 dead-end drag:290>c4 dead-end tap:290>c4 dead-end tap:290>c4 dead-end tap:290>c4 dead-end tap:290>c4 dead-end tap:290>c4 dead-end tap:290>c4 dead-end tap:290>c4 dead-end drag:290>c4 dead-end tap:290>c4 dead-end tap:290>c4 dead-end tap:290>c4 dead-end tap:290>c4 dead-end tap:290>c4 dead-end tap:290>c4 dead-end tap:290>c4 dead-end drag:290>c4 dead-end stray:145 drag:290>c4 dead-end drag:290>c4 dead-end drag:290>c4 dead-end drag:290>c4 dead-end tap:290>c4 dead-end tap:290>c4 dead-end drag:290>c4 dead-end tap:290>c4 dead-end tap:290>c4 dead-end drag:290>c4 dead-end tap:290>c4 dead-end stray:398 tap:290>c4 dead-end tap:290>c4 dead-end tap:290>c4 dead-end tap:290>c4 dead-end drag:290>c4 dead-end tap:290>c4 dead-end tap:290>c4 dead-end drag:290>c4 dead-end tap:290>c4 dead-end drag:290>c4 dead-end drag:290>c4 dead-end tap:290>c4 dead-end tap:290>c4 dead-end tap:290>c4 dead-end tap:290>c4 dead-end tap:290>c4 dead-end tap:403>c0",
  "seed": 33,
- "trace": "4abc37d6cf555e232995aac1d8e51e56836fe588a58dc05e14dd8d2c95ff0d49b3b24f0468c862fa1b451ad85ebf2ec81624b1d62ad87aebef816011999c681d5bcb4bd768af3b5791a4bb06720bab71cbef678a10ceb962d82825e5a72a59f62fd14173154af0c743540f177a76e108d4f2d2b554ee2ba7351842d3ee2958f803de1ce58cc5797de5263812a2142e45208512461da659ac82127150911680d4d825da1f4131ceb8818e525c5c1b7d7f124808d93918d8f177d30be2f19c82a15353a849420ee735c9434b1fafa683783892b61201707290f146177d7367118c366d2ab834ab27bad7c7499d3951ddaab8beceebb98184c03bfd823e4588d2065f7bbfdbbe0de398594312d768cea2200bdd8180c7964da981689e9a2d684712e56187a041b77d4417f2aec30af7804f0bb484171dadcef5c5822eb1e0c84da50da23f4f2633e392c096b9cd8addd79921a7fe9fd81e27c2884b85b053204ca9312cc71d67274527264763a07a1759190de810d7ee89cf016a2574a77033cb022d0359b0c2bd1b22525cb2a2d025ae7db7b2912893c4c68607885ff159ed3d756a6062f17ef5729c3f8fa7c3046ce8d093d37eab54bce188ea843217d5d25db40afeb7fc40f361952cca743462cae3524d16a06176a9aff949696eab7f088536f73404813a246729f2347a185b6dac77d63f451c8fee160ebb8b61040764c7b8135744cc3fd7fc212aabe82834f1003d17b18affd72882bdfc511d1b57b1e05a174daa5eae90b3fd29ddf1d27ca0fae033ba6adafb29a622c334fc11eba403f0b7c71e4f1fd024da23ba48d69356aa31969b4d569dd1147c08adc8cb89ce127be70c348552dd1e2bbb736666d7a22a978d246085e990d3e960e24372195021bc5b92047cb454d64151d10c255d6c418dc5457e1b99334eac61addf1030dde2bbd49c068d768405db1ab58c9ccccf8af1c77c7992ac20ab11313863cd8ecee0469f2a2bc8413d582e5454a0c03e4052fea2bc9278eb3381f10a5e43d3c86ba428a12942dc69c1777c5ac1b549b42bf06c51c5aefb8193bc850d14028d8b7043033e1fc5b2775130141b058a9858ebd1fe4032deba42721ee931509baa2de6a2c2dba063943e171d53461c658061379bad602ea6668e8be38641d2486a5598cffeee6c50be7fa5ec1a76e01a34473923de795b0045b3b46a7e248e0a6247e145ea51415d51e1df720bd2ab604641aec9a2c667f635127483ab7f0e6c629ac8b0062660c79b05cba748046b89a81c87076afb4d2da7747dda35beecff960044484012c2af03282dd60e1161ac1f76678fbbd3345df0bbb88a4b45a4b53eb90462b291258af3e7f78f506cff81eb5b994258e93fe1e8b7409aa5a7fb4d9a"
+ "trace": "774ab31fb574b01e9b39110f8207fb9483c5a1ce68fa90cffc000ad70dd0027ec09fae26e3fd63c2c7b30a1e7711f8684eee92c344ea226f0520daa330c012d05a6f6860fdbb97f9a6d064c8260951ff3ad4aed7be6a6b720f76f7709f092fdcfe2fde673e8e741043c5b9bc41120e25160bcdd4937a02390a40756ce02d60043a98fef9cd4165f67fd7c7ff32ce28655cef18beb2f828f043e1a396d73068b57ae3a9742dfbd2d895a1bde8b2965dd6b5391b920ee80a2accc52324654f4b5e6f629b6d49bccc36b691328a09c82138f2bd9832d18ebd2a599b1d3b0bb40a4c10bfa32c34f2bea0b86b7cf735ba8148d5aadd1e1b42056656cac3ed99c5f930928a9830d9d5fe0e902172930ecd1e40d9eed5478f44f301eae9c7a098026f0fec3288e38437b1ebff63da651f3633b12e7d7d7a41d6fd80afa48304478342d8edcbd6064555d5f2569768cd0dd4a879c3d984f90708fd63e710d1b7bf02e928a270bbfe115c8ba672084ab1d48fabe14d453055d793685af2f73ebe4cb598953425c11ae19580aeedd2784115d621aa40462d3835c1dcd006a96116180e23e0995af2dbf5dccb402942ecc1bfdf59a2d8062fe01e10ec67315f0e4f6b3d946ef52943d93101ab2518280d6c26fb0cafbaddf5830331ea1baf8fc4a2338fdeb654a2df2657c5c7ce6e445217e609a55f3a5222b64dce533bd34937cb4ddb496c22c1c8aac1f63f6233ba079cb1a55fb9b7c502cb8455a4628f763f7fcda4471b0fe517515715bea1b1e7f4204d147a3c466ca8f28f7391b23eee1c2a28832dc5835c8d45367b8cada16cd433a0e4eaba36dcd3dd0049b37121aa875048b853664d262b9b1681670b4390d5cd4187312e5ccf912f5d842035ec3617f59bc954648f6227330f161b52579be65b1510e2fc1c00bb74bffab94ba441194e8897d80db6d37c1d9847f3e3b798f657717411c9d1ade00058918528a8151445e99e94f5848c52c1ec2cfc4423612442a80499ba4827a0ec6ef1b01b8f83dce76a111223034ca6100edcf5ab01fbd8c87ecef4e96fbda48fb2005024ecf9aa2e3cbd52ac35919016f142de2fb11b1ef8dd4eaf27033ffc0fc0bdc8a75300357c2f973c2233a93e1c688cfed3ee599802c0f60c8bc22258746e9f513ea610bc71b8fb88f83d8c6fd633f5292b3f3ee6a65a2683d1526103674b5b3dc61644ad9e2873e6bccddf770b497e66f93404026ace27aa145d00387fa341305975b8d4f6f608f30050c7f4c90b8c91740d147a5243e6fc0c75b168b100f36d37d099daf6ca782bd4556a62dbe8b53282d8c4398eca16a511b49687b8ed8c1075272427c6edc2f55f328acf4f1493e1859cca77e4f067239ab8079acbe1c3bfc9cb88d9cb"
 }

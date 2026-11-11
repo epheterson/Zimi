@@ -276,10 +276,9 @@ check(Z.shuffled(() => 0.5).length === 52 && new Set(Z.shuffled(Math.random)).si
   check(courtIds.every(c => /<use href="#zc-ct-[JQK][CDHS]"/.test(Z.faceMarkup(c, false))), 'all twelve French courts draw their courts.js figure from the sprite');
   check(faces.every(f => /<svg x="2.5" y="40" width="95" height="97.5" viewBox="[\d.]+ 0 [\d.]+ 1000">/.test(f)), 'and carry it inline as a standalone image: the figure crown to waist filling the card under the index, 2.5 units from the sides and bottom');
   check(courtIds.every(c => (Z.faceMarkup(c, false).match(/class="zc-ct /g) || []).length === 2), 'a court on the page has a frame for each index arrangement');
-  // A covered court in a fan shows its index row and none of its picture (frame top at 40 of 140: its rule clear of the Q's tail by 2): the step after it is cut to
-  // courtStep; a number card keeps the fan's step.
+  // A covered face-up card in a fan shows its index row only, whatever its rank (a court's frame top is at 40 of 140): one step, cut to indexStep.
   const ch = 70, units = st => st / ch * 140;
-  check(Math.abs(units(Z.courtStep(ch)) - 39.5) < 1e-9 && Math.abs(units(Z.stepAfter(id('KS'), 0.44 * ch, ch)) - 39.5) < 1e-9 && Z.stepAfter(id('9S'), 0.44 * ch, ch) === 0.44 * ch && Z.stepAfter(id('QH'), 10, ch) === 10, 'a fanned court shows its index row only; number cards keep the fan');
+  check(Math.abs(units(Z.indexStep(ch)) - 39.5) < 1e-9 && Math.abs(Z.FAN_UP_SHARE * ch - Z.indexStep(ch)) < 1e-9, 'a fanned covered card shows its index row only, whatever its rank');
   const bytes = fs.statSync(path.join(dir, 'courts.js')).size;
   check(bytes < 200 * 1024, 'courts.js stays under 200 KB (' + Math.round(bytes / 1024) + ' KB)');
   const ace = Z.faceMarkup(id('AS'), false);
@@ -287,14 +286,14 @@ check(Z.shuffled(() => 0.5).length === 52 && new Set(Z.shuffled(Math.random)).si
 }
 
 // A fanned column on a phone with room to spare shows each face-up card's index and clean paper down to the body's suit (no pip
-// grid any more): the step opens to FAN_UP_SHARE, 0.44 of the card, short of the suit's top at 0.49.
+// grid any more): the step opens to FAN_UP_SHARE, the index row (39.5 of 140 units), a court's frame top at 40.
 {
   const phone = { cw: 50, ch: 70, pad: 6, left: 6, step: 54, W: 390, H: 780, cols: 7 };
   const s = K.newState(deck, 1), col = s.piles.t6.slice(-1)[0];
   s.piles.t6.push({ id: (col.id + 13) % 52, up: true }, { id: (col.id + 26) % 52, up: true });
   const ys = K.place(s, phone).cards.filter(c => c.pile === 't6').map(c => c.y), n = ys.length;
   const step = ys[n - 1] - ys[n - 2];
-  check(Math.abs(step - phone.ch * Z.FAN_UP_SHARE) < 0.5 && Z.FAN_UP_SHARE >= 0.4 && Z.FAN_UP_SHARE <= 0.47, 'a face-up card in a roomy fan shows its index and clean paper: ' + step);
+  check(Math.abs(step - phone.ch * Z.FAN_UP_SHARE) < 0.5 && Math.abs(Z.FAN_UP_SHARE * 140 - 39.5) < 1e-9, 'a face-up card in a roomy fan shows its index and clean paper: ' + step);
 }
 
 console.log(failures ? failures + ' failure(s)' : 'all passed');

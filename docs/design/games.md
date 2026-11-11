@@ -129,8 +129,7 @@ Solitaire, Spider, Pyramid and TriPeaks scale their columns to the width and let
 The French card face is made for a card about 50px wide:
 - One index: the rank at 0.26 of the card's width (Barlow outlines, optical sizes per glyph), its suit beside it in the top right for piles that fan down, under it for hands that fan sideways (the table games). No second corner.
 - One suit in the body, low on the card, and no pip grid. Courts are the Goodall figure, crown to waist, filling the card under the index: one even margin of 2.5 units left, right and bottom (frame 0.95 of the width, 0.92 of the height under the index).
-- A covered court in a fan shows its index row only: the card after a court steps at most courtStep, whatever the fan's step for number cards.
-- A fanned face-up card shows its index and clean paper, at most 0.44 of its height; a face-down card shows 0.12, whatever the room.
+- A covered face-up card in a vertical fan shows its index row only, whatever its rank: the step is at most indexStep (39.5 of 140 units), closer when a long column needs it; a face-down card shows 0.12, whatever the room. Pyramid's rows are not a fan: they step to fill the height, from indexStep up to half a card.
 - Columns stand apart by 0.08 of a card's width.
 - A pressed card lifts at once (scale 1.06, a deeper shadow); a flight takes 120ms plus 0.35ms a pixel, at most 300ms; a refused drop goes home with a small overshoot and no words (a second refusal running rings where it could go); a card turned over waits for the card that uncovered it to land. Card sounds and the buzz only with Sound on.
 

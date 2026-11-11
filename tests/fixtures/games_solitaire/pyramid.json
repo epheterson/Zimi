@@ -8,7 +8,7 @@
    "stat": "0:00",
    "state": "964eb25d",
    "sub": "",
-   "table": "7c865c95",
+   "table": "60b81517",
    "undoOff": true,
    "watch": "",
    "won": false
@@ -21,7 +21,7 @@
    "stat": "0:02",
    "state": "8bc98754",
    "sub": "",
-   "table": "8b8a93b0",
+   "table": "789d8e2b",
    "undoOff": false,
    "watch": "",
    "won": false
@@ -34,7 +34,7 @@
    "stat": "0:03",
    "state": "6ad743b6",
    "sub": "",
-   "table": "55813ca7",
+   "table": "f4de536f",
    "undoOff": false,
    "watch": "",
    "won": false
@@ -47,7 +47,7 @@
    "stat": "0:10",
    "state": "c9ca7181",
    "sub": "",
-   "table": "a291e39b",
+   "table": "ccdc1702",
    "undoOff": false,
    "watch": "",
    "won": false
@@ -60,7 +60,7 @@
    "stat": "0:10",
    "state": "ffdd293a",
    "sub": "",
-   "table": "9d03f016",
+   "table": "23438777",
    "undoOff": false,
    "watch": "",
    "won": false
@@ -73,7 +73,7 @@
    "stat": "0:11",
    "state": "c9ca7181",
    "sub": "",
-   "table": "772f672a",
+   "table": "a928f705",
    "undoOff": false,
    "watch": "",
    "won": false
@@ -86,7 +86,7 @@
    "stat": "0:01",
    "state": "e1c45a81",
    "sub": "",
-   "table": "9645e839",
+   "table": "d3979a4f",
    "undoOff": false,
    "watch": "",
    "won": false
@@ -99,7 +99,7 @@
    "stat": "0:00",
    "state": "570e9d",
    "sub": "",
-   "table": "f82bd54e",
+   "table": "7416686b",
    "undoOff": true,
    "watch": "",
    "won": false
@@ -112,7 +112,7 @@
    "stat": "0:00",
    "state": "66eb2fb0",
    "sub": "",
-   "table": "704d4357",
+   "table": "93ce3138",
    "undoOff": true,
    "watch": "",
    "won": true
@@ -125,7 +125,7 @@
    "stat": "0:00",
    "state": "66eb2fb0",
    "sub": "",
-   "table": "704d4357",
+   "table": "93ce3138",
    "undoOff": true,
    "watch": "",
    "won": true
@@ -138,7 +138,7 @@
    "stat": "0:00",
    "state": "45879585",
    "sub": "",
-   "table": "54c301ab",
+   "table": "4aca1185",
    "undoOff": true,
    "watch": "",
    "won": false
@@ -148,5 +148,5 @@
  "hseed": 44,
  "plays": "pair:p6_1>p6_3 stock pair:p6_1>p6_3 pair:p6_1>p6_3 pair:p6_1>p6_3 pair:p6_1>p6_3 pair:p6_2>p6_5 pair:p6_2>p6_5 pair:p6_4>waste pair:p6_4>waste pair:p5_4>out stock stock stock stock stock stock stock stock stock pair:p6_6>waste pair:p6_6>waste stock stock pair:waste>out stray:23 stock stock stock stock stock stock pair:p5_5>waste pair:p5_5>waste stock pair:p5_1>waste stray:8 stock stock stock pair:p6_0>waste stray:1 pair:p6_0>waste stock pair:p5_1>waste pair:p5_1>waste stock stock stock stock stock stock stock stock stock stock stray:45 stock stock pair:p5_0>waste pair:p5_0>waste pair:p4_0>p5_3 stock pair:p4_0>p5_3 pair:p4_0>p5_3 pair:p4_0>p5_3 pair:p4_0>p5_3 pair:p4_3>out stock stock stock pair:p5_2>waste stock stock stock stock stock stock stock stock stock stock stock stock stock stock pair:p4_4>waste pair:p4_4>waste stock stock stock stock pair:p5_2>waste pair:p5_2>waste pair:p3_3>p4_2 pair:p3_3>p4_2 pair:p3_2>waste stray:16 pair:p3_2>waste stock stock stock pair:p2_2>waste pair:p2_2>waste stock stock pair:p6_1>p6_6 stray:21 stock pair:p6_1>p6_6 pair:p6_1>p6_6 pair:p6_3>out stray:45 stock stray:2 stock stock stock pair:p6_0>waste pair:p6_0>waste stray:28 stock pair:p6_5>waste pair:p6_5>waste stock pair:p6_2>waste pair:p6_2>waste pair:p6_4>out",
  "seed": 34,
- "trace": "91bb3b9ec42cbdeb7032c25c334639c3227d43af00a04551c357086d4e5f202f450995eeb6c52e7aeb95a1de7da09492123af95dabaa0d62ccd5c3d76eadb0959109495a9d19a60ed83124738feeea40b049b8c4ececd4c23bb4dd606264746b176c984393e96160b714618f94b00f97a5960d37d02c19c1b65c20ab9bab969d17987041bb438a92dea5b07d4243bbd480c6c27b2ec544cbe02acd11889177339758e3bd4b8d101ef8def2e94962d5c0a9e1cd7dd3c8f6e8a922adb42f9ec36ca475ac880a152130e323bd0f67928ccf14003b8f6b7bf1e562b0c68af2d937af8b5dcb7221b3df0b1eb18c1283bd85cf5d5429177c2eb5669c47208d85998a2891848ad663a7242f2cb224ed279ad0fbb141b6bc0da1b7fd6691caabdca6535bfbb462924119974a87998b58ccaa272b0364aa6759775cb11508a2538c7807b25f80ca060fd52dadb5318e704e4001eab3d82201072ad2011b7a30d4565d255f7174c2a1d114cc0e9627acfd84e89edcbd58ec6a8bf4c77623c5ee6f77e40a517dd2c69d6323131c19a11c799be9d103f640125d1ef5757ce57bd66b698f5253066a28d20632798e55716b6db475adfa76959f235343a4f250ce5e0fa6454936e6d868a0d60977d2b86f96b936fcc3638c1a0b7ae449e70e9e87fab605763ee69ded7ddc934db8da99825b472c31bc4e2168a64ca23b593279f2c809a6673c46067106a12bd5cfa59f5633dde00588dcbbe7ecd3c723c05c11327041310ab78517bb24e4115334dbe8380c4b29dcf3fa6fcc8fa134e811634488d3fcb591de9d30bbf618"
+ "trace": "df5efa1fb0fa376b8f46651ddcf40d1d5c6d64668a26c367d44ae55dc8991fbd4d7a4773e83fdbd37ef93ffea2e644667d04f926a2997867b3190a1bc2c1da9da41368fb9a535fe667c84e77d730d610d11686a4551153ea04ac2b515e543c846910dc5a8bca95d89db2ead7b59f230f4311caa929f04e7a0a47f876cb39750302094ab73f76825e334110e023caf2b8106d2544cbc4ffdfeb4167843eb90ee6409784629ce60c55c23d87a05570df51ab51a721283418b7a389f77c6462f79e3c7aa789dec1529110a49f8d5d3cbcfd8bd25228a4a58c2c6c869e8e1bc13eb63018b755c8b3ba77b9d4884bc3e387bd75cb6a8d7b205539960de641d45b7bf7824bf70fba89b48c6c2a3dbfb77841a431fd977384f058e1a079f6a33c5ab709ba0a2d216ac8c961b69cd5fa965c1bc0df87bbcbd78839e72aa921ae374b989275bc813c8b4234dd86e564e318f3fe64c7a72d48462dec4f2edaf65b60c31eb2706000eee1d464cafa2940901fd0c9eb2ab43cde2163daa4e54dc428dfbdc17ba82c3d77ed232016204b993ab458f913b71c24f483b5024001795c96b513c2a764933ff51ceced8dc7f654d81ce6fef91ecea0f1d06b6c98efdba3c1e012f688171aa93eaed68fc43dabf268face8db9ed2144a45c73885d1ef33fef01dce087db1e624841cbb339898d20dd66cae68eaceb99659189bb776b8364f788589f32ded255838121943a31b19ebba5aa901fdcee8a40c7cfcb453b068632f2233e24a4784652aa768bd67c0a105818b5565eff51d446ed8bb9f9e508866187b2ecef9e9f8345"
 }

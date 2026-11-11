@@ -78,7 +78,7 @@
 
     COLUMNS.forEach(function (c, n) {
       var yy = y1;
-      P[c].forEach(function (id, i) { cards.push({ id: id, pile: c, idx: i, x: x(n), y: yy, up: true }); yy += Z.stepAfter(id, step, ch); });
+      P[c].forEach(function (id, i) { cards.push({ id: id, pile: c, idx: i, x: x(n), y: yy, up: true }); yy += step; });
     });
     P.stock.forEach(function (id, i) { cards.push({ id: id, pile: 'stock', idx: i, x: x(0), y: y2, up: false, hidden: i < P.stock.length - 2 }); });
     P.waste.forEach(function (id, i) { cards.push({ id: id, pile: 'waste', idx: i, x: x(1), y: y2, up: true, hidden: i < P.waste.length - 2 }); });

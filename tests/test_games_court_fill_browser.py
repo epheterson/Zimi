@@ -109,9 +109,11 @@ def test_a_court_frame_fills_the_card_under_the_index(browser, served, width, he
 
 
 @pytest.mark.parametrize("width,height", SIZES, ids=lambda v: str(v))
-def test_a_covered_court_shows_its_index_row_only(browser, served, width, height):
-    # K, Q, J, 10 of a suit fanned face up in each of four columns: the K, Q and J are covered.
-    spec = {"t%d" % s: [[cid(r, s), 1] for r in (13, 12, 11, 10)] for s in range(4)}
+def test_a_covered_card_shows_its_index_row_only_whatever_its_rank(browser, served, width, height):
+    # A mixed run face up in each of four columns: courts and number cards alternate. Every covered card shows the same index row
+    # step (so no frame shows under a court and the column keeps one rhythm); the last card is whole.
+    ranks = (13, 12, 11, 10, 9, 8, 7)
+    spec = {"t%d" % s: [[cid(r, s), 1] for r in ranks] for s in range(4)}
     ctx, page = open_table(browser, served, width, height, spec)
     rows = page.evaluate(
         """(spec) => {
@@ -119,18 +121,23 @@ def test_a_covered_court_shows_its_index_row_only(browser, served, width, height
         Object.keys(spec).forEach(col => {
           const cards = spec[col].map(([id]) => document.querySelector('.zc-card[data-id="' + id + '"]'));
           cards.slice(0, -1).forEach((c, i) => {
-            const r = c.getBoundingClientRect(), f = c.querySelector('.zc-ct-row .zc-rule').getBoundingClientRect();
-            out.push({ id: spec[col][i][0], shown: cards[i + 1].getBoundingClientRect().top - r.top, frameTop: f.top - r.top, ch: r.height });
+            const r = c.getBoundingClientRect(), f = c.querySelector('.zc-ct-row .zc-rule');
+            out.push({ id: spec[col][i][0], shown: cards[i + 1].getBoundingClientRect().top - r.top, ch: r.height,
+                       frameTop: f ? f.getBoundingClientRect().top - r.top : null });
           });
+          const last = cards[cards.length - 1].getBoundingClientRect();
+          out.push({ last: true, bottom: last.bottom, inside: last.bottom <= innerHeight || document.documentElement.scrollHeight > innerHeight });
         });
         return out;
     }""",
         spec,
     )
-    assert len(rows) == 12
-    for r in rows:
+    steps = [r for r in rows if "shown" in r]
+    assert len(steps) == 4 * (len(ranks) - 1)
+    for r in steps:
         assert r["shown"] > r["ch"] * 0.15, r  # the index row is still readable
-        assert (
-            r["shown"] <= r["frameTop"] + 0.01
-        ), r  # and none of the frame or its picture shows
+        if r["frameTop"] is not None:
+            assert r["shown"] <= r["frameTop"] + 0.01, r  # none of a court's frame or picture shows
+    assert max(r["shown"] for r in steps) - min(r["shown"] for r in steps) < 1.0, steps  # one rhythm, courts and numbers alike
+    assert all(r["inside"] for r in rows if r.get("last")), rows
     ctx.close()
