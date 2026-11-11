@@ -90,7 +90,7 @@ def tap_card(page, card_id):
 
 
 
-# ── the fan opens into the height the phone has ──────────────────────────────
+# ── a cascade's fan shows each covered card's index row ──────────────────────────────
 
 # The tallest column's cards by their own boxes: { cards, the widest step between two, card height, lowest edge }.
 LONGEST_COLUMN = """() => {
@@ -105,7 +105,7 @@ LONGEST_COLUMN = """() => {
   const tops = [...new Set(longest.map(x => x.top))];
   return { n: tops.length, step: Math.max(...tops.slice(1).map((t, i) => t - tops[i]).filter(g => g <= longest[0].h)), h: longest[0].h, bottom: Math.max(...longest.map(x => x.bottom)), height: innerHeight };
 }"""
-OLD_FAN_SHARE = 0.34  # ZimiCards.FAN_UP_SHARE before the fan learnt to grow
+INDEX_ROW_SHARE = 39.5 / 140
 
 
 @pytest.mark.parametrize(
@@ -130,12 +130,10 @@ def test_the_fan_of_a_cascade_opens_into_the_height_the_phone_has(
 ):
     open_game(phone, site, name, ready, 40)
     col = phone.evaluate(LONGEST_COLUMN)
-    assert col["step"] > col["h"] * (OLD_FAN_SHARE + 0.1), (
-        "the fan still huddles: %r" % col
-    )
+    # One rule for every vertical fan: a covered face-up card shows its index row (39.5 of 140 units of the card), no more; the
+    # column still fits the phone with its last card whole.
+    assert col["step"] <= col["h"] * INDEX_ROW_SHARE + 1, "the fan opens past the index row: %r" % col
     assert col["bottom"] < col["height"], "the fan runs off the phone: %r" % col
-    # With air under the lowest card: a fan that grew does not sit on the bottom edge.
-    assert col["bottom"] < col["height"] - 20, "the fan sits on the phone's bottom edge: %r" % col
     assert not phone.errors
 
 

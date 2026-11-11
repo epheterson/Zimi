@@ -918,7 +918,7 @@
   var SNAP_FELT = '#285c43', SNAP_CREAM = '#fdfcf8', SNAP_RED = '#b3261e', SNAP_BLACK = '#1b1b1b', SNAP_BACK = '#23232b', SNAP_BACK_EDGE = '#e8710a', SNAP_RX = 5;
   var SNAP_SUIT = ['\u2663', '\u2666', '\u2665', '\u2660'];
   var WIDE_RATIO = 1.25, PLACE_BUZZ_MS = 8, MAX_CARD_W = 120, CARD_ASPECT = 1.4, CARD_H_SHARE = 0.14, DRAG_SLOP = 6, SETTLE_MS = 300, Z_HOT = 500, Z_DRAG = 1000;
-  var DEAL_STAGGER_MS = 30, DEAL_SPAN_MS = 900, MIN_CARD_W = 24, TIGHT_PAD = 2, TIGHT_GAP = 2, GAP_SHARE = 0.08;
+  var DEAL_STAGGER_MS = 30, DEAL_SPAN_MS = 900, MIN_CARD_W = 24, TIGHT_PAD = 2, TIGHT_GAP = 2, GAP_SHARE = 0.08, DENSE_COLS = 9;   // DENSE_COLS: nine or ten columns (Spider, Forty Thieves) take the whole width to the table's 2 px edge: the cards are small enough already
   // A flight takes FLY_BASE_MS and FLY_PER_PX_MS for each pixel it travels, at most FLY_MAX_MS: a card sent across the table is seen
   // to travel, one settling a few pixels does not dawdle. A turned card starts to turn as the card that uncovered it lands: the
   // flight's ease-out has it all but there at TURN_AT_LANDING of its time (a wait of the whole flight read as a pause on video).
@@ -965,7 +965,7 @@
       // A game whose cards sit edge to edge (Pyramid's rows, where a gap would show the covered card's suit) asks for o.gapShare 0.
       if (o.tight) {
         var share = o.gapShare === undefined ? GAP_SHARE : o.gapShare;
-        pad = Math.max(TIGHT_PAD, Math.min(pad, 8)); gap = share ? Math.max(TIGHT_GAP, Math.round((W - 2 * pad) / (cols + (cols - 1) * share) * share)) : 0;
+        pad = cols >= DENSE_COLS ? TIGHT_PAD : Math.max(TIGHT_PAD, Math.min(pad, 8)); gap = share ? Math.max(TIGHT_GAP, Math.round((W - 2 * pad) / (cols + (cols - 1) * share) * share)) : 0;
       }
       var cw = Math.floor((W - 2 * pad - (cols - 1) * gap) / cols);
       cw = Math.max(MIN_CARD_W, Math.min(cw, MAX_CARD_W, Math.floor(H * ((wide && o.wide.heightShare) || o.heightShare || CARD_H_SHARE))));
@@ -1619,18 +1619,14 @@
   // A face-up card in a vertical fan shows at most its index row (INDEX_ROW_SHARE of its height), whatever its rank. Short columns
   // spread to it and use the screen; long ones close up towards the game's own floor.
   var FAN_UP_SHARE = INDEX_ROW_SHARE;
-  // A fan with height to spare opens up to this share of a card's height per step, instead of huddling at FAN_UP_SHARE at the top
-  // of a tall phone; a long column still shrinks to fit (fanStep takes the smaller of room and this).
-  var FAN_GROW_SHARE = 0.8, FAN_GROW_AIR = 0.6;   // ... and keeps this many card heights of air under the lowest card
   function fanStep(weight, room, ch, maxStep, minStep) {
     return Math.max(minStep, Math.min(maxStep, weight > 0 ? (room - ch) / weight : maxStep));
   }
 
-  // The step of a cascade's fan: as open as the free height allows (up to FAN_GROW_SHARE of a card), the longest column (weight, in
-  // steps) still inside room, and air left under it unless the column needs the room.
+  // The step of a cascade's fan (Spider, Yukon, Scorpion...): the index row, closing up only when the longest column (weight, in
+  // steps) would not fit room. The same rule as every other vertical fan.
   function growStep(weight, room, ch, minStep) {
-    var fit = fanStep(weight, room, ch, ch * FAN_GROW_SHARE, minStep);
-    return weight > 0 ? Math.max(minStep, Math.min(fit, Math.max(ch * FAN_UP_SHARE, (room - ch - ch * FAN_GROW_AIR) / weight))) : fit;
+    return fanStep(weight, room, ch, ch * FAN_UP_SHARE, minStep);
   }
 
   // ── The solitaire page ───────────────────────────────────────────────────
