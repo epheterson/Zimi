@@ -414,7 +414,9 @@
 #alm-hc-illum-card { order: 1; } .alm-sf-moon { order: 2; } #alm-hc-nextfull-card { order: 3; }
 .alm-sf-sunrise { order: 4; } .alm-sf-sunset { order: 5; } .alm-sf-daylight { order: 6; }
 #almanac-head .alm-cards { grid-template-columns: repeat(3, minmax(0, 1fr)); }
-#almanac-head .alm-card-lbl { letter-spacing: 0.03em; }   /* three across: "Next full moon" fits the tile */
+/* Three across: a label is never cut. It takes a second line (a long word breaks where its language hyphenates, or at the
+   tile's edge), every label has the two lines' room and rests on its value, so every tile is as tall as the next. */
+#almanac-head .alm-card-lbl { letter-spacing: 0.03em; display: flex; align-items: flex-end; justify-content: center; min-height: 24px; line-height: 12px; text-align: center; white-space: normal; overflow-wrap: anywhere; hyphens: auto; text-overflow: clip; }
 #almanac-head .alm-card-val { white-space: normal; overflow-wrap: anywhere; text-wrap: balance; }
 /* Where the browser has subgrid, the labels of one row share a line of the grid instead: the row is as tall as its tallest
    label, so a row of one-line labels carries no empty line above them, and the values still sit on one line. */
@@ -685,11 +687,16 @@
 .alm-ck-d { font-size: 22px; font-weight: 600; line-height: 28px; }   /* whole pixels: the Moon below stands on one, and the 3D view's first frame must match it */
 .alm-ck-l { display: flex; flex-wrap: wrap; justify-content: center; align-items: center; margin-top: 4px; font-size: 16px; line-height: 20px; color: var(--text2); }
 .alm-ck-l > .alm-ck-t { white-space: nowrap; }
+/* A clock reads 18:32 in every language: its digits are one left-to-right run, set apart from a right-to-left line (the parts are separate atoms, so left alone 18:32 reads 32:18); the zone and place beside it keep their own. */
+.alm-ck-t { direction: ltr; unicode-bidi: isolate; }
+.alm-ck-z { unicode-bidi: isolate; }
 .alm-ck-z { white-space: pre-wrap; overflow-wrap: anywhere; max-width: 100%; }   /* pre: the space before the dot is kept; a long place name breaks rather than leaving the screen */
 .alm-clock:not([data-v="head"]) .alm-ck-l { flex-wrap: nowrap; margin-top: 0; height: 24px; font-size: 14px; overflow: hidden; }
 .alm-clock:not([data-v="head"]) .alm-ck-d { font-size: 14px; flex: none; margin-inline-end: 8px; }
 .alm-clock:not([data-v="head"]) .alm-ck-t { flex: none; }
-.alm-clock:not([data-v="head"]) .alm-ck-z { flex: 0 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: pre; }
+.alm-clock:not([data-v="head"]) .alm-ck-z { display: flex; flex: 0 1 auto; min-width: 0; white-space: pre; }
+.alm-clock:not([data-v="head"]) .alm-ck-zn { flex: none; }
+.alm-clock:not([data-v="head"]) .alm-ck-pl { flex: 0 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
 .alm-ck-d, .alm-ck-t { color: var(--text); }
 .alm-ck-l > .alm-ck-t { color: var(--text2); }
 .alm-ck-r { flex: none; margin: 0 6px;   /* both sides: the rate reads left to right whatever the page's direction */
