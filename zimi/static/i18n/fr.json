@@ -4115,5 +4115,9 @@
   "cap_why_soft": "Il dessine en logiciel.",
   "cap_why_nogl": "Pas de WebGL ici.",
   "cap_why_low": "Mémoire ou vitesse insuffisantes.",
-  "cap_try": "Essayer quand même"
+  "cap_try": "Essayer quand même",
+  "lib_hd_where": "Se choisit dans les réglages de l’Almanach",
+  "lib_hd_meta": "{n} fichiers · {size}",
+  "older_copies_title": "Anciennes copies conservées",
+  "older_copies_row": "Remplacée par {file}"
 }

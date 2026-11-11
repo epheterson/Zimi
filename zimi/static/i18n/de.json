@@ -4115,5 +4115,9 @@
   "cap_why_soft": "Es zeichnet in Software.",
   "cap_why_nogl": "Hier gibt es kein WebGL.",
   "cap_why_low": "Speicher oder Tempo reichen nicht.",
-  "cap_try": "Trotzdem versuchen"
+  "cap_try": "Trotzdem versuchen",
+  "lib_hd_where": "Wird in den Einstellungen des Almanach gewählt",
+  "lib_hd_meta": "{n} Dateien · {size}",
+  "older_copies_title": "Ältere Kopien",
+  "older_copies_row": "Ersetzt durch {file}"
 }

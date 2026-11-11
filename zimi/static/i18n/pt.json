@@ -4115,5 +4115,9 @@
   "cap_why_soft": "Ele desenha por software.",
   "cap_why_nogl": "Sem WebGL aqui.",
   "cap_why_low": "Memória ou velocidade baixas.",
-  "cap_try": "Tentar mesmo assim"
+  "cap_try": "Tentar mesmo assim",
+  "lib_hd_where": "Escolhido nas configurações do Almanaque",
+  "lib_hd_meta": "{n} arquivos · {size}",
+  "older_copies_title": "Cópias antigas mantidas",
+  "older_copies_row": "Substituída por {file}"
 }

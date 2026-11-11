@@ -4115,5 +4115,9 @@
   "cap_why_soft": "הוא מצייר בתוכנה.",
   "cap_why_nogl": "אין כאן WebGL.",
   "cap_why_low": "זיכרון או מהירות נמוכים.",
-  "cap_try": "לנסות בכל זאת"
+  "cap_try": "לנסות בכל זאת",
+  "lib_hd_where": "נבחר בהגדרות האלמנך",
+  "lib_hd_meta": "{n} קבצים · {size}",
+  "older_copies_title": "עותקים ישנים שנשמרו",
+  "older_copies_row": "הוחלף ב־{file}"
 }

@@ -4115,5 +4115,9 @@
   "cap_why_soft": "يرسم بالبرمجيات.",
   "cap_why_nogl": "لا يتوفر WebGL هنا.",
   "cap_why_low": "الذاكرة أو السرعة منخفضة.",
-  "cap_try": "جرّب على أي حال"
+  "cap_try": "جرّب على أي حال",
+  "lib_hd_where": "يُختار من إعدادات التقويم",
+  "lib_hd_meta": "{n} ملفات · {size}",
+  "older_copies_title": "نسخ أقدم محفوظة",
+  "older_copies_row": "استُبدلت بـ {file}"
 }

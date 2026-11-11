@@ -4115,5 +4115,9 @@
   "cap_why_soft": "Dibuja por software.",
   "cap_why_nogl": "Aquí no hay WebGL.",
   "cap_why_low": "Memoria o velocidad insuficientes.",
-  "cap_try": "Probar igualmente"
+  "cap_try": "Probar igualmente",
+  "lib_hd_where": "Se elige en los ajustes del Almanaque",
+  "lib_hd_meta": "{n} archivos · {size}",
+  "older_copies_title": "Copias antiguas guardadas",
+  "older_copies_row": "Sustituida por {file}"
 }

@@ -4115,5 +4115,9 @@
   "cap_why_soft": "यह सॉफ़्टवेयर से ड्रॉ करता है।",
   "cap_why_nogl": "यहाँ WebGL नहीं है।",
   "cap_why_low": "मेमोरी या गति कम है।",
-  "cap_try": "फिर भी आज़माएँ"
+  "cap_try": "फिर भी आज़माएँ",
+  "lib_hd_where": "पंचांग की सेटिंग में चुनें",
+  "lib_hd_meta": "{n} फ़ाइलें · {size}",
+  "older_copies_title": "रखी गई पुरानी प्रतियाँ",
+  "older_copies_row": "{file} ने इसकी जगह ली"
 }

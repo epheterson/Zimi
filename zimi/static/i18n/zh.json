@@ -4115,5 +4115,9 @@
   "cap_why_soft": "它用软件绘制图形。",
   "cap_why_nogl": "此处没有 WebGL。",
   "cap_why_low": "内存或速度不足。",
-  "cap_try": "仍然尝试"
+  "cap_try": "仍然尝试",
+  "lib_hd_where": "在年鉴的设置中选择",
+  "lib_hd_meta": "{n} 个文件 · {size}",
+  "older_copies_title": "保留的旧副本",
+  "older_copies_row": "已由 {file} 取代"
 }

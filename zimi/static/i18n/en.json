@@ -4115,5 +4115,9 @@
   "cap_why_soft": "It draws in software.",
   "cap_why_nogl": "No WebGL here.",
   "cap_why_low": "Memory or speed is low.",
-  "cap_try": "Try it anyway"
+  "cap_try": "Try it anyway",
+  "lib_hd_where": "Chosen in the Almanac's settings",
+  "lib_hd_meta": "{n} files · {size}",
+  "older_copies_title": "Older copies kept",
+  "older_copies_row": "Replaced by {file}"
 }
