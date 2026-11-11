@@ -8348,9 +8348,17 @@ function _almFirstFrameHtml() {
 }
 // Up under the boot shell once almanac.css is in (before it the page would draw unstyled); gone when almanac.js has drawn
 // its own (almanac.js _openAlmanacInner), or when the open fails.
+var _almOpenAbandoned = false;
 function _almFirstFrame() {
   var sc = document.getElementById('almanac-content');
   if (!sc || _almanacOpen || sc.querySelector('#almanac-head')) return;
+  // Back before the page's code has come: the first frame goes with it, and the open that was on its way is dropped.
+  window.addEventListener('popstate', function() {
+    if (_almanacOpen || !document.documentElement.classList.contains('alm-first')) return;
+    _almOpenAbandoned = true;
+    document.documentElement.classList.remove('almanac-boot');
+    _almFirstFrameOff();
+  }, { once: true });
   sc.innerHTML = _almFirstFrameHtml();
   document.documentElement.classList.add('alm-first');
   var view = document.getElementById('almanac-view');
@@ -8431,7 +8439,8 @@ function _afterPaint() {
     setTimeout(go, ALM_PAINT_WAIT_MS);
   });
 }
-function _loadAlmanacModules() {
+// firstFrame: the open's own (the Field Guide's sky strip loads the same files and draws no page).
+function _loadAlmanacModules(firstFrame) {
   if (_almanacLoaded) return Promise.resolve();
   if (!_almanacModulesLoading) {
     var css = _loadAlmanacCss();
@@ -8444,7 +8453,7 @@ function _loadAlmanacModules() {
       l.href = src;
       document.head.appendChild(l);
     });
-    var scripts = css.then(function() { _almFirstFrame(); return _afterPaint(); }).then(function() {
+    var scripts = css.then(function() { if (firstFrame) { _almFirstFrame(); return _afterPaint(); } }).then(function() {
       return new Promise(function(resolve, reject) {
         var failed = false;
         _ALMANAC_MODULES.forEach(function(src, i) {
@@ -8497,9 +8506,11 @@ function openAlmanac(replaceState) {
   }
   if (!_almanacLoaded) {
     _almanacOpenPending = true;
-    _loadAlmanacModules().then(function() {
+    _almOpenAbandoned = false;
+    _loadAlmanacModules(true).then(function() {
       _almanacOpenPending = false;
       _almanacLoaded = true;
+      if (_almOpenAbandoned) return;   // Back was pressed while only the first frame was up: the page the person went back to stands
       _openAlmanacInner(replaceState);
       _keepAlmanac(); // opened once, here next time with no signal too
       // The 3D Earth's files do not follow the open: almanac.js (_almLoadEarth) brings them once the first screen is
