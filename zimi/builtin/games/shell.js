@@ -606,10 +606,11 @@
     shrink();
     if (cut() && !hosted && stat && stat.offsetWidth && stat.textContent.trim()) { bar.classList.add('gs-bar-stack'); shrink(); }
   }
-  // The stat changes as the game goes (a score grows): the bar is laid out again.
-  function watchStat() {
-    var stat = d.querySelector('.ar-bar > .ar-stat');
-    if (stat && root.MutationObserver) new root.MutationObserver(fitTitle).observe(stat, { childList: true, characterData: true, subtree: true });
+  // The bar changes as the game goes (a score grows, Pause becomes Resume, a button shows or hides): it is laid out again.
+  // fitTitle itself changes only the title's style and the bar's class, which are not watched.
+  function watchBar() {
+    var bar = d.querySelector('.ar-bar');
+    if (bar && root.MutationObserver) new root.MutationObserver(fitTitle).observe(bar, { childList: true, characterData: true, subtree: true, attributes: true, attributeFilter: ['hidden'] });
   }
 
   // ── motion, status and the shake ──
@@ -1748,7 +1749,7 @@
   // address (zimihome.js's ZIMI_HOME_MARK puts the mark after the name, or leaves it out).
   // Inside Zimi it is noise and is never drawn. The address is zimihome.js's (written once there); the year is the build's
   // (zimibuild.js, which ownzims writes into the ZIM; never the reader's clock; a page read from its folder has none and says
-  // "© Zimi"). Both load only out here. Under the shelf's title, and at the foot of a game's Menu.
+  // "© Zimi"). Both load only out here. The shelf's last line, and the foot of a game's Menu.
   var COPYRIGHT = '©';
   function homeLine() {
     var url = root.ZIMI_HOME;
@@ -1766,9 +1767,10 @@
     d.head.appendChild(s);
   }
   if (!hosted && d.head) {
+    // The shelf's very last line, under Credits: the page ends on it.
     var placeHome = function () {
-      var desc = d.querySelector('.ar-shelf > header > p:not(.gs-needjs)'), line = desc && homeLine();
-      if (line) desc.parentNode.insertBefore(line, desc.nextSibling);
+      var shelf = d.querySelector('.ar-shelf'), line = shelf && homeLine();
+      if (line) shelf.appendChild(line);
     };
     // The files can arrive before the shelf's header is parsed (shell.js runs in the head): then it waits for the page.
     loadScript('zimihome.js', function () {
@@ -1883,7 +1885,7 @@
     var h1 = Shell.daily && d.querySelector('.ar-bar h1');
     if (h1 && !h1.querySelector('small')) h1.appendChild(h('small', { class: 'gs-daily-tag', 'data-t': 'daily.tag', text: T('daily.tag') }));
     if (h1) h1.parentNode.insertBefore(h('span', { class: 'gs-daily-tag gs-daily-flag', 'data-t': 'daily.tag', text: T('daily.tag') }), h1.nextSibling);
-    fitTitle(); watchStat(); root.addEventListener('resize', fitTitle);
+    fitTitle(); watchBar(); root.addEventListener('resize', fitTitle);
     if (helpFor(ID)) d.documentElement.classList.add('gs-help');
     // Settings that a game paints itself (a clock's text) are repainted when they change.
     settings.on(function () { if (game.paint) game.paint(); });

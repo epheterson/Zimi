@@ -41,12 +41,22 @@ def test_outside_zimi_the_shelf_and_the_menu_credit_zimi(browser, served):
         ),
     )
     page.goto("%s/index.html" % served)
-    line = page.wait_for_selector(".ar-shelf header .gs-home")
+    line = page.wait_for_selector(".ar-shelf > .gs-home")
     assert (
         line.is_visible() and line.inner_text().strip() == "© 2031 Zimi"
     ), line.inner_text()
     link = line.query_selector("a")
     assert link.inner_text() == "Zimi" and link.get_attribute("href") == url
+    # The shelf's very last line: under Credits, nothing of the page below it.
+    below = page.evaluate(
+        "() => { const b = document.querySelector('.ar-shelf > .gs-home').getBoundingClientRect().bottom;"
+        " return Array.from(document.querySelectorAll('body *')).filter(e => e.offsetWidth && e.getBoundingClientRect().top >= b - 0.5"
+        " && !e.closest('.gs-home') && (e.innerText || '').trim()).map(e => e.innerText.trim().slice(0, 30)); }"
+    )
+    assert below == [], below
+    assert page.evaluate(
+        "document.querySelector('.ar-shelf').lastElementChild.classList.contains('gs-home')"
+    )
     # The shipped default (zimihome.js ZIMI_HOME_MARK = 'none'): no mark in the line, the words alone.
     assert line.query_selector("img") is None
     page.goto("%s/chess.html" % served)
@@ -65,7 +75,7 @@ def test_a_page_read_from_its_folder_has_no_year(browser, served):
     ctx = browser.new_context(viewport=VIEW)
     page = ctx.new_page()
     page.goto("%s/index.html" % served)  # no zimibuild.js in the source folder
-    line = page.wait_for_selector(".ar-shelf header .gs-home")
+    line = page.wait_for_selector(".ar-shelf > .gs-home")
     assert line.inner_text().strip() == "© Zimi"
     ctx.close()
 
@@ -128,6 +138,12 @@ def test_the_almanac_carries_the_same_address():
         assert "href=" not in page.split("<script>", 1)[1]
         with open(os.path.join(tmp, "local.js"), encoding="utf-8") as f:
             assert "root._almHomeLine = function" in f.read()
+        # The Almanac page ends on the line: the footer's own sentence first, then the credit.
+        with open(os.path.join(tmp, "almanac.js"), encoding="utf-8") as f:
+            src = f.read()
+        foot = src[src.index("html += '<div class=\"alm-footer\">'") :]
+        foot = foot[: foot.index("'</div>';")]
+        assert foot.index("t('alm_footer')") < foot.index("_almHomeLine()"), foot
 
 
 def test_the_mark_and_the_name_are_one_link_and_the_switch_moves_the_mark(
@@ -150,16 +166,12 @@ def test_the_mark_and_the_name_are_one_link_and_the_switch_moves_the_mark(
 
         page.route("**/zimihome.js", serve(body))
         page.goto("%s/index.html" % served)
-        page.wait_for_selector(".ar-shelf header .gs-home a")
+        page.wait_for_selector(".ar-shelf > .gs-home a")
         got = page.evaluate(
-            "Array.from(document.querySelector('.ar-shelf header .gs-home a').childNodes).map(n => n.nodeType === 3 ? n.textContent : n.tagName)"
+            "Array.from(document.querySelector('.ar-shelf > .gs-home a').childNodes).map(n => n.nodeType === 3 ? n.textContent : n.tagName)"
         )
         assert got == want, (at, got)
-        assert (
-            page.locator(".ar-shelf header .gs-home").inner_text().strip() == "© Zimi"
-        )
+        assert page.locator(".ar-shelf > .gs-home").inner_text().strip() == "© Zimi"
         if at != "none":
-            assert (
-                abs(page.evaluate(MARK_OFFSET, ".ar-shelf header .gs-home")) <= 0.5
-            ), at
+            assert abs(page.evaluate(MARK_OFFSET, ".ar-shelf > .gs-home")) <= 0.5, at
         ctx.close()

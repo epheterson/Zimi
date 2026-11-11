@@ -34,3 +34,23 @@ def test_2048_keeps_its_name_whole(browser, served, lang, stat, stacked):
     assert got["h"] == 56, got  # the bar keeps its height
     assert got["right"] <= 390 - 16 + 1, got  # Menu stays inside the gutter
     ctx.close()
+
+
+def test_snake_keeps_its_name_whole_when_pause_turns_to_resume(browser, served):
+    """A bar is laid out again when a button's words change, not only the stat's: Pause becoming Resume (wider) cut
+    "Snake" beside "Apples 0 · Best 0" at 390 px."""
+    ctx = browser.new_context(viewport={"width": 390, "height": 844})
+    page = ctx.new_page()
+    page.goto("%s/snake.html#lang=en&dir=ltr" % served)
+    page.wait_for_selector(".gs-sp-play")
+    page.click(".gs-sp-play")
+    page.wait_for_timeout(300)
+    page.click("#sn-pause")
+    page.wait_for_function(
+        "document.getElementById('sn-pause').textContent.trim() === 'Resume'"
+    )
+    page.wait_for_timeout(200)
+    got = page.evaluate(BAR)
+    assert not got["cut"], got
+    assert got["h"] == 56 and got["right"] <= 390 - 16 + 1, got
+    ctx.close()

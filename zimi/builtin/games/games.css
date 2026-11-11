@@ -107,7 +107,9 @@ html.gs-js .gs-needjs { display: none; }
 .pl-main, .bg-main, .ms-main, .mj-main { flex: 1 0 auto; justify-content: flex-start; width: 100%; max-width: var(--column); margin-inline: auto; padding-bottom: max(var(--sp-5), var(--safe-b)); }
 @media (min-width: 700px) { .pl-main, .bg-main, .ms-main, .mj-main { justify-content: center; } }
 body:has(> main:is(.pl-main, .bg-main, .ms-main, .mj-main)) { display: flex; flex-direction: column; min-height: 100vh; min-height: 100svh; height: auto; }
-body.zc-game { padding-bottom: var(--safe-b); }
+/* A card table runs to the foot of the screen: the felt fills the home indicator's strip and the table keeps its cards above it
+   (padding on the body showed the page colour there, a white band under Blackjack on an iPhone). */
+body.zc-game .zc-table { padding-bottom: var(--safe-b); }
 /* Bare grids (2048, Sudoku, Minesweeper, Sokoban) sit in one frame: radius 14, a 1px line, surface2, 12px padding.
    A wood board is its own frame and gets no card around it; felt tables stay full bleed. */
 .gs-frame, .pl-main :is(.tf-board, .su-board, .sk-board), .ms-main .ms-box { padding: var(--sp-3); border: 1px solid var(--line); border-radius: var(--r-sheet); background: var(--surface2); }
@@ -220,7 +222,7 @@ html[data-anim="off"] *, html[data-anim="off"] *::before, html[data-anim="off"] 
 .gs-home a { color: inherit; text-decoration: underline; text-decoration-color: color-mix(in srgb, currentColor 45%, transparent); text-underline-offset: 2px; padding: 14px 12px; margin: -14px -12px; border-radius: var(--r-chip); }
 .gs-home a:hover { color: var(--ink); text-decoration-color: currentColor; }
 .gs-home a:focus-visible { outline: 2px solid var(--accent); outline-offset: -13px; }
-.ar-shelf header .gs-home { flex: 1 0 100%; }
+.ar-shelf > .gs-home { margin-top: 20px; }
 .gs-card > .gs-home { align-self: center; margin-top: 4px; }
 .sh-tools { display: flex; align-items: center; justify-content: flex-end; gap: 10px; flex: 1 1 0; min-width: 0; }
 .sh-search { position: relative; display: flex; align-items: center; flex: 1 1 auto; max-width: 340px; color: var(--ink3); }
