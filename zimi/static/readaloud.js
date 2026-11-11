@@ -391,7 +391,11 @@ function _ttsSpoken(s, lang) {
 }
 // A table that holds paragraphs is the page's layout (older captures, some
 // crawled sites put the whole article in one), not a table of facts: it is read.
-function _ttsLayoutTable(el) { return el.tagName === 'TABLE' && !!el.querySelector('p'); }
+// A wiki's main page lays its boxes out in a table of headings and lists, no <p>: a table that is not a data table (infobox, wikitable, navbox) and holds headings or lists is the same.
+var _TTS_DATA_TABLE = '.infobox,.wikitable,.navbox,.sidebar,.metadata,.ambox,.vertical-navbox,.toccolours,.sortable';
+function _ttsLayoutTable(el) {
+  return el.tagName === 'TABLE' && (!!el.querySelector('p') || (!el.matches(_TTS_DATA_TABLE) && !!el.querySelector('h2,h3,h4,ul,ol')));
+}
 // A span the page marks as another language than the article's, in a script or
 // romanization the voice cannot say (Wikipedia: <span lang="zh">, lang="zh-Latn-pinyin",
 // .IPA, .rt-commentary). A foreign name in the article's own script is read.
