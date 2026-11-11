@@ -31,7 +31,7 @@ import sys
 
 log = logging.getLogger(__name__)
 
-__all__ = ["popen", "stop"]
+__all__ = ["popen", "run", "external_env", "stop"]
 
 # How long a child gets to leave politely before it is killed. Generous enough
 # for warc2zim to close a ZIM it is midway through writing, short enough that
@@ -42,6 +42,61 @@ TERMINATE_GRACE = 10.0
 KILL_GRACE = 5.0
 
 _WINDOWS = sys.platform == "win32"
+
+# What a PyInstaller bootloader points at its own folder so the frozen program
+# finds its own libraries. A program that is not part of the bundle (the
+# machine's python3, uv, node) given these loads the bundle's older libssl
+# instead of its own and cannot import ssl (issue #151). The bootloader keeps
+# the original of each library path in <NAME>_ORIG.
+_LOADER_PATHS = ("LD_LIBRARY_PATH", "LIBPATH", "SHLIB_PATH", "DYLD_LIBRARY_PATH", "DYLD_FRAMEWORK_PATH")
+_PYTHON_PATHS = ("PYTHONHOME", "PYTHONPATH")
+_PYI_PREFIX = "_PYI_"
+
+
+def _bundle_dirs():
+    dirs = {getattr(sys, "_MEIPASS", None), os.path.dirname(os.path.realpath(sys.executable))}
+    return [os.path.realpath(d) for d in dirs if d]
+
+
+def _in_bundle(program):
+    """True when ``program`` is a file inside the frozen app's folder."""
+    try:
+        path = os.path.realpath(program)
+    except (TypeError, ValueError, OSError):
+        return False
+    return any(path == d or path.startswith(d + os.sep) for d in _bundle_dirs())
+
+
+def external_env(env=None):
+    """The environment for a program that is NOT part of the bundle: ``env``
+    (default: ours) with the frozen app's loader and Python variables put back
+    to what the user had. Unchanged when not frozen, so a source or pip install
+    behaves exactly as before. Never changes ``env`` itself."""
+    env = dict(os.environ if env is None else env)
+    if not getattr(sys, "frozen", False):
+        return env
+    for name in _LOADER_PATHS:
+        orig = env.pop(name + "_ORIG", None)
+        if orig is None:
+            env.pop(name, None)
+        else:
+            env[name] = orig
+    bundle = _bundle_dirs()
+    for name in _PYTHON_PATHS:
+        if any(d in env.get(name, "") for d in bundle):
+            env.pop(name)
+    for name in [k for k in env if k.startswith(_PYI_PREFIX)]:
+        del env[name]
+    return env
+
+
+def _for_program(cmd, kwargs):
+    """Give a child that is not part of the bundle the machine's environment."""
+    if getattr(sys, "frozen", False):
+        program = cmd[0] if isinstance(cmd, (list, tuple)) else cmd
+        if not _in_bundle(program):
+            kwargs["env"] = external_env(kwargs.get("env"))
+    return kwargs
 
 
 def popen(cmd, **kwargs):
@@ -61,7 +116,13 @@ def popen(cmd, **kwargs):
         )
     else:
         kwargs.setdefault("start_new_session", True)
-    return subprocess.Popen(cmd, **kwargs)
+    return subprocess.Popen(cmd, **_for_program(cmd, kwargs))
+
+
+def run(cmd, **kwargs):
+    """``subprocess.run`` for a short probe, with the same environment rule as
+    ``popen``."""
+    return subprocess.run(cmd, **_for_program(cmd, kwargs))
 
 
 def stop(proc, grace=TERMINATE_GRACE):

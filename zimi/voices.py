@@ -443,7 +443,7 @@ def _is_wav(path):
 
 def _list_output(cmd):
     try:
-        return subprocess.run(
+        return subproc.run(
             cmd, capture_output=True, timeout=SYNTH_TIMEOUT_S, check=False
         ).stdout.decode("utf-8", "replace")
     except (OSError, subprocess.TimeoutExpired):
