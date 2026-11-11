@@ -1,0 +1,24 @@
+#!/bin/sh
+# Keep Zimi's own ZIMs (zimi/builtin/*.zim and their .source stamps) out of ordinary commits.
+#
+# They are built binaries (17 MB for the Games), committed once per release so that every
+# install kind ships the same bytes. A source edit does not rebuild them in a commit: CI builds
+# them from the source for its own tests, deploy.sh builds them for the NAS, and
+# ./scripts/release-gate.sh --fix builds the ones to commit. A binary in every pull request
+# was a merge conflict between lanes and 400 MB of history.
+#
+# The release commit says so: ZIMI_COMMIT_OWN_ZIMS=1 git commit ...
+#
+# Install (once per clone):  git config core.hooksPath .githooks
+
+[ "${ZIMI_COMMIT_OWN_ZIMS:-}" = "1" ] && exit 0
+
+staged=$(git diff --cached --name-only --diff-filter=ACMRD | grep -E '^zimi/builtin/[^/]+\.zim(\.source)?$')
+if [ -n "$staged" ]; then
+    echo "pre-commit: Zimi's own ZIMs are committed with a release, not with a source edit:" >&2
+    echo "$staged" | sed 's/^/  /' >&2
+    echo >&2
+    echo "Unstage them (git restore --staged zimi/builtin/*.zim*), or for the release commit:" >&2
+    echo "  ZIMI_COMMIT_OWN_ZIMS=1 git commit" >&2
+    exit 1
+fi

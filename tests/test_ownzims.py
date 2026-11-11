@@ -210,12 +210,14 @@ def test_on_home_under_its_own_section_never_as_something_you_made(home):
 
 
 @pytest.mark.skipif(
-    not os.environ.get("CI") or sys.platform == "win32",
-    reason="CI only (a source edit need not rebuild the ZIMs until the pull request), and not on Windows, whose checkout may turn line ends into CRLF",
+    not os.environ.get("ZIMI_OWN_ZIMS_FRESH") or sys.platform == "win32",
+    reason="a release's check, not every pull request's (CI sets ZIMI_OWN_ZIMS_FRESH for a pull request to main, "
+    "scripts/release-gate.sh runs the same --check); and not on Windows, whose checkout may turn line ends into CRLF",
 )
 def test_the_committed_zims_are_built_from_the_source_as_it_is():
-    """A download, Kiwix and Zimi all get these bytes: a pull request whose
-    ZIMs are older than their source fails until python -m zimi.ownzims runs."""
+    """A download, Kiwix and Zimi all get these bytes: a release whose ZIMs are older than their source
+    fails until python -m zimi.ownzims runs. Pull requests into a topic or dev branch leave the ZIMs alone
+    (CI builds them from the source for its own tests), so a source edit costs no binary in the diff."""
     assert ownzims.main(["--check"]) == 0
 
 
