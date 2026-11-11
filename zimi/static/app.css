@@ -4402,6 +4402,14 @@
 /* Quiet things stay readable: no 30% stars or faded close marks at night. */
 :root.night-red .dc-dismiss, :root.night-red .card-more, :root.night-red .cat-heading-other { opacity: 1; }
 :root.night-red #reader-frame { background: #000; }
+/* Reader View's menu keeps no cream or white at night: the switch's knob and the four theme swatches are drawn in the mode's reds, the swatches in their order of lightness. */
+:root.night-red .rv-knob { background: var(--on-amber); }
+:root.night-red .rv-switch:not(.on) .rv-knob { background: var(--text2); }
+:root.night-red .rv-sw-dark .rv-sw-dot { background-color: #000; }
+:root.night-red .rv-sw-light .rv-sw-dot { background-color: #a8140a; }
+:root.night-red .rv-sw-sepia .rv-sw-dot { background-color: #6a0e06; }
+:root.night-red .rv-sw-auto .rv-sw-dot { background-image: linear-gradient(135deg, #6a0e06 calc(50% - 0.5px), #000 calc(50% + 0.5px)); }
+:root.night-red .rv-sw-dot { border-color: var(--border-strong); }
 /* Proportion bars: hue can't tell segments apart in Red, so brightness does, in segment
    order, the legend's swatches in the same order (the legend still names each one). */
 :root.night-red :is(.cache-seg, .cache-legend-item:nth-child(1) .cache-legend-swatch) { background: var(--amber) !important; }
