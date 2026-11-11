@@ -74,10 +74,23 @@ def kiwix(tmp_path_factory):
         "almanac": "zimi_almanac_%s" % MONTH,
         "maxi": build_almanac_maxi.FILE_FMT[:-4] % MONTH,
     }
-    ownzims.write_zim(own["zimi_games"], str(zims / (books["games"] + ".zim")))
-    ownzims.write_zim(own["zimi_almanac"], str(zims / (books["almanac"] + ".zim")))
-    _build_hd(str(tmp / "stage"), str(tmp / "tiles.zim"))
-    build_almanac_maxi.build(str(tmp / "tiles.zim"), str(zims), month=MONTH)
+    # ZIMI_KIWIX_TEST_FILES=games=<path>,almanac=<path>: the files a release (or an openZIM request) ships, as they are,
+    # instead of fresh builds; the HD flavour's tests skip then.
+    given = dict(
+        kv.split("=", 1)
+        for kv in os.environ.get("ZIMI_KIWIX_TEST_FILES", "").split(",")
+        if "=" in kv
+    )
+    if given:
+        books = {}
+        for kind, path in given.items():
+            books[kind] = os.path.basename(path)[: -len(".zim")]
+            shutil.copyfile(path, str(zims / os.path.basename(path)))
+    else:
+        ownzims.write_zim(own["zimi_games"], str(zims / (books["games"] + ".zim")))
+        ownzims.write_zim(own["zimi_almanac"], str(zims / (books["almanac"] + ".zim")))
+        _build_hd(str(tmp / "stage"), str(tmp / "tiles.zim"))
+        build_almanac_maxi.build(str(tmp / "tiles.zim"), str(zims), month=MONTH)
     port = _free_port()
     proc = subprocess.Popen(
         [binary, "--address=127.0.0.1", "--port=%d" % port]
@@ -150,6 +163,8 @@ def _content_frame(pg, book):
 
 @pytest.mark.parametrize("kind", ["almanac", "maxi"])
 def test_the_almanac_starts_in_kiwix_and_its_3d_view_opens(browser, kiwix, kind):
+    if kind not in kiwix["books"]:
+        pytest.skip("no %s file among ZIMI_KIWIX_TEST_FILES" % kind)
     book = kiwix["books"][kind]
     ctx, pg, errors = _page(browser)
     reqs = []
@@ -239,6 +254,8 @@ def test_the_games_shelf_and_a_game_of_each_kind_start_in_kiwix(browser, kiwix):
 @pytest.mark.parametrize("kind", ["games", "almanac", "maxi"])
 def test_kiwix_random_lands_on_a_front_article(kiwix, kind):
     """Random in Kiwix lands on what zimi.txt's Articles names: a game or the Almanac, never a licence or a tile."""
+    if kind not in kiwix["books"]:
+        pytest.skip("no %s file among ZIMI_KIWIX_TEST_FILES" % kind)
     book = kiwix["books"][kind]
     seen = set()
     for _ in range(RANDOM_TRIES):
