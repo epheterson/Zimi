@@ -78,7 +78,12 @@ def test_nothing_light_shows_above_an_app(served, scheme):
         # Over an app the header steps aside only when held (a video playing
         # sideways), and stays while focus is in it, so nothing is focused.
         pg.evaluate("() => { document.activeElement.blur(); _chromeImmersive(true); }")
-        pg.wait_for_timeout(400)  # past the slide
+        # Past the slide: it is a CSS transition, so a loaded machine takes longer than any fixed wait. The
+        # wait ends when the header is above the screen or the slide has finished, and the assertion below is
+        # then about where it came to rest.
+        pg.wait_for_function(
+            "() => !document.getAnimations().some(a => a.transitionProperty)", timeout=15000
+        )
         s = pg.evaluate(STATE)
         assert s["away"], s
         assert s["topbarBottom"] <= -1, s
