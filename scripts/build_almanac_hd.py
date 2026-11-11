@@ -24,11 +24,13 @@ column 0 starts at longitude -180, row 0 at latitude +90. A tile is
 deepest level, so a client never asks for a tile that is not there.
 
 Sources (all public domain except Jupiter and Saturn, credited in the ZIM's
-index page and in zimi/static/earth/SOURCES.txt). Each is cut at the mosaic's
-own pixel size, or at what a phone can use where the mosaic is far finer:
+index page and in zimi/static/earth/SOURCES.txt). Each layer goes down to the
+shallowest level that holds every pixel of its mosaic, and that deepest level
+is stored at the mosaic's own pixel size (native_px: Mars and Mercury 360 px
+tiles, the Moon 426, the Earth 320): nothing is magnified into the file, and
+the 3D view, which maps a tile by its box, draws it the same:
   earth/day    NASA Blue Marble: Next Generation, through NASA GIBS (500 m set,
-               level 7, 0.0044 deg a pixel). Deepest level 6: 610 m a pixel,
-               the finest the 500 m mosaic holds without inventing pixels.
+               level 7, 0.0044 deg a pixel). Deepest level 7, 320 px tiles.
   earth/night  NASA Black Marble 2016 (VIIRS), through NASA GIBS, greyscale,
                at the same level.
   moon/relief  NASA SVS CGI Moon Kit, LOLA elevation at 64 pixels a degree
@@ -38,7 +40,7 @@ own pixel size, or at what a phone can use where the mosaic is far finer:
                so the Moon's own shader lights every crater wall and ridge
                from the Sun of the moment.
   moon/albedo  The LRO Wide Angle Camera global mosaic at 100 m (USGS
-               Astrogeology), greyscale, cut to 166 m.
+               Astrogeology), greyscale, to level 7 (all 100 m of it).
   planets/*    USGS Astrogeology's global mosaics (planetarymaps.usgs.gov):
                Mercury (MESSENGER), Venus (Magellan), Mars (Viking colour),
                the Galilean moons, Titan, Enceladus, Tethys, Dione, Rhea and
@@ -124,6 +126,9 @@ LAYERS = {
         "mode": "RGB",
     },
     "earth/night": {
+        # GIBS serves Black Marble in steps: almost half of a city's lit pixels equal the one beside them, so at the
+        # closest approach the lights stood as blocks. A blur of under a pixel takes the steps out, not the streets.
+        "smooth": 0.8,
         "gibs": "VIIRS_Black_Marble",
         "time": "2016-01-01/",
         "ext": "png",
@@ -164,7 +169,9 @@ LAYERS = {
                 "mars",
                 "Mars_Viking_MDIM21_ClrMosaic_global_232m.tif",
                 "RGB",
-                {"max": 7, "native": True},
+                # The mosaic's clipped pixels are one fill colour, an icy blue: white (Eric: "if it's too bright to
+                # measure isn't that white?").
+                {"max": 7, "native": True, "whiten": (207, 231, 255)},
             ),
             (
                 "mercury",
@@ -182,7 +189,8 @@ LAYERS = {
                 "europa",
                 "Europa_Voyager_GalileoSSI_global_mosaic_500m.tif",
                 "L",
-                {"fill": True, "max": 4, "roll": True},
+                # 19631 px round: level 4 (16384) dropped a sixth of them; level 5 holds them all at 307 px a tile.
+                {"fill": True, "max": 5, "roll": True},
             ),
             (
                 "ganymede",
@@ -234,7 +242,8 @@ LAYERS = {
                 "enceladus",
                 "Enceladus_Cassini_ISS_Global_Mosaic_100m_HPF.tif",
                 "L",
-                {"max": 4, "tone": TONES["enceladus"]},
+                # 0-360 like Ceres (its label: CenterLongitude 180): unrolled, Ali Baba and Dunyazad stood 180 degrees round.
+                {"max": 4, "tone": TONES["enceladus"], "roll": True},
             ),
             (
                 "tethys",
@@ -271,7 +280,9 @@ LAYERS = {
                 "ceres",
                 "Ceres_Dawn_FC_HAMO_DTM_DLR_Global_60ppd_Oct2016.tif",
                 "L",
-                {"max": 5, "derive": "shade", "radius_m": 470000},
+                # The elevation model runs 0-360 (its GeoTIFF's central meridian is 180): without the roll the
+                # shaded relief stood 180 degrees round from the Gazetteer's craters and from its own heights.
+                {"max": 5, "derive": "shade", "radius_m": 470000, "roll": True},
             ),
         )
     },
@@ -286,8 +297,8 @@ LAYERS = {
         "quality": 95,
     },
     "moon/albedo": {
-        # The LRO Wide Angle Camera's global mosaic at 100 m a pixel (NASA/GSFC/Arizona State University, through USGS),
-        # cut to 166 m: a pixel of the 3D view on a phone at the Moon's closest approach.
+        # The LRO Wide Angle Camera's global mosaic at 100 m a pixel (NASA/GSFC/Arizona State University, through USGS):
+        # level 7 holds all of it, in 426 px tiles.
         "file": USGS % "Lunar_LRO_LROC-WAC_Mosaic_global_100m_June2013.tif",
         "max": 7,
         "mode": "L",
@@ -402,8 +413,9 @@ def gibs_sources(layer, cache, update):
 class GibsMosaic:
     """Reads any window of a GIBS level as one picture, a source tile at a time."""
 
-    def __init__(self, folder, level, ext, mode):
+    def __init__(self, folder, level, ext, mode, smooth=0.0):
         self.folder, self.res, self.ext, self.mode = folder, GIBS_RES(level), ext, mode
+        self.smooth = smooth
         self.cols, self.rows = GIBS_DIMS[level]
         self._cache = {}
 
@@ -420,7 +432,7 @@ class GibsMosaic:
             self._cache[key] = im.convert(self.mode)
         return self._cache[key]
 
-    def window(self, lon0, lat_top, span):
+    def window(self, lon0, lat_top, span, out=TILE):
         from PIL import Image
 
         px = span / self.res
@@ -432,8 +444,12 @@ class GibsMosaic:
             for c in range(c0, c1 + 1):
                 canvas.paste(self._tile(r, c), ((c - c0) * TILE, (r - r0) * TILE))
         ox, oy = x0 - c0 * TILE, y0 - r0 * TILE
+        if self.smooth:  # the source's own steps softened before the cut (Black Marble: see LAYERS)
+            from PIL import ImageFilter
+
+            canvas = canvas.filter(ImageFilter.GaussianBlur(self.smooth))
         return canvas.resize(
-            (TILE, TILE), Image.LANCZOS, box=(ox, oy, ox + px, oy + px)
+            (out, out), Image.LANCZOS, box=(ox, oy, ox + px, oy + px)
         )
 
 
@@ -497,6 +513,40 @@ def fill_unmapped(im, black=FILL_BLACK):
     return Image.fromarray(np.clip(out, 0, 255).astype(np.uint8)), hole
 
 
+#: How far (pixels) a whitened fill reaches into its neighbours, and how near a neighbour's colour must be to the fill's
+#: (RGB distance) to lose its cast: only the fill's own rim, never haze or frost a pixel away from it.
+WHITEN_REACH = 1
+WHITEN_NEAR = 90.0
+
+
+def whiten_clipped(im, fill, rim=True):
+    """A colour mosaic whose saturated pixels were written as one fill colour (Viking MDIM 2.1 colour: exactly
+    (207, 231, 255) wherever a channel clipped, caldera walls and polar ice alike) with that fill as neutral white:
+    too bright to measure is white, not blue. The rim one pixel round it, where the fill was blended into the pixels
+    beside it, loses its blue cast in proportion to how near its colour is to the fill (to a neutral grey of its own
+    brightness); nothing further away is touched. Light on memory: a level-0 window is gigabytes, so only the rim's
+    few pixels are ever handled as floats, and ``rim=False`` (a window reduced many times over, where the rim is a
+    fraction of an output pixel) skips the rim."""
+    import numpy as np
+    from PIL import Image, ImageFilter
+
+    a = np.array(im.convert("RGB"), dtype=np.uint8)
+    exact = (a[..., 0] == fill[0]) & (a[..., 1] == fill[1]) & (a[..., 2] == fill[2])
+    if not exact.any():
+        return im
+    if not rim:
+        a[exact] = 255
+        return Image.fromarray(a, "RGB")
+    grown = np.asarray(Image.fromarray(exact.view(np.uint8) * 255).filter(ImageFilter.MaxFilter(2 * WHITEN_REACH + 1))) > 0
+    ys, xs = np.nonzero(grown & ~exact)
+    px = a[ys, xs].astype(np.float32)
+    near = np.clip(1.0 - np.linalg.norm(px - np.array(fill, dtype=np.float32), axis=1) / WHITEN_NEAR, 0.0, 1.0)[:, None]
+    grey = (px * np.array(LUMA, dtype=np.float32)).sum(axis=1, keepdims=True)
+    a[ys, xs] = np.clip(np.rint(px * (1 - near) + grey * near), 0, 255).astype(np.uint8)
+    a[exact] = 255
+    return Image.fromarray(a, "RGB")
+
+
 class FileMosaic:
     """A whole-globe picture in plate carree (the Moon's map), windows cut from it. ``roll``: the picture runs 0-360
     degrees east, rolled here to -180..180. ``tint``: a small colour map (-180..180) whose colours, not brightness,
@@ -515,7 +565,8 @@ class FileMosaic:
             self.mode = mode
             self.im = None
             self.res = 360.0 / self.arr.shape[1]
-            self.finish = finish or {}
+            self.finish = dict(finish or {})
+            self.whiten = self.finish.pop("whiten", None)
             self.tint = self._tint_map(tint)
             self._aux_maps = None
             return
@@ -527,13 +578,14 @@ class FileMosaic:
             rolled.paste(im.crop((half, 0, im.width, im.height)), (0, 0))
             rolled.paste(im.crop((0, 0, half, im.height)), (im.width - half, 0))
             im = rolled
-        self.im = im
+        self.im = whiten_clipped(im, finish["whiten"]) if (finish or {}).get("whiten") else im
         self.res = 360.0 / self.im.width
-        self.finish = finish or {}
+        self.finish = dict(finish or {})
+        self.whiten = self.finish.pop("whiten", None)
         self.tint = self._tint_map(tint)
         self._aux_maps = None
 
-    def _chroma(self, lon0, lat_top, span):
+    def _chroma(self, lon0, lat_top, span, out=TILE):
         """The tint map's colour over a window as ratios to its own brightness (1 where it has none), a tile wide."""
         import numpy as np
         from PIL import Image
@@ -542,7 +594,7 @@ class FileMosaic:
         x0, y0, px = (lon0 + 180.0) / res, (90.0 - lat_top) / res, span / res
         box = (x0, y0, x0 + px, y0 + px)
         rgb = np.asarray(
-            self.tint.resize((TILE, TILE), Image.BICUBIC, box=box), dtype=np.float32
+            self.tint.resize((out, out), Image.BICUBIC, box=box), dtype=np.float32
         )
         lum = (rgb @ np.array(LUMA, dtype=np.float32))[..., None]
         ratio = np.where(lum > CHROMA_FLOOR, rgb / np.maximum(lum, 1.0), 1.0)
@@ -557,7 +609,7 @@ class FileMosaic:
         im = Image.open(path).convert("RGB")
         return fill_unmapped(im, CHROMA_FLOOR)[0] if self.finish.get("fill") else im
 
-    def _crop(self, x0, y0, px):
+    def _crop(self, x0, y0, px, out=TILE):
         """A square of the memory-mapped picture, ``px`` source pixels a side from (x0, y0), as a tile: the window
         read out (a pixel of margin for the filter) and reduced or enlarged to a tile.
         """
@@ -570,17 +622,21 @@ class FileMosaic:
         piece = Image.fromarray(
             np.ascontiguousarray(self.arr[iy0:iy1, ix0:ix1]), self.mode
         )
+        if self.whiten:
+            piece = whiten_clipped(piece, self.whiten, rim=px <= 4 * out)
         box = (x0 - ix0, y0 - iy0, x0 - ix0 + px, y0 - iy0 + px)
-        return piece.resize((TILE, TILE), Image.LANCZOS, box=box)
+        return piece.resize((out, out), Image.LANCZOS, box=box)
 
     def _small(self, size):
         """The whole globe as a picture of ``size``: the memory map read in strides, then reduced."""
+        import numpy as np
         from PIL import Image
 
         k = max(1, self.arr.shape[1] // (size[0] * 2))
-        return Image.fromarray(self.arr[::k, ::k], self.mode).resize(
-            size, Image.LANCZOS
-        )
+        im = Image.fromarray(np.ascontiguousarray(self.arr[::k, ::k]), self.mode)
+        if self.whiten:
+            im = whiten_clipped(im, self.whiten, rim=False)
+        return im.resize(size, Image.LANCZOS)
 
     def _aux(self):
         """The two helper maps a finished layer reads, both a globe 1024 wide: ``lp`` (the picture's large-scale
@@ -676,7 +732,7 @@ class FileMosaic:
         grey = np.asarray(small, dtype=np.float32)[..., None]
         return Image.fromarray(np.clip(grey * ratio, 0, 255).astype(np.uint8))
 
-    def window(self, lon0, lat_top, span):
+    def window(self, lon0, lat_top, span, out=TILE):
         from PIL import Image
 
         x0, y0, px = (
@@ -685,25 +741,25 @@ class FileMosaic:
             span / self.res,
         )
         if self.arr is not None:
-            tile = self._crop(x0, y0, px)
+            tile = self._crop(x0, y0, px, out)
         else:
             tile = self.im.resize(
-                (TILE, TILE), Image.LANCZOS, box=(x0, y0, x0 + px, y0 + px)
+                (out, out), Image.LANCZOS, box=(x0, y0, x0 + px, y0 + px)
             )
         if self.finish:
             k = FINISH_MAP_W / (
                 self.arr.shape[1] if self.arr is not None else self.im.width
             )
             tile = self._finished(
-                tile, (x0 * k, y0 * k, (x0 + px) * k, (y0 + px) * k), (TILE, TILE)
+                tile, (x0 * k, y0 * k, (x0 + px) * k, (y0 + px) * k), (out, out)
             )
         if self.tint is None:
             return tile
         import numpy as np
 
         grey = np.asarray(tile, dtype=np.float32)[..., None]
-        out = np.clip(grey * self._chroma(lon0, lat_top, span), 0, 255).astype(np.uint8)
-        return Image.fromarray(out)
+        rgb = np.clip(grey * self._chroma(lon0, lat_top, span, out), 0, 255).astype(np.uint8)
+        return Image.fromarray(rgb)
 
 
 def tile_path(out, layer, z, x, y):
@@ -715,15 +771,23 @@ def _save(im, path, quality=WEBP_Q):
     im.save(path, "WEBP", quality=quality, method=6)
 
 
+def native_px(res, z):
+    """A tile of level z at the source's own pixel size (``res`` degrees a source pixel), never more than TILE: the
+    deepest level is stored at this size, so it holds every source pixel and invents none. The 3D view maps a tile by
+    its box, not its pixel count, and draws it the same; it only stops magnifying the source in the file."""
+    return min(TILE, int(round(180.0 / 2**z / res)))
+
+
 def _cut_row(args):
-    kind, src, mode, layer, out, z, y, quality = args
+    kind, src, mode, layer, out, z, y, quality, native = args
     mos = (
-        GibsMosaic(*src, mode) if kind == "gibs" else FileMosaic(src[0], mode, *src[1:])
+        GibsMosaic(*src, mode, LAYERS[layer].get("smooth", 0.0)) if kind == "gibs" else FileMosaic(src[0], mode, *src[1:])
     )
     span = 180.0 / 2**z
+    px = native_px(mos.res, z) if native else TILE
     for x in range(2 ** (z + 1)):
         _save(
-            mos.window(-180.0 + x * span, 90.0 - y * span, span),
+            mos.window(-180.0 + x * span, 90.0 - y * span, span, px),
             tile_path(out, layer, z, x, y),
             quality,
         )
@@ -735,13 +799,15 @@ def _shrink_row(args):
 
     layer, out, z, y, mode, quality = args
     for x in range(2 ** (z + 1)):
-        quad = Image.new(mode, (2 * TILE, 2 * TILE))
+        quad = None
         for dy in (0, 1):
             for dx in (0, 1):
                 with Image.open(
                     tile_path(out, layer, z + 1, 2 * x + dx, 2 * y + dy)
                 ) as child:
-                    quad.paste(child.convert(mode), (dx * TILE, dy * TILE))
+                    c = child.size[0]   # the deepest level may be stored at the source's own size (native_px)
+                    quad = quad or Image.new(mode, (2 * c, 2 * c))
+                    quad.paste(child.convert(mode), (dx * c, dy * c))
         _save(
             quad.resize((TILE, TILE), Image.LANCZOS),
             tile_path(out, layer, z, x, y),
@@ -908,6 +974,16 @@ def shaded_map(dem_path, out_path, width, radius_m):
     return out_path
 
 
+def _derived_width(path, top):
+    """A map derived from an elevation model (normals, shade) is made at the model's own width, or the deepest level's
+    if that is smaller: wider would only magnify the model (the deepest level is then cut at its size, native_px)."""
+    from PIL import Image
+
+    Image.MAX_IMAGE_PIXELS = None
+    with Image.open(path) as im:
+        return min(TILE * 2 ** (top + 1), im.width)
+
+
 def file_source(layer, spec, cache, top, update):
     """A file layer's picture ready to cut: fetched, checked against its pin, and derived or reduced where the layer
     says so. Returns (path, roll, tint map or None, finish)."""
@@ -920,7 +996,7 @@ def file_source(layer, spec, cache, top, update):
         path = _unzip_member(path, spec["member"])
     if spec.get("derive") == "normals":
         # Keyed by the elevation map's digest too: a new DEM (--update-pins) must not meet the last one's normals.
-        width = TILE * 2 ** (top + 1)
+        width = _derived_width(path, top)
         path = normals_map(
             path,
             os.path.join(
@@ -931,7 +1007,7 @@ def file_source(layer, spec, cache, top, update):
             width,
         )
     if spec.get("derive") == "shade":
-        width = TILE * 2 ** (top + 1)
+        width = _derived_width(path, top)
         path = shaded_map(
             path,
             os.path.join(
@@ -966,7 +1042,7 @@ def file_source(layer, spec, cache, top, update):
             ),
         )
     tint = spec.get("tint")
-    finish = {k: spec[k] for k in ("tone", "fill") if k in spec}
+    finish = {k: spec[k] for k in ("tone", "fill", "whiten") if k in spec}
     return (
         path,
         spec.get("roll", False),
@@ -979,7 +1055,7 @@ def build_layer(layer, cache, out, update, max_level=None, procs=None):
     spec = LAYERS[layer]
     top = spec["max"] if max_level is None else min(max_level, spec["max"])
     if "terrain" in spec:
-        return build_terrain.terrain_tiles(spec["terrain"], cache, out, update, top)
+        return build_terrain.terrain_tiles(spec["terrain"], cache, out, update, top, native=True)
     if "gibs" in spec:
         folder = gibs_sources(layer, cache, update)
         kind, src = "gibs", (folder, spec["src_level"], spec["ext"])
@@ -999,7 +1075,7 @@ def build_layer(layer, cache, out, update, max_level=None, procs=None):
                     ex.map(
                         _cut_row,
                         [
-                            (kind, src, spec["mode"], layer, out, z, y, q)
+                            (kind, src, spec["mode"], layer, out, z, y, q, z == top)
                             for y in range(2**z)
                         ],
                     )
@@ -1009,7 +1085,7 @@ def build_layer(layer, cache, out, update, max_level=None, procs=None):
                 ex.map(
                     _cut_row,
                     [
-                        (kind, src, spec["mode"], layer, out, top, y, q)
+                        (kind, src, spec["mode"], layer, out, top, y, q, True)
                         for y in range(2**top)
                     ],
                 )
@@ -1128,7 +1204,7 @@ def _insert_tile(cache, stage, layer, z, x, y, base_level):
         tile_path(stage, "moon/albedo", base_level, x >> up, y >> up)
     ) as parent:
         n = 2**up
-        cell = TILE / n
+        cell = parent.size[0] / n   # the global map's deepest level may be stored at its own size (native_px)
         ox, oy = (x % n) * cell, (y % n) * cell
         base = parent.convert("L").resize(
             (TILE, TILE), Image.BICUBIC, box=(ox, oy, ox + cell, oy + cell)
@@ -1398,6 +1474,9 @@ def main(argv=None):
         manifest["layers"][layer] = {
             "max": build_layer(layer, a.cache, stage, a.update_pins, cap, a.procs)
         }
+        px = build_terrain.TOP_PX.get(layer.split("/", 1)[1]) if layer.startswith("terrain/") else None
+        if px and px != build_terrain.TILE:   # the deepest level at its source's own size (almanac-terrain.js reads it)
+            manifest["layers"][layer]["px"] = px
     albedo = manifest["layers"].get("moon/albedo")
     if (
         a.inserts and albedo

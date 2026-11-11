@@ -4154,5 +4154,7 @@
   "alm_sats_f_owner": "בעלים",
   "alm_sats_unassigned": "לא הוקצה",
   "alm_launch_watch": "לצפות בשיגור",
-  "alm_launch_watch_from": "לצפות מ"
+  "alm_launch_watch_from": "לצפות מ",
+  "alm_hd_kind_hd": "HD",
+  "alm_hd_kind_max": "מקסימום"
 }

@@ -4154,5 +4154,7 @@
   "alm_sats_f_owner": "المالك",
   "alm_sats_unassigned": "غير محدد",
   "alm_launch_watch": "شاهد الإطلاق",
-  "alm_launch_watch_from": "شاهد من"
+  "alm_launch_watch_from": "شاهد من",
+  "alm_hd_kind_hd": "HD",
+  "alm_hd_kind_max": "الأقصى"
 }

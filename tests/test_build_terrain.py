@@ -147,6 +147,32 @@ def test_the_tile_pyramid_has_every_level(bt, monkeypatch, tmp_path):
         assert n == 2 ** (z + 1) * 2**z
 
 
+def test_the_deepest_level_keeps_the_source_size_and_the_rest_are_full_tiles(bt, monkeypatch, tmp_path):
+    # A source 256 px round (0.71 px a degree) with tiles of 8: level 4's 32 columns hold 8 px each; level 5 would
+    # magnify. Cut natively at level 5 the deepest tiles are 4 px, every level above a full tile.
+    raster = np.tile(np.arange(256, dtype=np.uint16) * 10, (128, 1))
+    _use(bt, monkeypatch, _source(tmp_path, raster))
+    monkeypatch.setattr(bt, "TILE", 8)
+    out = str(tmp_path / "out")
+    assert bt.native_level("t", str(tmp_path)) == 4
+    assert bt.terrain_tiles("t", str(tmp_path), out, max_level=5, native=True) == 5
+    assert bt.TOP_PX["t"] == 4
+    with Image.open(os.path.join(out, "terrain", "t", "5", "0", "0.webp")) as t:
+        assert t.size == (4, 4)
+    with Image.open(os.path.join(out, "terrain", "t", "4", "0", "0.webp")) as t:
+        assert t.size == (8, 8)
+
+
+def test_a_hole_is_filled_smoothly_and_the_ground_round_it_is_kept(bt):
+    a = np.full((64, 128), 100.0, dtype=np.float32)
+    a[:, 64:] = 300.0
+    a[:20, :] = np.nan   # a pole never seen
+    out = bt._fill_holes(a)
+    assert not np.isnan(out).any()
+    assert np.array_equal(out[20:], a[20:])   # measured ground untouched
+    assert 100.0 <= out[:20].min() and out[:20].max() <= 300.0
+
+
 def test_the_sources_are_pinned_and_public_domain_bodies_only():
     spec = importlib.util.spec_from_file_location(
         "bt_pins", os.path.join(ROOT, "scripts", "build_terrain.py")
@@ -154,7 +180,7 @@ def test_the_sources_are_pinned_and_public_domain_bodies_only():
     mod = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(mod)
     assert set(mod.PINS) == set(mod.SOURCES)
-    assert set(mod.SOURCES) == {"earth", "moon", "mars", "venus", "mercury"}
+    assert set(mod.SOURCES) == {"earth", "moon", "mars", "venus", "mercury", "ceres", "vesta", "pluto", "charon", "phobos", "enceladus"}
     # Every body with a shipped map is one the view can stand on.
     src = open(
         os.path.join(ROOT, "zimi", "static", "almanac-earth.js"), encoding="utf-8"

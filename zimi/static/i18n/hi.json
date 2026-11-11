@@ -4154,5 +4154,7 @@
   "alm_sats_f_owner": "स्वामी",
   "alm_sats_unassigned": "अनिर्धारित",
   "alm_launch_watch": "प्रक्षेपण देखें",
-  "alm_launch_watch_from": "यहाँ से देखें"
+  "alm_launch_watch_from": "यहाँ से देखें",
+  "alm_hd_kind_hd": "HD",
+  "alm_hd_kind_max": "अधिकतम"
 }

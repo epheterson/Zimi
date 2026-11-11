@@ -4154,5 +4154,7 @@
   "alm_sats_f_owner": "所有者",
   "alm_sats_unassigned": "未指定",
   "alm_launch_watch": "观看发射",
-  "alm_launch_watch_from": "观看位置"
+  "alm_launch_watch_from": "观看位置",
+  "alm_hd_kind_hd": "HD",
+  "alm_hd_kind_max": "最高"
 }

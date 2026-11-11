@@ -4154,5 +4154,7 @@
   "alm_sats_f_owner": "Proprietário",
   "alm_sats_unassigned": "Não atribuído",
   "alm_launch_watch": "Assistir ao lançamento",
-  "alm_launch_watch_from": "Assistir de"
+  "alm_launch_watch_from": "Assistir de",
+  "alm_hd_kind_hd": "HD",
+  "alm_hd_kind_max": "Máximo"
 }

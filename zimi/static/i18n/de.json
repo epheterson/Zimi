@@ -4154,5 +4154,7 @@
   "alm_sats_f_owner": "Betreiber",
   "alm_sats_unassigned": "Nicht zugeordnet",
   "alm_launch_watch": "Start ansehen",
-  "alm_launch_watch_from": "Ansehen von"
+  "alm_launch_watch_from": "Ansehen von",
+  "alm_hd_kind_hd": "HD",
+  "alm_hd_kind_max": "Maximum"
 }

@@ -4154,5 +4154,7 @@
   "alm_sats_f_owner": "Владелец",
   "alm_sats_unassigned": "Не назначен",
   "alm_launch_watch": "Смотреть запуск",
-  "alm_launch_watch_from": "Смотреть с"
+  "alm_launch_watch_from": "Смотреть с",
+  "alm_hd_kind_hd": "HD",
+  "alm_hd_kind_max": "Максимум"
 }

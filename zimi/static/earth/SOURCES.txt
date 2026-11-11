@@ -271,16 +271,27 @@ terrain-<body>-v1.bin (scripts/build_terrain.py)
   The heights Stand here (almanac-stand.js) walks on, 256 x 128 metres above the
   body's mean radius, int16, about 64 KB each. Public domain:
   earth: NOAA NCEI, ETOPO 2022 (60 arc-second surface), a U.S. Government work.
-  moon: NASA SVS CGI Moon Kit, LOLA elevation at 16 pixels a degree.
+  moon: NASA SVS CGI Moon Kit, LOLA elevation at 64 pixels a degree (16 for the
+    shipped map).
   mars: USGS Astrogeology, MOLA DEM mosaic (463 m), NASA/MGS.
   venus: USGS Astrogeology, Magellan topography (4641 m), NASA/JPL.
   mercury: USGS Astrogeology, MESSENGER DEM (665 m), NASA/JHUAPL/CIW.
-  Titan, Pluto and the big moons have no global height map in the public domain
-  at a usable resolution: they stand on a sphere with generated detail. The
+  ceres: USGS Astrogeology, Dawn FC HAMO DTM (60 pixels a degree), Dawn Team,
+    NASA/JPL-Caltech/UCLA/MPS/DLR/IDA.
+  vesta: USGS Astrogeology, Dawn FC HAMO DTM (48 pixels a degree), Dawn Team,
+    DLR.
+  pluto, charon: USGS Astrogeology, New Horizons LORRI/MVIC global DEMs (300 m),
+    NASA/JHUAPL/SwRI/LPI.
+  phobos: USGS Astrogeology, Mars Express HRSC global DEM (2 pixels a degree),
+    ESA/DLR/FU Berlin through Europlanet, released to the public domain.
+  enceladus: USGS Astrogeology, Cassini ISS shape model (Bland et al. 2019),
+    heights above its triaxial ellipsoid, NASA/JPL/SSI/USGS.
+  Titan, Io, Europa, Ganymede and Callisto have no global height map in the public
+  domain at a usable resolution: they stand on a sphere with generated detail. The
   craters, hills and rock beneath what the maps hold are generated for every
   body (seeded by the place, so the same spot is always the same ground) and the
   view says so in the Almanac's Constants. The Almanac HD release adds the
-  same heights to 11 pixels a degree (terrain/<body>/ tiles).
+  same heights at each model's own resolution (terrain/<body>/ tiles).
 
 land-v1.bin (scripts/build_landmask.py)
   Where the Earth's coasts are, for Stand here: Natural Earth 1:10 million land

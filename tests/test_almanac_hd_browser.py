@@ -31,9 +31,11 @@ INSERT = {"site": "apollo11", "lat": 0.67408, "lon": 23.47297, "z": 2, "x0": 4, 
 LEVELS = {"earth/day": 2, "earth/night": 1, "moon/albedo": 1, "moon/relief": 1}
 OFFER = {
     "installed": False,
+    "kind": None,
     "mode": "ask",
     "locked": None,
     "offer": {"file": "zimi_almanac_hd_2026-11.zim", "size": 312_000_000},
+    "offers": {"hd": {"size": 312_000_000}, "max": {"size": 4_820_000_000}},
     "downloading": None,
     "can_change": True,
 }
@@ -302,10 +304,40 @@ def test_the_gear_keeps_hd_after_not_now(browser, served, who):
         if who == "never":
             assert row is None, row
         else:
-            assert row and "Sharper Earth, Moon and planets" in row and "312" in row, row
-            assert pg.evaluate("!!document.getElementById('ae-set-hd-get')") == (who == "admin"), row
+            assert row and "Sharper Earth, Moon and planets" in row and "312" in row and "Maximum" in row, row
+            enabled = pg.evaluate("Array.prototype.filter.call(document.querySelectorAll('.ae-hd-kind'), r => !r.disabled).length")
+            assert enabled == (2 if who == "admin" else 0), row
             if who == "viewer":
                 assert "runs this Zimi" in row, row
+    finally:
+        ctx.close()
+
+
+def test_the_gear_offers_two_sizes_and_choosing_maximum_starts_it(browser, served):
+    """HD installed: the gear marks it and offers Maximum with its size; choosing it asks the server for Maximum."""
+    with_hd, url, base = served
+    if with_hd:
+        pytest.skip("the status is the routed one")
+    st = dict(OFFER, installed=True, kind="hd", offer=None, offers={"max": {"size": 4_820_000_000}})
+    ctx, pg, _tiles = _open_earth(browser, url, route_hd=st)
+    asked = []
+
+    def start(route):
+        asked.append(json.loads(route.request.post_data or "{}"))
+        route.fulfill(status=200, content_type="application/json", body=json.dumps(dict(st, can_change=True)))
+
+    pg.route("**/manage/almanac-hd", start)
+    try:
+        pg.wait_for_function("() => !!_ae.hdSt", timeout=20_000)
+        pg.click("#ae-gear")
+        kinds = pg.evaluate("Array.prototype.map.call(document.querySelectorAll('.ae-hd-kind'), r => [r.value, r.checked, r.disabled])")
+        assert kinds == [["hd", True, False], ["max", False, False]], kinds
+        row = pg.inner_text("#ae-set-body .ae-set-hd")
+        assert "Installed" in row and "4.8" in row, row
+        pg.click(".ae-hd-kind[value=max]")
+        pg.wait_for_function("() => true")
+        pg.wait_for_timeout(500)
+        assert asked == [{"start": True, "kind": "max"}], asked
     finally:
         ctx.close()
 

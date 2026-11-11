@@ -4154,5 +4154,7 @@
   "alm_sats_f_owner": "Owner",
   "alm_sats_unassigned": "Unassigned",
   "alm_launch_watch": "Watch the launch",
-  "alm_launch_watch_from": "Watch from"
+  "alm_launch_watch_from": "Watch from",
+  "alm_hd_kind_hd": "HD",
+  "alm_hd_kind_max": "Maximum"
 }

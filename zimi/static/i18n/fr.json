@@ -4154,5 +4154,7 @@
   "alm_sats_f_owner": "Propriétaire",
   "alm_sats_unassigned": "Non attribué",
   "alm_launch_watch": "Voir le lancement",
-  "alm_launch_watch_from": "Voir depuis"
+  "alm_launch_watch_from": "Voir depuis",
+  "alm_hd_kind_hd": "HD",
+  "alm_hd_kind_max": "Maximum"
 }

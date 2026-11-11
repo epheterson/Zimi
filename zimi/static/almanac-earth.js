@@ -2415,7 +2415,7 @@ function _aeHdManifest() {
         var core = man.layers[k], deep = x.layers[k];
         // A layer split between the core and a part (levels from ``from`` on): the core's folder for the levels it holds, the
         // part's from there, to the part's deepest; and its inserts, which only the part has.
-        man.layers[k] = core && deep.from != null ? { max: deep.max, base: core.base, deep: { from: deep.from, base: deep.base }, inserts: deep.inserts } : deep;
+        man.layers[k] = core && deep.from != null ? { max: deep.max, px: deep.px, base: core.base, deep: { from: deep.from, base: deep.base }, inserts: deep.inserts } : deep;
       });
     });
     return man;
@@ -2437,9 +2437,10 @@ var AE_HD_SEG_DEG = 2.8;         // a tile's mesh no coarser than the base spher
 var AE_HD_MIN_SEG = 8;
 var AE_HD_SKIRT = 0.002;         // each tile's edges hang this far below the surface (of its radius): no crack shows where levels meet
 var AE_HD_TILE_REACH = 0.75;     // a tile's angular radius, as a share of its side (half its diagonal, and a margin)
-// With HD, the Earth's closest approach: its 610 m texels are then about two CSS pixels on a phone (three device
-// pixels at 2x); nearer, the picture only blurs. Every other body's is worked out the same way from its deepest level
-// (_aeHdTexelMin), so the Moon's 166 m texels let the camera come four times nearer than its map alone did.
+// With HD, the Earth's closest approach at the least (its deepest level may let it nearer); nearer than a body's
+// deepest texels at about two CSS pixels the picture only blurs. Every body's is worked out from its deepest level
+// as if its tiles were AE_HD_TILE_PX (_aeHdTexelMin): a deepest level stored at its source's own, smaller size (the
+// build's native_px) is the same picture, so the camera comes as near as it did when the file magnified it.
 var AE_HD_MIN_ALT_KM = 400;
 // A place on a body (latitude, longitude in degrees) as a unit vector in the body's own frame.
 // The point of a body's drawn sphere (squashed along its pole by `flat`) at a latitude and longitude. A map's rows follow
@@ -2539,7 +2540,12 @@ function _aeHdBudget() {
   try { phone = (typeof matchMedia === 'function' && matchMedia('(pointer: coarse)').matches) || (navigator.deviceMemory || 8) <= 4; } catch (e) {}
   return Math.min(phone ? AE_HD_GPU_MB_PHONE : AE_HD_GPU_MB_DESKTOP, _aeCapGet('hdMemMB', 1e9)) * 1048576;
 }
-function _aeHdTexBytes(tx, red) { return Math.round(AE_HD_TILE_PX * AE_HD_TILE_PX * (red ? 1 : AE_HD_RGBA_BYTES) * AE_HD_MIP_FACTOR); }
+// A layer's deepest level may be stored at its source's own size, smaller than AE_HD_TILE_PX (build_almanac_hd.py
+// native_px): a tile is mapped by its box, so only what it holds on the GPU is counted from its own size.
+function _aeHdTexBytes(tx, red) {
+  var px = (tx.image && tx.image.width) || AE_HD_TILE_PX;
+  return Math.round(px * px * (red ? 1 : AE_HD_RGBA_BYTES) * AE_HD_MIP_FACTOR);
+}
 function _aeHdKey(z, x, y) { return z + '/' + x + '/' + y; }
 function _aeHdSpan(z) { return 180 / Math.pow(2, z); }
 // A tile's box in the whole map's uv (u from longitude -180, v from latitude -90).
@@ -4654,7 +4660,7 @@ function _aeRefAxesRows() {
   add('craft.view', _aeT('tb_kn_craft_view'), AE_CRAFT_VIEW_SPANS, '×', 'Zimi');
   // Stand here: its ground and the air over it.
   add('stand.eye', _aeT('tb_kn_stand_eye'), AE_STAND_EYE_M, 'm', 'Zimi');
-  add('stand.terrain', _aeT('tb_kn_stand_terrain'), 'LOLA · MOLA · Magellan · MESSENGER · ETOPO 2022', '', 'NASA, USGS, NOAA (public domain)');
+  add('stand.terrain', _aeT('tb_kn_stand_terrain'), 'LOLA · MOLA · Magellan · MESSENGER · ETOPO 2022 · Dawn · New Horizons · HRSC · Cassini', '', 'NASA, USGS, NOAA, ESA/DLR (public domain)');
   add('stand.detail', _aeT('tb_kn_stand_detail'), 'seeded by the place', '', 'Zimi');
   add('stand.dust', _aeT('tb_kn_stand_dust'), AE_STAND_MARS_TAU, '', 'Lemmon et al. 2015');
   add('stand.haze', _aeT('tb_kn_stand_haze'), AE_STAND_HAZE_VIS_KM.venus + ' · ' + AE_STAND_HAZE_VIS_KM.titan, 'km', 'Zimi, after Venera and Huygens');
@@ -5101,40 +5107,33 @@ function _aeHdOfferSize(offer) {
   return fmtBytes(offer.size);
 }
 // Almanac HD in the gear, whatever the line under the controls says: after Not now this is where it is found again.
-// Installed; downloading and how far; a Download with its size for someone who may; for anyone else, who can.
-// Nothing under Never (or ZIMI_OFFLINE), or when this version names no file.
+// Two sizes, one installed at a time (almanachd.py): HD and Maximum, each with its size; the one in use is checked,
+// the other one replaces it once it is in. Downloading, how far. Nothing under Never (or ZIMI_OFFLINE), or when this
+// version names no file and none is installed.
+var AE_HD_KINDS = ['hd', 'max'];
 function _aeHdRowHtml() {
   var st = _ae.hdSt;
-  if (!st || (!st.installed && (!st.offer || st.mode === 'never'))) return '';
-  var head = '<b>' + _almEsc(_aeT('alm_hd_offer')) + '</b>', tail;
-  if (st.installed || _ae.hdInstalled) tail = _almEsc(_aeT('alm_hd_installed'));
-  else if (st.downloading) tail = _almEsc(_aeT('alm_hd_getting', { pct: Math.floor(100 * st.downloading.done / Math.max(1, st.downloading.size)) }));
-  else {
-    var size = _aeHdOfferSize(st.offer);
-    tail = st.can_change ? _almEsc(size) + ' · <button type="button" class="ae-fresh" id="ae-set-hd-get">' + _almEsc(_aeT('alm_hd_get')) + '</button>'
-      : _almEsc(size) + ' · ' + _almEsc(_aeT('alm_hd_ask_admin'));
-  }
-  return '<p class="ae-set-data ae-set-hd">' + head + '<br>' + tail + '</p>' + _aeUltraHtml();
-}
-// The Ultra parts, a short list under the core's row: each body's full resolution, with its size and a switch. Off
-// removes the file from the library, on fetches it; the view draws whatever is installed. Only for whoever may change it.
-function _aeUltraName(part) { return part === 'moon' ? _aeT('alm_moon') : _tp(part.charAt(0).toUpperCase() + part.slice(1)); }
-function _aeUltraHtml() {
-  var st = _ae.hdSt, list = st && st.ultra;
-  if (!list || !list.length) return '';
-  var rows = list.map(function (u) {
-    var busy = !!u.downloading, tail = busy ? Math.floor(100 * u.downloading.done / Math.max(1, u.downloading.size)) + '%' : _aeHdOfferSize({ size: u.size });
-    return '<label class="ae-set-choice' + (st.can_change && !busy ? '' : ' ae-off') + '"><input type="checkbox" class="ae-ultra-sw" data-part="' + _almEsc(u.part) + '" data-file="' + _almEsc(u.file) + '"' +
-      (u.installed && !busy ? ' checked' : '') + (st.can_change && !busy ? '' : ' data-locked="1"') + '><span><b>' + _almEsc(_aeUltraName(u.part)) + '</b><small>' + _almEsc(tail) + '</small></span></label>';
+  var offers = (st && st.offers) || {};
+  if (!st || (!st.installed && (st.mode === 'never' || !Object.keys(offers).length))) return '';
+  var busy = st.downloading, edit = !!st.can_change && !busy;
+  var rows = AE_HD_KINDS.map(function (k) {
+    var mine = st.kind === k, o = offers[k];
+    if (!mine && !o) return '';
+    var tail = busy && busy.kind === k ? Math.floor(100 * busy.done / Math.max(1, busy.size)) + '%'
+      : mine ? _aeT('alm_hd_installed') : _aeHdOfferSize(o);
+    // The one in use stays a checked, enabled radio (a disabled one reads as off); choosing it again does nothing.
+    return '<label class="ae-set-choice' + (edit && !mine ? '' : ' ae-off') + '"><input type="radio" name="ae-hd-kind" class="ae-hd-kind" value="' + k + '"' +
+      (mine ? ' checked' : '') + (edit ? '' : ' disabled') + '><span><b>' + _almEsc(_aeT('alm_hd_kind_' + k)) + '</b><small>' + _almEsc(tail) + '</small></span></label>';
   }).join('');
-  return '<div class="ae-set-data ae-set-ultra" role="group" aria-label="' + _almEsc(_aeT('alm_hd_ultra')) + '"><b>' + _almEsc(_aeT('alm_hd_ultra')) + '</b>' + rows + '</div>';
+  var who = st.can_change || st.installed ? '' : '<small>' + _almEsc(_aeT('alm_hd_ask_admin')) + '</small>';
+  return '<div class="ae-set-data ae-set-hd ae-set-ultra" role="radiogroup" aria-label="' + _almEsc(_aeT('alm_hd_offer')) + '"><b>' + _almEsc(_aeT('alm_hd_offer')) + '</b>' + rows + who + '</div>';
 }
-function _aeUltraToggle(box) {
-  var part = box.getAttribute('data-part'), file = box.getAttribute('data-file');
-  if (box.getAttribute('data-locked')) { box.checked = !box.checked; return; }   // not yours to change, or on its way: it looks as it is and stays
-  box.disabled = true;
+// A size chosen: its download starts; it replaces the one installed once it is in and checked.
+function _aeHdKind(input) {
+  if (input.disabled || (_ae.hdSt && _ae.hdSt.kind === input.value)) return;
+  Array.prototype.forEach.call(document.querySelectorAll('.ae-hd-kind'), function (r) { r.disabled = true; });
   var done = function () { _aeHdPollNow(); };
-  (box.checked ? _aePost(AE_HD_SET_URL, { start: true, part: part }) : _aePost(AE_HD_DELETE_URL, { filename: file })).then(done, done);
+  _aePost(AE_HD_SET_URL, { start: true, kind: input.value }).then(done, done);
 }
 function _aeHdGet() {
   _aeById('ae-hd-get').disabled = true;
@@ -5343,7 +5342,7 @@ var AE_FLY_OVERVIEW_MS = 2000, AE_FLY_OVERVIEW_STRETCH = 1.25, AE_FLY_OVERVIEW_K
 // the first time a spot is tapped). The two names below are the way in for anything else that wants the ground.
 //   _aeStandAt(body, lat, lon)         enter the view: a promise of whether it started
 //   _aeGroundHeight(body, lat, lon)    metres above the body's mean radius; 0 until the body's terrain is loaded
-var AE_STAND_KEYS = ['earth', 'moon', 'mercury', 'venus', 'mars', 'io', 'europa', 'ganymede', 'callisto', 'titan', 'pluto'];
+var AE_STAND_KEYS = ['earth', 'moon', 'mercury', 'venus', 'mars', 'io', 'europa', 'ganymede', 'callisto', 'titan', 'pluto', 'ceres', 'vesta', 'charon', 'phobos', 'enceladus'];
 var AE_STAND_SRCS = [_almAsset('/static/almanac-terrain.js'), _almAsset('/static/almanac-terrainshade.js'), _almAsset('/static/almanac-standlook.js'), _almAsset('/static/almanac-standgl.js'), _almAsset('/static/almanac-oneland.js'), _almAsset('/static/almanac-stand.js'), _almAsset('/static/almanac-standhost.js'), _almAsset('/static/almanac-oneair.js')];
 var AE_STAND_FIGURE_SVG = '<svg class="ae-tool-svg" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="5.5" r="2.3"/><path d="M12 8.5v6M8.5 11.5l3.5-1 3.5 1M12 14.5l-2.5 5.5M12 14.5l2.5 5.5"/></svg>';
 var AE_STAND_EYE_M = 1.7;                      // an eye above the ground
@@ -6271,7 +6270,7 @@ function _aeRenderSettings() {
   if (typeof ZimiCap !== 'undefined') ZimiCap.gearBind(panel);
   var get = _aeById('ae-set-hd-get');
   if (get) get.onclick = _aeHdGet;
-  if (panel.querySelectorAll) Array.prototype.forEach.call(panel.querySelectorAll('.ae-ultra-sw'), function (box) { box.onchange = function () { _aeUltraToggle(box); }; });
+  if (panel.querySelectorAll) Array.prototype.forEach.call(panel.querySelectorAll('.ae-hd-kind'), function (r) { r.onchange = function () { _aeHdKind(r); }; });
 }
 // An admin's choice, saved on the server; then the view asks again, since
 // the choice changes what a stale answer brings (Automatically fetches
