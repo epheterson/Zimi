@@ -20,7 +20,6 @@ LANGS = "ar de en es fr he hi pt ru zh".split()
 NEW_YORK = '{"lat":40.71,"lon":-74.0,"name":"New York"}'
 SYDNEY = '{"lat":-33.87,"lon":151.2,"name":"Sydney, Australia"}'
 LONG = '{"lat":-77.8,"lon":166.7,"name":"McMurdo Station Antarctica Research Base"}'
-SETTLE_MS = 5000
 
 
 @pytest.fixture(scope="module")
@@ -70,7 +69,8 @@ def _open(pw, base, lang="en", width=390, place=NEW_YORK, init=""):
     pg.on("pageerror", lambda e: errs.append(str(e)[:300]))
     pg.goto(base + "/#almanac")
     pg.wait_for_selector("#almanac-head-time .ep", timeout=60000)
-    pg.wait_for_timeout(SETTLE_MS)
+    # Settled: the panels are built and the head's tiles are drawn (a state, not a fixed wait).
+    pg.wait_for_function("() => window._almPanelsReady && document.querySelectorAll('#almanac-head .alm-card').length >= 5", timeout=60000)
     return br, pg, errs
 
 
