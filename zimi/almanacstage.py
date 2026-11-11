@@ -29,6 +29,9 @@ import shutil
 
 STATIC = os.path.join(os.path.dirname(os.path.abspath(__file__)), "static")
 HOST = os.path.join(os.path.dirname(os.path.abspath(__file__)), "builtin", "almanac")
+GAMES = os.path.join(os.path.dirname(os.path.abspath(__file__)), "builtin", "games")
+#: Taken from the Games' folder: Zimi's address (written only there) and its mark.
+FROM_GAMES = ("zimihome.js", "mark.svg")
 
 #: The Golden Record's pictures and their table (file, caption, credit, public domain or not).
 GOLDEN_RECORD = "golden-record"
@@ -434,6 +437,9 @@ def stage(dest, community=False):
         f.write(shell_css)
     for fn in os.listdir(HOST):
         shutil.copyfile(os.path.join(HOST, fn), os.path.join(dest, fn))
+    # The line naming Zimi outside it: the address and the mark are the Games' (one place each), the same in both ZIMs.
+    for fn in FROM_GAMES:
+        shutil.copyfile(os.path.join(GAMES, fn), os.path.join(dest, fn))
     _snapshots(dest)
     if community:
         _community_golden_record(dest)

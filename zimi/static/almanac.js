@@ -2689,8 +2689,11 @@ function _renderAlmanacContent() {
 
 
   // Footer
+  // Outside Zimi (the Almanac's ZIM in Kiwix) the page that holds it defines _almHomeLine: the credit line, the page's very last.
+  // Zimi has none.
   html += '<div class="alm-footer">' +
     t('alm_footer') +
+    (typeof _almHomeLine === 'function' ? _almHomeLine() : '') +
     '</div>';
 
   html += '</div>';
