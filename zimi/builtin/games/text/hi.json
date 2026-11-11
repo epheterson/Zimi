@@ -5463,7 +5463,6 @@
  "snake.bestWrap": "आर-पार के साथ सबसे अच्छा",
  "snake.readyKeys": "शुरू करने के लिए तीर कुंजी दबाएँ",
  "snake.readyTouch": "शुरू करने के लिए टैप करें, फिर मोड़ने के लिए स्वाइप करें",
- "snake.wrap": "आर-पार निकलें",
  "sokoban.blocked": "रास्ते में कुछ है",
  "sokoban.board": "सोकोबान बोर्ड",
  "sokoban.boardLabel": "{level}: {total} में से {done} संदूक घेरों पर, {moves} चालें",
@@ -6015,5 +6014,8 @@
  "race.matchedShortest": "आपने सबसे छोटा रास्ता पकड़ा: {n}।",
  "race.matchedRoute": "आपने जाना-पहचाना रास्ता पकड़ा: {n}।",
  "race.beatRoute": "आपने {n} के जाने-पहचाने रास्ते को हरा दिया।",
- "game.checkers.short": "चेकर्स"
+ "game.checkers.short": "चेकर्स",
+ "snake.walls": "दीवारें",
+ "snake.walls.solid": "ठोस",
+ "snake.walls.wrap": "आर-पार"
 }

@@ -5463,7 +5463,6 @@
  "snake.bestWrap": "Bestwert mit Umlauf",
  "snake.readyKeys": "Pfeiltaste drücken zum Starten",
  "snake.readyTouch": "Tippen zum Starten, dann wischen zum Abbiegen",
- "snake.wrap": "Umlauf",
  "sokoban.blocked": "Etwas ist im Weg",
  "sokoban.board": "Sokoban-Brett",
  "sokoban.boardLabel": "{level}: {done} von {total} Kisten auf Zielfeldern, {moves} Züge",
@@ -6015,5 +6014,8 @@
  "race.matchedShortest": "Du hast die kürzeste Route erreicht: {n}.",
  "race.matchedRoute": "Du hast die bekannte Route erreicht: {n}.",
  "race.beatRoute": "Du warst besser als die bekannte Route mit {n}.",
- "game.checkers.short": "Dame"
+ "game.checkers.short": "Dame",
+ "snake.walls": "Wände",
+ "snake.walls.solid": "Fest",
+ "snake.walls.wrap": "Durchlaufen"
 }

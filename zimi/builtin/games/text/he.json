@@ -5574,7 +5574,6 @@
  "snake.bestWrap": "שיא עם מעבר בקצוות",
  "snake.readyKeys": "הקישו על מקש חץ כדי להתחיל",
  "snake.readyTouch": "הקישו כדי להתחיל, ואז החליקו כדי לפנות",
- "snake.wrap": "מעבר בקצוות",
  "sokoban.blocked": "משהו חוסם את הדרך",
  "sokoban.board": "לוח סוקובן",
  "sokoban.boardLabel": "{level}: ארגזים על עיגולים {done} מתוך {total}, מהלכים: {moves}",
@@ -6145,5 +6144,8 @@
  "race.matchedShortest": "השגתם את המסלול הקצר ביותר: {n}.",
  "race.matchedRoute": "השגתם את המסלול הידוע: {n}.",
  "race.beatRoute": "ניצחתם את המסלול הידוע של {n}.",
- "game.checkers.short": "דמקה"
+ "game.checkers.short": "דמקה",
+ "snake.walls": "קירות",
+ "snake.walls.solid": "מוצקים",
+ "snake.walls.wrap": "מעבר"
 }

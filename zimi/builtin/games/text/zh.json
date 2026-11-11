@@ -5352,7 +5352,6 @@
  "snake.bestWrap": "穿墙最佳",
  "snake.readyKeys": "按方向键开始",
  "snake.readyTouch": "点按开始，然后滑动转向",
- "snake.wrap": "穿墙",
  "sokoban.blocked": "路被挡住了",
  "sokoban.board": "仓库番棋盘",
  "sokoban.boardLabel": "{level}：{total} 个箱子中有 {done} 个在圆环上，{moves} 步",
@@ -5885,5 +5884,8 @@
  "race.matchedShortest": "你走出了最短路线：{n}。",
  "race.matchedRoute": "你走出了已知路线：{n}。",
  "race.beatRoute": "你胜过了已知的 {n} 步路线。",
- "game.checkers.short": "跳棋"
+ "game.checkers.short": "跳棋",
+ "snake.walls": "墙",
+ "snake.walls.solid": "实墙",
+ "snake.walls.wrap": "穿墙"
 }

@@ -5905,7 +5905,6 @@
  "snake.bestWrap": "الأفضل مع الالتفاف",
  "snake.readyKeys": "اضغط مفتاح سهم للبدء",
  "snake.readyTouch": "المس للبدء، ثم اسحب للانعطاف",
- "snake.wrap": "التفاف",
  "sokoban.blocked": "هناك شيء يعترض الطريق",
  "sokoban.board": "لوحة سوكوبان",
  "sokoban.boardLabel": "{level}: الصناديق على الحلقات {done} من {total}، الحركات: {moves}",
@@ -6531,5 +6530,8 @@
  "race.matchedShortest": "طابقتَ أقصر طريق: {n}.",
  "race.matchedRoute": "طابقتَ الطريق المعروف: {n}.",
  "race.beatRoute": "تفوقتَ على الطريق المعروف البالغ {n}.",
- "game.checkers.short": "الداما"
+ "game.checkers.short": "الداما",
+ "snake.walls": "الجدران",
+ "snake.walls.solid": "صلبة",
+ "snake.walls.wrap": "عبور"
 }

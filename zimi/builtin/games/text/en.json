@@ -5463,7 +5463,6 @@
  "snake.bestWrap": "Best with wrap",
  "snake.readyKeys": "Press an arrow key to start",
  "snake.readyTouch": "Tap to start, then swipe to turn",
- "snake.wrap": "Wrap around",
  "sokoban.blocked": "Something is in the way",
  "sokoban.board": "Sokoban board",
  "sokoban.boardLabel": "{level}: {done} of {total} crates on rings, {moves} moves",
@@ -6015,5 +6014,8 @@
  "race.matchedShortest": "You matched the shortest route: {n}.",
  "race.matchedRoute": "You matched the known route: {n}.",
  "race.beatRoute": "You beat the known route of {n}.",
- "game.checkers.short": "Checkers"
+ "game.checkers.short": "Checkers",
+ "snake.walls": "Walls",
+ "snake.walls.solid": "Solid",
+ "snake.walls.wrap": "Wrap through"
 }

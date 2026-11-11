@@ -5685,7 +5685,6 @@
  "snake.bestWrap": "Рекорд с переходом через край",
  "snake.readyKeys": "Нажмите стрелку, чтобы начать",
  "snake.readyTouch": "Коснитесь, чтобы начать, затем смахивайте для поворота",
- "snake.wrap": "Через край",
  "sokoban.blocked": "Что-то мешает",
  "sokoban.board": "Доска Sokoban",
  "sokoban.boardLabel": "{level}: ящиков на кольцах {done} из {total}, ходов: {moves}",
@@ -6275,5 +6274,8 @@
  "race.matchedShortest": "Вы повторили кратчайший путь: {n}.",
  "race.matchedRoute": "Вы повторили известный путь: {n}.",
  "race.beatRoute": "Вы улучшили известный путь из {n}.",
- "game.checkers.short": "Шашки"
+ "game.checkers.short": "Шашки",
+ "snake.walls": "Стены",
+ "snake.walls.solid": "Сплошные",
+ "snake.walls.wrap": "Насквозь"
 }

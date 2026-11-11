@@ -5572,7 +5572,6 @@
  "snake.bestWrap": "Melhor com passagem",
  "snake.readyKeys": "Aperte uma seta para começar",
  "snake.readyTouch": "Toque para começar e deslize para virar",
- "snake.wrap": "Passar pelas bordas",
  "sokoban.blocked": "Há algo no caminho",
  "sokoban.board": "Tabuleiro de Sokoban",
  "sokoban.boardLabel": "{level}: {done} de {total} caixas nos alvos, {moves} movimentos",
@@ -6143,5 +6142,8 @@
  "race.matchedShortest": "Você igualou a rota mais curta: {n}.",
  "race.matchedRoute": "Você igualou a rota conhecida: {n}.",
  "race.beatRoute": "Você superou a rota conhecida de {n}.",
- "game.checkers.short": "Damas"
+ "game.checkers.short": "Damas",
+ "snake.walls": "Paredes",
+ "snake.walls.solid": "Sólidas",
+ "snake.walls.wrap": "Atravessar"
 }
