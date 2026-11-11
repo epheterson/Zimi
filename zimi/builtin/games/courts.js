@@ -70,17 +70,15 @@
   function symbols() {
     return Object.keys(ART).map(function (k) { return '<symbol id="zc-ct-' + k + '" viewBox="0 0 ' + CANVAS_W + ' ' + HALF_H + '">' + ART[k].map(layer).join('') + '</symbol>'; }).join('');
   }
-  // `air` (frame units) is paper left above the figure: the crop starts that far above the art's top, so the crown and hat stand whole
-  // inside the frame, the waist losing that much instead.
-  function crop(w, h, air) {
+  function crop(w, h) {
     var cw = Math.min(CANVAS_W, HALF_H * w / h), chh = cw * h / w;
-    return [(CANVAS_W - cw) / 2, -(air || 0) * cw / w, cw, chh].map(function (v) { return Math.round(v * 10) / 10; }).join(' ');
+    return [(CANVAS_W - cw) / 2, 0, cw, chh].map(function (v) { return Math.round(v * 10) / 10; }).join(' ');
   }
-  function panel(kind, suit, x, y, w, h, standalone, air) {
+  function panel(kind, suit, x, y, w, h, standalone) {
     var layers = ART[KINDS[kind] + SUITS.charAt(suit)];
     if (!layers) return '';
     var inner = standalone ? layers.map(layer).join('') : '<use href="#' + panelId(kind, suit) + '" width="' + CANVAS_W + '" height="' + HALF_H + '"/>';
-    return '<svg x="' + x + '" y="' + y + '" width="' + w + '" height="' + h + '" viewBox="' + crop(w, h, air) + '">' + inner + '</svg>';
+    return '<svg x="' + x + '" y="' + y + '" width="' + w + '" height="' + h + '" viewBox="' + crop(w, h) + '">' + inner + '</svg>';
   }
 
   var api = { markup: markup, thumb: thumb, panel: panel, symbols: symbols, KINDS: KINDS };

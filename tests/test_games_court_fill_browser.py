@@ -18,6 +18,7 @@ import threading
 import pytest
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+from games_wait import settled  # noqa: E402
 from test_games_persist_browser import GAMES, browser  # noqa: E402,F401
 
 pytest.importorskip("playwright")
@@ -60,20 +61,31 @@ SET_TABLE = """(spec) => {
 }"""
 
 
+LAYOUT = (
+    "[...document.querySelectorAll('.zc-card:not(.zc-off)')].map(c => { const r = c.getBoundingClientRect(); "
+    "const f = c.querySelector('.zc-ct-row .zc-rule'); return [c.dataset.id, r.x, r.y, r.width, f ? f.getBoundingClientRect().height : 0, document.fonts.status].join(); }).join('|')"
+)
+
+
+NOT_DEALING = "() => !document.querySelector('.zc-dealing')"
+
+
 def open_table(browser, served, width, height, spec):
     ctx = browser.new_context(viewport={"width": width, "height": height})
     page = ctx.new_page()
     page.goto("%s/solitaire.html" % served)
-    page.wait_for_function(
-        "() => window.ZimiSolitaire && ZimiSolitaire.session && ZimiSolitaire.session.state"
-    )
+    page.wait_for_function("() => window.ZimiSolitaire && ZimiSolitaire.session && ZimiSolitaire.session.state")
     page.wait_for_selector(".zc-card:not(.zc-off)")
+    page.wait_for_function(NOT_DEALING)
+    settled(page, LAYOUT)  # the page's own deal has landed; it deals no more once we set the table
     page.evaluate(SET_TABLE, spec)
+    # the table is ours (nothing re-dealt over it), every card of it is on the page, and nothing is moving
     page.wait_for_function(
-        "(n) => document.querySelectorAll('.zc-card:not(.zc-off)').length >= n",
-        arg=sum(len(v) for v in spec.values()),
+        "(spec) => Object.keys(spec).every(k => JSON.stringify(ZimiSolitaire.session.state.piles[k].map(c => c.id)) === JSON.stringify(spec[k].map(x => x[0])))",
+        arg=spec,
     )
-    page.wait_for_timeout(900)
+    page.wait_for_function(NOT_DEALING)  # a deal staggers its cards: those waiting for their turn have not moved yet
+    settled(page, LAYOUT)
     return ctx, page
 
 
@@ -109,7 +121,9 @@ def test_a_court_frame_fills_the_card_under_the_index(browser, served, width, he
 
 
 @pytest.mark.parametrize("width,height", SIZES, ids=lambda v: str(v))
-def test_a_covered_card_shows_its_index_row_only_whatever_its_rank(browser, served, width, height):
+def test_a_covered_card_shows_its_index_row_only_whatever_its_rank(
+    browser, served, width, height
+):
     # A mixed run face up in each of four columns: courts and number cards alternate. Every covered card shows the same index row
     # step (so no frame shows under a court and the column keeps one rhythm); the last card is whole.
     ranks = (13, 12, 11, 10, 9, 8, 7)
@@ -119,7 +133,7 @@ def test_a_covered_card_shows_its_index_row_only_whatever_its_rank(browser, serv
         """(spec) => {
         const out = [];
         Object.keys(spec).forEach(col => {
-          const cards = spec[col].map(([id]) => document.querySelector('.zc-card[data-id="' + id + '"]'));
+          const cards = spec[col].map(([id]) => document.querySelector('.zc-card[data-id="' + id + '"]:not(.zc-off)'));
           cards.slice(0, -1).forEach((c, i) => {
             const r = c.getBoundingClientRect(), f = c.querySelector('.zc-ct-row .zc-rule');
             out.push({ id: spec[col][i][0], shown: cards[i + 1].getBoundingClientRect().top - r.top, ch: r.height,
@@ -137,7 +151,11 @@ def test_a_covered_card_shows_its_index_row_only_whatever_its_rank(browser, serv
     for r in steps:
         assert r["shown"] > r["ch"] * 0.15, r  # the index row is still readable
         if r["frameTop"] is not None:
-            assert r["shown"] <= r["frameTop"] + 0.01, r  # none of a court's frame or picture shows
-    assert max(r["shown"] for r in steps) - min(r["shown"] for r in steps) < 1.0, steps  # one rhythm, courts and numbers alike
+            assert (
+                r["shown"] <= r["frameTop"] + 0.01
+            ), r  # none of a court's frame or picture shows
+    assert (
+        max(r["shown"] for r in steps) - min(r["shown"] for r in steps) < 1.0
+    ), steps  # one rhythm, courts and numbers alike
     assert all(r["inside"] for r in rows if r.get("last")), rows
     ctx.close()

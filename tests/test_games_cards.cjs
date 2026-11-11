@@ -274,7 +274,7 @@ check(Z.shuffled(() => 0.5).length === 52 && new Set(Z.shuffled(Math.random)).si
   // palette is checked on the standalone drawings, where the colours are.
   const faces = courtIds.map(c => Z.faceMarkup(c, true));
   check(courtIds.every(c => /<use href="#zc-ct-[JQK][CDHS]"/.test(Z.faceMarkup(c, false))), 'all twelve French courts draw their courts.js figure from the sprite');
-  check(faces.every(f => /<svg x="2.5" y="40" width="95" height="97.5" viewBox="[\d.]+ -[\d.]+ [\d.]+ 1000">/.test(f)), 'and carry it inline as a standalone image: the figure crown to waist with a little air above the crown, filling the card under the index, 2.5 units from the sides and bottom');
+  check(faces.every(f => /<svg x="2.5" y="40" width="95" height="97.5" viewBox="[\d.]+ 0 [\d.]+ 1000">/.test(f)), 'and carry it inline as a standalone image: the figure crown to waist filling the card under the index, 2.5 units from the sides and bottom');
   check(courtIds.every(c => (Z.faceMarkup(c, false).match(/class="zc-ct /g) || []).length === 2), 'a court on the page has a frame for each index arrangement');
   // A covered face-up card in a fan shows its index row only, whatever its rank (a court's frame top is at 40 of 140): one step, cut to indexStep.
   const ch = 70, units = st => st / ch * 140;

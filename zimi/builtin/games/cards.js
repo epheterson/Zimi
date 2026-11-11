@@ -337,7 +337,7 @@
     return { row: { x: COURT_MARGIN, y: COURT_TOP, w: w, h: bottom - COURT_TOP }, col: { x: COURT_MARGIN, y: colTop, w: w, h: bottom - colTop } };
   }
   function courtFrame(kind, s, f, cls, standalone) {
-    var art = root.ZimiCourts && root.ZimiCourts.panel ? root.ZimiCourts.panel(kind, s, f.x, f.y, f.w, f.h, standalone, COURT_AIR) : '';
+    var art = root.ZimiCourts && root.ZimiCourts.panel ? root.ZimiCourts.panel(kind, s, f.x, f.y, f.w, f.h, standalone) : '';
     if (!art) art = '<svg x="' + f.x + '" y="' + f.y + '" width="' + f.w + '" height="' + f.h + '" viewBox="24 14 52 52">' + bust(kind, s, true) + '</svg>';
     var r = 'x="' + f.x + '" y="' + f.y + '" width="' + f.w + '" height="' + f.h + '" rx="' + COURT_RX + '"';
     return '<g class="' + cls + '"><rect ' + r + ' fill="currentColor" fill-opacity="0.06"/>' + art +
@@ -347,7 +347,7 @@
     var f = courtFrames();
     return courtFrame(kind, s, f.row, 'zc-ct zc-ct-row', standalone) + (standalone ? '' : courtFrame(kind, s, f.col, 'zc-ct zc-ct-col', false));
   }
-  var SMALL_SUIT_Y = 92, SMALL_SUIT_SCALE = 3.1, SUIT_BOX = 20, COURT_RX = 2.5, COURT_TOP = 40, COURT_GAP = 3, COURT_MARGIN = 2.5, COURT_AIR = 2 * COURT_MARGIN;   // SUIT_BOX: a suit shape's size in its own units
+  var SMALL_SUIT_Y = 92, SMALL_SUIT_SCALE = 3.1, SUIT_BOX = 20, COURT_RX = 2.5, COURT_TOP = 40, COURT_GAP = 3, COURT_MARGIN = 2.5;   // SUIT_BOX: a suit shape's size in its own units
   // What a covered face-up card shows (its index row, ending half a unit above a court's picture) as a share of its height: the most any
   // vertical fan opens, whatever the rank (FAN_UP_SHARE).
   var INDEX_ROW_SHARE = (COURT_TOP - 0.5) / FACE_H;
