@@ -1,7 +1,7 @@
-"""Opening the Almanac (Eric, 2026-11-06: "Loading in Kiwix serve is rough ... it says Loading the Almanac... then goes
-away before stuff draws and things aren't ready to play with right away"): the veil stays until the first screen is
-genuinely on the canvases, nothing that is drawn is drawn over afterwards, and the page answers a touch from the moment
-it is shown.
+"""Opening the Almanac (Eric, 2026-11-10: "I really hate the spinner ever on almanac initial load it used to be
+essentially instant"): the veil lifts the frame after the head (date, clock, Moon, six cards) is on the page and does
+not wait for the sky; what is drawn is in its place already, so nothing moves when the rest arrives, and the page
+answers a touch from the moment it is shown.
 
 Run: pytest tests/test_almanac_open_browser.py -v
 """
@@ -38,6 +38,13 @@ window.__grid = function () {
   c.drawImage(sky, 0, 0, sky.width, sky.height, 0, 0, 12, 12);
   return Array.from(c.getImageData(0, 0, 12, 12).data);
 };
+// Where the head and the sky stand: they must be in the same place when the rest of the page has arrived.
+window.__boxes = function () {
+  return ['#almanac-head', '#almanac-sky-canvas', '#almanac-calendar'].map(function (q) {
+    var e = document.querySelector(q), r = e ? e.getBoundingClientRect() : null;
+    return r ? [Math.round(r.top + (document.getElementById('almanac-content') || {scrollTop: 0}).scrollTop), Math.round(r.height)] : null;
+  });
+};
 (function look() {
   var v = document.getElementById('alm-veil');
   var up = !!v && !v.hidden && !v.classList.contains('alm-veil-out') && getComputedStyle(v).display !== 'none';
@@ -55,6 +62,8 @@ window.__grid = function () {
       skySettled: typeof _skyState !== 'undefined' && !!_skyState && !!_skyState.settled, skyLit: lit,
       gpu: typeof _sg !== 'undefined' && !!_sg, gpuStars: typeof _sg !== 'undefined' && !!_sg && _sg.starCount > 0,
       grid: window.__grid(), cards: document.querySelectorAll('#almanac-head .alm-card').length,
+      date: (document.getElementById('almanac-head-date') || {}).textContent, time: (document.getElementById('almanac-head-time') || {}).textContent,
+      boxes: window.__boxes(),
       calendar: document.querySelectorAll('#almanac-calendar .alm-day').length
     };
   }
@@ -87,15 +96,14 @@ def served(tmp_path_factory):
     srv.ZIM_DIR, srv.ZIMI_DATA_DIR = old
 
 
-@pytest.fixture(scope="module")
-def opened(served):
+def _opened(served, launch_args=()):
     """One cold open of the Almanac on a 390 px phone at THROTTLE, watched until the settle window after the page
     is shown has passed. The page, the long tasks (start, duration) and the requests (start, url) come back.
     """
     from playwright.sync_api import sync_playwright
 
     with sync_playwright() as pw:
-        br = pw.chromium.launch()
+        br = pw.chromium.launch(args=list(launch_args))
         ctx = br.new_context(
             viewport={"width": 390, "height": 844},
             device_scale_factor=2,
@@ -123,12 +131,24 @@ def opened(served):
             polling=100,
         )
         got = pg.evaluate(
-            "() => ({reveal: window.__reveal, up: window.__up, lt: window.__lt, reqs: window.__reqs, grid: window.__grid()})"
+            "() => ({reveal: window.__reveal, up: window.__up, lt: window.__lt, reqs: window.__reqs, grid: window.__grid(), boxes: window.__boxes()})"
         )
         got["errors"] = errors
-        yield got
         ctx.close()
         br.close()
+        return got
+
+
+@pytest.fixture(scope="module")
+def opened(served):
+    return _opened(served)
+
+
+@pytest.fixture(scope="module")
+def opened_own_work(served):
+    """The same open with no WebGL: the page's own work, without a software GL's shader compile (which is seconds on a
+    laptop's CPU and milliseconds on a phone's GPU)."""
+    return _opened(served, ["--disable-3d-apis"])
 
 
 def test_there_is_a_loading_state_from_the_start(opened):
@@ -136,29 +156,24 @@ def test_there_is_a_loading_state_from_the_start(opened):
     assert opened["up"] < opened["reveal"]["at"]
 
 
-def test_the_loading_state_stays_until_the_first_screen_has_drawn(opened):
-    """It used to go the moment the page's markup was in, before the Moon had its maria, before the sky had a single
-    real frame (a gradient stood in for it for seconds), before the cards had their numbers.
-    """
+def test_the_loading_state_lifts_when_the_head_is_on_the_page(opened):
+    """It does not wait for the sky (the GPU, its stars, the Milky Way: seconds on a phone): the date, the clock, the Moon
+    and the six cards are there, and so is the month."""
     r = opened["reveal"]
-    assert r["heroLoaded"] and r["heroWithMaria"], r
-    assert r["cards"] >= 2 and r["calendar"] >= 28, r
-    assert r["skyLit"] and r["skySettled"], r
-    if r["gpu"]:
-        assert r["gpuStars"], "the GPU sky was shown before its stars were in: %r" % r
+    assert r["heroLoaded"], r
+    assert r["cards"] >= 6 and r["calendar"] >= 28, r
+    assert (r["date"] or "").strip() and (r["time"] or "").strip(), r
     assert not opened["errors"], opened["errors"]
 
 
-def test_nothing_that_is_drawn_is_drawn_over_after_it_is_shown(opened):
-    """The first sky is the picture that stays: the GPU, its stars and the Milky Way are all in before it is shown, so
-    nothing arrives in the settle window to be drawn over it (the old open showed a gradient, then the sky, then the
-    trees and the Sun, seconds apart)."""
-    before, after = opened["reveal"]["grid"], opened["grid"]
-    mean = sum(abs(a - b) for a, b in zip(before, after)) / len(before)
-    assert mean < 6, "the sky changed by %.1f (of 255) on average after it was shown" % mean
+def test_nothing_moves_when_the_rest_of_the_page_arrives(opened):
+    """The sky has its size and the hour's colour before it has a picture, the month its rows: when the sky is drawn and
+    the panels come, the head, the sky and the calendar stand where they stood."""
+    assert opened["reveal"]["boxes"] == opened["boxes"], (opened["reveal"]["boxes"], opened["boxes"])
 
 
-def test_the_first_seconds_have_no_long_task(opened):
+def test_the_first_seconds_have_no_long_task(opened_own_work):
+    opened = opened_own_work
     at = opened["reveal"]["at"]
     inside = [
         (round(s - at), round(d))

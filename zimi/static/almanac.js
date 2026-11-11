@@ -234,12 +234,13 @@ document.addEventListener('visibilitychange', function() {
 var _almReturnScroll = null;
 
 // ── First sight ──
-// A page that is built in front of the person is seen being built: a gradient where the sky will be, the Moon plain and
-// then not, cards arriving. So the first open is drawn behind a veil (app.js _almVeilUp: the dark page with a turning
-// crescent, up from the tap) and shown in one piece, once the first screen is genuinely on the canvases: the Moon, the
-// cards, the month and the sky's first real frame (almanac-sky.js settles it). Nothing else waits for it. A page that
-// is slow to settle is shown anyway after ALM_REVEAL_MAX_MS: never a veil that stays (12 s was a long spinner on a
-// phone coming back to its tab, Eric 2026-11-08). A page put back scrolled past the sky does not wait for it.
+// A page that is built in front of the person is seen being built: the Moon plain and then not, cards arriving. So the first
+// open is drawn behind a veil (app.js _almVeilUp: the dark page with a turning crescent, up from the tap) and shown the frame
+// after the head is on the page: the date, the clock, the Moon and the six cards, all computed in the same turn as the draw.
+// Nothing else waits for it. The sky holds its place (its size and the hour's colour, _almSkyPreStyle) and is painted when its
+// data is in, the Moon's map fades in over the disc (body.alm-moon-wait), the panels below come after. A page that is slow
+// to draw is shown anyway after ALM_REVEAL_MAX_MS: never a veil that stays. A page put back scrolled past the sky does not
+// wait for it.
 var ALM_REVEAL_MAX_MS = 5000;
 var ALM_PANELS_SETTLE_MS = 3200;      // after the page is shown, the panels under the calendar wait this long (or for a hand on the page)
 var ALM_EARTH_IDLE_MS = 6000;         // and the 3D view's files this long, then for a quiet moment
@@ -254,8 +255,9 @@ function _almVeilBegin() {
 }
 // The sky (almanac-sky.js) has its first picture on the canvas: the next frame shows it, with the rest of the page.
 var ALM_MOON_WAIT_MS = 3000;   // the page is drawn without the Moon's map when it has not come by then (the disc is drawn again when it does)
-var ALM_FONT_WAIT_MS = 1500;   // the fonts the page asked for are waited for this long
-function _almSkySettled() {
+var ALM_FONT_WAIT_MS = 300;    // the fonts the page asked for are waited for this long (the page is drawn in the system's until they come)
+// The head is on the page: the next frame shows it. (The sky settling used to be the signal; it is the GPU's, seconds on a phone.)
+function _almHeadDrawn() {
   if (!_almRevealing) return;
   var show = function () { requestAnimationFrame(_almReveal); };   // the frame after the one that drew the sky
   if (!(document.fonts && document.fonts.ready)) { show(); return; }
@@ -277,6 +279,13 @@ function _almReveal() {
 // fn once the page is shown (at once when it is, or was never veiled).
 function _almWhenShown(fn) {
   if (_almRevealing) _almShownJobs.push(fn); else fn();
+}
+// fn once the page is shown AND a frame of it has been painted: what is heavy (the GPU's shaders, the sky's first
+// picture) must not stand between the person and the page that is ready (at once, in the next task, when it already is).
+function _almAfterShown(fn) {
+  _almWhenShown(function () {
+    requestAnimationFrame(function () { setTimeout(function () { if (_almanacOpen) fn(); }, 0); });
+  });
 }
 function _almVeilCancel() {
   clearTimeout(_almRevealTimer);
@@ -359,20 +368,29 @@ function _openAlmanacInner(replaceState) {
   var veiled = !_almReturning;
   if (veiled) _almVeilBegin();
   if (veiled && typeof _sgInit === 'function') {
-    // The GPU sky starts compiling, and its data coming, now: they run beside the page being built, not after it.
-    _sgInit();
-    if (typeof _sgPrefetch === 'function') { var loc0 = _getLocation(); _sgPrefetch(_sgWantsMilkyWay(_sunPosition(_almFocusInstant(), loc0.lat, loc0.lon).altitude)); }
+    // The GPU sky starts compiling, and its data coming, once the head is shown: beside the page, not before it.
+    _almAfterShown(function () {
+      _sgInit();
+      if (typeof _sgPrefetch === 'function') { var loc0 = _getLocation(); _sgPrefetch(_sgWantsMilkyWay(_sunPosition(_almFocusInstant(), loc0.lat, loc0.lon).altitude)); }
+    });
   }
-  // Drawn with the Moon's map in hand (app.js): a disc drawn grey and then again with its maria is seen changing.
+  // Drawn at once; the disc waits for the Moon's map under body.alm-moon-wait (clear, so it holds its place) and comes in
+  // over it, so the head is not held for a picture (app.js _moonTexThen).
   var draw = function () {
     if (!_almanacOpen) return;
+    if (veiled && typeof _moonTexReady !== 'undefined' && !_moonTexReady) {
+      document.body.classList.add('alm-moon-wait');
+      var clear = function () { document.body.classList.remove('alm-moon-wait'); };
+      _moonTexThen(clear);
+      setTimeout(clear, ALM_MOON_WAIT_MS);
+    }
     _renderAlmanacContent();
     var sc = document.getElementById('almanac-content');
     if (sc) sc.scrollTop = 0;
     if (link) _almLinkRestoreView(link); else _almLinkStart();
+    _almHeadDrawn();
   };
-  var drawn = false, drawOnce = function () { if (!drawn) { drawn = true; draw(); } };
-  if (typeof _moonTexThen === 'function') { _moonTexThen(drawOnce); setTimeout(drawOnce, ALM_MOON_WAIT_MS); } else drawOnce();
+  draw();
   // Zimi's header is in place under the Almanac: nothing in it slides the
   // header, so one left away by the page before (an article scrolled on a
   // phone) would keep the Almanac's own header, its date, behind the bar.
@@ -387,6 +405,7 @@ function _almanacTeardown() {
   _almanacOpen = false;
   _almLinkStop();
   _almVeilCancel();
+  document.body.classList.remove('alm-moon-wait');
   if (typeof _chromeReset === 'function') _chromeReset();
   // Pointing the phone (almanac-look.js) lives on the Almanac and goes with it.
   if (typeof closeAlmanacLook === 'function') closeAlmanacLook(true);
@@ -478,7 +497,7 @@ function _almLinkRestoreView(link) {
     (function put() {
       if (stopped || !_almanacOpen) { stop(); done(); return; }
       sc.scrollTop = link.s;
-      if (Math.abs(sc.scrollTop - link.s) <= 2 || ++tries >= ALM_LINK_SCROLL_TRIES) { stop(); _almRevealIfSkyAway(); done(); return; }
+      if (Math.abs(sc.scrollTop - link.s) <= 2 || ++tries >= ALM_LINK_SCROLL_TRIES) { stop(); done(); return; }
       setTimeout(put, ALM_LINK_SCROLL_MS);
     })();
   }
@@ -489,13 +508,6 @@ function _almLinkRestoreView(link) {
     }).catch(function () {}).then(done);
   }
   done();
-}
-// The sky out of sight once the scroll is put back: the page is shown without its first frame.
-function _almRevealIfSkyAway() {
-  var cv = typeof _skyState !== 'undefined' && _skyState && _skyState.canvas;
-  if (!_almRevealing || !cv) return;
-  var r = cv.getBoundingClientRect();
-  if (r.bottom <= 0 || r.top >= window.innerHeight) _almSkySettled();
 }
 function _almLinkHash() {
   var parts = [], sc = document.getElementById('almanac-content');
@@ -2125,13 +2137,27 @@ function _almSecBarInit() {
   _almSecBarPaint();
 }
 // The strip stands once the header's clock has scrolled out of sight, or a section past the first is the current one.
+// How far the pinned clock has come in, 0 to 1: the header's clock leaving the top of the page is the clock in the strip
+// arriving (opacity, and the date's size, 22 px to 14), one motion tied to the scroll, not a swap at a line. Where motion
+// is reduced it is the swap.
+var ALM_PIN_REST_TOP_PX = 12;                // the header's clock top, in the page, where it starts to leave
+function _almPinProgress(clock, root) {
+  var gone = root.getBoundingClientRect().top + ALM_PIN_REST_TOP_PX - clock.getBoundingClientRect().top;
+  var p = Math.max(0, Math.min(1, gone / Math.max(1, clock.offsetHeight)));
+  return window.matchMedia && matchMedia('(prefers-reduced-motion: reduce)').matches ? (p >= 1 ? 1 : 0) : p;
+}
 function _almPinPaint() {
   var pin = document.getElementById('alm-pin'), root = _almSecBarScroller(), clock = document.querySelector('#almanac-head .alm-clock');
   if (!pin || !root || !clock) return;
   var shown = _almPinClockShown();
-  var on = shown && clock.getBoundingClientRect().bottom < root.getBoundingClientRect().top + ALM_PIN_SHOW_PX || !!(_almSecBar && _almSecBar.cur !== ALM_SECBAR_HERO);
+  var p = shown ? _almPinProgress(clock, root) : 0;
+  var bar = !!(_almSecBar && _almSecBar.cur !== ALM_SECBAR_HERO);
+  var on = p > 0 || bar;
   if (pin.hidden === on) pin.hidden = !on;
   pin.classList.toggle('alm-pin-bare', !shown);
+  pin.classList.toggle('alm-pin-arriving', !bar && p < 1);
+  pin.style.setProperty('--alm-pin-p', p.toFixed(3));
+  clock.style.opacity = p > 0 && p < 1 ? (1 - p).toFixed(3) : '';
   root.style.setProperty('--alm-pin-h', (_almSecBarLine() - 2) + 'px');   // where a section's jump lands (almanac.css)
 }
 function _almSecBarSync() {
@@ -2740,10 +2766,11 @@ function _renderAlmanacContent() {
     _almKeepStill(el);
     if (el) el._almArriving = false;
   });
-  // The live sky is the second thing on the page, after the Moon: it starts now, with the first frame, not after the
-  // panels below it (it was the ninth of ten, and the gradient it left stood in its place for seconds). Its sums and
-  // first paint come in the next frame (_initSkyScene).
-  _almSafePanel(function () { _loadSunData(_almFocus || now); }, null);
+  // The live sky is the second thing on the page, after the Moon: it starts with the page being shown, not after the
+  // panels below it (it was the ninth of ten, and the gradient it left stood in its place for seconds). A first open
+  // lets the head be shown first: the sky's sums and first paint (the GPU's, seconds on a phone) are the frame after.
+  var startSky = function () { _almSafePanel(function () { _loadSunData(_almFocus || now); }, null); };
+  if (_almRevealing) _almAfterShown(startSky); else startSky();
   // Everything under the calendar is drawn after the Moon, the sky and the month have been painted: the first
   // open is the hero in front of the person, not the whole page computed first (Eric, 2026-10-30: "tapping
   // almanac app opens so slow feels broken"; the panels were 40% of the open's main-thread time). A page drawn
