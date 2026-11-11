@@ -8415,7 +8415,7 @@ var _RTL_CODES = ['ar','he'];
 // file, caption, who it is by and whether it is public domain. The Almanac built for Kiwix
 // (almanacstage, community) marks the copyrighted ones omitted and leaves their files out:
 // those are named in the list as a line of text (number, title, credit), so the sequence stays whole.
-var _GR_CREDITS_URL = '/static/golden-record/credits.json';
+var _GR_CREDITS_URL = _almAsset('/static/golden-record/credits.json');
 var _GR_DIR = '/static/golden-record/';
 var _grImages = null;
 async function _loadGrCredits() {

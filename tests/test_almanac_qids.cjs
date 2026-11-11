@@ -167,7 +167,6 @@ const PLAIN_ROWS = {
   sun_granules: 'how many cells this view draws, not a named thing',
   sun_prom_height: 'the height this view draws prominences at',
   sun_flare: 'the rise and fade this view draws a flare with',
-  cloud_clear: 'a clearing round the Sun and Moon, not a named thing',
   heli_beacon: 'the flash rate of a light, not a named thing',
   air_rayleigh: 'a coefficient of the sky model, not a named thing',
   air_rayleigh_h: 'a scale height of the sky model, not a named thing',

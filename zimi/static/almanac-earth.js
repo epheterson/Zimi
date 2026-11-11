@@ -299,8 +299,8 @@ function _aeEclipseNow(scene) {
 // Assets. Static files are served immutable for a year, so each name carries
 // its version: replacing one means a new name here, never new bytes under
 // the old one.
-var AE_THREE_URL = '/static/earth/three-r186.min.js';
-var AE_SGP4_URL = '/static/earth/satellite-7.1.0.min.js';
+var AE_THREE_URL = _almAsset('/static/earth/three-r186.min.js');
+var AE_SGP4_URL = _almAsset('/static/earth/satellite-7.1.0.min.js');
 var AE_TEX_DAY = _almAsset('/static/earth/earth-day-v1.webp');
 var AE_TEX_NIGHT = _almAsset('/static/earth/earth-night-v1.webp');
 var AE_TEX_MOON = _MOON_MAP_URL;        // app.js: the 2D Moons' maps, the 1024 one first
