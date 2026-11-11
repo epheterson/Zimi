@@ -219,13 +219,23 @@ def release(read=False):
 
 
 def estimate(kind="hd"):
-    """About how big a size is, known offline: the pinned tile source's size (``max_size`` for Maximum) plus the
-    Almanac in the package (the flavour is the two together), to the nearest ten MB. None when either is unknown."""
+    """About how big a size is, known offline, to the nearest ten MB: the pin's ``hd_size`` / ``max_size`` (the
+    flavour files' own sizes, written when they are built), else the pinned tile source's size plus the Almanac in the
+    package. None when unknown."""
     from zimi import ownzims
 
     try:
         with open(TILES_PIN, encoding="utf-8") as f:
-            tiles = json.load(f).get("size" if kind == "hd" else "max_size")
+            pin = json.load(f)
+    except (OSError, ValueError):
+        return None
+    whole = pin.get("hd_size" if kind == "hd" else "max_size") if isinstance(pin, dict) else None
+    if isinstance(whole, int) and not isinstance(whole, bool) and whole > 0:
+        return round(whole / ESTIMATE_STEP) * ESTIMATE_STEP
+    if kind != "hd":
+        return None
+    try:
+        tiles = pin.get("size")
         almanac = os.path.getsize(ownzims.zim_path(next(o for o in ownzims.OWN if o.name == "zimi_almanac")))
     except (OSError, ValueError, TypeError, StopIteration, AttributeError):
         return None

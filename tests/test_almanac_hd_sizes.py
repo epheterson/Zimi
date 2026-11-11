@@ -341,3 +341,23 @@ def test_maximum_is_cut_between_clusters_and_its_manifest_names_every_chunk(tmp_
     out = maxi.write_manifest(hd_file, "v1.16.0", str(tmp_path), max_book=book, max_chunks=chunks)
     rel = almanachd.parse_manifest(open(out).read(), version="1.16.0")
     assert rel["max"]["sha256"] == _sha(book) and [c["file"] for c in rel["max"]["chunks"]] == [os.path.basename(c) for c in chunks]
+
+
+def test_both_sizes_are_offered_at_their_true_size_before_the_manifest_is_read(lib, monkeypatch, tmp_path):
+    pin = tmp_path / "pin.json"
+    pin.write_text(json.dumps({"file": "t.zim", "size": 201_724_127, "sha256": "ab" * 32, "tag": "v1.15.3",
+                               "hd_size": 1_983_068_162, "max_size": 4_814_876_312}))
+    monkeypatch.setattr(almanachd, "TILES_PIN", str(pin))
+    lib["rel"] = None
+    st = almanachd.status()
+    assert st["offers"] == {"hd": {"size": 1_980_000_000, "approx": True}, "max": {"size": 4_810_000_000, "approx": True}}
+    assert st["offer"]["size"] == 1_980_000_000   # the line under the globe says the same
+    # Once the manifest is read, the release's own figures.
+    lib["rel"] = _rel(MAX)
+    st = almanachd.status()
+    assert st["offers"]["hd"] == {"size": _rel()["size"]} and st["offers"]["max"] == {"size": MAX["size"]}
+
+
+def test_the_shipped_pin_names_both_sizes():
+    pin = json.load(open(almanachd.TILES_PIN))
+    assert pin["hd_size"] > 1_000_000_000 and pin["max_size"] > pin["hd_size"]
