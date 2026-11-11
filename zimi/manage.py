@@ -7604,6 +7604,25 @@ def handle_manage_post(handler, parsed, data):
             return handler._json(500, {"error": "Could not save the setting"})
         return handler._json(200, _hd.status())
 
+    elif parsed.path == "/manage/spacetrack":
+        # The person's own Space-Track login, for the exact sky of a past date (spacetrack.py). Never echoed back.
+        from zimi import spacetrack as _st
+
+        if not _st.save(data.get("user"), data.get("password")):
+            return handler._json(500, {"error": "Could not save the setting"})
+        return handler._json(200, _st.view())
+
+    elif parsed.path == "/manage/spacetrack/fetch":
+        from zimi import spacetrack as _st
+
+        try:
+            records = _st.get(data.get("tag"), data.get("ms"))
+        except _st.SpaceTrackError as e:
+            return handler._json(e.status, {"error": e.code})
+        except (TypeError, ValueError):
+            return handler._json(400, {"error": "tag"})
+        return handler._json(200, {"records": records})
+
     elif parsed.path == "/manage/addons":
         # {"mode": "ask"|"auto"|"never"} saves the setting (ZIMI_ADDONS or ZIMI_OFFLINE wins); {"install": key}
         # starts one in the background; {"cancel": true} stops it; {"remove": key} takes one away.
@@ -7639,7 +7658,11 @@ def handle_manage_post(handler, parsed, data):
         # answered with the view's payload so it redraws from the answer.
         from zimi import satellites as _sats
 
-        if data.get("all"):
+        if data.get("launches"):
+            from zimi import launches as _launches
+
+            payload, err = _launches.refresh_now()
+        elif data.get("all"):
             from zimi import satcatalog as _cat
 
             payload, err = _cat.refresh_now()

@@ -114,6 +114,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 - **More worlds to visit:** Vesta, Phobos, Charon, Triton and Saturn's Mimas, Enceladus, Tethys, Dione, Rhea and Iapetus, each in its real orbit.
 - **The Sun close up:** prominences and flares (illustrative, labelled so), loops over sunspot groups and a finer boiling surface.
 
+- **The sky you remember:** a Launches button in the 3D Earth lists every orbital launch since 1957 by year, site and rocket (Jonathan McDowell's GCAT), opens one at its pad at lift-off, draws its ascent and the satellites it left (reconstructed from the launch's orbit, or exact with your own Space-Track login), and says whether you could have seen it from your place, in the live sky too.
+
 ## [1.15.4]
 
 ### Highlights

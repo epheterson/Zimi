@@ -458,7 +458,28 @@ var AE_SATS_REF = {
   passMax: 16, loneStarlinks: 3,        // the list is cut to the most noticeable: single Starlinks to the brightest few, the rest by brightness and height
   minRcsM2: 1,                          // a satellite whose radar cross-section is below this is not offered as a pass
   trainGapS: 150, trainRaanDeg: 3,      // Starlinks this close in time and orbital plane (RAAN) are one train
-  gpsMinEl: 5                           // a GPS satellite is "overhead" above this elevation
+  gpsMinEl: 5,                          // a GPS satellite is "overhead" above this elevation
+  leoGoneDays: 14                       // a low-orbit satellite's elements run back to a date older than this are not drawn (drag and manoeuvres), well before the 45 days
+};
+// Launches (almanac-launches.js, loaded on the button's first press): a rocket rising.
+var AE_LAUNCH_SVG = '<svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 2.5c3 2.6 4.3 6 4.3 9.6l-1.6 3.4H9.3l-1.6-3.4C7.7 8.5 9 5.1 12 2.5z"/><circle cx="12" cy="9.4" r="1.6"/><path d="M8.3 14.2l-2.6 2.6M15.7 14.2l2.6 2.6M10.3 18.5v3M13.7 18.5v3"/></svg>';
+var AE_LAUNCHES_JS = [_almAsset('/static/almanac-launchflight.js'), _almAsset('/static/almanac-launches.js'), _almAsset('/static/almanac-thens.js')];
+// What the launch pages decide by (almanac-launchflight.js), kept here so the Almanac's constants pages can show it.
+var AE_LAUNCH_REF = {
+  minElDeg: 1,                          // a rocket is seen above this height over the horizon
+  darkSunAlt: -3,                       // and the sky is dark enough to see an exhaust once the Sun is below this (start of civil twilight)
+  plumeMinKm: 40,                       // a burning engine spreads into a lit cloud above this height
+  batchMag550: 4.6, batchRaisingMag: -1.5, shadowEdgeKm: 25,   // a v1.0 Starlink on station: magnitude 4.6 at 550 km, quarter phase (Mallama 2020); while it is raised it presents its panel, brighter by this (fitted to Tregloan-Reed et al. 2020 and the first nights' reports); the fade across the Earth's shadow edge (assumed)
+  sightMag: { jellyfish: -4, flame: -3, dot: 0, day: -3 },   // the brightness each sight is given where a sky wants a magnitude (estimates: a lit exhaust cloud, an engine's flame, a lit stage, a daytime point)
+  coastS: 11,                           // seconds from the end of the first stage's burn to the second stage's light (Falcon 9: 2:31 to 2:42)
+  insertionKm: [160, 400],              // the height the burn ends at is the orbit's perigee, held between these
+  typicalBurnS: { typical: 540, shuttle: 510, saturn: 700 },   // seconds from lift-off to the end of the last burn, for a vehicle with no profile of its own
+  falcon: { maxQS: 72, mecoS: 151, sepS: 155, sesS: 162, fairingS: 167, entryBurnS: [409, 429], landBurnS: 22, landS: 527, secoS: 526 },   // Falcon 9 Starlink events, seconds from lift-off (SpaceX's timeline for Starlink 4-9, printed by Spaceflight Now, 2022-03-03)
+  checkoutDays: 2, raiseTotalDays: 45,  // a Starlink batch is checked out for this long (assumed), and reaches its shell this many days after release (McDowell et al. 2020, ApJL 892 L6)
+  spreadKm: 0.5,                        // the half-range of the batch's differences in height, which sets the string's length (a few degrees after 2 days). Fitted: KCRA's two-minute pass (not much more than one satellite's own) bounds it near 1 km; Langbroek's tight day-1 train and release speeds of tens of cm/s (da = 2 dv / n) put it near half a km
+  releaseGapDeg: 0.005,                 // the step between neighbours at release (about half a kilometre)
+  starlinkShells: { 53: 550, 43: 530, 70: 570, 97: 560, other: 550 },   // km, by inclination (SpaceX's regulatory filings)
+  j2: 1.08262668e-3, earthRateRadS: 7.2921150e-5, meanRadiusKm: 6371.0088    // the Earth's bulge (Earth Gravitational Model 1996), its turning against the stars (IERS), the sphere the ascent and the look angles are laid on (IUGG)
 };
 var AE_LOCATE_TIMEOUT_MS = 15000;
 var AE_GPS_COLOR = [0.55, 0.85, 1.0];
@@ -865,16 +886,23 @@ function _aeGoName(key) {
   var b = _aePlanetBody(key);
   return b ? _aeBodyName(b) : key;
 }
+var AE_THEN_DOT = '<svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3l2.4 5.6 6.1.5-4.6 4 1.4 6-5.3-3.2L6.7 19l1.4-6-4.6-4 6.1-.5z"/></svg>';
+// The there-and-then row (almanac-thens.js) at the top of the Go to sheet: a place and a moment to stand in, not a body.
+function _aeGoThenRow() {
+  return '<div class="ae-go-list"><button type="button" class="ae-go-row" id="ae-go-then" data-ae-then>' + AE_THEN_DOT + '<span>' + _almEsc(_aeT('then_title')) + '</span></button></div>';
+}
 function _aeGoRender() {
   var sheet = _aeById('ae-go'), host = _aeById('ae-go-groups');
   if (!sheet || sheet.hidden || !host) return;
-  host.innerHTML = _aeGoGroups().map(function (g) {
+  host.innerHTML = _aeGoThenRow() + _aeGoGroups().map(function (g) {
     return '<h4 data-g="' + g[0] + '">' + _almEsc(_aeT(g[0])) + '</h4><div class="ae-go-list">' + g[1].map(function (k) {
       if (k === AE_GO_LOADING) return '<span class="ae-go-wait" role="status">' + _almEsc(_aeT('loading')) + '</span>';
       return '<button type="button" class="ae-go-row" data-ae-go="' + k + '" aria-current="' + (k === _ae.target) + '">' + _aeGoDot(k) +
         '<span>' + _almEsc(_aeGoName(k)) + '</span></button>';
     }).join('') + '</div>';
   }).join('');
+  var then = _aeById('ae-go-then');
+  if (then) then.onclick = function () { _aeShowGo(false); openAlmanacThens(); };
   // Opened at a group whose table was still coming (Landings on a first tap): scrolled there once it is drawn.
   var h = _ae.goGroup ? sheet.querySelector('h4[data-g="' + _ae.goGroup + '"]') : null;
   if (h) { sheet.scrollTop = h.offsetTop; _ae.goGroup = null; }
@@ -1246,7 +1274,7 @@ function _aeBuildDom() {
             (typeof _gearSvg === 'string' ? _gearSvg : '⚙') + '</button>' +
           '<button type="button" class="ae-btn ae-round" id="ae-locate" aria-pressed="false"' +
             ' aria-label="' + _almEsc(locateLabel) + '" title="' + _almEsc(locateLabel) + '">' + AE_LOCATE_SVG + '</button>' +
-          _aeToggleHtml('ae-lm-btn', 'alm_lm_layer', AE_PIN_SVG) + _aeToggleHtml('ae-orbits-btn', 'alm_orbits', AE_ORBIT_SVG) + _aeToggleHtml('ae-sats-btn', 'alm_sats_all', AE_SATS_SVG) +
+          _aeToggleHtml('ae-lm-btn', 'alm_lm_layer', AE_PIN_SVG) + _aeToggleHtml('ae-orbits-btn', 'alm_orbits', AE_ORBIT_SVG) + _aeToggleHtml('ae-sats-btn', 'alm_sats_all', AE_SATS_SVG) + _aeToggleHtml('ae-launch-btn', 'alm_launches', AE_LAUNCH_SVG) +
           // Where the view has flown to, everything about it waits behind this: the picture stays clear.
           '<button type="button" class="ae-btn ae-round" id="ae-info-btn" hidden aria-haspopup="dialog" aria-expanded="false"' +
             ' aria-label="' + _almEsc(_aeT('alm_bi_more')) + '" title="' + _almEsc(_aeT('alm_bi_more')) + '">' + AE_INFO_SVG + '</button>' +
@@ -5887,6 +5915,37 @@ function _aeSatsAllLoad() {
   }
   return _aeSatsAllPromise;
 }
+// The launches page (almanac-launches.js and the maths under it), fetched on its button's first press and not before.
+var _aeLaunchesPromise = null;
+function _aeLaunchesLoad() {
+  if (typeof _alToggle === 'function') return Promise.resolve();
+  if (!_aeLaunchesPromise) {
+    _aeLaunchesPromise = AE_LAUNCHES_JS.reduce(function (chain, src) {
+      return chain.then(function () {
+        return new Promise(function (resolve, reject) {
+          var s = document.createElement('script');
+          s.src = src;
+          s.onload = resolve;
+          s.onerror = function () { _aeLaunchesPromise = null; reject(new Error('launches')); };
+          document.head.appendChild(s);
+        });
+      });
+    }, Promise.resolve());
+  }
+  return _aeLaunchesPromise;
+}
+// The there-and-then list, from the live sky: the 3D view opens (its sheet is where the list lives) and the list with it.
+function openAlmanacThens() {
+  if (!_aeIsOpen) openAlmanacEarth({ target: 'earth' });
+  _aeLaunchesLoad().then(function () {
+    var tries = 0;
+    (function go() {
+      if (typeof _aeReady === 'function' && _aeReady() && _aeIsOpen) _alOpenThens();
+      else if (++tries < 200) setTimeout(go, 150);
+    })();
+  }).catch(function () {});
+}
+function _aeLaunchesToggle() { _aeLaunchesLoad().then(function () { _alToggle(); _aeMarkToggles(); }).catch(function () {}); }
 function _aeSatsAllSet(on) {
   _aeSatsAllLoad().then(function () { _asSet(on); _aeMarkToggles(); }).catch(function () {});
 }
@@ -5945,7 +6004,7 @@ function _aeToggleHtml(id, key, svg) {
 var AE_LM_HAS = { moon: 1, mars: 1, venus: 1, titan: 1, mercury: 1, earth: 1, io: 1, europa: 1, ganymede: 1, callisto: 1, pluto: 1, ceres: 1 };
 function _aeMarkToggles() {
   var wide = _aeWideView() || !!_ae.spin;
-  [['ae-lm-btn', _aeLmLayerOn(), !AE_LM_HAS[_ae.target]], ['ae-orbits-btn', _aeOrbitsOn(), false], ['ae-sats-btn', _aeSatsAllOn(), _ae.target !== 'earth']].forEach(function (t) {
+  [['ae-lm-btn', _aeLmLayerOn(), !AE_LM_HAS[_ae.target]], ['ae-orbits-btn', _aeOrbitsOn(), false], ['ae-sats-btn', _aeSatsAllOn(), _ae.target !== 'earth'], ['ae-launch-btn', typeof _alOpen === 'function' && _alOpen(), _ae.target !== 'earth']].forEach(function (t) {
     var b = _aeById(t[0]), hide = wide || t[2];
     if (!b) return;
     if (b.hidden !== hide) b.hidden = hide;
@@ -6994,6 +7053,7 @@ function _aeUpdate(ms) {
   _aeUpdateMoonPath(ms);
   _aeUpdateSats(ms, sc);
   if (typeof _asSatFrame === 'function') _asSatFrame(ms, sc);   // every active satellite (almanac-sats.js)
+  if (typeof _alFrame === 'function') _alFrame(ms, sc);   // a launch's ascent and the satellites it left (almanac-launches.js)
   // The planets and probes before the camera: a probe framed from tens of metres moves hundreds in a frame (Voyager
   // 17 km/s), so the camera is placed on where it is now, not where it was (their sizes on screen use the last frame's
   // camera, which is near enough).
@@ -7162,7 +7222,7 @@ function _aeEarthPx() {
 }
 // The controls at the top (the way back, the date and Live, the gear, the minimap): boxes in the view's own px, kept with
 // the foot's height, so no mark or name sits under them.
-var AE_TOP_CONTROLS = ['ae-gear', 'ae-lm-btn', 'ae-orbits-btn', 'ae-sats-btn', 'ae-locate', 'ae-info-btn', 'ae-mini', 'ae-hint'], AE_TOP_CLEAR_PX = 10;   // the hint too while it shows: no mark under its words
+var AE_TOP_CONTROLS = ['ae-gear', 'ae-lm-btn', 'ae-orbits-btn', 'ae-sats-btn', 'ae-launch-btn', 'ae-locate', 'ae-info-btn', 'ae-mini', 'ae-hint'], AE_TOP_CLEAR_PX = 10;   // the hint too while it shows: no mark under its words
 function _aeMeasureTop() {
   var el = _ae.el;
   if (!el || !el.getBoundingClientRect) { _ae.topBoxes = []; return; }
@@ -7651,7 +7711,7 @@ function _aeNoteParts() {
     // The data's date is in the gear (with Get fresh data); the line under the controls says only that it may be out
     // of date.
     if (anyShown) dated = _aeT('alm_earth_sat_data_from', { date: _aeFmtDate(newest) });
-    else if (aboutSats) parts.push(_aeT('alm_earth_no_sat_data'));
+    else if (aboutSats) parts.push(typeof _alBatchDrawn === 'function' && _alBatchDrawn() ? _aeT('alm_launch_hidden_today') : _aeT('alm_earth_no_sat_data', { date: _aeFmtDate(newest) }));
     stale = aboutSats && anyShown && !!(_ae.satMeta && _ae.satMeta.stale);
     if (stale) parts.push(_aeT('alm_earth_data_stale'));
     if (aboutSats && issOrbit) parts.push(_aeT('alm_earth_iss_orbit_only', { date: _aeFmtDate(issOrbit.epochMs) }));
@@ -8134,6 +8194,7 @@ function _aeBindControls() {
   _aeById('ae-lm-btn').onclick = function () { _aeLmSetLayer(!_aeLmLayerOn()); };
   _aeById('ae-orbits-btn').onclick = function () { _aeSetOrbits(!_aeOrbitsOn()); };
   _aeById('ae-sats-btn').onclick = function () { _aeSatsAllSet(!_aeSatsAllOn()); };
+  _aeById('ae-launch-btn').onclick = _aeLaunchesToggle;
   _aeById('ae-fresh').onclick = _aeGetFresh;
   _aeById('ae-note-fresh').onclick = _aeGetFresh;
   _aeById('ae-hd-get').onclick = _aeHdGet;
