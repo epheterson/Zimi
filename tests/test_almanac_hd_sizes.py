@@ -345,8 +345,9 @@ def test_maximum_is_cut_between_clusters_and_its_manifest_names_every_chunk(tmp_
 
 def test_both_sizes_are_offered_at_their_true_size_before_the_manifest_is_read(lib, monkeypatch, tmp_path):
     pin = tmp_path / "pin.json"
-    pin.write_text(json.dumps({"file": "t.zim", "size": 201_724_127, "sha256": "ab" * 32, "tag": "v1.15.3",
-                               "hd_size": 1_983_068_162, "max_size": 4_814_876_312}), encoding="utf-8")
+    pin_text = json.dumps({"file": "t.zim", "size": 201_724_127, "sha256": "ab" * 32, "tag": "v1.15.3",
+                           "hd_size": 1_983_068_162, "max_size": 4_814_876_312})
+    pin.write_text(pin_text, encoding="utf-8")
     monkeypatch.setattr(almanachd, "TILES_PIN", str(pin))
     lib["rel"] = None
     st = almanachd.status()
