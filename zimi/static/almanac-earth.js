@@ -402,9 +402,13 @@ var AE_IDLE_RENDER_MS = 250;          // at real-time speed nothing moves faster
 var AE_TEXT_TICK_MS = 100;            // readouts and the GPS counter
 var AE_SAT_CAPACITY = 80;
 var AE_GPS_RING_POINTS = 72;
-var AE_ISS_RING_POINTS = 96;
+var AE_ISS_RING_POINTS = 180;   // 2 degrees apart: a chord stands 0.4 km off its arc at most (the station is always one of the vertices)
+// Riding the station: the Earth turns under the camera as fast as the clock runs. Past AE_ISS_FAR_DEG_S of the station's orbit a
+// second the close ride is too quick to follow, and the view eases out to the whole orbit (the ring in view, the station
+// moving along it, the camera still) in AE_ISS_FAR_MS; it comes back under AE_ISS_NEAR_DEG_S.
+var AE_ISS_FAR_DEG_S = 5, AE_ISS_NEAR_DEG_S = 3.5, AE_ISS_FAR_MS = 1500, AE_ISS_FAR_STEP_MAX_MS = 100, AE_ISS_FAR_FIT = 1.15, AE_ISS_FAR_SLIDE_FROM = 0.8;
+var AE_ORBIT_E_MIN = 1e-7;   // below this an orbit is round: no perigee to start from
 var AE_RING_REFRESH_MS = 6 * 3600 * 1000;   // GPS orbits barely turn in six hours
-var AE_ISS_RING_REFRESH_MS = 60 * 1000;
 var AE_MOON_PATH_HALF_DAYS = 13.66;   // half a sidereal month either side
 var AE_MOON_PATH_STEP_HOURS = 6;
 var AE_MOON_PATH_REFRESH_MS = MS_PER_DAY;
@@ -4504,7 +4508,8 @@ function _aeNewState(el) {
     freshBusy: false, freshFailed: false, // the admin's "Get fresh data", under way / failed
     setOpen: false, setBusy: false, setError: '',   // the gear's panel
     selected: null,                       // { norad, tapMs }: the tapped satellite
-    ringsAt: null, issRingAt: null, moonPathAt: null,
+    ringsAt: null, moonPathAt: null,
+    issFar: 0, issFast: false, issFarAt: 0,   // the station ride's pull out to the whole orbit (0 close .. 1 out), and what asked for it
     positions: [],                        // projected satellites for tapping
     lastTs: 0, lastRender: 0, lastText: 0, dirty: true,
     raf: 0, idleTimer: 0,
@@ -4973,7 +4978,8 @@ function _aeViewCam() {
   var tp = _aePanned(_aeFlyTargetPos());
   var roll = _ae.scene ? _aeRollDeg(_ae.target, _ae.scene.ms) : 0;
   if (_ae.fly) roll = _ae.fly.from.roll + _angleDelta(_ae.fly.from.roll, roll) * _aeSmoother(_ae.fly.prog || 0);
-  return { tp: tp, az: _ae.az, el: _ae.el_, dist: _ae.dist, tanHalf: Math.tan(_aeRad(AE_FOV_DEG) / 2), roll: roll, frame: null };
+  var iss = _ae.target === 'iss' && !_ae.fly ? _aeIssFarCam(tp, _ae.dist, _ae.issPos) : { tp: tp, dist: _ae.dist };
+  return { tp: iss.tp, az: _ae.az, el: _ae.el_, dist: iss.dist, tanHalf: Math.tan(_aeRad(AE_FOV_DEG) / 2), roll: roll, frame: null };
 }
 // Where the camera stands and which way is up for a view `c`. Up is the observer's zenith on the Moon, north
 // elsewhere; a flight turns from one to the other on the way, carrying up along as it goes (_aeFlightUp).
@@ -4986,11 +4992,12 @@ function _aePoseOf(c) {
 }
 function _aePlaceCamera() {
   var S = _ae.gl, cam = S.camera;
-  // The far plane reaches the shoulder only while a flight with one is under way: a drag or a hand-in that ends the
-  // flight early must not leave it out at the Sun (it costs every later view its depth precision).
-  _aeFarFor(Math.max(_ae.fly && _ae.fly.shoulder ? _ae.fly.shoulder.far : 0, _ae.dist + AE_FAR));   // far out, the far side of the planets too
   var c = _aeViewCam();
   if (_ae.hand && _ae.scene) c = _aeHandBlend(_aeHandCam(_ae.scene, _ae.hand), c, _ae.hand.e);
+  // The far plane reaches the shoulder only while a flight with one is under way: a drag or a hand-in that ends the
+  // flight early must not leave it out at the Sun (it costs every later view its depth precision). From the distance
+  // the view stands at, not the one it was asked for (the station's view pulled out to its orbit stands far from it).
+  _aeFarFor(Math.max(_ae.fly && _ae.fly.shoulder ? _ae.fly.shoulder.far : 0, Math.max(_ae.dist, c.dist) + AE_FAR));   // far out, the far side of the planets too
   var tp = c.tp, pose = _aePoseOf(c), pos = pose.pos, up = pose.up;
   cam.position.set(pos[0], pos[1], pos[2]);
   _ae.roll = c.roll;
@@ -5424,7 +5431,7 @@ function _aeSetSats(lib, data) {
   list = list.slice(0, AE_SAT_CAPACITY);
   list.forEach(function (s) { s.epochMs = _aeSatEpochMs(s.rec); });
   _ae.sats = { lib: lib, list: list, source: data.source || '', fetched: data.fetched };
-  _ae.ringsAt = _ae.issRingAt = null;
+  _ae.ringsAt = null;
   // The tapped satellite is kept by its catalogue number, so fresher
   // elements for it keep its card open; one no longer here closes it.
   if (_ae.selected) _aeRenderCard();
@@ -5457,6 +5464,27 @@ function _aeOrbitPoints(s, ms, eqeq, n) {
   return pts;
 }
 
+// The orbit a satellite is on at this instant as an ellipse (the conic of its position and velocity), written into `out` as
+// n scene points (Earth radii) round from the satellite itself. False when it is not a closed orbit.
+function _aeOrbitRing(st, eqeq, out, n) {
+  var r = [st.posKm.x, st.posKm.y, st.posKm.z], v = _aeRotZ([st.velKmS.x, st.velKmS.y, st.velKmS.z], eqeq);
+  r = _aeRotZ(r, eqeq);
+  var rl = _aeLen(r), h = _aeCross(r, v), hl = _aeLen(h);
+  if (!(rl > 0) || !(hl > 0)) return false;
+  var ev = _aeSub(_aeScale(_aeCross(v, h), 1 / AE_GM_EARTH_KM3_S2), _aeScale(r, 1 / rl)), e = _aeLen(ev);
+  if (!(e < 1)) return false;
+  var p = hl * hl / AE_GM_EARTH_KM3_S2, hu = _aeScale(h, 1 / hl);
+  var px = e > AE_ORBIT_E_MIN ? _aeScale(ev, 1 / e) : _aeScale(r, 1 / rl), py = _aeCross(hu, px);
+  var nu0 = Math.atan2(_aeDot(r, py), _aeDot(r, px));
+  for (var i = 0; i < n; i++) {
+    var nu = nu0 + 2 * Math.PI * i / n, rad = p / (1 + e * Math.cos(nu)) / AE_EARTH_RADIUS_KM, c = Math.cos(nu), sn = Math.sin(nu);
+    out[i * 3] = rad * (c * px[0] + sn * py[0]);
+    out[i * 3 + 1] = rad * (c * px[1] + sn * py[1]);
+    out[i * 3 + 2] = rad * (c * px[2] + sn * py[2]);
+  }
+  return true;
+}
+
 function _aeUpdateSats(ms, sc) {
   var S = _ae.gl, sats = _ae.sats;
   _ae.positions = [];
@@ -5465,7 +5493,7 @@ function _aeUpdateSats(ms, sc) {
   var count = 0;
   var refreshRings = _ae.ringsAt === null || Math.abs(ms - _ae.ringsAt) > AE_RING_REFRESH_MS;
   var ringArr = S.gpsRings.geometry.attributes.position.array, ringN = 0;
-  var issShown = false, selShown = false;
+  var issShown = false, selShown = false, issState = null;
   for (var i = 0; i < sats.list.length; i++) {
     var s = sats.list[i];
     var standing = _aeSatStanding((ms - s.epochMs) / MS_PER_DAY, s.iss, _aeClockRuns() || _ae.target === 'iss');
@@ -5473,21 +5501,20 @@ function _aeUpdateSats(ms, sc) {
     if (standing === 'none') continue;
     if (s.iss) {
       issShown = true;
-      if (_ae.issRingAt === null || Math.abs(ms - _ae.issRingAt) > AE_ISS_RING_REFRESH_MS) {
-        var ring = _aeOrbitPoints(s, ms, eqeq, AE_ISS_RING_POINTS);
-        if (ring) {
-          var ia = S.issRing.geometry.attributes.position.array;
-          for (var k = 0; k < ring.length; k++) { ia[k * 3] = ring[k][0]; ia[k * 3 + 1] = ring[k][1]; ia[k * 3 + 2] = ring[k][2]; }
-          S.issRing.geometry.attributes.position.needsUpdate = true;
-          S.issRing.geometry.setDrawRange(0, ring.length);
-          _ae.issRingAt = ms;
-        }
-      }
+      // Its orbit as it is now: the ellipse through the station's own position and velocity, the station its first vertex,
+      // drawn again every frame so the station is on it (SGP4's path over one period is a spiral, 15 km from closing, and
+      // a ring drawn a minute ago stood a chord's sag off the station).
+      issState = _aeSatAt(s, ms, eqeq);
+      var ia = S.issRing.geometry.attributes.position.array;
+      if (issState && _aeOrbitRing(issState, eqeq, ia, AE_ISS_RING_POINTS)) {
+        S.issRing.geometry.attributes.position.needsUpdate = true;
+        S.issRing.geometry.setDrawRange(0, AE_ISS_RING_POINTS);
+      } else S.issRing.geometry.setDrawRange(0, 0);
       // Faded beside a faded (approximate) dot. Past that the ring is all
       // that is drawn, and it is right (the orbit's shape and tilt hold), so
       // it is drawn in full: at the faded strength it all but vanished and
       // the note's "orbit only" pointed at nothing.
-      var issLine = _aeOrbitShow('iss');
+      var issLine = Math.max(_aeOrbitShow('iss'), _ae.target === 'iss' ? _aeSmoother(_ae.issFar) : 0);   // out at the orbit, the ring is what it is looking at
       S.issRing.material.opacity = (standing === 'approximate' ? AE_ISS_RING_FADED : AE_ISS_RING_ALPHA) * _aeFadeU.value * issLine;
       S.issRing.visible = issLine > 0;
     } else if (refreshRings) {
@@ -5501,7 +5528,7 @@ function _aeUpdateSats(ms, sc) {
       }
     }
     if (standing === 'orbit') continue;
-    var st = _aeSatAt(s, ms, eqeq);
+    var st = s.iss ? issState : _aeSatAt(s, ms, eqeq);
     if (!st) continue;
     var sel = !!_ae.selected && _ae.selected.norad === s.omm.NORAD_CAT_ID;
     selShown = selShown || sel;
@@ -5518,7 +5545,7 @@ function _aeUpdateSats(ms, sc) {
     S.gpsRings.geometry.setDrawRange(0, ringN);
     _ae.ringsAt = ms;
   }
-  if (!issShown) { S.issRing.geometry.setDrawRange(0, 0); _ae.issRingAt = null; }
+  if (!issShown) S.issRing.geometry.setDrawRange(0, 0);
   if (!issShown || !_ae.issPos) _aeIssAt(null);
   // A card belongs to a dot: when the tapped satellite's dot goes (its data
   // too far from the shown instant), its card goes with it.
@@ -5723,11 +5750,13 @@ function _aeCraftBuild(S, model) {
   S.scene.add(root);
   return { root: root, pivot: pivot, uni: uni, model: model, record: record };
 }
-// Voyager's Golden Record where it is on the craft: on the face of the bus beside its plate, 30 cm across, facing out
-// (+x in NASA's model; the plate is the white panel there, the record the gilded disc on it). Its face is the
+// Voyager's Golden Record where it is on the craft: on the face of the bus, filling its round white plate, facing out
+// (+x in NASA's model; the plate is a disc 0.234 m in radius centred at y -1.961, z -2.372, its face at x 1.252: a circle
+// fitted to the model's own vertices). Its face is the
 // Almanac's own picture of the record's cover (static/golden-record/cover.jpg); a tap on it opens that section.
-var AE_CRAFT_RECORD = { voyager: { at: [1.257, -1.95, -2.33], r: 0.155 } };   // metres in the model's frame
-var AE_RECORD_IMG = '/static/golden-record/cover.jpg', AE_RECORD_IMG_R = 0.47;   // the disc's radius in the picture (of its width)
+var AE_CRAFT_RECORD = { voyager: { at: [1.2535, -1.961, -2.372], r: 0.234 } };   // metres in the model's frame
+var AE_RECORD_IMG = '/static/golden-record/cover.jpg', AE_RECORD_IMG_R = 0.445;   // the disc's radius in the picture (of its width)
+var AE_RECORD_IMG_C = [0.501, 0.51];   // and its centre (u, v), measured on the picture: a little right of the middle and above it
 var AE_RECORD_VERT = [
   'varying vec2 vUv;',
   'void main() { vUv = uv; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }'
@@ -5736,18 +5765,19 @@ var AE_RECORD_FRAG = [
   'uniform sampler2D map; uniform float mapped; uniform float lit; uniform float fill; uniform float fade;',
   'varying vec2 vUv;',
   'void main() {',
-  '  vec2 q = vUv - 0.5;',
+  '  vec2 q = vUv - vec2(' + AE_RECORD_IMG_C[0] + ', ' + AE_RECORD_IMG_C[1] + ');',
   '  if (dot(q, q) > ' + (AE_RECORD_IMG_R * AE_RECORD_IMG_R).toFixed(4) + ') discard;',
   '  vec3 c = mapped > 0.5 ? texture2D(map, vUv).rgb : vec3(0.78, 0.58, 0.24);',   // gold until its picture is in
   '  gl_FragColor = vec4(min(c * 1.3, vec3(1.0)) * min(1.0, 0.35 + 0.65 * lit + fill), fade);',
   '}'
 ].join('\n');
 function _aeRecordMesh(THREE, d, rec, craftUni) {
-  var u = 1 / d.metres, half = rec.r / AE_RECORD_IMG_R * 0.5 * u, c = rec.at.map(function (x) { return x * u; });
+  var u = 1 / d.metres, half = rec.r * u, c = rec.at.map(function (x) { return x * u; });
   var gg = new THREE.BufferGeometry();
   gg.setAttribute('position', new THREE.BufferAttribute(new Float32Array([
     c[0], c[1] - half, c[2] - half, c[0], c[1] + half, c[2] - half, c[0], c[1] + half, c[2] + half, c[0], c[1] - half, c[2] + half]), 3));
-  gg.setAttribute('uv', new THREE.BufferAttribute(new Float32Array([0, 0, 1, 0, 1, 1, 0, 1]), 2));
+  var u0 = AE_RECORD_IMG_C[0] - AE_RECORD_IMG_R, u1 = AE_RECORD_IMG_C[0] + AE_RECORD_IMG_R, v0 = AE_RECORD_IMG_C[1] - AE_RECORD_IMG_R, v1 = AE_RECORD_IMG_C[1] + AE_RECORD_IMG_R;
+  gg.setAttribute('uv', new THREE.BufferAttribute(new Float32Array([u0, v0, u1, v0, u1, v1, u0, v1]), 2));   // the quad is the disc's own box
   gg.setIndex(new THREE.BufferAttribute(new Uint16Array([0, 1, 2, 0, 2, 3]), 1));
   var uni = { map: { value: null }, mapped: { value: 0 }, lit: craftUni.lit, fill: craftUni.fill, fade: craftUni.fade };
   var mesh = new THREE.Mesh(gg, new THREE.ShaderMaterial({ uniforms: uni, vertexShader: AE_RECORD_VERT, fragmentShader: AE_RECORD_FRAG, transparent: true, side: THREE.DoubleSide }));
@@ -5835,23 +5865,50 @@ function _aeProbeCraftAt(key, pos) {
   return 1 - show;
 }
 // The station's place and attitude now, from its SGP4 state; null hides it. Returns how much of its dot to draw.
+// How fast the clock takes the station round its orbit, in degrees of it a real second, decides whether the close ride can
+// be followed; _ae.issFar ramps toward 1 (the whole orbit) while it cannot and back to 0 while it can. From the clock's
+// own rate, not from the frames' gaps: a slow device's uneven frames would tip it back and forth.
+function _aeStepIssFar(pos) {
+  var now = performance.now(), dt = _ae.issFarAt ? Math.max(0, now - _ae.issFarAt) : 0;
+  _ae.issFarAt = now;
+  if (_ae.target !== 'iss' || _ae.fly) { _ae.issFar = 0; _ae.issFast = false; return; }
+  var r = _aeLen(pos) * AE_EARTH_RADIUS_KM, degPerS = 360 / (2 * Math.PI * Math.sqrt(r * r * r / AE_GM_EARTH_KM3_S2));
+  var rate = typeof _almRate === 'number' ? Math.abs(_almRate) : 1;
+  _ae.issFast = rate * degPerS > (_ae.issFast ? AE_ISS_NEAR_DEG_S : AE_ISS_FAR_DEG_S);
+  var to = _ae.issFast ? 1 : 0, step = Math.min(dt, AE_ISS_FAR_STEP_MAX_MS) / AE_ISS_FAR_MS;   // a steady ramp (a stalled frame is not a leap)
+  _ae.issFar = _aeReduceMotion() ? to : _ae.issFar < to ? Math.min(to, _ae.issFar + step) : Math.max(to, _ae.issFar - step);
+}
+// The station view's camera, pulled out toward the whole orbit: first straight out from the station (one steady zoom, on a
+// log scale), and only once it stands well clear of the Earth does the point looked at slide to the Earth's middle (earlier,
+// the camera would pass through the Earth with it).
+function _aeIssFarCam(tp, dist, issPos) {
+  if (!(_ae.issFar > 0) || !issPos) return { tp: tp, dist: dist };
+  var out = Math.max(dist, _aeFitDist(_aeLen(issPos) * AE_ISS_FAR_FIT)), zoom = _aeSmoother(_ae.issFar);
+  var slide = _aeSmoother((_ae.issFar - AE_ISS_FAR_SLIDE_FROM) / (1 - AE_ISS_FAR_SLIDE_FROM));
+  return { tp: _aeScale(tp, 1 - slide), dist: Math.exp(Math.log(dist) + (Math.log(out) - Math.log(dist)) * zoom) };
+}
 function _aeIssAt(st, eqeq, standing) {
   var S = _ae.gl;
   if (!st) {
     _ae.issPos = _ae.issBasis = null;
+    _ae.issFar = 0; _ae.issFast = false; _ae.issFarAt = 0;
     if (S.iss) S.iss.root.visible = false;
     return 1;
   }
   var pos = st.pos, vel = _aeRotZ([st.velKmS.x, st.velKmS.y, st.velKmS.z], eqeq);
   var nadir = _aeNorm(_aeScale(pos, -1)), fwd = _aeNorm(_aeSub(vel, _aeScale(nadir, _aeDot(vel, nadir)))), star = _aeCross(nadir, fwd);
   var prev = _ae.issBasis;
+  _aeStepIssFar(pos);
   _ae.issPos = pos; _ae.issBasis = [nadir, fwd, star];
   if (!prev && _ae.linkHeld) setTimeout(_aeLinkResume, 0);   // a link to the station, waiting for it
   // Close by, the camera rides along with the station (its place in the station's own axes held), so the Earth stays
-  // below it as it goes round; a drag turns about it as anywhere else.
+  // below it as it goes round; a drag turns about it as anywhere else. Pulled out to the orbit it keeps its direction
+  // in space instead, so the orbit stands still while the station goes round it.
   if (prev && _ae.target === 'iss' && !_ae.fly) {
     var off = _aeCameraOffset(_ae.az, _ae.el_, 1), loc = [_aeDot(off, prev[0]), _aeDot(off, prev[1]), _aeDot(off, prev[2])];
-    var azel = _aeAzElOf(_aeAdd(_aeAdd(_aeScale(nadir, loc[0]), _aeScale(fwd, loc[1])), _aeScale(star, loc[2])));
+    var held = _aeAdd(_aeAdd(_aeScale(nadir, loc[0]), _aeScale(fwd, loc[1])), _aeScale(star, loc[2])), far = _aeSmoother(_ae.issFar);
+    if (far > 0) held = _aeNorm(_aeAdd(_aeScale(held, 1 - far), _aeScale(off, far)));
+    var azel = _aeAzElOf(held);
     _ae.az = azel.az; _ae.el_ = azel.el;
   }
   var show = _smoothstep(AE_CRAFT_MODEL_PX[0], AE_CRAFT_MODEL_PX[1], _aeCraftPx(AE_ISS_SPAN_RE, pos));
@@ -6910,7 +6967,7 @@ function _aeBindKeys() {
 // After the clock jumps: the cached orbits belong to the old instant, and the Almanac's loops (its repaint restarts
 // them) stay paused under the view. A jump to a place or an event is a jump at real pace: the clock goes back to it.
 function _aeJumped() {
-  _ae.ringsAt = _ae.issRingAt = _ae.moonPathAt = null;
+  _ae.ringsAt = _ae.moonPathAt = null;
   _aePauseAlmanac();
   if (typeof _almClockSetRate === 'function') _almClockSetRate(1);
 }
@@ -7524,7 +7581,7 @@ function _aeDisposeGl() {
   _ae.gl = null;
   _ae.ready = false;
   _ae.scene = null;
-  _ae.ringsAt = _ae.issRingAt = _ae.moonPathAt = null;
+  _ae.ringsAt = _ae.moonPathAt = null;
   _aeFreeGl(S);
   // The labels were pinned to that scene; the next one's frames pin them again.
   ['ae-bm-earth', 'ae-bm-moon', 'ae-bm-sun', 'ae-lbl-iss', 'ae-lbl-you', 'ae-lbl-place', 'ae-lbl-shadow'].forEach(function (id) {

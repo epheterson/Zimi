@@ -218,12 +218,15 @@ def test_the_planets_where_the_sky_has_them_and_a_flight_to_saturn(served):
                         assert not meet(m["box"], o["box"]), (m, o)
             # Nothing under the controls at the foot: the controls are the foot's visible, tappable rows (the hint and the notes are
             # text on a gradient, and the foot's own box also holds whatever a slow machine has not yet folded away).
-            foot, under = pg.evaluate(
+            foot, under, state = pg.evaluate(
                 """() => { var o = _ae.el.getBoundingClientRect().top, rows = Array.from(document.querySelectorAll('.ae-bottom > *')).filter(c => !c.hidden && c.getBoundingClientRect().height > 0 && getComputedStyle(c).pointerEvents !== 'none');
-                return [Math.min.apply(null, rows.map(c => c.getBoundingClientRect().top - o)), rows.map(c => [c.id || c.className, Math.round(c.getBoundingClientRect().top - o), Math.round(c.getBoundingClientRect().height)]).concat([['view', Math.round(_ae.h), innerHeight]])]; }"""
+                var vv = window.visualViewport, st = { scroll: [_ae.el.scrollTop, _ae.el.scrollLeft], footStyle: document.querySelector('.ae-bottom').getAttribute('style'), viewH: Math.round(_ae.el.getBoundingClientRect().height), vv: vv ? [vv.height, vv.offsetTop] : null, info: _ae.info, shift: _ae.infoShift };
+                return [Math.min.apply(null, rows.map(c => c.getBoundingClientRect().top - o)), rows.map(c => [c.id || c.className, Math.round(c.getBoundingClientRect().top - o), Math.round(c.getBoundingClientRect().height)]).concat([['view', Math.round(_ae.h), innerHeight]]), st]; }"""
             )
             low = [(m["body"], round(m["box"][1])) for m in marks if m["box"][1] >= foot]
-            assert not low, "foot top %s, rows %s, under it %s" % (round(foot), under, low)
+            # (state: what could hold the foot up when a slow runner finds it high, as one CI run did: the view scrolled, the foot
+            # lifted over a keyboard, the view short.)
+            assert not low, "foot top %s, rows %s, under it %s, state %s" % (round(foot), under, low, state)
             # The planets only are named out here: no probe, moon or dwarf planet name, no crowd counts.
             planets = {
                 "mercury",
