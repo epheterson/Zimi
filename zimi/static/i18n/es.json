@@ -3791,5 +3791,22 @@
   "alm_earth_webb_lit": "El lado del espejo siempre está a la sombra del parasol: aquí se muestra iluminado.",
   "tb_kn_craft_models": "Modelos de naves",
   "tb_kn_craft_sun": "Luz del Sol sobre una nave (irradiancia)",
-  "tb_kn_craft_shine": "Luz planetaria sobre una nave (parte de una superficie que lo mira)"
+  "tb_kn_craft_shine": "Luz planetaria sobre una nave (parte de una superficie que lo mira)",
+  "alm_stand_here": "Estar aquí",
+  "alm_stand_back": "Volver a la órbita",
+  "alm_stand_aria": "En {body}. Arrastra para mirar alrededor.",
+  "alm_stand_motion": "Mirar con el teléfono",
+  "alm_stand_eye": "Ponerse en el suelo",
+  "alm_stand_orbit": "Ver el lugar desde fuera",
+  "tb_kn_stand_eye": "Estar aquí: altura de los ojos sobre el suelo",
+  "tb_kn_stand_terrain": "Estar aquí: las alturas del terreno",
+  "tb_kn_stand_detail": "Estar aquí: cráteres, colinas y rocas",
+  "tb_kn_stand_dust": "Marte: polvo en el aire (profundidad óptica)",
+  "tb_kn_stand_haze": "Venus y Titán: hasta dónde se ve a través de la bruma",
+  "tb_kn_stand_charon": "Plutón: distancia de Caronte (se queda sobre un lugar)",
+  "tb_kn_stand_coast": "Tierra: dónde está la costa",
+  "tb_kn_stand_shadow": "Estar aquí: sombras del relieve (mallas alrededor del observador)",
+  "alm_site_reset": "Volver al módulo",
+  "tb_kn_stand_stars": "Estrellas de día sin aire",
+  "tb_kn_site_lamps": "Faros del rover"
 }

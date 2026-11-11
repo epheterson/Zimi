@@ -45,7 +45,7 @@ RELEASE_URL = "https://github.com/epheterson/Zimi/releases/download/{tag}/{file}
 _FILE_RE = re.compile(r"^zimi_almanac_maxi_\d{4}-\d{2}[a-z]?\.zim$")
 #: A layer too big for one release file (GitHub's limit is 2 GiB a file) is a part: a ZIM of its own,
 #: ``zimi_almanac_hd_<part>_<month>.zim``, with an ``hd.json`` listing only its layers. The 3D view reads the set as one.
-PARTS = ("moon", "mars", "mercury")
+PARTS = ("moon", "mars", "mercury", "earth")
 PART_PREFIX = "zimi_almanac_hd_"
 _PART_RE = re.compile(
     r"^zimi_almanac_hd_(?:%s)_\d{4}-\d{2}[a-z]?\.zim$" % "|".join(PARTS)

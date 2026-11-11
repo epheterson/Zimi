@@ -38,12 +38,12 @@
   "lm-ascent": {"size":[5.903,5.96,4.479]}
  },
 "sites": [
-  {"name":"Apollo 11","body":"moon","ms":-14182980000,"parts":[{"m":"lm","x":0,"y":0,"h":0},{"m":"flag","x":14,"y":6,"h":20}]},
-  {"name":"Apollo 12","body":"moon","ms":-3690360000,"parts":[{"m":"lm","x":0,"y":0,"h":0},{"m":"flag","x":-12,"y":8,"h":20}]},
-  {"name":"Apollo 14","body":"moon","ms":34593480000,"parts":[{"m":"lm","x":0,"y":0,"h":0},{"m":"flag","x":13,"y":-9,"h":20}]},
-  {"name":"Apollo 15","body":"moon","ms":49760160000,"parts":[{"m":"lm","x":0,"y":0,"h":0},{"m":"flag","x":-14,"y":8,"h":20},{"m":"lrv","x":26,"y":-14,"h":60}]},
-  {"name":"Apollo 16","body":"moon","ms":72670980000,"parts":[{"m":"lm","x":0,"y":0,"h":0},{"m":"flag","x":15,"y":9,"h":20},{"m":"lrv","x":-24,"y":-18,"h":200}]},
-  {"name":"Apollo 17","body":"moon","ms":92951640000,"parts":[{"m":"lm","x":0,"y":0,"h":0},{"m":"flag","x":-13,"y":-9,"h":20},{"m":"lrv","x":24,"y":20,"h":120}]},
+  {"name":"Apollo 11","body":"moon","ms":-14182980000,"liftoff":-14105159000,"parts":[{"m":"lm","x":0,"y":0,"h":0,"from":-14182980000},{"m":"lm-ascent","x":0,"y":0,"h":0,"from":-14182980000,"until":-14105159000},{"m":"flag","x":14,"y":6,"h":20,"from":-14182980000}]},
+  {"name":"Apollo 12","body":"moon","ms":-3690360000,"liftoff":-3576853000,"parts":[{"m":"lm","x":0,"y":0,"h":0,"from":-3690360000},{"m":"lm-ascent","x":0,"y":0,"h":0,"from":-3690360000,"until":-3576853000},{"m":"flag","x":-12,"y":8,"h":20,"from":-3690360000}]},
+  {"name":"Apollo 14","body":"moon","ms":34593480000,"liftoff":34714122000,"parts":[{"m":"lm","x":0,"y":0,"h":0,"from":34593480000},{"m":"lm-ascent","x":0,"y":0,"h":0,"from":34593480000,"until":34714122000},{"m":"flag","x":13,"y":-9,"h":20,"from":34593480000}]},
+  {"name":"Apollo 15","body":"moon","ms":49760160000,"liftoff":50001082000,"parts":[{"m":"lm","x":0,"y":0,"h":0,"from":49760160000},{"m":"lm-ascent","x":0,"y":0,"h":0,"from":49760160000,"until":50001082000},{"m":"flag","x":-14,"y":8,"h":20,"from":49760160000},{"m":"lrv","x":26,"y":-14,"h":60,"from":49760160000}]},
+  {"name":"Apollo 16","body":"moon","ms":72670980000,"liftoff":72926747000,"parts":[{"m":"lm","x":0,"y":0,"h":0,"from":72670980000},{"m":"lm-ascent","x":0,"y":0,"h":0,"from":72670980000,"until":72926747000},{"m":"flag","x":15,"y":9,"h":20,"from":72670980000},{"m":"lrv","x":-24,"y":-18,"h":200,"from":72670980000}]},
+  {"name":"Apollo 17","body":"moon","ms":92951640000,"liftoff":93221677000,"parts":[{"m":"lm","x":0,"y":0,"h":0,"from":92951640000},{"m":"lm-ascent","x":0,"y":0,"h":0,"from":92951640000,"until":93221677000},{"m":"flag","x":-13,"y":-9,"h":20,"from":92951640000},{"m":"lrv","x":24,"y":20,"h":120,"from":92951640000}]},
   {"name":"Luna 17","body":"moon","ms":27661620000,"parts":[{"m":"lunokhod","x":9,"y":5,"h":30}]},
   {"name":"Luna 21","body":"moon","ms":95985300000,"parts":[{"m":"lunokhod","x":-9,"y":6,"h":300}]},
   {"name":"Chang'e 3","body":"moon","ms":1387026660000,"parts":[{"m":"change-lander","x":0,"y":0,"h":0},{"m":"yutu","x":14,"y":10,"h":40}]},
@@ -90,5 +90,5 @@
   "perseverance": {"body":"perseverance-body","wheel":"perseverance-wheel"},
   "curiosity": {"body":"curiosity-body","wheel":"curiosity-wheel"}
  },
-"credits": "Models: NASA 3D Resources (public domain) for the Lunar Module, Perseverance, Ingenuity, the Mars Exploration Rover, InSight and the Saturn V; the others written for Zimi from the craft's published dimensions."
+"credits": "Models: NASA 3D Resources (public domain) for the Lunar Module, Perseverance, Ingenuity, the Mars Exploration Rover, InSight and the Saturn V; the others written for Zimi from the craft's published dimensions. The Lunar Module's liftoff instants (Apollo 11 to 17): the Apollo Flight Journal and Apollo Lunar Surface Journal mission timelines."
 }

@@ -692,7 +692,7 @@
    color: var(--amber); font-size: 13px; font-weight: 600; line-height: 1; }
 .alm-ck-r:empty { display: none; }
 .alm-ck-r:not(:empty) + .alm-ck-now { margin-inline-start: 0; }
-.alm-ck-now { flex: none; margin: 0; margin-inline-start: 6px; padding: 4px 10px; border: 1px solid var(--amber-border); border-radius: 999px; background: var(--amber-glow); color: var(--amber); font: inherit; font-size: 12px; line-height: 1; cursor: pointer; transition: background .15s, border-color .15s; }
+.alm-ck-now { flex: none; margin: 0; margin-inline-start: 8px; padding: 4px 10px; border: 1px solid var(--amber-border); border-radius: 999px; background: var(--amber-glow); color: var(--amber); font: inherit; font-size: 12px; line-height: 1; cursor: pointer; transition: background .15s, border-color .15s; }
 .alm-ck-now[hidden] { display: none; }
 @media (hover: hover) { .alm-ck-now:hover { background: var(--amber-border); } }
 .alm-ck-now:focus-visible, .alm-spd-play:focus-visible { outline: 2px solid var(--amber); outline-offset: 2px; }

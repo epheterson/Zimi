@@ -178,7 +178,9 @@ def test_a_layers_deep_levels_are_a_part_and_the_rest_the_core():
     assert hd.part_of("planets/mars/4/1/1.webp") == "" and hd.part_of("planets/mars/5/1/1.webp") == "mars"
     assert hd.part_of("planets/marsX/9/0/0.webp") == ""
     assert hd.part_of("earth/day/7/0/0.webp") == ""
-    assert hd.part_of("terrain/moon/0/0/0.webp") == "moon"  # a layer whose first level is 0 is wholly the part's
+    assert hd.part_of("terrain/moon/0/0/0.webp") == ""  # the Moon's heights stop at level 3: all in the core
+    assert hd.part_of("terrain/earth/3/1/1.webp") == "" and hd.part_of("terrain/earth/4/1/1.webp") == "earth" and hd.part_of("terrain/earth/6/9/9.webp") == "earth"
+    assert hd.part_of("terrain/mars/3/0/0.webp") == "" and hd.part_of("terrain/mars/4/0/0.webp") == "mars"
 
 
 def test_each_zims_list_of_layers_is_its_own_and_a_split_layer_is_in_both():
@@ -190,12 +192,11 @@ def test_each_zims_list_of_layers_is_its_own_and_a_split_layer_is_in_both():
         "terrain/moon": {"max": 3},
     }
     core = hd.part_manifest(layers, "")
-    assert core == {"earth/day": {"max": 7}, "moon/albedo": {"max": 5}, "moon/relief": {"max": 4}, "planets/mars": {"max": 4}}
+    assert core == {"earth/day": {"max": 7}, "moon/albedo": {"max": 5}, "moon/relief": {"max": 4}, "planets/mars": {"max": 4}, "terrain/moon": {"max": 3}}
     moon = hd.part_manifest(layers, "moon")
     assert moon == {
         "moon/albedo": {"max": 7, "inserts": [{"site": "apollo11"}], "from": 6},
         "moon/relief": {"max": 5, "from": 5},
-        "terrain/moon": {"max": 3},
     }
     assert hd.part_manifest(layers, "mars") == {}
 
