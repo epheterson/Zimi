@@ -239,9 +239,12 @@ def test_discover_drawn_before_the_library_fills_in_when_it_arrives(served):
         try:
             pg.goto(served + "/")
             pg.wait_for_function(READY, timeout=30000)
+            # The two draws below are the test's own: the page's follow-up draws for late data (collections, the
+            # provenance walk) are set aside, or one landing between the two steps is counted as a third ask.
             pg.evaluate(
                 """() => { window.__asked = 0; const load = _loadDiscover;
-                     window._loadDiscover = function() { window.__asked++; return load.apply(this, arguments); }; }"""
+                     window._loadDiscover = function() { window.__asked++; return load.apply(this, arguments); };
+                     clearTimeout(_homeRerenderTimer); window._renderHomeSoon = function() {}; }"""
             )
             # The list not in yet: home draws Discover from nothing.
             pg.evaluate("() => { window.__lib = zimsCache; zimsCache = []; _rebuildZimsMap(); renderHome(); }")
