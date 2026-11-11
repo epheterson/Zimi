@@ -141,6 +141,9 @@ def test_relaunch_after_a_deploy_runs_the_new_code(served):
         log = []
         pg = ctx.new_page()
         pg.on("request", lambda r: log.append(r.url) if r.resource_type == "document" and r.frame.parent_frame is None else None)
+        console = []
+        pg.on("console", lambda m: console.append("%s: %s" % (m.type, m.text[:160])))
+        pg.on("requestfailed", lambda r: console.append("failed: %s %s" % (r.url[-60:], r.failure)))
         pg.goto(server.base + "/", wait_until="commit")
         t0 = time.time()
         gens = []
@@ -165,7 +168,7 @@ def test_relaunch_after_a_deploy_runs_the_new_code(served):
         br.close()
     # The new code runs on the first launch, with the Almanac's files still held, and its reload followed the new
     # worker taking charge, never the page's wait for one that does not come.
-    assert first == 1 and by != "timeout", (engine, gens, by, diag)
+    assert first == 1 and by != "timeout", (engine, gens[-3:], by, diag, console[-12:])
 
 
 def _kept_almanac_on_device(ctx, server):
