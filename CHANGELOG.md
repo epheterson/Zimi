@@ -89,6 +89,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 - Games: Drop Pin on your own map no longer says the map has not loaded over a map that has, and the map is only a map there: its search box, place chips, cards and menus are put away and the place's own name is taken off its labels.
 
 - Games: a daily played past midnight counts for the day it began; ZimCity's money warning follows this year's taxes, a kept city's buttons act on that city, and a paused city stops redrawing; Canasta fits eleven melds a side on a short wide screen.
+### Highlights
+
+- **Stand where they landed:** in the Almanac's 3D view the Apollo, Luna, Chang'e, Viking, Mars rover, Venera and Huygens sites are models on their real ground with the Sun's real shadows; drive the Moon buggy (with a speed readout and a bounce on landing) or a Mars rover, watch a Saturn V leave its pad, and replay Curiosity's and Perseverance's whole journeys on the timeline.
 ### Almanac
 
 - **Every world, sharp:** the Moon, Mars, Mercury, Venus, Earth by night and every moon and dwarf planet with a NASA mosaic draw from Almanac HD tile by tile as you near them, and the camera comes as close as their pixels allow, within a memory cap that is smaller on a phone.
