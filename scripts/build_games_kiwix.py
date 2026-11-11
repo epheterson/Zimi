@@ -20,7 +20,6 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 DEFAULT_NAME = "zimi_mul_games"
 DEFAULT_TITLE = "Zimi Games"
-LANGUAGES = "eng,zho,hin,spa,ara,fra,por,rus,deu,heb"
 FILE_FMT = "%s_%s.zim"
 #: Text for the ZIM's Description or LongDescription instead of zimi.txt's (None keeps zimi.txt's). Change a line, rebuild.
 DESCRIPTION = None
@@ -29,7 +28,7 @@ LONG_DESCRIPTION = None
 
 def build(out_dir, file_name=None, name=DEFAULT_NAME, title=DEFAULT_TITLE, month=None, description=None, long_description=None):
     """The community Games, built from the source as it is now. Returns its path."""
-    from build_almanac_kiwix import set_fields
+    from build_almanac_kiwix import LANGUAGES, set_fields
     from zimi import creator, ownzims
 
     month = month or datetime.date.today().strftime("%Y-%m")

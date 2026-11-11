@@ -43,6 +43,9 @@ GOLDEN_LINE_COMMUNITY = (
 )
 
 
+#: The page's languages, Zimi's ten: each one's strings are packed in (i18n/<code>.json), English standing under the rest.
+LANGUAGES = ("ar", "de", "en", "es", "fr", "he", "hi", "pt", "ru", "zh")
+
 #: What the Almanac loads, in order (they share one global scope). app.js's
 #: _ALMANAC_MODULES, then what it adds on open and on use.
 SCRIPTS = (
@@ -70,7 +73,7 @@ LAZY = (
 STYLES = ("almanac.css",)
 #: Data and assets the pages fetch (files or whole folders under static/).
 DATA = (
-    os.path.join("i18n", "en.json"),
+    *(os.path.join("i18n", "%s.json" % lang) for lang in LANGUAGES),
     "tz-borders.json",
     "world-map.svg",
     "earth",

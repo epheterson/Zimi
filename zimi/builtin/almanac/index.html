@@ -72,12 +72,27 @@
 // what needs a Zimi server or a library, and what stands in for it here.
 //
 // Not in this page, said plainly: links into an article library, the almanac's
-// age table, the PDF reader, the account and settings sync, other languages than
-// English. The satellites and the tide stations are packed in (data/, local.js).
+// age table, the PDF reader, the account and settings sync. The satellites and the tide stations are packed in (data/, local.js).
 
 var _almanacOpen = false;
 var zimsCache = [];          // no library here: every name in the Almanac stays plain text
-var _currentLang = 'en';
+// The page's language: ?lang in the address's hash (#lang=de), else the first of the browser's languages that is one of the
+// ten Zimi speaks, else English. English strings stand under every other language's (_i18nFallback).
+var ALM_LANGS = ['ar', 'de', 'en', 'es', 'fr', 'he', 'hi', 'pt', 'ru', 'zh'];
+var ALM_RTL_LANGS = ['ar', 'he'];
+function _almPickLang() {
+  var want = [], m = /[#&]lang=([a-z]{2})/i.exec(location.hash);
+  if (m) want.push(m[1]);
+  try { want = want.concat(navigator.languages && navigator.languages.length ? navigator.languages : [navigator.language]); } catch (e) {}
+  for (var i = 0; i < want.length; i++) {
+    var primary = String(want[i] || '').split('-')[0].toLowerCase();
+    if (ALM_LANGS.indexOf(primary) >= 0) return primary;
+  }
+  return 'en';
+}
+var _currentLang = _almPickLang();
+document.documentElement.lang = _currentLang;
+if (ALM_RTL_LANGS.indexOf(_currentLang) >= 0) document.documentElement.setAttribute('dir', 'rtl');
 var _i18n = {};
 var _i18nFallback = {};
 var _ALM_TIDES_JS = 'almanac-tides.js';
@@ -93,21 +108,22 @@ function _htmlEsc(s) { return String(s).replace(/&/g, '&amp;').replace(/</g, '&l
 function tH(key, vars) { return _htmlEsc(t(key, vars)); }
 function tPlural(base, n, vars) {
   var cat = 'other';
-  try { cat = new Intl.PluralRules('en').select(Number(n) || 0); } catch (e) {}
+  try { cat = new Intl.PluralRules(_uiLangPrimary()).select(Number(n) || 0); } catch (e) {}
   var key = base + '_' + cat;
   if (_i18n[key] === undefined && _i18nFallback[key] === undefined) key = base + '_other';
-  var v = { n: typeof n === 'number' ? n.toLocaleString('en') : n };
+  var v = { n: typeof n === 'number' ? fmtNum(n) : n };
   if (vars) for (var k in vars) v[k] = vars[k];
   return t(key, v);
 }
 function esc(s) { return String(s == null ? '' : s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;'); }
 function escAttr(s) { return esc(s).replace(/'/g, '&#39;').replace(/"/g, '&quot;'); }
-function cmpText(a, b) { return new Intl.Collator('en', { numeric: true }).compare(a == null ? '' : String(a), b == null ? '' : String(b)); }
+function cmpText(a, b) { return new Intl.Collator(_uiLocale(), { numeric: true }).compare(a == null ? '' : String(a), b == null ? '' : String(b)); }
 function _langPrimary(tag) { return String(tag || '').split('-')[0]; }
-function _uiLangPrimary() { return 'en'; }
+function _uiLangPrimary() { return String(_currentLang || 'en').split('-')[0]; }
+// The language, in the browser's region when the browser speaks that language (en-GB: 20/10/2026), else the language.
 function _uiLocale() {
-  var phone = (typeof navigator !== 'undefined' && navigator.language) || '';
-  return _langPrimary(phone).toLowerCase() === 'en' ? phone : 'en';
+  var lang = _uiLangPrimary(), phone = (typeof navigator !== 'undefined' && navigator.language) || '';
+  return _langPrimary(phone).toLowerCase() === lang ? phone : lang;
 }
 function _setWindowTitle(title) { document.title = title; }
 function _showToast(msg) {
@@ -185,7 +201,11 @@ function loadScripts(list) {
 }
 
 (function() {
-  var strings = fetch('i18n/en.json').then(function(r) { return r.json(); }).then(function(d) { _i18n = d; }, function() {});
+  function words(lang) { return fetch('i18n/' + lang + '.json').then(function(r) { return r.json(); }, function() { return null; }); }
+  var strings = Promise.all([words('en'), _currentLang === 'en' ? null : words(_currentLang)]).then(function(got) {
+    _i18nFallback = got[0] || {};
+    _i18n = got[1] || _i18nFallback;
+  });
   strings.then(function() { return loadScripts(['shell.js'].concat(ALMANAC_SCRIPTS)); }).then(function() {
     _openAlmanacInner(true);
   }).catch(function(e) {

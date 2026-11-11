@@ -158,8 +158,9 @@ def test_the_built_zims_hold_49_and_8(tmp_path):
     from libzim.reader import Archive
 
     meta = Archive(str(tmp_path / "kiwix.zim"))
-    assert meta.get_metadata("Name").decode() == build_almanac_kiwix.DEFAULT_NAME == "zimi_en_almanac"
+    assert meta.get_metadata("Name").decode() == build_almanac_kiwix.DEFAULT_NAME == "zimi_mul_almanac"
     assert meta.get_metadata("Title").decode() == build_almanac_kiwix.DEFAULT_TITLE == "Zimi Almanac"
+    assert meta.get_metadata("Language").decode() == "eng,zho,hin,spa,ara,fra,por,rus,deu,heb"
 
 
 # The gallery's own code, run in node on each edition's table: what the list holds.
