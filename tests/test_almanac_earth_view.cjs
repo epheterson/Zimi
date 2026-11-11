@@ -68,7 +68,7 @@ const NULL_IDS = new Set(['almanac-orrery']);   // the orrery's canvas: not draw
 const byId = new Map();
 function fakeEl(id) {
   const el = {
-    id, hidden: false, textContent: '', innerHTML: '', className: '', style: {}, attrs: {}, listeners: {},
+    id, hidden: false, textContent: '', innerHTML: '', value: '', className: '', style: {}, attrs: {}, listeners: {},
     clientWidth: 390, clientHeight: 844, parentNode: null,
     classList: {
       set: new Set(),
@@ -80,7 +80,7 @@ function fakeEl(id) {
     appendChild(c) { c.parentNode = el; return c; },
     replaceChild(fresh, old) { fresh.parentNode = el; old.parentNode = null; if (old.id) byId.set(old.id, fresh); },
     cloneNode() { const c = fakeEl(el.id); c.className = el.className; c.attrs = Object.assign({}, el.attrs); return c; },
-    focus() {}, setPointerCapture() {}, getBoundingClientRect() { return { left: 0, top: 0 }; },
+    focus() {}, setPointerCapture() {}, getBoundingClientRect() { return { left: 0, top: 0 }; }, querySelectorAll() { return []; },
     removeAttribute(k) { delete this.attrs[k]; },
   };
   el.style = {

@@ -4136,5 +4136,8 @@
   "tb_kn_pv_exhaust": "Na plataforma: chama, nuvem e rastro",
   "tb_kn_pv_exhaust_v": "Os comprimentos da chama são os da própria missão (60 m no primeiro estágio do Saturn V, maiores com o ar rarefeito). A nuvem na plataforma, as faíscas e o rastro são baforadas de tamanho, velocidade e vida supostos, não uma simulação de fluidos: uma baforada de rastro a cada 12 m do caminho, até 30 km de altura. Não se desenha o tempo: o céu é o limpo.",
   "then_apollo_11_launch": "A Apollo 11 decola do Complexo de Lançamento 39A",
-  "then_see_pad": "O foguete na plataforma, a contagem em trinta segundos"
+  "then_see_pad": "O foguete na plataforma, a contagem em trinta segundos",
+  "alm_go_small": "Mundos menores",
+  "go_view_grid": "Grade",
+  "go_view_list": "Lista"
 }

@@ -4136,5 +4136,8 @@
   "tb_kn_pv_exhaust": "En la plataforma: llama, nube y estela",
   "tb_kn_pv_exhaust_v": "Los largos de la llama son los de la propia misión (60 m en la primera etapa del Saturn V, mayores al enrarecerse el aire). La nube de la plataforma, las chispas y la estela son bocanadas de tamaño, velocidad y vida supuestos, no una simulación de fluidos: una bocanada de estela cada 12 m del camino, hasta 30 km de altura. No se dibuja el tiempo: el cielo es el despejado.",
   "then_apollo_11_launch": "Apolo 11 despega del Complejo de Lanzamiento 39A",
-  "then_see_pad": "El cohete en su plataforma, la cuenta atrás en treinta segundos"
+  "then_see_pad": "El cohete en su plataforma, la cuenta atrás en treinta segundos",
+  "alm_go_small": "Mundos menores",
+  "go_view_grid": "Cuadrícula",
+  "go_view_list": "Lista"
 }

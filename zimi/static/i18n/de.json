@@ -4136,5 +4136,8 @@
   "tb_kn_pv_exhaust": "Am Startplatz: Flamme, Wolke und Spur",
   "tb_kn_pv_exhaust_v": "Die Flammenlängen stammen aus der Mission selbst (60 m bei der ersten Stufe der Saturn V, länger in dünnerer Luft). Die Wolke am Startplatz, die Funken und die Spur sind Wölkchen von angenommener Größe, Geschwindigkeit und Lebensdauer, keine Strömungssimulation: alle 12 m Weg ein Spurwölkchen, bis 30 km Höhe. Wetter wird nicht gezeichnet: der Himmel ist der klare.",
   "then_apollo_11_launch": "Apollo 11 hebt vom Startkomplex 39A ab",
-  "then_see_pad": "Die Rakete auf der Rampe, der Countdown bei dreißig Sekunden"
+  "then_see_pad": "Die Rakete auf der Rampe, der Countdown bei dreißig Sekunden",
+  "alm_go_small": "Kleine Welten",
+  "go_view_grid": "Raster",
+  "go_view_list": "Liste"
 }

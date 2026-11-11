@@ -4136,5 +4136,8 @@
   "tb_kn_pv_exhaust": "Au pas de tir : flamme, nuage et traînée",
   "tb_kn_pv_exhaust_v": "Les longueurs de flamme sont celles de la mission (60 m pour le premier étage du Saturn V, plus longues quand l'air s'amincit). Le nuage au pas de tir, les étincelles et la traînée sont des bouffées de taille, vitesse et durée de vie supposées, pas une simulation de fluide : une bouffée de traînée tous les 12 m de trajet, jusqu'à 30 km d'altitude. Aucune météo n'est dessinée : le ciel est le ciel dégagé.",
   "then_apollo_11_launch": "Apollo 11 décolle du complexe de lancement 39A",
-  "then_see_pad": "La fusée sur son pas de tir, le compte à rebours à trente secondes"
+  "then_see_pad": "La fusée sur son pas de tir, le compte à rebours à trente secondes",
+  "alm_go_small": "Petits mondes",
+  "go_view_grid": "Grille",
+  "go_view_list": "Liste"
 }

@@ -4136,5 +4136,8 @@
   "tb_kn_pv_exhaust": "Stand at the pad: flame, cloud and trail",
   "tb_kn_pv_exhaust_v": "The flame lengths are the mission's own (60 m for the Saturn V's first stage, longer as the air thins). The cloud at the pad, the sparks and the trail are puffs of assumed size, speed and life, not a fluid simulation: a trail puff every 12 m of the way, up to 30 km high. No weather is drawn: the sky is the clear one.",
   "then_apollo_11_launch": "Apollo 11 lifts off from Launch Complex 39A",
-  "then_see_pad": "The rocket on its pad, the count at thirty seconds"
+  "then_see_pad": "The rocket on its pad, the count at thirty seconds",
+  "alm_go_small": "Small worlds",
+  "go_view_grid": "Grid",
+  "go_view_list": "List"
 }
