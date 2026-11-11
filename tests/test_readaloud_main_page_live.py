@@ -36,6 +36,16 @@ MAIN = (
     '<table class="infobox"><tr><th>Area</th><td><ul><li>Dados de caixa</li></ul></td></tr></table></body></html>'
 )
 
+ARTICLE = (
+    '<html lang="pt"><body><main><h1>Lisboa</h1>'
+    + "".join(
+        "<p>Lisboa \u00e9 a capital de Portugal e fica na foz do rio Tejo, com muitas colinas e miradouros %d.</p>"
+        % n
+        for n in range(30)
+    )
+    + "</main></body></html>"
+)
+
 
 @pytest.fixture(scope="module")
 def zimi(tmp_path_factory):
@@ -47,7 +57,13 @@ def zimi(tmp_path_factory):
     with Creator(path).config_indexing(True, "por") as creator:
         creator.set_mainpath("A/Principal")
         creator.add_item(_Article("A/Principal", "Principal", MAIN.encode()))
-        for key, value in {"Title": "Wikip\u00e9dia", "Language": "por", "Description": "pt fixture", "Name": "wikipedia_pt_test"}.items():
+        creator.add_item(_Article("A/Artigo", "Artigo", ARTICLE.encode()))
+        for key, value in {
+            "Title": "Wikip\u00e9dia",
+            "Language": "por",
+            "Description": "pt fixture",
+            "Name": "wikipedia_pt_test",
+        }.items():
             creator.add_metadata(key, value)
     with socket.socket() as s:
         s.bind(("127.0.0.1", 0))
