@@ -37,9 +37,9 @@ FROM_GAMES = ("zimihome.js", "mark.svg")
 GOLDEN_RECORD = "golden-record"
 GOLDEN_CREDITS = os.path.join(GOLDEN_RECORD, "credits.json")
 #: zimi.txt's line about the pictures, and what it says in the community edition.
-GOLDEN_LINE_FULL = "all 49 shown, each with its credit"
+GOLDEN_LINE_FULL = "all 49 shown, each with its credit; 8 are NASA photographs (public domain) and the other 41 are copyright their owners"
 GOLDEN_LINE_COMMUNITY = (
-    "the 8 public-domain ones shown; the other 41 are named in the list (number, title, credit), not shown"
+    "the 8 public-domain NASA pictures are shown, and the other 41 are named in a list (number, title, credit), not shown. Their owners"
 )
 
 
