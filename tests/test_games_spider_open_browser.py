@@ -1,7 +1,8 @@
-"""Spider and Klondike open their face-down cards when the table has room, by the same step as the face-up ones.
+"""Spider and Klondike keep their face-down cards a sliver, whatever the room: enough to count them, nothing to read.
 
-Spider's five face-down cards sat in 7 px steps at the top of a phone whose table was three quarters empty: a
-face-down card took a fixed 0.54 of a face-up step whatever the room.
+They used to open up to the face-up step when the table had room, so a column of six backs and one face stood three card
+heights tall for one playable card (phone solitaire apps show backs at 0.07 to 0.16 of a card). Room goes to the face-up
+fan instead: on a fresh deal there is room, so the backs must stay between DOWN_MIN and DOWN_MAX of a card's height.
 
 Run: ZIMI_TORRENT=0 ZIMI_OFFLINE=1 pytest tests/test_games_spider_open_browser.py -v
 """
@@ -17,8 +18,11 @@ from games_wait import game_ready, quiet  # noqa: E402
 
 
 
+DOWN_MIN, DOWN_MAX = 0.05, 0.14
+
+
 @pytest.mark.parametrize("game,api,col", [("spider", "ZimiSpider", "c0"), ("solitaire", "ZimiSolitaire", "t6")])
-def test_face_down_cards_open_up_with_room(served, browser, game, api, col):
+def test_face_down_cards_stay_a_sliver_with_room(served, browser, game, api, col):
     ctx = browser.new_context(viewport=VIEW, has_touch=True, is_mobile=True)
     page = ctx.new_page()
     page.goto("%s/%s.html" % (served, game))
@@ -29,6 +33,6 @@ def test_face_down_cards_open_up_with_room(served, browser, game, api, col):
         const e = document.querySelector('.zc-card[data-id="' + c.id + '"]'); return [c.up, e.getBoundingClientRect().top]; })""", [api, col])
     downs = [b[1] - a[1] for a, b in zip(ys, ys[1:]) if not a[0]]
     assert downs, ys
-    face_up_step = page.evaluate("() => { const r = document.querySelector('.zc-card:not(.zc-off)').getBoundingClientRect(); return r.height * ZimiCards.FAN_UP_SHARE; }")
-    assert min(downs) >= face_up_step - 1, (downs, face_up_step)
+    ch = page.evaluate("() => document.querySelector('.zc-card:not(.zc-off)').getBoundingClientRect().height")
+    assert all(ch * DOWN_MIN <= d <= ch * DOWN_MAX for d in downs), (downs, ch)
     ctx.close()
