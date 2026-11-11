@@ -20,6 +20,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 **Games**
 
 - The shelf works in kiwix-serve's viewer, with a World favorites row after the table.
+- The credit line is centred, left to right and right to left.
 - Library games find their books in kiwix-serve, and the word games read the biggest English Wiktionary.
 - Snake has Walls in Settings: Solid, or Wrap through.
 - Card tables reach the foot of an iPhone screen, and the title bar refits when a button's words change.
@@ -30,6 +31,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 - The head tiles carry no empty line above one-line labels.
 - The Golden Record credits every picture, and the Kiwix edition shows only the eight public-domain ones.
+- The Almanac ZIM follows the browser's language in Zimi's ten languages, and its credit line is centred.
+- The Almanac ZIM's 3D view no longer shows a gear whose settings need Zimi's server.
 
 ### Fixed
 
