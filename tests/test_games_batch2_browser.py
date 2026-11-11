@@ -102,8 +102,10 @@ def test_hearts_game_over_sheet_names_the_winner_and_every_total(browser, served
       ZimiHearts.session.reset(st);
     }""")
     frames(page, 3)
+    # Lift, then play: a person taps the card both times. The lifted card stands over its slot, so the slot is no target for the
+    # second tap (the card's own picture would take it).
     for _ in range(2):
-        page.locator("[data-pile^='h']").first.click()
+        page.locator(".zc-card[data-id='0']").first.click()
         frames(page, 2)
     visible(page, ".ar-sheet-card h2", 8000)
     text = page.locator(".ar-sheet-card").inner_text()

@@ -140,7 +140,8 @@ def test_a_bare_program_name_is_looked_up_on_the_childs_path_not_in_the_bundle(m
     monkeypatch.setenv("LD_LIBRARY_PATH", str(app))
     monkeypatch.setenv("LD_LIBRARY_PATH_ORIG", "/usr/local/lib")
     monkeypatch.setenv("PATH", str(outside))
-    monkeypatch.chdir(app)
+    # POSIX looks a bare name up on PATH only; Windows looks in the current folder first, so there the bundle's own file can be the one found.
+    monkeypatch.chdir(tmp_path if sys.platform == "win32" else app)
     subproc.popen(["piper", "--help"])
     assert seen[-1]["env"]["LD_LIBRARY_PATH"] == "/usr/local/lib"
     assert os.path.normcase(subproc._resolved("piper")) == os.path.normcase(str(outside / name))
