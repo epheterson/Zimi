@@ -53,27 +53,28 @@ const check = (ok, label) => { if (ok) console.log('ok: ' + label); else { conso
 }
 check(/if \(anchor\) \{ \+\+_almAfterPaintToken; panels\.forEach\(function \(p\) \{ p\(\); \}\); \}\s*\n\s*else _almAfterPaint\(panels\)/.test(alm), 'a page drawn over itself (its reader keeps a place) is drawn whole at once, and the older draw\'s queued panels are called off');
 check(/if \(scroller && !_almReturning\) scroller\.scrollTop = 0;[\s\S]*?draw\(\);/.test(alm), 'a fresh open is at the top before it draws, so it is not taken for a redraw in place');
-check(/_almVeilBegin\(\)[\s\S]*?_renderAlmanacContent\(\)/.test(alm), 'a fresh open is veiled before its page is drawn');
+check(/_almFirstOpenBegin\(\)[\s\S]*?_renderAlmanacContent\(\)/.test(alm), 'a fresh open holds its sky and its panels for the frame after the head, before its page is drawn');
+check(!/_almVeil|alm-veil/.test(alm), 'there is no veil: the first frame (app.js) is the page');
 check(!/_loadSunData\(at\(\)\)/.test(alm) && /var startSky = function \(\) \{ _almSafePanel\(function \(\) \{ _loadSunData\(_almFocus \|\| now\); \}, null\); \};[\s\S]*?_almAfterShown\(startSky\)/.test(alm), 'the live sky starts the frame after the head is shown, not as a late panel');
 
-// The veil (almanac.js _almVeilBegin/_almReveal): the page is shown once, when its head is drawn (or at the cap), and what waits for "shown" runs then, not before and not twice.
+// The first open (almanac.js _almFirstOpenBegin/_almReveal): the page is shown once, when its head is drawn (or at the cap), and what waits for "shown" runs then, not before and not twice.
 {
   const raf = [], shown = [], ran = [], skyKicks = [];
   const sb = { _almanacOpen: true, _almRevealing: true, _almSeaPending: true, _almRevealTimer: 0, _almShownAt: 0, _almShownJobs: [], _skyState: { settled: true },
     clearTimeout: () => {}, setTimeout: () => 1, performance: { now: () => 42 }, requestAnimationFrame: f => raf.push(f),
-    _almVeilDown: () => shown.push('down'), _skyKickDirty: () => skyKicks.push(1), document: { fonts: null }, ALM_FONT_WAIT_MS: 300 };
+    _skyKickDirty: () => skyKicks.push(1), document: { fonts: null }, ALM_FONT_WAIT_MS: 300 };
   vm.createContext(sb);
   vm.runInContext(fn(alm, '_almReveal') + fn(alm, '_almWhenShown') + fn(alm, '_almHeadDrawn'), sb);
   sb._almWhenShown(() => ran.push('a'));
-  check(ran.length === 0, 'what waits for the page to be shown does not run while it is veiled');
+  check(ran.length === 0, 'what waits for the page to be shown does not run before its head is drawn');
   sb._almHeadDrawn();
-  check(raf.length === 1 && shown.length === 0, 'the head being drawn shows the page on the next frame, not in the call');
+  check(raf.length === 1 && ran.length === 0, 'the head being drawn shows the page on the next frame, not in the call');
   raf.shift()();
-  check(shown.join() === 'down' && ran.join() === 'a' && sb._almRevealing === false && sb._almShownAt === 42 && sb._almSeaPending === false,
-    '...which lifts the veil, runs what waited, and stops waiting for the sea');
+  check(ran.join() === 'a' && sb._almRevealing === false && sb._almShownAt === 42 && sb._almSeaPending === false,
+    '...which runs what waited, and stops waiting for the sea');
   check(skyKicks.length === 0, '...and does not repaint a sky that is already settled');
   sb._almHeadDrawn(); sb._almReveal();
-  check(raf.length === 0 && shown.length === 1, 'a page already shown is not shown twice');
+  check(raf.length === 0 && ran.length === 1, 'a page already shown is not shown twice');
   sb._almWhenShown(() => ran.push('b'));
   check(ran.join() === 'a,b', 'and what asks after it is shown runs at once');
   sb._almRevealing = true; sb._skyState = { settled: false }; sb._almReveal();

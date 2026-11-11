@@ -20,7 +20,7 @@ LONG_TASK_BUDGET_MS = 500  # at THROTTLE: ~125 ms of a laptop's time. A long tas
 # waits on anything past ~100 ms, and the CI runners need some margin over that.
 SETTLE_WINDOW_MS = 3000  # the first seconds after the page is shown are the person's
 
-# Watches the veil from the first script: when it goes (class alm-veil-out or hidden) it takes a picture of what is
+# Watches the page from the first script: when the open has shown it (almanac.js _almShownAt) it takes a picture of what is
 # on the page at that very moment, and it keeps every long task and every request with its time.
 WATCH = """
 window.__lt = []; window.__reqs = []; window.__reveal = null; window.__up = null;
@@ -46,10 +46,9 @@ window.__boxes = function () {
   });
 };
 (function look() {
-  var v = document.getElementById('alm-veil');
-  var up = !!v && !v.hidden && !v.classList.contains('alm-veil-out') && getComputedStyle(v).display !== 'none';
-  if (up && window.__up === null) window.__up = performance.now();
-  if (!up && window.__up !== null && window.__reveal === null) {
+  var first = !!document.querySelector('#almanac-head-date') && !!document.querySelector('#almanac-head .alm-cards');
+  if (first && window.__up === null) window.__up = performance.now();   // the page's first frame (app.js _almFirstFrame), or the page itself
+  if (typeof _almShownAt !== 'undefined' && _almShownAt > 0 && window.__reveal === null) {
     var hero = document.querySelector('#almanac-head img.almanac-moon-sprite');
     var sky = document.getElementById('almanac-sky-canvas'), lit = false;
     try {
@@ -151,8 +150,8 @@ def opened_own_work(served):
     return _opened(served, ["--disable-3d-apis"])
 
 
-def test_there_is_a_loading_state_from_the_start(opened):
-    assert opened["up"] is not None, "the veil was never seen"
+def test_the_page_is_there_from_the_start_not_a_cover(opened):
+    assert opened["up"] is not None, "the first frame was never seen"
     assert opened["up"] < opened["reveal"]["at"]
 
 

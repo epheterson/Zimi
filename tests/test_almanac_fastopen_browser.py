@@ -21,9 +21,9 @@ from test_almanac_phone_defects_browser import (
     served,
 )  # noqa: E402,F401
 
-SHOWN_MS = 3000  # the wait is generous: the machine may be busy; no timer lifts the veil here (_no_cap)
+SHOWN_MS = 3000  # the wait is generous: the machine may be busy
 
-VEIL_UP = "() => { const v = document.getElementById('alm-veil'); return !!v && !v.hidden && !v.classList.contains('alm-veil-out'); }"
+SHOWN = "() => typeof _almShownAt !== 'undefined' && _almShownAt > 0"
 HEAD_READY = """() => {
   const d = document.getElementById('almanac-head-date'), t = document.getElementById('almanac-head-time');
   const cards = [...document.querySelectorAll('#almanac-head .alm-card')].filter(c => !c.hidden && c.offsetHeight > 0 && c.textContent.trim().length > 2);
@@ -52,20 +52,6 @@ def _context(browser, reduced=False):
     return ctx
 
 
-def _no_cap(route):
-    """almanac.js with the veil's cap taken away: only the page being drawn can lift it, never a timer (a loaded machine
-    must not make the old behaviour look right)."""
-    r = route.fetch()
-    body = r.text()
-    assert "var ALM_REVEAL_MAX_MS = 5000;" in body
-    route.fulfill(
-        response=r,
-        body=body.replace(
-            "var ALM_REVEAL_MAX_MS = 5000;", "var ALM_REVEAL_MAX_MS = 3600000;"
-        ),
-    )
-
-
 def test_the_head_is_shown_while_the_sky_is_still_waiting_for_its_stars(
     browser, served
 ):
@@ -76,20 +62,16 @@ def test_the_head_is_shown_while_the_sky_is_still_waiting_for_its_stars(
     held = []
     # The star catalogue never comes: the GPU sky cannot be final, as on a phone away from home.
     ctx.route("**/earth/stars-v1.bin*", lambda route: held.append(route))
-    ctx.route("**/static/almanac.js*", _no_cap)
     try:
         pg.goto(served + "/", wait_until="load")
         pg.wait_for_function("() => typeof openAlmanac === 'function'", timeout=60_000)
         pg.evaluate(
             "() => { window.__shifts = 0; new PerformanceObserver(l => l.getEntries().forEach(e => { if (!e.hadRecentInput) window.__shifts += e.value; })).observe({type: 'layout-shift'}); window.__t0 = performance.now(); openAlmanac(); }"
         )
-        assert pg.evaluate(VEIL_UP), "the tap is answered by the veil in the same turn"
-        pg.wait_for_function(
-            "() => " + "!(" + VEIL_UP + ")()", timeout=SHOWN_MS * 10, polling=50
-        )
+        pg.wait_for_function(SHOWN, timeout=SHOWN_MS * 10, polling=50)
         assert pg.evaluate(
             HEAD_READY
-        ), "the date, the clock and the six cards are readable when the veil lifts"
+        ), "the date, the clock and the six cards are readable when the page is shown"
         assert pg.evaluate(
             "!_skyState || !_skyState.settled"
         ), "the sky had not settled: the page did not wait for it"
@@ -117,9 +99,7 @@ def test_the_moon_disc_holds_its_place_while_its_map_is_on_the_way(browser, serv
         pg.goto(served + "/", wait_until="domcontentloaded")
         pg.wait_for_function("() => typeof openAlmanac === 'function'", timeout=60_000)
         pg.evaluate("openAlmanac()")
-        pg.wait_for_function(
-            "() => !(" + VEIL_UP + ")()", timeout=SHOWN_MS * 10, polling=50
-        )
+        pg.wait_for_function(SHOWN, timeout=SHOWN_MS * 10, polling=50)
         box = pg.evaluate(
             "(() => { const r = document.querySelector('#almanac-head .almanac-moon-sprite').getBoundingClientRect(); return [r.width, r.height, getComputedStyle(document.querySelector('#almanac-head .almanac-moon-sprite')).opacity]; })()"
         )
@@ -195,5 +175,53 @@ def test_with_reduced_motion_the_clock_swaps_instead_of_travelling(browser, serv
             pg.evaluate(SCROLL_HEAD, y)
             ps.add(pg.evaluate(PIN)["p"])
         assert ps == {0.0, 1.0}, ps
+    finally:
+        ctx.close()
+
+
+BOXES = """() => {
+  const sc = document.getElementById('almanac-content');
+  const at = q => { const e = document.querySelector(q); if (!e) return null; const r = e.getBoundingClientRect(); return [Math.round(r.left), Math.round(r.top), Math.round(r.width), Math.round(r.height)]; };
+  return ['#almanac-head .alm-clock', '#almanac-head .almanac-hero', '#almanac-head .almanac-moon-open', '#almanac-head .alm-cards', '#almanac-head .alm-card:nth-of-type(1)',
+    '.alm-sky-info', '#almanac-sky-canvas'].map(at);
+}"""
+
+
+@pytest.mark.parametrize("place", [True, False], ids=["a-place-chosen", "no-place-chosen"])
+def test_the_first_frame_is_the_page_before_the_scripts_are_read_and_nothing_moves_when_they_are(browser, served, place):
+    """The tap shows the head, final in its boxes, with almanac.js still on its way; when it has run and drawn its own,
+    every box (the date and time, the Moon's square, the tiles, the sky's caption room and the sky) is where it was."""
+    ctx = _context(browser)
+    if not place:
+        ctx.add_init_script("try { localStorage.removeItem('zimi_almanac_place'); sessionStorage.removeItem('zimi_almanac_location'); } catch (e) {}")
+    pg = ctx.new_page()
+    held = []
+    ctx.route("**/static/almanac.js*", lambda route: held.append(route))
+    try:
+        pg.goto(served + "/", wait_until="load")
+        pg.wait_for_function("() => typeof openAlmanac === 'function'", timeout=60_000)
+        pg.evaluate("openAlmanac()")
+        pg.wait_for_function("() => !!document.querySelector('#almanac-head .alm-cards')", timeout=60_000)
+        assert pg.evaluate("typeof _almShownAt === 'undefined' || !_almanacOpen"), "almanac.js had not run: this is app.js's own frame"
+        assert not pg.evaluate("!!document.getElementById('alm-veil')"), "there is no veil"
+        first = pg.evaluate(BOXES)
+        text = pg.evaluate(
+            """() => ({date: document.getElementById('almanac-head-date').textContent, time: document.getElementById('almanac-head-time').textContent,
+              phase: document.getElementById('alm-hc-phase').textContent, labels: [...document.querySelectorAll('#almanac-head .alm-card-lbl')].map(e => e.textContent),
+              illum: document.getElementById('alm-hc-illum').textContent,
+              disc: getComputedStyle(document.querySelector('#almanac-head .almanac-moon-sprite')).visibility})"""
+        )
+        assert text["date"].strip() and text["time"].strip() and text["phase"].strip(), text
+        assert len(text["labels"]) == 6 and not any(l.startswith(("alm_", "tb_")) for l in text["labels"]), text
+        assert text["illum"].endswith("%") and text["disc"] == "hidden", text
+        assert all(b and b[3] > 0 for b in first), first
+        if os.environ.get("FIRST_FRAME_SHOT"):
+            pg.screenshot(path=os.environ["FIRST_FRAME_SHOT"])
+        for r in held:
+            r.continue_()
+        pg.wait_for_function(SHOWN, timeout=SHOWN_MS * 20, polling=100)
+        pg.wait_for_timeout(500)
+        final = pg.evaluate(BOXES)
+        assert final == first, "the head and the sky stand where the first frame had them: first %s final %s" % (first, final)
     finally:
         ctx.close()

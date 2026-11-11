@@ -2288,10 +2288,10 @@ function _skyGLParams(s) {
   return Object.assign(_skyLightParams(s), { W: s.W, H: s.H, dpr: s.dpr, view: _skyGLView(s), seed: s.twinkle, scint: !_skyReduceMotion(), moonDisc: s.moonDisc,
     clouds: _osCloudValues(_osDef({ lat: s.lat, lon: s.lon, tMs: s.nowTime }), s.sunShare) });
 }
-// The page's first sky is held behind the Almanac's veil (almanac.js) until it is the picture that stays: the GPU's,
+// The page's first sky is held (almanac.js _almSkyHold) until it is the picture that stays: the GPU's,
 // with its stars (and the Milky Way where the sky is dark enough for it), or the Canvas 2D sky where there is no GPU.
 // Nothing is painted meanwhile that would be painted over: the GPU starts at once, not when the page is quiet.
-function _skyFirstSight(s) { return !s.hosted && !s.settled && typeof _almVeilIsUp === 'function' && _almVeilIsUp(); }
+function _skyFirstSight(s) { return !s.hosted && !s.settled && typeof _almSkyHold === 'function' && _almSkyHold(); }
 // Whether the GPU has nothing more to bring to the first picture: it is not to be had, or it is up with its data.
 function _skyGPUComplete(s) {
   if (_sg === false) return true;
@@ -2313,6 +2313,7 @@ function _skyMaybeSettle() {
   var s = _skyState;
   if (!s || s.settled || !s.eph || !_skyIsFinal(s)) return;
   s.settled = true;
+  if (typeof _almSkySettled === 'function') _almSkySettled();
 }
 function _skyAwaitingGPU(s) {
   if (!_skyFirstSight(s)) return false;

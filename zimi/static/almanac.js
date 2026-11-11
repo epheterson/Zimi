@@ -234,26 +234,39 @@ document.addEventListener('visibilitychange', function() {
 var _almReturnScroll = null;
 
 // ── First sight ──
-// A page that is built in front of the person is seen being built: the Moon plain and then not, cards arriving. So the first
-// open is drawn behind a veil (app.js _almVeilUp: the dark page with a turning crescent, up from the tap) and shown the frame
-// after the head is on the page: the date, the clock, the Moon and the six cards, all computed in the same turn as the draw.
-// Nothing else waits for it. The sky holds its place (its size and the hour's colour, _almSkyPreStyle) and is painted when its
-// data is in, the Moon's map fades in over the disc (body.alm-moon-wait), the panels below come after. A page that is slow
-// to draw is shown anyway after ALM_REVEAL_MAX_MS: never a veil that stays. A page put back scrolled past the sky does not
-// wait for it.
+// No veil, no spinner: the page is the page from the tap. app.js draws its first frame (_almFirstFrame: the date, the time, the
+// phase, the tiles with their labels, the sky's place) before this file has been read, and the open here draws the same
+// head over it in the same places. What would be seen being built is held where it is made, not behind a cover: the Moon's
+// disc is clear until its map is in and then fades in (body.alm-moon-wait), the sky keeps its size and the hour's colour
+// (_almSkyPreStyle) and is painted once, when it is the picture that stays (_almSkyHold; it fades in), the tiles are
+// worked out with the draw (_skyFactsPrimeHtml), the panels below come after the page is shown (the frame after the head).
 var ALM_REVEAL_MAX_MS = 5000;
 var ALM_PANELS_SETTLE_MS = 3200;      // after the page is shown, the panels under the calendar wait this long (or for a hand on the page)
 var ALM_EARTH_IDLE_MS = 6000;         // and the 3D view's files this long, then for a quiet moment
 var _almRevealing = false, _almRevealTimer = 0, _almShownAt = 0;   // _almShownAt: when the page was shown (0: not yet)
 var _almShownJobs = [];               // run when the page is shown: [fn]
-function _almVeilBegin() {
-  _almVeilUp();
+function _almFirstOpenBegin() {
   _almRevealing = true;
   _almShownAt = 0;
+  _almSkyHoldUntil = performance.now() + ALM_SKY_HOLD_MS;
   clearTimeout(_almRevealTimer);
   _almRevealTimer = setTimeout(_almReveal, ALM_REVEAL_MAX_MS);
 }
-// The sky (almanac-sky.js) has its first picture on the canvas: the next frame shows it, with the rest of the page.
+// The first sky is not painted until it is the picture that stays (almanac-sky.js _skyFirstSight): the GPU's, with its
+// stars and the Milky Way, or the Canvas 2D sky where there is no GPU. Until then the canvas shows the hour's colour in its
+// place. Held at most ALM_SKY_HOLD_MS: a sky that is slow is painted as it can be.
+var ALM_SKY_HOLD_MS = 5000, _almSkyHoldUntil = 0;
+function _almSkyHold() { return _almSkyHoldUntil > performance.now(); }
+// The sky is the picture that stays: it comes in over its place (almanac.css .alm-sky-in).
+function _almSkySettled() {
+  _almSkyHoldUntil = 0;
+  var cv = typeof _skyState !== 'undefined' && _skyState && _skyState.canvas, wrap = cv && cv.parentElement;
+  if (wrap && cv.style) {   // the hour's colour that stood in its place fades off the picture (almanac.css .alm-sky-in)
+    wrap.style.setProperty('--sky-pre', cv.style.getPropertyValue('--sky-pre') || 'none');
+    wrap.classList.add('alm-sky-in');
+    setTimeout(function () { wrap.classList.remove('alm-sky-in'); }, 600);
+  }
+}
 var ALM_MOON_WAIT_MS = 3000;   // the page is drawn without the Moon's map when it has not come by then (the disc is drawn again when it does)
 var ALM_FONT_WAIT_MS = 300;    // the fonts the page asked for are waited for this long (the page is drawn in the system's until they come)
 // The head is on the page: the next frame shows it. (The sky settling used to be the signal; it is the GPU's, seconds on a phone.)
@@ -270,7 +283,6 @@ function _almReveal() {
   _almRevealing = false;
   _almSeaPending = false;
   _almShownAt = performance.now();
-  _almVeilDown();
   if (typeof _skyKickDirty === 'function' && typeof _skyState !== 'undefined' && _skyState && !_skyState.settled) _skyKickDirty();   // shown at the cap with no picture yet: painted as it can be, now
   var jobs = _almShownJobs;
   _almShownJobs = [];
@@ -287,11 +299,13 @@ function _almAfterShown(fn) {
     requestAnimationFrame(function () { setTimeout(function () { if (_almanacOpen) fn(); }, 0); });
   });
 }
-function _almVeilCancel() {
+function _almFirstOpenCancel() {
   clearTimeout(_almRevealTimer);
   _almRevealing = false;
   _almShownJobs = [];
-  if (typeof _almVeilDown === 'function') _almVeilDown(true);
+  _almSkyHoldUntil = 0;
+  if (typeof _almFirstFrameOff === 'function') _almFirstFrameOff();
+  if (document.body) document.body.classList.remove('alm-moon-wait');
 }
 
 // ── The 3D view's files ──
@@ -344,7 +358,7 @@ function _openAlmanacInner(replaceState) {
   document.body.classList.add('almanac-mode');
   // The reload-into-almanac boot gate (stamped by the head bootstrap before
   // first paint) has done its job once the real almanac chrome is up.
-  document.documentElement.classList.remove('almanac-boot');
+  document.documentElement.classList.remove('almanac-boot', 'alm-first');
   var url = location.pathname + location.search + (_almIsLinkHash(location.hash) ? location.hash : '#almanac');
   if (replaceState) history.replaceState({ mode: 'almanac' }, '', url);
   else history.pushState({ mode: 'almanac' }, '', url);
@@ -366,7 +380,7 @@ function _openAlmanacInner(replaceState) {
   if (scroller && !_almReturning) scroller.scrollTop = 0;
   // A page opened afresh is veiled until it is drawn; one come back to (an article read and left) is drawn in place.
   var veiled = !_almReturning;
-  if (veiled) _almVeilBegin();
+  if (veiled) _almFirstOpenBegin();
   if (veiled && typeof _sgInit === 'function') {
     // The GPU sky starts compiling, and its data coming, once the head is shown: beside the page, not before it.
     _almAfterShown(function () {
@@ -388,6 +402,8 @@ function _openAlmanacInner(replaceState) {
     var sc = document.getElementById('almanac-content');
     if (sc) sc.scrollTop = 0;
     if (link) _almLinkRestoreView(link); else _almLinkStart();
+    var disc = veiled && document.querySelector('#almanac-head .almanac-moon-sprite');
+    if (disc) disc.classList.add('alm-in');   // the first frame's disc was clear: this one comes in over its place
     _almHeadDrawn();
   };
   draw();
@@ -404,8 +420,7 @@ function _openAlmanacInner(replaceState) {
 function _almanacTeardown() {
   _almanacOpen = false;
   _almLinkStop();
-  _almVeilCancel();
-  document.body.classList.remove('alm-moon-wait');
+  _almFirstOpenCancel();
   if (typeof _chromeReset === 'function') _chromeReset();
   // Pointing the phone (almanac-look.js) lives on the Almanac and goes with it.
   if (typeof closeAlmanacLook === 'function') closeAlmanacLook(true);
@@ -858,18 +873,6 @@ function _almHeadHtml(focus) {
   return html;
 }
 
-// One card in the hero readout grid. Every value node carries an id so the
-// per-frame travel updater can rewrite it in place instead of the whole grid.
-// opts: cardId (id on the card, for hiding it), hidden, valClass (colour
-// variant). Every tile is a label and one value, no tile taller than another.
-function _almHeadCard(lbl, valHtml, valId, opts) {
-  opts = opts || {};
-  return '<div class="alm-card"' + (opts.cardId ? ' id="' + opts.cardId + '"' : '') +
-    (opts.hidden ? ' hidden' : '') + '>' +
-    (lbl ? '<div class="alm-card-lbl">' + lbl + '</div>' : '') +
-    '<div class="alm-card-val' + (opts.valClass ? ' ' + opts.valClass : '') + '" id="' + valId + '">' +
-    valHtml + '</div></div>';
-}
 // Value markup for the next-full-moon card, shared by the full render and the
 // throttled travel refresh so the two can never disagree on format. The year
 // shows only when the full moon falls outside the focused year: a bare "Aug 27"
