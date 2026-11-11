@@ -189,6 +189,47 @@ def test_the_owner_filter_says_unassigned_and_the_rows_wrap_inside_the_panel(thr
     assert "TBD" not in got["text"] and "Unassigned" in got["text"], got
 
 
+# ── The chooser ──
+def test_saturns_whole_ring_is_inside_its_thumbnail_cell():
+    import numpy as np
+    from PIL import Image
+
+    sheet = np.asarray(
+        Image.open(
+            os.path.join(
+                os.path.dirname(HERE), "zimi", "static", "earth", "go-discs-v1.webp"
+            )
+        )
+    )
+    cell = 96
+    row, col = divmod(7, 7)  # saturn: AE_GO_DISC_KEYS[7]
+    alpha = sheet[row * cell : (row + 1) * cell, col * cell : (col + 1) * cell, 3]
+    # not a pixel of the ring on the cell's four edges: it is drawn whole, not cut by the cell
+    assert (
+        max(alpha[0].max(), alpha[-1].max(), alpha[:, 0].max(), alpha[:, -1].max()) == 0
+    )
+    assert (alpha > 40).sum() > 600, "and there is a Saturn in it"
+
+
+def test_the_chooser_marks_the_selected_body_in_amber_and_rims_no_body_in_its_own_colour(
+    three_d,
+):
+    pg = three_d
+    pg.click("#ae-go-btn")
+    pg.wait_for_selector("#ae-go-groups .ae-go-row", state="visible", timeout=60_000)
+    got = pg.evaluate("""() => {
+          var cur = document.querySelector('#ae-go-groups .ae-go-row[aria-current=true]');
+          var thumb = cur.querySelector('.ae-go-thumb'), amber = getComputedStyle(cur).color;
+          var discs = Array.from(document.querySelectorAll('#ae-go-groups .ae-go-disc')).filter(function (d) { return !d.classList.contains('ae-go-ring'); });
+          return { ring: getComputedStyle(thumb).boxShadow, amber: amber, n: discs.length,
+                   rimmed: discs.filter(function (d) { var c = getComputedStyle(d).backgroundColor; return c !== 'rgba(0, 0, 0, 0)' && c !== 'transparent'; }).length };
+        }""")
+    assert got["amber"] in got["ring"], got  # the selection ring is the row's own amber
+    assert (
+        got["n"] > 3 and got["rimmed"] == 0
+    ), got  # no disc has a body-coloured backing to show as a stroke
+
+
 # ── Missions ──
 @pytest.mark.parametrize("mission", ["voyager1", "voyager2"])
 def test_a_probes_mission_opens_at_its_launch_at_the_earth(three_d, mission):
