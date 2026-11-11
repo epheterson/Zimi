@@ -299,6 +299,8 @@ def _mixed_folder(at):
     (at / "zimi.txt").write_text(
         "Title: Family Archive\nDescription: Everything from the attic\nLanguage: fra\n"
         "Creator: The Lees\nPublisher: Lee Press\nTags: family; photos\nIcon: icon.png\n"
+        "LongDescription: Everything from the attic, in boxes: letters, a book, photos and a home movie.\n"
+        "License: CC-BY-4.0\nSource: https://example.org/attic\n"
     , encoding="utf-8")
     (at / "icon.png").write_bytes(_png("red"))
     (at / "letter.txt").write_text("Dear all,\n\n  the attic is full.", encoding="utf-8")
@@ -343,6 +345,8 @@ def test_a_mixed_folder_becomes_one_zim_each_app_reads(tmp_path):
     assert meta("Description") == "Everything from the attic"
     assert meta("Language") == "fra" and meta("Creator") == "The Lees"
     assert meta("Publisher") == "Lee Press"
+    assert meta("LongDescription").startswith("Everything from the attic, in boxes")
+    assert meta("License") == "CC-BY-4.0" and meta("Source") == "https://example.org/attic"
     assert "family" in meta("Tags").split(";") and "photos" in meta("Tags").split(";")
     assert info["unsupported"] == [
         {"path": "budget.xlsx", "reason": "office"},
