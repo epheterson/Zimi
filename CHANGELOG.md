@@ -67,6 +67,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 - Search finds PDF collections' documents (nautilus and zimgit libraries) by their listed title, description and author and by the text inside the PDFs, from an index Zimi reads in the background beside the ZIM (#142).
 - `list_entries` (MCP tool and `/entries`): a source's entries by MIME type or path prefix, paged (#142).
 - **Lighter Docker image:** under 1 GB compressed (was about 2.3 GB unpacked, now about 0.7 GB). The browser, SingleFile, video tools and warc2zim are add-ons, added once from the first-run list or Settings > Server > Add-ons (Ask first, Automatically or Never).
+### Fixed
+
+- Games: a daily played past midnight counts for the day it began; ZimCity's money warning follows this year's taxes, a kept city's buttons act on that city, and a paused city stops redrawing; Canasta fits eleven melds a side on a short wide screen.
 
 ## [1.15.4]
 

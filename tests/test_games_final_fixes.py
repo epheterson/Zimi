@@ -83,6 +83,18 @@ def browser():
         b.close()
 
 
+@pytest.fixture(scope="module")
+def chromium():
+    """The Sky Detective checks need no WebKit quirk, so they run wherever Chromium does (CI has no WebKit)."""
+    with sync_playwright() as p:
+        try:
+            b = p.chromium.launch(args=["--use-angle=swiftshader", "--enable-unsafe-swiftshader"])
+        except Exception as e:
+            pytest.skip("Chromium is not installed: %s" % e)
+        yield b
+        b.close()
+
+
 def _open(browser, zimi, path, viewport=PHONE, scheme="dark", touch=True):
     ctx = browser.new_context(viewport=viewport, has_touch=touch, is_mobile=touch, color_scheme=scheme)
     page = ctx.new_page()
@@ -202,28 +214,36 @@ def test_the_games_zim_keeps_notices_out_of_its_articles_but_serves_the_licence(
 SKY_UP = "() => !!document.querySelector('.gamesky .alm-sky-host')"
 
 
-def test_sky_detective_study_sky_opens_from_a_deep_link(browser, zimi):
-    ctx, page, errors = _open(browser, zimi, "skydetective.html")
+def _study_sky(page, frame):
+    """The game opens on its intro; the Almanac's sky over it opens when asked (the Look button)."""
+    frame.locator("#sk-look").first.click(timeout=WAIT)
     page.wait_for_function(SKY_UP, timeout=WAIT)
+
+
+def test_sky_detective_study_sky_opens_from_a_deep_link(chromium, zimi):
+    ctx, page, errors = _open(chromium, zimi, "skydetective.html")
+    _study_sky(page, _frame(page))
     assert not errors, errors
     ctx.close()
 
 
-def test_sky_detective_study_sky_opens_from_the_shelf_inside_the_frame(browser, zimi):
-    ctx, page, _ = _open(browser, zimi, "index.html")
+def test_sky_detective_study_sky_opens_from_the_shelf_inside_the_frame(chromium, zimi):
+    ctx, page, _ = _open(chromium, zimi, "index.html")
     f = _frame(page)
     f.evaluate("location.href = 'skydetective.html'")
-    page.wait_for_function(SKY_UP, timeout=WAIT)
+    page.wait_for_function("() => document.getElementById('reader-frame').contentWindow.location.pathname.endsWith('/skydetective.html')", timeout=WAIT)
+    _study_sky(page, _frame(page))
     ctx.close()
 
 
-def test_sky_detective_is_heard_while_zimis_open_article_lags_the_frame(browser, zimi):
+def test_sky_detective_is_heard_while_zimis_open_article_lags_the_frame(chromium, zimi):
     """currentArticle trails the frame (a reload, Back, a link inside the frame): the page's own address decides."""
-    ctx, page, _ = _open(browser, zimi, "index.html")
+    ctx, page, _ = _open(chromium, zimi, "index.html")
     f = _frame(page)
     page.evaluate("currentArticle = { zim: 'wikipedia_en', path: 'Moon' }")
     f.evaluate("location.href = 'skydetective.html'")
-    page.wait_for_function(SKY_UP, timeout=WAIT)
+    page.wait_for_function("() => document.getElementById('reader-frame').contentWindow.location.pathname.endsWith('/skydetective.html')", timeout=WAIT)
+    _study_sky(page, _frame(page))
     ctx.close()
 
 

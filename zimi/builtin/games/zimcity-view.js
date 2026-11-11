@@ -80,6 +80,8 @@ export function View(canvas, art) {
   this.cursor = null;                        // the keyboard's tile, { x, y }
   this._layerCanvas = document.createElement('canvas');
   this._layerAt = 0;
+  this._stamp = null;                        // what the last frame drew from, to skip a paused frame that would change nothing
+  this._stampGhost = null;
 }
 
 // A new city (or one loaded): nothing painted yet.
@@ -88,6 +90,7 @@ View.prototype.setCity = function (city) {
   this.anim = new AnimationManager(city.map);
   this._cache = null;
   this._layerAt = 0;
+  this._stamp = null;
 };
 
 // The canvas fills its box; the drawing surface follows the device's pixels.
@@ -96,6 +99,7 @@ View.prototype.resize = function () {
   this.w = Math.max(1, r.width); this.h = Math.max(1, r.height);
   this.canvas.width = Math.round(this.w * dpr); this.canvas.height = Math.round(this.h * dpr);
   this.dpr = dpr;
+  this._stamp = null;                        // resizing the surface empties it
   this.clamp();
 };
 
@@ -188,6 +192,7 @@ View.prototype._window = function () {
 // Bring the window up to date: only the tiles whose picture changed are drawn again.
 View.prototype._paintWorld = function () {
   var k = this._window(), map = this.city.map, w = k.x1 - k.x0, h = k.y1 - k.y0, v = k.values, r = k.r, art = this._atlasAt(r);
+  k.changed = false;
   map.getTileValuesForPainting(k.x0, k.y0, w, h, v);
   this.anim.getTiles(v, k.x0, k.y0, w, h, this.paused);
   for (var i = 0, n = w * h; i < n; i++) {
@@ -196,6 +201,7 @@ View.prototype._paintWorld = function () {
     if (v[i] === TILE_INVALID || v[i] < 0) k.ctx.clearRect(dx, dy, r, r);
     else k.ctx.drawImage(art, (v[i] % TILES_PER_ROW) * r, Math.floor(v[i] / TILES_PER_ROW) * r, r, r, dx, dy, r, r);
     k.painted[i] = v[i];
+    k.changed = true;
   }
   return k;
 };
@@ -236,7 +242,7 @@ View.prototype.tileArt = function () {
   var dark = darkNow();
   if (!this._art || this._artDark !== dark) {
     this._art = atlas(this.art.tiles, recolour(this.art.tiles, dark), dark); this._artDark = dark;
-    this._small = null; this._cache = null;   // repaint in the new theme
+    this._small = null; this._cache = null; this._stamp = null;   // repaint in the new theme
   }
   return this._art;
 };
@@ -245,6 +251,7 @@ View.prototype.draw = function (now) {
   if (!this.city || !this.w || !loaded(this.art.tiles) || !loaded(this.art.sprites)) return;
   this.tileArt();   // before the world is painted, so a theme change repaints it in one frame
   var win = this._paintWorld();
+  if (this._unchanged(win)) return;
   var ctx = this.ctx, c = this.cam, map = this.city.map, k = this.dpr * c.s;
   ctx.setTransform(this.dpr, 0, 0, this.dpr, 0, 0);
   ctx.clearRect(0, 0, this.w, this.h);
@@ -267,6 +274,17 @@ View.prototype.draw = function (now) {
     ctx.lineWidth = 2 / c.s;
     ctx.strokeRect(this.cursor.x * TILE, this.cursor.y * TILE, TILE, TILE);
   }
+};
+
+// A paused city on a still screen draws the same picture every frame: when nothing the picture is made of has moved, the
+// frame is skipped (battery on a phone, CPU in a test). The world's own tiles are compared by _paintWorld; the rest is read here.
+View.prototype._unchanged = function (win) {
+  var c = this.cam, g = this.ghost, f = this.follower, u = this.cursor;
+  var stamp = [this.paused, c.x, c.y, c.s, this.w, this.h, this.dpr, this.layer, g && g.tiles.length, g && g.ok, f && f.x, f && f.y, f && f.slow,
+    u && u.x, u && u.y, win.canvas.width, win.canvas.height].join('|');
+  var same = this.paused && !win.changed && !this.pulse && stamp === this._stamp && g === this._stampGhost;
+  this._stamp = stamp; this._stampGhost = g;
+  return same;
 };
 
 // Where something was just taken back: its tiles wash amber and fade out over PULSE_MS.

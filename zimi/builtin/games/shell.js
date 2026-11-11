@@ -886,7 +886,8 @@
   }
   // Counted once a game: the player touched it since the page opened or since the last count (a finished game that comes back from
   // its save shows its end sheet again, uncounted), and a Watch and learn demo is never the player's.
-  var touched = false;
+  // A round counts for the day it began: an own-daily game played across midnight is still that day's.
+  var touched = false, roundDay = null;
   if (d) ['pointerdown', 'keydown'].forEach(function (t) {
     d.addEventListener(t, function (e) {
       if (e.target && e.target.closest && e.target.closest('.ar-bar, .ar-sheet')) return;
@@ -897,7 +898,9 @@
   function countResult(result) {
     if (!touched || (Shell.isWatching && Shell.isWatching())) return null;
     touched = false;
-    var day = roundDaily(), all = readStats();
+    var day = roundDaily() && (roundDay || roundDaily());   // still a daily round, and the day it began
+    roundDay = null;
+    var all = readStats();
     if (day && all.days[day] && all.days[day][PAGE]) return day;   // the day's daily is counted once, however often it is opened
     all = addResult(all, PAGE, result, day);
     try { root.localStorage.setItem(STATS_KEY, JSON.stringify(all)); } catch (e) { /* full or blocked: play on */ }
@@ -918,8 +921,9 @@
     } catch (e) { /* full or blocked: the board goes without it */ }
   }
   function dayStarted() {
-    var day = roundDaily();   // an own-daily game's round too, opened from its ordinary page
+    var day = roundDay || roundDaily();   // an own-daily game's round too, opened from its ordinary page
     if (!day || (Shell.isWatching && Shell.isWatching())) return;
+    roundDay = day;
     var runs = dayRuns(day);
     if (runs[PAGE]) return;
     runs[PAGE] = { start: Date.now() };
