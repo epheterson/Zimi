@@ -343,6 +343,24 @@ CALM = """([ticks, gap, ceiling]) => new Promise((done) => { let last = performa
     if (calm >= ticks || now - t0 > ceiling) { clearInterval(id); done({ calm: calm, ms: Math.round(now - t0) }); } }, 16); })"""
 
 
+def _wait_for_the_veil_to_go(pg):
+    """The loading veil stands over the whole page until the first screen is drawn, and takes the pointer with it: a finger put
+    down before it has gone lands on the veil, not on the Moon (the failure's event log: pointerdown on alm-veil, then a cancel)."""
+    pg.wait_for_function(
+        "() => { const v = document.getElementById('alm-veil'); return !v || v.hidden || getComputedStyle(v).pointerEvents === 'none' || v.classList.contains('alm-veil-out'); }",
+        timeout=CALM_CEILING_MS,
+        polling=POLL_MS,
+    )
+    # And the Moon is what answers at its own middle.
+    pg.wait_for_function(
+        "(s) => { const r = document.querySelector(s).getBoundingClientRect(), e = document.elementFromPoint(r.x + r.width / 2, r.y + r.height / 2);"
+        " return !!e && !!e.closest(s); }",
+        arg=HERO,
+        timeout=CALM_CEILING_MS,
+        polling=POLL_MS,
+    )
+
+
 def _wait_until_the_page_answers_promptly(pg):
     got = pg.evaluate(CALM, [CALM_TICKS, CALM_GAP_MS, CALM_CEILING_MS])
     assert got["calm"] >= CALM_TICKS, "the page never settled: %r" % got
@@ -405,6 +423,9 @@ def test_one_finger_lifts_and_keeps_turning(browser, served, pointer):
         r = _rect(pg)
         x, y = r["x"] + r["width"] / 2, r["y"] + r["height"] / 2
         scroll0 = pg.evaluate("document.getElementById('almanac-content').scrollTop")
+        _wait_for_the_veil_to_go(pg)
+        r = _rect(pg)
+        x, y = r["x"] + r["width"] / 2, r["y"] + r["height"] / 2
         _wait_until_the_page_answers_promptly(pg)
         if pointer == "touch":
             cdp = ctx.new_cdp_session(pg)

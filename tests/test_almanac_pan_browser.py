@@ -143,10 +143,12 @@ def test_two_fingers_slide_the_view_across_the_station_and_pinch_zooms(station):
     touches(cdp, "touchStart", [(135, 400), (255, 400)])
     touches(cdp, "touchMove", [(115, 415), (275, 415)])
     touches(cdp, "touchMove", [(155, 430), (315, 430)])
-    # The slide is held inside the station's reach by the next drawn frame, not by the move itself: wait for that frame (a
-    # state), as a runner with software GL may draw it late (it read 1.93e-5 against a reach of 1.85e-5 before it came).
+    # The pinch and the slide land in the frames drawn after the moves, not in the moves: wait for the view to have zoomed in and
+    # for the slide to be held inside the station's reach (a state; a runner with software GL draws those frames late, and read
+    # at once the view still stood at 1.93e-5 against its start of 1.85e-5).
     pg.wait_for_function(
-        "() => { _aeKick(); const p = _ae.pan; return !!p && Math.hypot(p.v[0], p.v[1], p.v[2]) <= AE_TARGETS.iss.surface * 1.0001; }",
+        "(d0) => { _aeKick(); const p = _ae.pan; return !!p && _ae.dist < d0 && Math.hypot(p.v[0], p.v[1], p.v[2]) <= AE_TARGETS.iss.surface * 1.0001; }",
+        arg=dist0,
         timeout=30_000,
         polling=100,
     )
