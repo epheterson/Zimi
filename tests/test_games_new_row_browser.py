@@ -56,7 +56,7 @@ def test_the_row_lists_the_latest_release_only(browser, served):
     # The table, the world's favorites, what is new, then the rest: the games that use your library are not what the shelf opens on.
     assert order[:3] == ["ar-continue", "ar-world", "ar-new"], order
     assert order.index("ar-new") < order.index("ar-daily")
-    world = page.eval_on_selector_all(".ar-world a.ar-game", "els => els.map(e => e.getAttribute('href'))")
+    world = page.eval_on_selector_all(".ar-world a.ar-game", "els => els.filter(e => getComputedStyle(e).display !== 'none' && !e.hidden && e.getClientRects().length).map(e => e.getAttribute('href'))")
     assert world[:3] == ["chess.html", "solitaire.html", "checkers.html"] and len(world) == 13, world   # chess is in the row even while the idle table suggests it
     sections = page.eval_on_selector_all(".sh-list > section", "els => els.map(e => e.querySelector('h2').id)")
     assert sections[-1] == "ar-library" and sections[0] != "ar-library", sections
