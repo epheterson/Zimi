@@ -106,6 +106,7 @@ def _almanac(browser, served, reduced=False, init=None):
     )
     if init:
         ctx.add_init_script(init)
+    ctx.add_init_script(EVENT_LOG)
     pg = ctx.new_page()
     errors = []
     pg.on("pageerror", lambda e: errors.append(str(e)))
@@ -347,9 +348,13 @@ def _wait_until_the_page_answers_promptly(pg):
     assert got["calm"] >= CALM_TICKS, "the page never settled: %r" % got
 
 
+# The pointer events the page saw, newest last: what a failed hand-off says it was given.
+EVENT_LOG = """(() => { window.__ev = []; const at = performance.now();
+  ['pointerdown', 'pointermove', 'pointerup', 'pointercancel', 'lostpointercapture', 'dragstart', 'touchcancel'].forEach(t =>
+    document.addEventListener(t, e => { const l = window.__ev; if (l.length > 60) l.shift(); l.push(t + '@' + Math.round(performance.now() - at) + (e.target && e.target.className ? ':' + String(e.target.className).slice(0, 18) : '')); }, true)); })();"""
 HANDOFF_STATE = """() => ({ open: typeof _aeIsOpen !== 'undefined' && _aeIsOpen, hand: !!(window._ae && _ae.hand), press: JSON.stringify(window._almMoonPress),
   lifter: typeof window.openAlmanacEarth, ready: typeof _aeReady === 'function' && _aeReady(), lifted: !!document.querySelector('.alm-moon-lifted'),
-  frames: window.__frames || 0, hidden: document.hidden, scroll: document.getElementById('almanac-content').scrollTop,
+  ev: (window.__ev || []).slice(-14).join(' '), hidden: document.hidden, scroll: document.getElementById('almanac-content').scrollTop,
   under: (function () { var e = document.querySelector('%s'); if (!e) return null; var r = e.getBoundingClientRect(), h = document.elementFromPoint(r.x + r.width / 2, r.y + r.height / 2); return h ? (h.className || h.tagName) : null; })() })""" % HERO
 
 
@@ -380,6 +385,7 @@ def test_one_finger_lifts_and_keeps_turning(browser, served, pointer):
         ctx = browser.new_context(
             viewport=VIEW, device_scale_factor=DPR, has_touch=True, is_mobile=True
         )
+        ctx.add_init_script(EVENT_LOG)
         pg = ctx.new_page()
         errors = []
         pg.on("pageerror", lambda e: errors.append(str(e)))
