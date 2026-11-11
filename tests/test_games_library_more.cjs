@@ -38,6 +38,9 @@ const rng = seed => load(['librarykit.js']).GamesLib.rng(seed);
     // The real kiwix-serve (3.8.2): <name> is the ZIM's Name, the book's address is its file's name, in the text/html link.
     const real = Lib.parseCatalog('<feed><entry><title>Wikipedia</title><language>eng</language><name>wikipedia_en_all</name><articleCount>9</articleCount>' +
       '<link type="text/html" href="/kiwix/content/wikipedia_en_all_nopic_2026-01" /><author><name></name></author></entry></feed>');
+    const hrefFirst = Lib.parseCatalog('<feed><entry><title>Wikipedia</title><language>eng</language><name>wikipedia_en_all</name><articleCount>9</articleCount>' +
+      '<link href="/kiwix/content/wikipedia_en_all_nopic_2026-01" rel="alternate" type="text/html" /><link href="/kiwix/catalog/x" type="application/atom+xml" /></entry></feed>');
+    check(hrefFirst.length === 1 && hrefFirst[0].name === 'wikipedia_en_all_nopic_2026-01', 'kit: the link\'s attributes may come in any order');
     // The word games read the biggest English Wiktionary, not the first listed (a real kiwix-serve listed Simple English first).
     const twoWikt = [{ name: 'wiktionary_en-simple_all_nopic_2026-10', kind: 'wiki', project: 'wiktionary', language: 'en', article_count: 54668 },
       { name: 'wiktionary_fr_all_nopic_2026-01', kind: 'wiki', project: 'wiktionary', language: 'fr', article_count: 9000000 },

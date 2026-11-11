@@ -5,6 +5,7 @@ Run: ZIMI_TORRENT=0 ZIMI_OFFLINE=1 pytest tests/test_almanac_zim_languages_brows
 """
 
 import functools
+import json
 import http.server
 import os
 import sys
@@ -70,6 +71,9 @@ def test_the_page_follows_the_browsers_language(
         "document.querySelector('#almanac-head .alm-card .alm-card-lbl').innerText.trim()"
     )
     assert (first.upper() == ENGLISH_FIRST_TILE) == (lang == "en"), first
+    # It is that language's own word for it (the strings file of the language the page picked), not another language's.
+    with open(os.path.join(served["dir"], "i18n", lang + ".json"), encoding="utf-8") as f:
+        assert first.lower() == json.load(f)["alm_illuminated"].lower(), (lang, first)
     view = "document.getElementById('almanac-view').innerText"
     assert (
         page.evaluate("(re => (%s.match(new RegExp(re, 'g')) || []))" % view, RAW_KEY)

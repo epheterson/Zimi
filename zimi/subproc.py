@@ -104,8 +104,12 @@ def external_env(env=None):
         else:
             env[name] = orig
     for name in _PYTHON_PATHS:
-        if _names_bundle(env.get(name, "")):
-            env.pop(name)
+        if name in env:
+            kept = [e for e in env[name].split(os.pathsep) if e and not _names_bundle(e)]
+            if kept:
+                env[name] = os.pathsep.join(kept)   # the user's own entries stay
+            else:
+                env.pop(name)
     for name in [k for k in env if k.startswith(_PYI_PREFIX)]:
         del env[name]
     return env

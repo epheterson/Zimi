@@ -115,7 +115,9 @@ def test_inside_the_bundle_by_either_platforms_rules():
 def test_a_python_path_list_naming_the_bundle_is_dropped_whatever_its_spelling(monkeypatch):
     _frozen(monkeypatch)
     out = subproc.external_env({"PYTHONPATH": os.pathsep.join(["/somewhere/else", BUNDLE + "/lib-dynload"]), "PYTHONHOME": BUNDLE + "/"})
-    assert "PYTHONPATH" not in out and "PYTHONHOME" not in out
+    assert out["PYTHONPATH"] == "/somewhere/else" and "PYTHONHOME" not in out
+    mixed = subproc.external_env({"PYTHONPATH": os.pathsep.join([BUNDLE + "/lib", "/my/modules"])})
+    assert mixed["PYTHONPATH"] == "/my/modules", "only the bundle's entries go"
     kept = subproc.external_env({"PYTHONPATH": "/somewhere/else", "PYTHONHOME": "/usr/lib/python3"})
     assert kept == {"PYTHONPATH": "/somewhere/else", "PYTHONHOME": "/usr/lib/python3"}
 

@@ -153,7 +153,13 @@
       var wiki = tok && tok !== 'gutenberg';
       // A book's address in kiwix-serve is its file's name (wikipedia_en_all_maxi_2026-01), not its Name (wikipedia_en_all):
       // the entry's text/html link says which. <name> still tells the project and the language.
-      var link = /<link[^>]*\btype="text\/html"[^>]*\bhref="[^"]*\/content\/([^"\/]+)"/.exec(e);
+      // The link's attributes come in either order (type then href, or href then type).
+      var link = /<link\b[^>]*>/g, tag, found = null;
+      while ((tag = link.exec(e))) {
+        var kind = /\btype="([^"]*)"/.exec(tag[0]), where = /\bhref="[^"]*\/content\/([^"\/]+)"/.exec(tag[0]);
+        if (kind && kind[1] === 'text/html' && where) { found = where; break; }
+      }
+      link = found;
       out.push({ name: link ? decodeURIComponent(link[1]) : name, title: xmlText(e, 'title') || name, language: ISO3[lang] || (lang.length === 2 ? lang : code) || lang,
         kind: wiki ? 'wiki' : 'zim', project: tok, article_count: +xmlText(e, 'articleCount') || 0, main_path: '' });
     }
