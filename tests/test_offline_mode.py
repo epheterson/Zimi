@@ -109,7 +109,9 @@ def test_catalog_torrent_archive_retries_next_run_when_offline(_env, monkeypatch
     lib._catalog_torrents_archived = False
     monkeypatch.setattr(p2p, "is_torrent_enabled", lambda: True)
     monkeypatch.setattr(p2p, "is_mirror_enabled", lambda: True)
-    # No cache at all: fetch fails offline -> archive defers, not marked done
+    # No cache at all: the catalog fetch fails offline -> archive defers, not marked done. The fetch itself is
+    # what is under test here, so no page left anywhere in the process can stand in for it.
+    monkeypatch.setattr(lib, "_fetch_kiwix_catalog", lambda *a, **k: (0, [], "network is gone"))
     assert lib.archive_catalog_torrents(spacing=0) == 0
     assert lib._catalog_torrents_archived is False
 
