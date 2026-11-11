@@ -4156,5 +4156,17 @@
   "alm_launch_watch": "Start ansehen",
   "alm_launch_watch_from": "Ansehen von",
   "alm_hd_kind_hd": "HD",
-  "alm_hd_kind_max": "Maximum"
+  "alm_hd_kind_max": "Maximum",
+  "about": "Über",
+  "about_reads": "Liest gerade",
+  "app_about_tube": "Vorträge, Vorlesungen und Kanäle aus deiner Bibliothek, abgespielt aus Dateien auf diesem Gerät. Keine Verbindung nötig.",
+  "app_about_exchange": "Fragen und Antworten von Q&A-Seiten wie Stack Overflow, in deiner Bibliothek gespeichert. Nach Tag durchstöbern oder suchen.",
+  "app_about_reddot": "Subreddits als ZIM-Dateien: die Beiträge und ihre Kommentarverläufe, offline lesbar.",
+  "app_about_wiki": "Wikipedias und andere Wikis aus deiner Bibliothek, mit den Tipps des Tages und „An diesem Tag“.",
+  "app_about_books": "Jedes Buch deiner Bibliothek in einem Regal. Nach Autor, Thema, Epoche oder Sprache durchstöbern.",
+  "app_about_dictionary": "Ein Wort, nachgeschlagen in jedem Wiktionary deiner Bibliothek.",
+  "app_about_games": "Über 100 Spiele, die aus deiner Bibliothek laufen: Rätsel, Brettspiele, Karten und Städtebau.",
+  "app_about_almanac": "Himmel, Erde und Kalender, auf diesem Gerät berechnet. Keine Verbindung nötig.",
+  "app_about_maps": "Offline-Karten aus deiner Bibliothek. Orte suchen und den Weg finden; nichts wird irgendwohin gesendet.",
+  "app_about_fieldguide": "Fünfundzwanzig Situationen, beantwortet mit belegten Zitaten aus deiner Bibliothek, für einen schlechten Tag ohne Netz."
 }

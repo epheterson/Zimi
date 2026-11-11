@@ -4156,5 +4156,17 @@
   "alm_launch_watch": "Ver el lanzamiento",
   "alm_launch_watch_from": "Ver desde",
   "alm_hd_kind_hd": "HD",
-  "alm_hd_kind_max": "Máximo"
+  "alm_hd_kind_max": "Máximo",
+  "about": "Acerca de",
+  "about_reads": "Leyendo ahora",
+  "app_about_tube": "Charlas, conferencias y canales de tu biblioteca, reproducidos desde archivos de este dispositivo. No necesita conexión.",
+  "app_about_exchange": "Preguntas y respuestas de sitios como Stack Overflow, guardadas en tu biblioteca. Explora por etiqueta o busca.",
+  "app_about_reddot": "Subreddits guardados como archivos ZIM: las publicaciones y sus hilos de comentarios, legibles sin conexión.",
+  "app_about_wiki": "Wikipedias y otras wikis de tu biblioteca, con las selecciones del día y «En este día».",
+  "app_about_books": "Todos los libros de tu biblioteca en una sola estantería. Explora por autor, tema, época o idioma.",
+  "app_about_dictionary": "Una palabra, buscada en todos los Wiktionary de tu biblioteca.",
+  "app_about_games": "Más de 100 juegos que funcionan desde tu biblioteca: rompecabezas, tableros, cartas y construcción de ciudades.",
+  "app_about_almanac": "El cielo, la Tierra y los calendarios, calculados en este dispositivo. No necesita conexión.",
+  "app_about_maps": "Mapas sin conexión de tu biblioteca. Busca lugares y encuentra el camino; no se envía nada a ningún sitio.",
+  "app_about_fieldguide": "Veinticinco situaciones respondidas con citas de tu biblioteca, para un mal día sin señal."
 }

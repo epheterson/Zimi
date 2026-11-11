@@ -4156,5 +4156,17 @@
   "alm_launch_watch": "观看发射",
   "alm_launch_watch_from": "观看位置",
   "alm_hd_kind_hd": "HD",
-  "alm_hd_kind_max": "最高"
+  "alm_hd_kind_max": "最高",
+  "about": "关于",
+  "about_reads": "正在读取",
+  "app_about_tube": "你的资料库中的演讲、讲座和频道，直接从本设备上的文件播放。无需联网。",
+  "app_about_exchange": "来自 Stack Overflow 等问答网站的提问与回答，保存在你的资料库中。可按标签浏览或搜索。",
+  "app_about_reddot": "以 ZIM 文件保存的 subreddit：帖子及其评论串，可离线阅读。",
+  "app_about_wiki": "你的资料库中的维基百科和其他维基，附有今日精选和“历史上的今天”。",
+  "app_about_books": "你的资料库中的每一本书，都在同一个书架上。可按作者、主题、年代或语言浏览。",
+  "app_about_dictionary": "一个词，在你资料库中的每一部维基词典里查找。",
+  "app_about_games": "超过 100 款直接从你的资料库运行的游戏：益智、棋盘、纸牌和建城。",
+  "app_about_almanac": "天空、地球和历法，在本设备上计算。无需联网。",
+  "app_about_maps": "你的资料库中的离线地图。搜索地点、找路；不会向任何地方发送任何内容。",
+  "app_about_fieldguide": "二十五种情形，以你的资料库中有出处的引文作答，为没有信号的糟糕一天而备。"
 }

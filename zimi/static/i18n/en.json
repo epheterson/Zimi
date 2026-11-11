@@ -4156,5 +4156,17 @@
   "alm_launch_watch": "Watch the launch",
   "alm_launch_watch_from": "Watch from",
   "alm_hd_kind_hd": "HD",
-  "alm_hd_kind_max": "Maximum"
+  "alm_hd_kind_max": "Maximum",
+  "about": "About",
+  "about_reads": "Reading now",
+  "app_about_tube": "Talks, lectures and channels from your library, played from files on this device. No connection needed.",
+  "app_about_exchange": "Questions and answers from Q&A sites such as Stack Overflow, kept in your library. Browse by tag or search.",
+  "app_about_reddot": "Subreddits kept as ZIM files: the posts and their comment threads, readable offline.",
+  "app_about_wiki": "Wikipedias and other wikis from your library, with the day’s picks and On this day.",
+  "app_about_books": "Every book in your library on one shelf. Browse by author, subject, era or language.",
+  "app_about_dictionary": "One word, looked up in every Wiktionary in your library.",
+  "app_about_games": "Over 100 games that run from your library: puzzles, boards, cards and city building.",
+  "app_about_almanac": "The sky, Earth and calendars, worked out on this device. No connection needed.",
+  "app_about_maps": "Offline maps from your library. Search places and find the way; nothing is sent anywhere.",
+  "app_about_fieldguide": "Twenty-five situations answered in cited quotes from your library, for a bad day with no signal."
 }
