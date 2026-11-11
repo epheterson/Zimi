@@ -268,6 +268,16 @@ It is the first screen, so it follows every rule above, plus these:
 - "Start something" either shows a real game or isn't drawn; it is never an empty slab.
 - Live tiles show the table as you left it.
 
+## Rooms (shell.js ROOMS, games.css)
+
+A room is a place with its own light: Kids (paper and crayon), Arcade (neon), Game night (one lamp over a table), Solo (linen). All is the neutral lobby and has no tokens.
+- One definition per room, in shell.js: id, name (`shelf.room.<id>`), a filter over what games.json says of a game, its best-known games (World favorites and the table's offer), and a light and a dark token set. No game's CSS names a room.
+- The room is `data-room` on the root, taken from the address (`#room=night`, beside `lang`), else the shelf's last room. A tile carries it into the game it opens, and the game's Back returns to it.
+- A room swaps the shared neutrals and the accent (so every bar, chip and text already follows), and, in a card or domino table only, the cloth (`--felt` is set on `.zc-table` and `.dm-table`, never on the root). Boards, tiles, wood a game is made of and every game's art keep their own materials.
+- Every text pair is held to WCAG AA by tests/test_games_rooms_theme.py from the token values. A new room adds a definition and passes it, nothing else.
+- Every row over the shelf (the table, World favorites, Daily, New) keeps the room's games, and a row with none is not drawn.
+- Entering a room: the light changes over 360 ms and the table's boxes are dealt in turn; the Animation setting shortens or ends both.
+
 ## Leading out of a game (librarykit.js, almanac-gamesky.js, one hook in app.js)
 
 A game that draws on the player's library may point at the real thing Zimi already has. The rules:

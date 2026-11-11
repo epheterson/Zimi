@@ -140,21 +140,30 @@
     return out.filter(function (g) { return g.items.length; });
   }
 
-  // ── Rooms (pure): a feel to play in, across the types. Membership is what games.json already says of a game (its kind, how many
-  // play), with one short list for the kids' games no fact names. No room is themed yet: a room is a filter.
-  var ROOMS = ['all', 'kids', 'arcade', 'night', 'solo'];
-  var KIDS_TOO = { 'fourinarow.html': 1, 'dotsandboxes.html': 1, 'crazyeights.html': 1, 'higherlower.html': 1, 'jigsaw.html': 1, 'ludo.html': 1 };
+  // ── Rooms (pure): a place to play in, across the types. shell.js holds each room (its name, its filter, its best-known games and its light); a
+  // filter is what games.json already says of a game (its kind, how many play), with a short list for the kids' games no fact names.
+  var REGISTRY = (root.ZimiShell && root.ZimiShell.rooms) || (typeof require === 'function' ? require('./shell.js').rooms : []);
+  var ROOMS = REGISTRY.map(function (r) { return r.id; });
+  var ROOM_BY = {};
+  REGISTRY.forEach(function (r) { ROOM_BY[r.id] = r; });
+  var KIDS_TOO = {};
+  ((ROOM_BY.kids && ROOM_BY.kids.filter.also) || []).forEach(function (p) { KIDS_TOO[p] = 1; });
   function inRoom(room, m, path) {
-    if (room === 'all') return true;
+    var f = ROOM_BY[room] && ROOM_BY[room].filter;
+    if (!f) return true;   // All, and a room this shelf does not know
     if (!m) return false;
-    if (room === 'kids') return m.kind === 'kids' || !!KIDS_TOO[path];
-    if (room === 'arcade') return m.kind === 'arcade';
-    if (room === 'night') return maxPlayers(m) >= 3;   // a table of three or more: people, or the computer's seats
-    if (room === 'solo') return maxPlayers(m) === 1 && m.kind !== 'arcade';   // the quiet one: puzzles, solitaires, words
-    return true;
+    if (f.also && f.also.indexOf(path) >= 0) return true;
+    var n = maxPlayers(m);
+    return (!f.kind || m.kind === f.kind) && (!f.notKind || m.kind !== f.notKind) && (f.minPlayers === undefined || n >= f.minPlayers) && (f.maxPlayers === undefined || n <= f.maxPlayers);
+  }
+  // Where a tile stands in a room's list ("all:0,kids:3" in data-fav), or -1 when the room does not list it.
+  function favPlace(fav, room) {
+    var parts = String(fav || '').split(',');
+    for (var i = 0; i < parts.length; i++) { var kv = parts[i].split(':'); if (kv[0] === room) return +kv[1]; }
+    return -1;
   }
 
-  var api = { ROOMS: ROOMS, KIDS_TOO: KIDS_TOO, inRoom: inRoom, SORTS: SORTS, SORT_LABEL: SORT_LABEL, REGIONS: REGIONS, ERAS: ERAS, FALLBACK: FALLBACK, eraYear: eraYear, ageOf: ageOf, ageText: ageText, playersText: playersText, maxPlayers: maxPlayers, minutesOf: minutesOf, eraOf: eraOf, groupsFor: groupsFor };
+  var api = { ROOMS: ROOMS, KIDS_TOO: KIDS_TOO, inRoom: inRoom, favPlace: favPlace, SORTS: SORTS, SORT_LABEL: SORT_LABEL, REGIONS: REGIONS, ERAS: ERAS, FALLBACK: FALLBACK, eraYear: eraYear, ageOf: ageOf, ageText: ageText, playersText: playersText, maxPlayers: maxPlayers, minutesOf: minutesOf, eraOf: eraOf, groupsFor: groupsFor };
   if (typeof module !== 'undefined' && module.exports) { module.exports = api; return; }
 
   var doc = root.document;
@@ -301,7 +310,7 @@
     });
   }
 
-  var state = { view: stored(VIEW_KEY, VIEWS, 'lobby'), sort: stored(SORT_KEY, SORTS, 'sections'), room: stored(ROOM_KEY, ROOMS, 'all'), sec: 'all', q: '' };
+  var state = { view: stored(VIEW_KEY, VIEWS, 'lobby'), sort: stored(SORT_KEY, SORTS, 'sections'), room: root.ZimiShell && root.ZimiShell.room ? root.ZimiShell.room() : stored(ROOM_KEY, ROOMS, 'all'), sec: 'all', q: '' };
   var rows = null; // games.json by page, once read
   var groups = sections; // what is on the shelf now: the sections, or the groups of an order
   var made = []; // group nodes this file made for an order
@@ -408,13 +417,27 @@
     nav.appendChild(b);
     return b;
   }
+  var Shell = root.ZimiShell;
   function setRoom(id) {
+    if (ROOMS.indexOf(id) < 0) id = 'all';
     state.room = id;
     state.sec = 'all';   // a room opens whole, and All is every game; a type chip then narrows it
     store(ROOM_KEY, id);
+    if (Shell && Shell.setRoom) {
+      Shell.setRoom(id, true);
+      // The room is in the address, so Back from a game (and a bookmark) returns to it; replaced, not pushed: a room is no page to go back through.
+      try { root.history.replaceState(root.history.state, '', root.location.pathname + root.location.search + Shell.roomHash(id)); } catch (e) { /* a frame that cannot */ }
+    }
     apply();
   }
-  function roomOf(tile) { var p = tilePath.get(tile) || (tile.getAttribute('href') || '').replace(/[?#].*$/, ''); return inRoom(state.room, meta(p), p); }
+  root.addEventListener('hashchange', function () { var m = /(?:^|[#&])room=([a-z]+)/.exec(root.location.hash), id = m ? m[1] : 'all'; if (id !== state.room && ROOMS.indexOf(id) >= 0) setRoom(id); });
+  // A game opened from a tile knows its room: the address it opens carries it, and the game's Back returns to it.
+  shelf.addEventListener('click', function (e) {
+    var a = e.target.closest && e.target.closest('a.ar-game, a.ar-box');
+    if (a && a.getAttribute('href')) a.setAttribute('href', a.getAttribute('href').replace(/#.*$/, '') + (Shell && Shell.roomHash ? Shell.roomHash(state.room) : ''));
+  }, true);
+  function pathOf(tile) { return tilePath.get(tile) || (tile.getAttribute('href') || '').replace(/[?#].*$/, '').replace(/^.*\/viewer#\/[^/]*\//, ''); }
+  function roomOf(tile) { var p = pathOf(tile); return inRoom(state.room, meta(p), p); }
   function buildChips() {
     nav.textContent = '';
     chips = {};
@@ -558,12 +581,52 @@
     });
     var dl = daily();
     if (dl && dl.parentNode !== top) top.appendChild(dl);
-    tableCount = c && !c.classList.contains('ar-table-idle') ? c.querySelectorAll('.ar-box').length : 0;
+    tableCount = c ? c.querySelectorAll('.ar-table[data-kind="played"] .ar-box').length : 0;
     if (recentChip) {
       recentChip.hidden = !tableCount;
       chips.recent.n.textContent = String(tableCount);
     }
     if (!tableCount && state.sec === 'recent') state.sec = defaultSection();
+  }
+
+  // A row of tiles for this room: each tile kept or not (a favourites row by the room's own list, in its order; the others by the room's
+  // filter). Returns how many are left, so a row with none can go.
+  function fitRow(row, byList) {
+    var left = 0;
+    Array.prototype.forEach.call(row.querySelectorAll('a.ar-game'), function (t) {
+      var at = byList ? favPlace(t.dataset.fav, state.room) : -1, keep = byList ? at >= 0 : roomOf(t);
+      t.hidden = !keep;
+      t.style.order = keep && byList ? String(at) : '';
+      if (keep) left++;
+    });
+    return left;
+  }
+  // The table shows what was played in this room, else what the room offers; the heading says which. The first box showing is the one on top.
+  var BOX_Z = 20;
+  function fitTable(c) {
+    var played = c.querySelector('.ar-table[data-kind="played"]'), idle = c.querySelector('.ar-table[data-kind="idle"]'), left = 0;
+    function fit(nav, byList) {
+      var n = 0, lead = null;
+      if (nav) Array.prototype.forEach.call(nav.querySelectorAll('a.ar-box'), function (b) {
+        var keep = byList ? favPlace(b.dataset.fav, state.room) >= 0 : roomOf(b);
+        b.hidden = !keep;
+        b.classList.remove('ar-lead');
+        if (keep && !lead) { lead = b; b.classList.add('ar-lead'); }
+        // Each box lies over the next: the first showing is on top, whatever its place in the whole list.
+        if (keep) { b.style.setProperty('--z', String(BOX_Z - n)); b.style.setProperty('--i', String(n++)); }   // --i: dealt in turn, 70 ms apart, from the first showing
+      });
+      return n;
+    }
+    var playedN = fit(played, false), idleN = fit(idle, true);
+    var showPlayed = playedN > 0;
+    if (played) played.hidden = !showPlayed;
+    if (idle) idle.hidden = showPlayed || !idleN;
+    left = showPlayed ? playedN : idleN;
+    c.classList.toggle('ar-table-idle', !showPlayed);
+    var h = c.querySelector('h2'), label = T(showPlayed ? 'shelf.table.played' : 'shelf.table.idle');
+    if (h && h.textContent !== label) h.textContent = label;
+    Array.prototype.forEach.call(c.querySelectorAll('nav.ar-table'), function (nav) { nav.setAttribute('aria-label', label); });
+    return left;
   }
 
   var lastSec = null;
@@ -602,19 +665,19 @@
     });
     if (chips.all) chips.all.n.textContent = String(roomAll);
     var c = doc.querySelector('.ar-continue');
-    // The feed shows the table and the Daily row on All only; Index keeps them on every tab.
+    // The feed shows the table and the Daily row on All only; Index keeps them on every tab. In a room each row keeps the games of the room,
+    // and a row with none is not there.
     var feedAll = state.sec === 'all';
-    if (c) c.hidden = searching || (state.view === 'lobby' && !feedAll);
+    if (c) c.hidden = searching || (state.view === 'lobby' && !feedAll) || !fitTable(c);
     var rowsTop = Array.prototype.slice.call(doc.querySelectorAll('.ar-world, .ar-new'));
-    rowsTop.forEach(function (r) { r.hidden = searching || !feedAll || state.room !== 'all'; });   // like the Daily row: the unfiltered shelf's opening
+    rowsTop.forEach(function (r) { r.hidden = !fitRow(r, r.classList.contains('ar-world')) || searching || !feedAll; });
     var dl = daily();
     if (dl) {
       var inside = 0, done = 0;
-      Array.prototype.forEach.call(dl.querySelectorAll('a.ar-daily-main'), function (a) { inside++; if (a.classList.contains('ar-done')) done++; });
+      var kept = fitRow(dl, false);
+      Array.prototype.forEach.call(dl.querySelectorAll('a.ar-daily-main'), function (a) { if (a.hidden) return; inside++; if (a.classList.contains('ar-done')) done++; });
       if (dl.dailyLine) dl.dailyLine(done, inside);
-      // The day's games are the unfiltered shelf's opening: with a room or a type chosen (or a search) they step aside, so the
-      // games asked for come first.
-      dl.hidden = searching || !feedAll || state.room !== 'all';
+      dl.hidden = searching || !feedAll || !kept;
     }
     if (state.sec === 'recent' && !searching) { sections.concat(made).forEach(function (s) { s.node.hidden = true; }); shown = 1; }
     empty.hidden = shown > 0;

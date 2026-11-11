@@ -287,6 +287,7 @@ html.gs-hosted .ar-shelf header:not(:has(.sh-tools)) { display: none; }
 @media (pointer: coarse) { .sh-nav { padding-top: 8px; padding-bottom: 8px; margin-top: -6px; margin-bottom: 12px; } .sh-bar .sh-nav, [dir] .sh-bar .sh-nav { margin-top: -4px; margin-bottom: -4px; } }
 /* The Library Manager's filter pill (app.css .pill): 28px, 12px type, quiet ink, a glow on hover, the chosen one filled with the accent. */
 .sh-chip { flex: none; display: inline-flex; align-items: center; gap: 5px; box-sizing: border-box; height: 28px; padding: 0 14px 1px; border: 1px solid var(--line); border-radius: 999px; background: var(--surface); color: var(--ink2); font: inherit; font-size: 12px; font-weight: 500; line-height: 1; white-space: nowrap; cursor: pointer; transition: color 0.2s, background 0.2s, border-color 0.2s; }
+.sh-chip[hidden] { display: none; }
 .sh-chip:hover { border-color: var(--accent-line); color: var(--ink); background: var(--accent-glow); }
 .sh-chip:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
 .sh-chip[aria-pressed="true"] { background: var(--accent); border-color: transparent; color: var(--accent-ink); font-weight: 600; }
@@ -452,7 +453,7 @@ html.gs-hosted .ar-shelf header:not(:has(.sh-tools)) { display: none; }
     linear-gradient(var(--wood-veil), var(--wood-veil)),
     url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='360' height='240'%3E%3Cfilter id='w' x='0' y='0' width='100%25' height='100%25'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.004 .09' numOctaves='3' seed='4' stitchTiles='stitch'/%3E%3CfeColorMatrix values='0 0 0 0 0.27 0 0 0 0 0.157 0 0 0 0 0.055 3 0 0 0 -1.15'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23w)'/%3E%3C/svg%3E") 0 0 / 360px 240px,
     repeating-linear-gradient(180deg, transparent 0 79px, rgba(var(--wood-grain), 0.22) 79px 80px),
-    linear-gradient(180deg, var(--wood), var(--wood-dark));
+    linear-gradient(180deg, var(--room-wood, var(--wood)), var(--room-wood-dark, var(--wood-dark)));
   box-shadow: inset 0 0 0 1px rgba(0, 0, 0, 0.22), inset 0 3px 14px rgba(0, 0, 0, 0.3); }
 .ar-table::-webkit-scrollbar { display: none; }
 .ar-table-in { display: flex; width: max-content; margin: 0 auto; padding-right: var(--ov); }
@@ -462,11 +463,12 @@ html.gs-hosted .ar-shelf header:not(:has(.sh-tools)) { display: none; }
   transition: transform 0.18s cubic-bezier(0.25, 1, 0.5, 1); }
 .ar-box:hover, .ar-box:focus-visible { z-index: 20; transform: translateY(calc(var(--dy) - 6px)) rotate(0deg) scale(1.04); }
 .ar-box:focus-visible { outline: 3px solid var(--accent); outline-offset: 3px; }
+.ar-box[hidden], .ar-table[hidden] { display: none; }
 .ar-box-lid { display: block; overflow: hidden; border-radius: 2px; box-shadow: 0 0 0 1px rgba(42, 33, 24, 0.25); }
 .ar-box-lid .ar-game-art { display: block; width: 100%; aspect-ratio: 16 / 9; height: auto; }
 .ar-box-lid .ar-game-icon { padding: 4px; }
 .ar-box-label { display: block; padding: 6px 2px 2px; }
-.ar-box:not(:first-child) .ar-box-label { padding-left: calc(var(--ov) + 2px); }
+.ar-box:not(.ar-lead) .ar-box-label { padding-left: calc(var(--ov) + 2px); }
 /* A name wraps onto more lines before it is cut ("Crucigrama mini", "Cinco letras"), and only after three (a narrow box under another) does it end in dots. */
 .ar-box-label strong { display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 3; font-size: 13px; line-height: 1.25; overflow: hidden; overflow-wrap: normal; word-break: normal; hyphens: manual; }
 /* recent.js fitNames: a word too wide even at its smallest size ends in an ellipsis on one line, never broken in two. */
@@ -477,9 +479,9 @@ html.gs-hosted .ar-shelf header:not(:has(.sh-tools)) { display: none; }
 @media (max-width: 699px) {
   .ar-table { --bw: 116px; --ov: 54px; padding: 22px 12px 26px; }
   .ar-box-label small { white-space: normal; min-height: 2.6em; }
-  .ar-box:not(:first-child) .ar-box-label { padding-right: 0; padding-left: calc(var(--ov) + 1px); }
-  .ar-box:not(:first-child) .ar-box-label strong { font-size: 12px; }
-  .ar-box:not(:first-child) .ar-box-label small { display: none; }
+  .ar-box:not(.ar-lead) .ar-box-label { padding-right: 0; padding-left: calc(var(--ov) + 1px); }
+  .ar-box:not(.ar-lead) .ar-box-label strong { font-size: 12px; }
+  .ar-box:not(.ar-lead) .ar-box-label small { display: none; }
 }
 @media (min-width: 700px) { .ar-table { --bw: 168px; --ov: 36px; padding: 30px 32px 34px; } }
 .ar-box.ar-settle { animation: ar-settle 0.45s cubic-bezier(0.25, 1, 0.5, 1) backwards; animation-delay: calc(var(--i) * 70ms); }
@@ -749,3 +751,50 @@ body:has(> .gs-splash) .pl-msg { visibility: hidden; }
 .gs-board-day .gs-board-name { display: flex; flex-direction: column; white-space: normal; }
 .gs-board-day small { color: var(--ink2); font-size: var(--fs-small); }
 .gs-board-day small.gs-you { color: var(--accent); }
+
+/* Rooms (shell.js holds each room's tokens; the room is data-room on the root, absent in All). A room changes the light and the
+   material of the shelf and, in a game, only what already follows the shared tokens: the bar, the ground, text, and the cloth of a card
+   table or a domino table. No game's own CSS names a room. Light changes over 360 ms (the animation setting above shortens or ends it). */
+html.gs-room-fade :is(body, .ar-shelf, .ar-shelf header, .ar-shelf header *, .ar-section h2, .ar-game, .ar-game-text, .ar-game-text *, .ar-bar, .ar-bar *, .ar-sheet, .zc-table, .dm-table) {
+  transition: background-color 0.36s ease, color 0.36s ease, border-color 0.36s ease, box-shadow 0.36s ease !important; }
+html[data-room] .zc-table, html[data-room] .dm-table { --felt: var(--room-table); --felt-deep: var(--room-table-deep); }
+html[data-room] body:has(.ar-shelf) { background-image: var(--room-texture, none); }
+html[data-room] body:has(.ar-shelf)::before { content: ""; position: fixed; inset: 0; z-index: -1; pointer-events: none; background: var(--room-glow, none); }
+html[data-room="kids"] body:has(.ar-shelf)::before { animation: ar-lit-kids 0.4s ease-out; }
+html[data-room="arcade"] body:has(.ar-shelf)::before { animation: ar-lit-arcade 0.4s ease-out; }
+html[data-room="night"] body:has(.ar-shelf)::before { animation: ar-lit-night 0.4s ease-out; }
+html[data-room="solo"] body:has(.ar-shelf)::before { animation: ar-lit-solo 0.4s ease-out; }
+@keyframes ar-lit-kids { from { opacity: 0; } }
+@keyframes ar-lit-arcade { from { opacity: 0; } }
+@keyframes ar-lit-night { from { opacity: 0; } }
+@keyframes ar-lit-solo { from { opacity: 0; } }
+html[data-room] .ar-game { box-shadow: var(--room-lift, none); }
+html[data-room] .ar-game:hover { box-shadow: var(--room-lift, none); }
+html[data-room] .ar-shelf .ar-section h2 { color: var(--ink2); }
+html[data-room] .ar-daily-line { text-transform: none; letter-spacing: 0; font-weight: 500; font-family: var(--font); font-size: var(--fs-small); color: var(--ink2); text-shadow: none; }
+
+/* Kids: paper and crayon. Heavy ink outline and a hard offset like a sticker, a crayon squiggle under each heading. */
+html[data-room="kids"] .ar-game { border: 2px solid var(--ink); }
+html[data-room="kids"] .ar-game:hover { border-color: var(--accent); }
+html[data-room="kids"] .ar-section h2 { color: var(--ink); font-size: var(--fs-title); font-weight: 750; }
+html[data-room="kids"] .ar-section > h2 { position: relative; margin-bottom: 20px; }
+html[data-room="kids"] .ar-section > h2::after { content: ""; position: absolute; inset-inline-start: 0; bottom: -10px; width: 44px; height: 6px; background: var(--accent);
+  -webkit-mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='44' height='6'%3E%3Cpath d='M1 3Q6 0 11 3T22 3T33 3T43 3' fill='none' stroke='black' stroke-width='2.4' stroke-linecap='round'/%3E%3C/svg%3E") 0 0 / 44px 6px no-repeat;
+  mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='44' height='6'%3E%3Cpath d='M1 3Q6 0 11 3T22 3T33 3T43 3' fill='none' stroke='black' stroke-width='2.4' stroke-linecap='round'/%3E%3C/svg%3E") 0 0 / 44px 6px no-repeat; }
+
+/* Arcade: the cabinets' light. A neon edge on every tile, headings lit like a marquee. */
+html[data-room="arcade"] .ar-game { border-color: var(--accent-line); }
+html[data-room="arcade"] .ar-section h2 { color: var(--accent); text-transform: uppercase; letter-spacing: 0.14em; font-weight: 700; }
+html[data-room="arcade"][data-theme="dark"] .ar-section h2 { text-shadow: 0 0 14px var(--accent-line); }
+@media (prefers-color-scheme: dark) { html[data-room="arcade"]:not([data-theme="light"]) .ar-section h2 { text-shadow: 0 0 14px var(--accent-line); } }
+
+/* Game night: one lamp over the table. Tiles rest on it, lit from above. Headings in a text serif, as on a score pad. */
+html[data-room="night"] .ar-section h2 { font-family: ui-serif, "Iowan Old Style", Georgia, serif; font-size: var(--fs-title); font-weight: 650; letter-spacing: 0.01em; color: var(--ink); }
+html[data-room="night"] .ar-game { border-color: var(--line); }
+
+/* Solo: linen, nothing raised. Hairlines, no shadow, quiet headings. */
+html[data-room="solo"] .ar-game { border-color: var(--line); background: var(--surface); }
+html[data-room="solo"] .ar-section h2 { font-weight: 500; letter-spacing: 0.02em; }
+
+/* Letter-spacing breaks the joins of Arabic and its cousins. */
+html:lang(ar)[data-room] .ar-section h2, html:lang(fa)[data-room] .ar-section h2, html:lang(ur)[data-room] .ar-section h2 { letter-spacing: 0; }

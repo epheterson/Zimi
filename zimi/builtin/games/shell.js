@@ -64,8 +64,34 @@
     for (var i = 0; i < bytes.length; i++) { hash ^= bytes.charCodeAt(i); hash = Math.imul(hash, 0x01000193) >>> 0; }
     return hash >>> 0;
   }
-  // Node (the tests, recent.js and librarykit.js there) asks for the hash alone.
-  if (!root.document && typeof module !== 'undefined' && module.exports) { module.exports = { hash: fnv1a }; return; }
+  // ── Rooms: one definition each ─────────────────────────────────────────────────────────────────────────────────────────────
+  // A room is a place with its own light: a filter over what games.json says of a game (shelf.js reads it), a name (shelf.room.<id>),
+  // and two token sets, light and dark, that replace the shared custom properties while the room is on. Nothing else changes per room:
+  // no game's CSS names a room. ground..ink3, accent and the table are what the neutrals and the felt of a card table already are;
+  // glow, lift and texture are the shelf's own light (games.css); wood is the shelf's table. tests/test_games_rooms_theme.py holds
+  // every text pair here to WCAG AA.
+  var GRAIN = 'url("data:image/svg+xml,%3Csvg xmlns=\'http://www.w3.org/2000/svg\' width=\'160\' height=\'160\'%3E%3Cfilter id=\'n\'%3E%3CfeTurbulence type=\'fractalNoise\' baseFrequency=\'.9\' numOctaves=\'2\' stitchTiles=\'stitch\'/%3E%3CfeColorMatrix values=\'0 0 0 0 .45 0 0 0 0 .38 0 0 0 0 .25 0 0 0 .09 0\'/%3E%3C/filter%3E%3Crect width=\'160\' height=\'160\' filter=\'url(%23n)\'/%3E%3C/svg%3E")';
+  var ROOMS = [
+    { id: 'all', key: 'shelf.room.all', filter: null, tokens: null },
+    { id: 'kids', key: 'shelf.room.kids', filter: { kind: 'kids', also: ['fourinarow.html', 'dotsandboxes.html', 'crazyeights.html', 'higherlower.html', 'jigsaw.html', 'ludo.html'] }, favorites: ['fourinarow.html', 'memory.html', 'noughts.html', 'snakesandladders.html', 'ludo.html', 'dotsandboxes.html', 'crazyeights.html', 'jigsaw.html'], tokens: {
+      light: { ground: '#faefd6', surface: '#fff6dd', surface2: '#fffce2', line: '#ded3bb', strong: '#7f7358', ink: '#191731', ink2: '#4a4968', ink3: '#585776', accent: '#b12d26', accentInk: '#ffffff', table: '#214f7c', tableDeep: '#0b3c67', wood: '#e3bf86', woodDark: '#c79b57', glow: 'radial-gradient(50% 35% at 12% 0%, rgba(255,205,60,.34), transparent 70%), radial-gradient(45% 30% at 96% 6%, rgba(110,180,255,.26), transparent 70%)', lift: '2px 2px 0 var(--line-strong)', texture: GRAIN },
+      dark: { ground: '#17112a', surface: '#221d37', surface2: '#2c2642', line: '#3b3653', strong: '#787198', ink: '#f1ebd5', ink2: '#b7b19c', ink3: '#9e9884', accent: '#f9d544', accentInk: '#0a0a0c', table: '#002a4e', tableDeep: '#00183b', wood: '#7a5c36', woodDark: '#553d22', glow: 'radial-gradient(50% 35% at 12% 0%, rgba(255,214,70,.15), transparent 70%), radial-gradient(45% 30% at 96% 6%, rgba(140,120,255,.22), transparent 70%)', lift: '2px 2px 0 rgba(0,0,0,.45)', texture: GRAIN }
+    } },
+    { id: 'arcade', key: 'shelf.room.arcade', filter: { kind: 'arcade' }, favorites: ['snake.html', 'stacker.html', 'pinball.html', 'bricks.html', 'paddles.html', 'rocks.html', 'hopper.html', 'muncher.html'], tokens: {
+      light: { ground: '#efeafa', surface: '#f9f4ff', surface2: '#fef9ff', line: '#d6d1e1', strong: '#777182', ink: '#1c152f', ink2: '#4f4866', ink3: '#5d5574', accent: '#b01474', accentInk: '#ffffff', table: '#462e69', tableDeep: '#341b55', wood: '#5b3f8f', woodDark: '#3d2766', glow: 'radial-gradient(60% 40% at 6% -4%, rgba(210,40,150,.15), transparent 70%), radial-gradient(55% 38% at 100% 0%, rgba(40,160,220,.13), transparent 70%)', lift: '0 2px 0 var(--accent-line)', texture: 'none' },
+      dark: { ground: '#060212', surface: '#0e081b', surface2: '#171226', line: '#2a253b', strong: '#797291', ink: '#ede8f7', ink2: '#b3aebc', ink3: '#9a96a3', accent: '#4ae9f9', accentInk: '#0a0a0c', table: '#271143', tableDeep: '#17002f', wood: '#2f1d58', woodDark: '#190e36', glow: 'radial-gradient(60% 40% at 6% -4%, rgba(255,40,160,.26), transparent 70%), radial-gradient(55% 38% at 100% 0%, rgba(40,230,250,.17), transparent 70%)', lift: '0 0 0 1px rgba(74,233,249,.2), 0 0 20px -2px rgba(74,233,249,.24)', texture: 'none' }
+    } },
+    { id: 'night', key: 'shelf.room.night', filter: { minPlayers: 3 }, favorites: ['hearts.html', 'holdem.html', 'bridge.html', 'spades.html', 'dominoes.html', 'yacht.html', 'ludo.html', 'mahjong4.html'], tokens: {
+      light: { ground: '#f8e3c1', surface: '#ffedcb', surface2: '#fff4d2', line: '#d5c1a0', strong: '#87714b', ink: '#2c1302', ink2: '#634632', ink3: '#715440', accent: '#983e1b', accentInk: '#ffffff', table: '#682229', tableDeep: '#520c17', wood: '#8a5a33', woodDark: '#5e3a1e', glow: 'radial-gradient(75% 55% at 50% -10%, rgba(255,196,100,.55), rgba(255,196,100,.14) 55%, transparent 76%)', lift: '0 10px 20px -12px rgba(80,40,0,.5)', texture: 'none' },
+      dark: { ground: '#180b03', surface: '#211409', surface2: '#2b1d12', line: '#392a1f', strong: '#887363', ink: '#f8e9d2', ink2: '#bdaf99', ink3: '#a49680', accent: '#eeb154', accentInk: '#0a0a0c', table: '#430610', tableDeep: '#2f0003', wood: '#5a3a26', woodDark: '#38220f', glow: 'radial-gradient(75% 55% at 50% -10%, rgba(255,184,92,.28), rgba(255,160,60,.07) 55%, transparent 76%)', lift: 'inset 0 1px 0 rgba(255,225,170,.13), 0 12px 22px -10px rgba(0,0,0,.7)', texture: 'none' }
+    } },
+    { id: 'solo', key: 'shelf.room.solo', filter: { maxPlayers: 1, notKind: 'arcade' }, favorites: ['solitaire.html', 'sudoku.html', 'minesweeper.html', '2048.html', 'mahjong.html', 'freecell.html'], tokens: {
+      light: { ground: '#e9e8df', surface: '#f0efe6', surface2: '#f5f4eb', line: '#cfcec5', strong: '#76756b', ink: '#363631', ink2: '#595853', ink3: '#64635e', accent: '#2c6454', accentInk: '#ffffff', table: '#23504e', tableDeep: '#0d3d3b', wood: '#cdbf9d', woodDark: '#b5a581', glow: 'radial-gradient(80% 45% at 50% 0%, rgba(255,255,255,.45), transparent 72%)', lift: 'none', texture: 'repeating-linear-gradient(0deg, rgba(60,50,20,.035) 0 1px, transparent 1px 3px), repeating-linear-gradient(90deg, rgba(60,50,20,.028) 0 1px, transparent 1px 3px)' },
+      dark: { ground: '#0f1516', surface: '#161d1e', surface2: '#1d2425', line: '#282f31', strong: '#70797b', ink: '#cacbc6', ink2: '#9e9f9a', ink3: '#8b8d88', accent: '#8ebea8', accentInk: '#0a0a0c', table: '#022d2b', tableDeep: '#001c1b', wood: '#44504f', woodDark: '#2e3837', glow: 'radial-gradient(80% 45% at 50% 0%, rgba(255,255,255,.045), transparent 72%)', lift: 'none', texture: 'repeating-linear-gradient(0deg, rgba(255,255,255,.022) 0 1px, transparent 1px 3px), repeating-linear-gradient(90deg, rgba(255,255,255,.018) 0 1px, transparent 1px 3px)' }
+    } },
+  ];
+  // Node (the tests, recent.js and librarykit.js there) asks for the hash and the rooms.
+  if (!root.document && typeof module !== 'undefined' && module.exports) { module.exports = { hash: fnv1a, rooms: ROOMS }; return; }
   var d = root.document;
   // ZimiText first (text.js beside this file): it must exist before anything below draws a string. A page
   // that did not load it writes the tag here, synchronously, so the strings are ready before the first paint.
@@ -260,6 +286,59 @@
   Shell.DAILY = DAILY;
   Shell.dailySeed = dailySeed;
   Shell.hash = fnv1a;
+
+  // ── Rooms, applied ──
+  // The room is in the page's hash ("#lang=fr&room=kids"), so Back and a bookmark return to it; the shelf, which remembers its last room,
+  // also reads that. A game takes it from the tile that opened it. Tokens reach the page as one style element, made the first time a room
+  // is on, so a page in no room carries none of this.
+  var ROOM_FADE_MS = 360, ROOM_KEY = 'zimi.games.room';
+  var roomNow = 'all', roomFadeTimer = 0;
+  function roomById(id) { for (var i = 0; i < ROOMS.length; i++) if (ROOMS[i].id === id) return ROOMS[i]; return null; }
+  function rgbOf(hex) { return parseInt(hex.slice(1, 3), 16) + ',' + parseInt(hex.slice(3, 5), 16) + ',' + parseInt(hex.slice(5, 7), 16); }
+  function roomDecls(t, dark) {
+    var a = rgbOf(t.accent);
+    return '--ground:' + t.ground + ';--surface:' + t.surface + ';--surface2:' + t.surface2 + ';--line:' + t.line + ';--line-strong:' + t.strong +
+      ';--ink:' + t.ink + ';--ink2:' + t.ink2 + ';--ink3:' + t.ink3 + ';--accent:' + t.accent + ';--accent-ink:' + t.accentInk +
+      ';--accent-glow:rgba(' + a + ',' + (dark ? 0.14 : 0.1) + ');--accent-line:rgba(' + a + ',0.3)' +
+      ';--shadow-popup:0 8px 32px ' + (dark ? 'rgba(0,0,0,0.55)' : 'rgba(' + rgbOf(t.ink) + ',0.16)') + ';--scrim:rgba(' + rgbOf(t.ground) + ',' + (dark ? 0.7 : 0.55) + ')' +
+      ';--room-table:' + t.table + ';--room-table-deep:' + t.tableDeep + ';--room-wood:' + t.wood + ';--room-wood-dark:' + t.woodDark +
+      ';--room-glow:' + t.glow + ';--room-lift:' + t.lift + ';--room-texture:' + t.texture;
+  }
+  // Light, then dark by the device and by the page's own choice (data-theme), each beating the shared neutrals' same-scheme rule.
+  function roomCss() {
+    return ROOMS.filter(function (r) { return r.tokens; }).map(function (r) {
+      var at = 'html[data-room="' + r.id + '"]', dark = roomDecls(r.tokens.dark, true);
+      return at + '{' + roomDecls(r.tokens.light, false) + '}@media (prefers-color-scheme:dark){' + at + ':not([data-theme="light"]){' + dark + '}}' + at + '[data-theme="dark"]{' + dark + '}';
+    }).join('');
+  }
+  function hashWith(id) {
+    var keep = String(root.location.hash || '').replace(/^#/, '').split('&').filter(function (kv) { return kv && kv.indexOf('room=') !== 0; });
+    if (id !== 'all') keep.push('room=' + id);
+    return keep.length ? '#' + keep.join('&') : '';
+  }
+  function roomOfPage() {
+    var m = /(?:^|[#&])room=([a-z]+)/.exec(root.location.hash || '');
+    if (m && roomById(m[1])) return m[1];
+    if (d.querySelector('meta[name="zimi-games-host"]')) { try { var v = root.localStorage.getItem(ROOM_KEY); if (roomById(v)) return v; } catch (e) { /* blocked */ } }
+    return 'all';
+  }
+  // animate: the light changes over ROOM_FADE_MS (games.css), unless Animation is Off.
+  Shell.setRoom = function (id, animate) {
+    var r = roomById(id) || ROOMS[0], html = d.documentElement;
+    if (r.id === roomNow) return;
+    if (r.tokens && !d.getElementById('gs-rooms')) { var st = d.createElement('style'); st.id = 'gs-rooms'; st.textContent = roomCss(); d.head.appendChild(st); }
+    if (animate && !reducedMotion()) {
+      html.classList.add('gs-room-fade');
+      root.clearTimeout(roomFadeTimer);
+      roomFadeTimer = root.setTimeout(function () { html.classList.remove('gs-room-fade'); }, ROOM_FADE_MS + 80);
+    }
+    if (r.tokens) html.setAttribute('data-room', r.id); else html.removeAttribute('data-room');
+    roomNow = r.id;
+  };
+  Shell.room = function () { return roomNow; };
+  Shell.rooms = ROOMS;
+  Shell.roomHash = hashWith;
+  Shell.setRoom(roomOfPage(), false);
   Shell.isDay = isDay;
   Shell.daily = DAILY[PAGE] && isDay(askedDay) ? { day: askedDay, seed: dailySeed(askedDay, PAGE), kind: DAILY[PAGE] } : null;
   // The day this page plays: the daily's, else the server's (worked out from its last answer), else the device's (outside Zimi).
@@ -501,7 +580,11 @@
     Array.prototype.forEach.call(d.querySelectorAll(TIMER_SELECTOR), function (t) { t.setAttribute('data-gs-timer', ''); });
     // Back is one 44 px target with a name for screen readers; the page's own chevron text stays unseen.
     var backLink = bar.querySelector('.ar-back');
-    if (backLink) backLink.setAttribute('aria-label', T('shell.back'));
+    if (backLink) {
+      backLink.setAttribute('aria-label', T('shell.back'));
+      // Back returns to the room the game was opened from.
+      if (roomNow !== 'all') backLink.setAttribute('href', String(backLink.getAttribute('href') || 'index.html').replace(/#.*$/, '') + hashWith(roomNow));
+    }
     menuBtn = h('button', { class: 'ar-btn gs-menu-btn', type: 'button', 'aria-haspopup': 'dialog', text: T('shell.menu') });
     menuBtn.addEventListener('click', openMenu);
     // The clock sits before the buttons, the Menu last.

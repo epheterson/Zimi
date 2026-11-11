@@ -164,6 +164,7 @@
     var tile = tilesAt(canon(game.path))[0];
     if (!tile) return null;
     var el = tile.cloneNode(true);
+    el.removeAttribute('hidden');   // the shelf may have hidden the original (a room, a search); a copy answers for itself
     var text = el.querySelector('.ar-game-text');
     var line = text && text.querySelector('span');
     if (line && game.line) line.textContent = game.line;
@@ -217,27 +218,58 @@
     return a;
   }
 
-  // The table: the games played lately, newest on top and nearest. Idle, a few classics.
-  function table(games, idle, now) {
-    var s = doc.createElement('section');
-    s.className = 'ar-section ar-continue' + (idle ? ' ar-table-idle' : '');
-    var h = doc.createElement('h2');
-    h.textContent = idle ? T('shelf.table.idle') : T('shelf.table.played');
+  // The rooms' own lists (shell.js): a room's best-known games, in order. A game in a list carries where, as data-fav="room:place,..."
+  // ("all" is the unfiltered shelf), so one row serves every room and the shelf only picks (shelf.js).
+  function roomLists() {
+    var rooms = (root.ZimiShell && root.ZimiShell.rooms) || [];
+    return rooms.filter(function (r) { return r.favorites; }).map(function (r) { return { id: r.id, list: r.favorites }; });
+  }
+  function withFavs(lists) {
+    var order = [], at = {};
+    lists.forEach(function (l) {
+      l.list.forEach(function (p, i) {
+        if (!at[p]) { at[p] = []; order.push(p); }
+        at[p].push(l.id + ':' + i);
+      });
+    });
+    return order.map(function (p) { return { path: p, fav: at[p].join(',') }; });
+  }
+  // With nothing played in a room the table offers three of its best-known games; in no room, the three classics.
+  var IDLE_N = 3;
+  function idleGames(byPath) {
+    var lists = [{ id: 'all', list: CLASSICS }].concat(roomLists().map(function (l) { return { id: l.id, list: l.list.slice(0, IDLE_N) }; }));
+    return withFavs(lists).map(function (g) { return { path: g.path, fav: g.fav, title: named(g.path, 'title', (byPath[g.path] || {}).title) }; });
+  }
+
+  // One shelf of boxes: the games played lately (newest on top and nearest), or the ones offered with nothing played.
+  function tableNav(games, kind, now) {
     var tbl = doc.createElement('nav');
     tbl.className = 'ar-table';
-    tbl.setAttribute('aria-label', h.textContent);
+    tbl.dataset.kind = kind;
     var inner = doc.createElement('div');
     inner.className = 'ar-table-in';
     games.forEach(function (g, i) {
-      var b = box(g, i, idle ? T('shelf.table.classic') : ago(now, g.at), !idle);
-      if (b) inner.appendChild(b);
+      var b = box(g, i, kind === 'idle' ? T('shelf.table.classic') : ago(now, g.at), kind === 'played');
+      if (!b) return;
+      if (g.fav) b.dataset.fav = g.fav;
+      inner.appendChild(b);
     });
-    tbl.appendChild(inner);
-    s.appendChild(h);
-    s.appendChild(tbl);
     if (!inner.children.length) return null;
+    tbl.appendChild(inner);
     // Laid out once it is on the page, and again whenever its width changes (a turn, a view, a language's names).
     if (root.ResizeObserver) new root.ResizeObserver(function () { fitNames(inner); }).observe(inner);
+    return tbl;
+  }
+  // The table: what was played lately and what is offered, both drawn; the shelf shows the one that fits the room and says which in the heading.
+  function table(played, idle, now) {
+    var s = doc.createElement('section');
+    s.className = 'ar-section ar-continue' + (played.length ? '' : ' ar-table-idle');
+    var h = doc.createElement('h2');
+    h.textContent = played.length ? T('shelf.table.played') : T('shelf.table.idle');
+    s.appendChild(h);
+    var navs = [played.length ? tableNav(played, 'played', now) : null, tableNav(idle, 'idle', now)].filter(Boolean);
+    if (!navs.length) return null;
+    navs.forEach(function (n) { n.setAttribute('aria-label', h.textContent); s.appendChild(n); });
     return s;
   }
   // A name on the table never breaks inside a word ("Checker s" on a 390 px phone, where the boxes overlap): a word wider
@@ -322,7 +354,7 @@
       var line = doc.createElement('span');
       line.className = 'ar-daily-line';
       // How many of the everyday dailies are done (the rest are extra): the shelf calls it again when a room leaves fewer.
-      s.dailyLine = function (n, total) { line.textContent = T('shelf.daily.done', { n: n, total: total }) + (streak > 1 ? ' \u00b7 ' + T('daily.streak', { n: streak }) : ''); };
+      s.dailyLine = function (n, total) { line.textContent = (total ? T('shelf.daily.done', { n: n, total: total }) : '') + (streak > 1 ? (total ? ' \u00b7 ' : '') + T('daily.streak', { n: streak }) : ''); };
       s.dailyLine(s.querySelectorAll('a.ar-daily-main.ar-done').length, s.querySelectorAll('a.ar-daily-main').length);
       var stats = doc.createElement('button');
       stats.type = 'button';
@@ -349,7 +381,11 @@
   var WORLD = CLASSICS.concat(['sudoku.html', 'minesweeper.html', 'backgammon.html', 'go.html', 'hearts.html', 'mahjong.html', '2048.html', 'fourinarow.html', 'dominoes.html', 'blackjack.html']);
   function worldSection() {
     var tiles = [];
-    WORLD.forEach(function (p) { var t = tileFor({ path: p }); if (t) tiles.push(ownIds(t)); });   // the idle table's three classics are here too: a person looking for chess finds it
+    // The unfiltered shelf's list, then each room's own (a game in both is one tile): a room shows its list, in its order.
+    withFavs([{ id: 'all', list: WORLD }].concat(roomLists())).forEach(function (g) {
+      var t = tileFor({ path: g.path });   // the idle table's three classics are here too: a person looking for chess finds it
+      if (t) { t.dataset.fav = g.fav; tiles.push(ownIds(t)); }
+    });
     if (!tiles.length) return null;
     var s = section('ar-world', T('shelf.world'), tiles);
     if (root.ZimiShell && root.ZimiShell.localizeTiles) root.ZimiShell.localizeTiles(s);
@@ -397,8 +433,7 @@
       var played = read(root.localStorage).filter(function (e) { return e && e.path; }).slice(0, CAP).map(function (e) {
         return { path: e.path, title: named(e.path, 'title', e.title), at: e.at };
       });
-      var idle = !played.length;
-      var t = table(idle ? CLASSICS.map(function (p) { return { path: p, title: named(p, 'title', (byPath[p] || {}).title) }; }) : played, idle, now);
+      var t = table(played, idleGames(byPath), now);
       if (t) first.parentNode.insertBefore(t, first);
       // shelf.js lays the sections out per view; it is told when they are in.
       doc.dispatchEvent(new Event('zimi-shelf-today'));
