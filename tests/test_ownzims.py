@@ -65,7 +65,7 @@ def test_zimigames_is_a_real_zim_any_reader_opens(full_home):
     assert server._zim_base_name(os.path.basename(path)) == "zimi_games", "served without the month"
     a = Archive(path)
     assert a.main_entry.get_item().path == "index.html"
-    assert a.get_metadata("Title").decode() == "Games · Zimi"
+    assert a.get_metadata("Title").decode() == "Zimi Games"
     assert a.get_metadata("Language").decode() == "eng"
     assert a.get_metadata("Creator").decode() == "Zimi"
     tags = a.get_metadata("Tags").decode().split(";")
@@ -224,10 +224,10 @@ def test_the_committed_zims_are_built_from_the_source_as_it_is():
 def test_display_title_drops_the_brand_suffix():
     from zimi import ownzims
     from zimi.server import _own_display_title
-    assert ownzims.display_title("Games \u00b7 Zimi") == "Games"
+    assert ownzims.display_title("Zimi Games") == "Games"
     assert ownzims.display_title("Wikipedia") == "Wikipedia"
-    assert _own_display_title("Almanac \u00b7 Zimi", "a;zimi:own") == "Almanac"
-    assert _own_display_title("Foo \u00b7 Zimi", "a;b") == "Foo \u00b7 Zimi"
+    assert _own_display_title("Zimi Almanac", "a;zimi:own") == "Almanac"
+    assert _own_display_title("Zimi Foo", "a;b") == "Zimi Foo"
 
 
 def test_articles_line_decides_what_random_and_search_can_land_on():
