@@ -165,7 +165,7 @@
   "alm_galactic_orbit": "{pct}% von Umlauf Nr. {n}",
   "alm_gps_coords": "GPS: {lat}, {lon}",
   "alm_gps_unavailable": "GPS nicht verfügbar",
-  "alm_gr_subtitle": "49 Bilder, ausgewählt von Carl Sagans Team, dekodiert aus analogen Videosignalen auf einer vergoldeten Schallplatte, jetzt über 24 Milliarden km von der Erde entfernt.",
+  "alm_gr_subtitle": "49 der 116 Bilder der Platte, in ihrer Reihenfolge, ausgewählt von Carl Sagans Team. Die Platte ist heute mehr als 20 Milliarden km von der Erde entfernt.",
   "alm_gr_title": "Auf der Schallplatte kodierte Bilder",
   "alm_greatest_elongation": "größte Elongation",
   "alm_h_abbr": "Std",
@@ -4115,5 +4115,8 @@
   "pdf_failed_file": "Die angeforderte Datei",
   "pdf_failed_back": "Zurück zur Sammlung",
   "alm_craft_loading": "Raumsonde wird geladen",
-  "alm_craft_failed": "Kein Modell hier: als Punkt gezeigt"
+  "alm_craft_failed": "Kein Modell hier: als Punkt gezeigt",
+  "alm_gr_pd": "gemeinfrei",
+  "alm_gr_omitted": "In dieser Ausgabe sind die nicht gemeinfreien Bilder nur genannt, nicht gezeigt.",
+  "alm_gr_note": "Acht dieser Bilder sind Fotos der NASA und gemeinfrei. Die übrigen sind urheberrechtlich geschützt; die Rechteinhaber stehen bei jedem Bild: Jon Lomberg, UN Photo, Frank Drake, das National Astronomy and Ionosphere Center, Jay M. Pasachoff und Picturepoint, London. Sie stehen hier, damit man die Platte so sieht, wie sie verschickt wurde; Zimi beansprucht keine Rechte daran. Es sind die Scans der Originalbilder durch die NASA, nicht aus dem Ton der Platte dekodiert. Quelle: NASA, science.nasa.gov."
 }
