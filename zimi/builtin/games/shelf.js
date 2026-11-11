@@ -548,6 +548,14 @@
   function place() {
     var c = doc.querySelector('.ar-continue');
     if (c && c.parentNode !== top) top.appendChild(c);
+    // Under the table, in this order: the world's favorites, what is new, then the rest.
+    var prev = c;
+    ['.ar-world', '.ar-new'].forEach(function (sel) {
+      var r = doc.querySelector(sel);
+      if (!r) return;
+      if (r.parentNode !== top || r.previousSibling !== prev) top.insertBefore(r, prev ? prev.nextSibling : top.firstChild);
+      prev = r;
+    });
     var dl = daily();
     if (dl && dl.parentNode !== top) top.appendChild(dl);
     tableCount = c && !c.classList.contains('ar-table-idle') ? c.querySelectorAll('.ar-box').length : 0;
@@ -597,6 +605,8 @@
     // The feed shows the table and the Daily row on All only; Index keeps them on every tab.
     var feedAll = state.sec === 'all';
     if (c) c.hidden = searching || (state.view === 'lobby' && !feedAll);
+    var rowsTop = Array.prototype.slice.call(doc.querySelectorAll('.ar-world, .ar-new'));
+    rowsTop.forEach(function (r) { r.hidden = searching || !feedAll || state.room !== 'all'; });   // like the Daily row: the unfiltered shelf's opening
     var dl = daily();
     if (dl) {
       var inside = 0, done = 0;
@@ -608,7 +618,7 @@
     }
     if (state.sec === 'recent' && !searching) { sections.concat(made).forEach(function (s) { s.node.hidden = true; }); shown = 1; }
     empty.hidden = shown > 0;
-    top.hidden = [c, dl].every(function (x) { return !x || x.hidden; });
+    top.hidden = [c, dl].concat(rowsTop).every(function (x) { return !x || x.hidden; });
   }
 
   function setView(v) {
