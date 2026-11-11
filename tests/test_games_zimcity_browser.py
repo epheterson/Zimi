@@ -854,7 +854,8 @@ def test_on_an_iphone_reporting_no_inset_the_tray_still_clears_the_indicator(bro
     pg = iphone(browser, site, 844)
     assert pg.evaluate(LOWEST_CONTROL) <= 844 - 34
     pg = iphone(browser, site, 664)
-    assert pg.evaluate("() => getComputedStyle(document.documentElement).getPropertyValue('--safe-b').trim()") == "0px"
+    # --safe-b is a calc() (the inset plus the Kiwix JS toolbar's room, 0 here): its used value is what must be 0.
+    assert pg.evaluate("() => { const p = document.createElement('i'); p.style.cssText = 'position:fixed;padding-bottom:var(--safe-b)'; document.body.appendChild(p); const v = getComputedStyle(p).paddingBottom; p.remove(); return v; }") == "0px"
 
 
 MAP_ON_SCREEN = """() => { const v = window.__zimcity.view, m = v.city.map, s = v.cam.s, l = -v.cam.x * s, t = -v.cam.y * s, r = l + m.width * 16 * s, b = t + m.height * 16 * s;
