@@ -158,7 +158,7 @@ def test_the_built_zims_hold_49_and_8(tmp_path):
     from libzim.reader import Archive
 
     meta = Archive(str(tmp_path / "kiwix.zim"))
-    assert meta.get_metadata("Name").decode() == build_almanac_kiwix.DEFAULT_NAME == "zimi_eng_almanac"
+    assert meta.get_metadata("Name").decode() == build_almanac_kiwix.DEFAULT_NAME == "zimi_en_almanac"
     assert meta.get_metadata("Title").decode() == build_almanac_kiwix.DEFAULT_TITLE == "Zimi Almanac"
 
 

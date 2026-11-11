@@ -216,7 +216,7 @@ html[data-anim="off"] *, html[data-anim="off"] *::before, html[data-anim="off"] 
 /* Outside Zimi: the credit line (shell.js homeLine), "© year [mark] Zimi", sized and coloured as a credit. The mark and the
    name are one link; where the mark sits is zimihome.js's ZIMI_HOME_MARK. Its centre is on the centre of the digits' height:
    vertical-align -2.3px puts it there at 12px, measured to 0.01px (test_zimi_home_line_browser). */
-.gs-home { display: flex; align-items: center; margin: 0; font-size: 12px; line-height: 16px; color: var(--ink2); font-variant-numeric: tabular-nums; }
+.gs-home { display: flex; align-items: center; justify-content: center; margin: 0; font-size: 12px; line-height: 16px; color: var(--ink2); font-variant-numeric: tabular-nums; }
 .gs-home img { display: inline-block; width: 13px; height: 13px; vertical-align: -2.3px; margin-inline: 0 3px; }
 .gs-home img.gs-mark-end { margin-inline: 3px 0; }
 .gs-home a { color: inherit; text-decoration: underline; text-decoration-color: color-mix(in srgb, currentColor 45%, transparent); text-underline-offset: 2px; padding: 14px 12px; margin: -14px -12px; border-radius: var(--r-chip); }

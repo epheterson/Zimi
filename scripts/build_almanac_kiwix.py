@@ -8,8 +8,8 @@ edition keeps the 8 and names each of the 41 in the gallery's list (number, titl
 sequence stays whole (almanacstage.stage, community). Everything else is the Almanac ``python -m zimi.ownzims`` builds;
 Zimi's own Almanac keeps all 49. Nothing is committed: the file goes to --out.
 
-Its Name and Title are openZIM's, not the ones Zimi's own copy carries: Name ``zimi_eng_almanac`` (creator,
-language, scope; the scope is the staged folder's name) and Title "Zimi Almanac".
+Its Name and Title are openZIM's, not the ones Zimi's own copy carries: Name ``zimi_en_almanac`` (openZIM's
+{domain}_{lang}_{selection}, the 2-letter language) and Title "Zimi Almanac". The Language metadata stays ``eng``.
 """
 
 import argparse
@@ -22,10 +22,10 @@ import tempfile
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, ROOT)
 
-DEFAULT_NAME = "zimi_eng_almanac"
+DEFAULT_NAME = "zimi_en_almanac"   # openZIM: {domain}_{lang}_{selection}, the 2-letter language where there is one
 DEFAULT_TITLE = "Zimi Almanac"
 FILE_FMT = "%s_%s.zim"
-_NAME = re.compile(r"^zimi_([a-z]{3})_([a-z0-9][a-z0-9_-]*)$")
+_NAME = re.compile(r"^zimi_([a-z]{2,3})_([a-z0-9][a-z0-9.-]*)$")
 #: Text for the ZIM's Description or LongDescription instead of zimi.txt's (None keeps zimi.txt's). Change a line, rebuild.
 DESCRIPTION = None
 LONG_DESCRIPTION = None
@@ -59,12 +59,17 @@ def build(out_dir, file_name=None, name=DEFAULT_NAME, title=DEFAULT_TITLE, month
     os.makedirs(out_dir, exist_ok=True)
     path = os.path.join(out_dir, file_name or FILE_FMT % (name, month))
     with tempfile.TemporaryDirectory(prefix="zimi-kiwix-") as tmp:
-        # The ZIM's Name is zimi_<language>_<the folder's name>: the folder is named for the scope.
         dest = os.path.join(tmp, m.group(2))
         os.mkdir(dest)
         almanacstage.stage(dest, community=True)
         set_fields(dest, Title=title, Description=description or DESCRIPTION, LongDescription=long_description or LONG_DESCRIPTION)
-        creator.create_folder_zim(dest, out_path=path, register=False, extra_items=ownzims.with_build_year())
+        # The Name is set outright: creator derives it from the Language metadata's 3-letter code (zimi_eng_...).
+        real = creator.zim_name
+        creator.zim_name = lambda scope, language="eng": name
+        try:
+            creator.create_folder_zim(dest, out_path=path, register=False, extra_items=ownzims.with_build_year())
+        finally:
+            creator.zim_name = real
     return path
 
 

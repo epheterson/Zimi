@@ -11,6 +11,8 @@ import re
 import sys
 import tempfile
 
+import pytest
+
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from test_games_persist_browser import GAMES, VIEW, browser, served  # noqa: E402,F401
 
@@ -175,3 +177,75 @@ def test_the_mark_and_the_name_are_one_link_and_the_switch_moves_the_mark(
         if at != "none":
             assert abs(page.evaluate(MARK_OFFSET, ".ar-shelf > .gs-home")) <= 0.5, at
         ctx.close()
+
+
+# The credit line's own centre against the page's: the text of "(c) <year> Zimi" (not the link's padding), px.
+LINE_CENTRE = """sel => { const line = document.querySelector(sel), w = document.createTreeWalker(line, NodeFilter.SHOW_TEXT);
+  let l = Infinity, r = -Infinity, n; while ((n = w.nextNode())) { if (!n.textContent.trim()) continue; const g = document.createRange(); g.selectNodeContents(n);
+    const b = g.getBoundingClientRect(); l = Math.min(l, b.left); r = Math.max(r, b.right); }
+  return (l + r) / 2 - document.documentElement.clientWidth / 2; }"""
+CENTRE_WIDTHS = (390, 820, 1440)
+CENTRE_TOLERANCE_PX = 1
+CREDIT_MARGIN_TOP = "20px"
+
+
+@pytest.mark.parametrize("width", CENTRE_WIDTHS)
+@pytest.mark.parametrize("rtl", [False, True])
+def test_the_games_credit_line_is_centred(browser, served, width, rtl):
+    ctx = browser.new_context(viewport={"width": width, "height": 844})
+    page = ctx.new_page()
+    page.goto("%s/index.html%s" % (served, "#lang=ar&dir=rtl" if rtl else ""))
+    page.wait_for_selector(".ar-shelf > .gs-home")
+    page.wait_for_timeout(500)
+    off = page.evaluate(LINE_CENTRE, ".ar-shelf > .gs-home")
+    assert abs(off) <= CENTRE_TOLERANCE_PX, (width, rtl, off)
+    assert page.evaluate("getComputedStyle(document.querySelector('.ar-shelf > .gs-home')).marginTop") == CREDIT_MARGIN_TOP
+    ctx.close()
+
+
+@pytest.fixture(scope="module")
+def almanac_served():
+    import functools
+    import http.server
+    import threading
+
+    from zimi import almanacstage
+
+    tmp = tempfile.mkdtemp(prefix="zimi-alm-home-")
+    almanacstage.stage(tmp)
+    with open(os.path.join(tmp, "zimibuild.js"), "w", encoding="utf-8") as f:
+        f.write("window.ZIMI_BUILT_YEAR = 2031;\n")
+    handler = functools.partial(http.server.SimpleHTTPRequestHandler, directory=tmp)
+    httpd = http.server.ThreadingHTTPServer(("127.0.0.1", 0), handler)
+    threading.Thread(target=httpd.serve_forever, daemon=True).start()
+    yield "http://127.0.0.1:%d" % httpd.server_address[1]
+    httpd.shutdown()
+
+
+@pytest.mark.parametrize("width", CENTRE_WIDTHS)
+def test_the_almanacs_credit_line_is_centred_and_last(browser, almanac_served, width):
+    ctx = browser.new_context(viewport={"width": width, "height": 844}, service_workers="block")
+    page = ctx.new_page()
+    page.goto(almanac_served + "/index.html")
+    page.wait_for_selector(".alm-home", state="attached", timeout=90_000)
+    page.wait_for_timeout(500)
+    off = page.evaluate(LINE_CENTRE, ".alm-home")
+    assert abs(off) <= CENTRE_TOLERANCE_PX, (width, off)
+    assert page.evaluate("document.querySelector('.alm-footer').lastElementChild.classList.contains('alm-home')")
+    assert page.evaluate("getComputedStyle(document.querySelector('.alm-home')).marginTop") == CREDIT_MARGIN_TOP
+    ctx.close()
+
+
+def test_the_standalone_3d_views_gear_is_not_drawn(browser, almanac_served):
+    """Everything the gear holds (Zimi's satellite-data setting, the Almanac HD download, who may change them) needs Zimi's
+    server: from the ZIM file the button is hidden and its panel cannot open."""
+    ctx = browser.new_context(viewport={"width": 390, "height": 844}, service_workers="block")
+    page = ctx.new_page()
+    page.goto(almanac_served + "/index.html")
+    page.wait_for_function("() => typeof openAlmanacEarth === 'function'", timeout=120_000)
+    page.evaluate("openAlmanacEarth({ target: 'earth' })")
+    page.wait_for_selector("#ae-gear", state="attached", timeout=120_000)
+    assert page.evaluate("document.getElementById('ae-gear').hidden")
+    assert page.evaluate("getComputedStyle(document.getElementById('ae-gear')).display") == "none"
+    assert not page.evaluate("/whoever runs this Zimi|Almanac HD/i.test(document.getElementById('almanac-view').innerText)")
+    ctx.close()

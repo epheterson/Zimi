@@ -1178,7 +1178,7 @@ function _aeBuildDom() {
         // The round tools stand in a column, so the date keeps its one line.
         '<div class="ae-tools">' +
           '<button type="button" class="ae-btn ae-round ae-gear" id="ae-gear" aria-expanded="false" aria-controls="ae-set"' +
-            ' aria-label="' + _almEsc(gearLabel) + '" title="' + _almEsc(gearLabel) + '">' +
+            (_aeFromZim() ? ' hidden' : '') + ' aria-label="' + _almEsc(gearLabel) + '" title="' + _almEsc(gearLabel) + '">' +
             (typeof _gearSvg === 'string' ? _gearSvg : '⚙') + '</button>' +
           '<button type="button" class="ae-btn ae-round" id="ae-locate" aria-pressed="false"' +
             ' aria-label="' + _almEsc(locateLabel) + '" title="' + _almEsc(locateLabel) + '">' + AE_LOCATE_SVG + '</button>' +
@@ -5317,6 +5317,10 @@ function _aeGetFresh() {
   });
 }
 
+// Run from the ZIM file (zimi/builtin/almanac), not from Zimi's server: the page's data answers come from files inside it
+// (local.js), so everything the gear holds (Zimi's satellite-data setting, the HD download, who may change them) has nothing
+// to act on there, and the gear is not drawn.
+function _aeFromZim() { return typeof ZimiAlmanacLocal !== 'undefined'; }
 // ── The gear: "Satellite data from the internet" ──
 // Everyone sees the choice in force; an admin may change it, unless the
 // environment has (ZIMI_SATELLITE_UPDATES, or ZIMI_OFFLINE forcing Never),
