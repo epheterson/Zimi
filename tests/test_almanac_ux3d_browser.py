@@ -94,8 +94,8 @@ def test_back_from_stand_returns_the_3d_view_as_it_was(three_d):
     _stand_up(pg)
     pg.click("#ae-stand-back")
     pg.wait_for_function(
-        "() => !_ae.stand && !_ae.standPending", timeout=60_000, polling=250
-    )
+        "() => !_ae.stand && !_ae.standPending && !_ae.fly", timeout=60_000, polling=250
+    )  # it flies back out to the view as it was
     after = pg.evaluate(
         "() => ({ dist: _ae.dist, preset: _ae.preset, target: _ae.target, lit: (document.querySelector('#ae-views [aria-pressed=true]') || {}).dataset && document.querySelector('#ae-views [aria-pressed=true]').dataset.aeView })"
     )
@@ -284,12 +284,20 @@ def test_the_hero_disc_stays_put_under_a_drag_until_the_view_can_turn_it(no_map)
 # ── The ground's stones ──
 def test_the_grounds_stones_are_never_cut_circles_or_a_bare_hemisphere():
     """Eric, 2026-11-10: "crater circles cut in half". The ground shader's stones kept only the nearest one at a point (a stone met by a
-    bigger one was cut in half), drew a perfect circle, and rose as a steep hemisphere (half a disc lit, half dark from the side)."""
-    src = open(os.path.join(os.path.dirname(HERE), "zimi", "static", "almanac-standgl.js"), encoding="utf-8").read()
+    bigger one was cut in half), drew a perfect circle, and rose as a steep hemisphere (half a disc lit, half dark from the side).
+    """
+    src = open(
+        os.path.join(os.path.dirname(HERE), "zimi", "static", "almanac-standgl.js"),
+        encoding="utf-8",
+    ).read()
     a = src.index("vec2 rocks(vec3 p, float foot)")
     body = src[a : src.index("void main()", a)]
-    assert "best" not in body, "only the nearest stone counted: a stone met by a bigger one is cut"
-    assert "wob" in body and "vnoise" in body, "the outline is wobbled: no stone is a circle"
+    assert (
+        "best" not in body
+    ), "only the nearest stone counted: a stone met by a bigger one is cut"
+    assert (
+        "wob" in body and "vnoise" in body
+    ), "the outline is wobbled: no stone is a circle"
     assert "dome * dome" in body, "a soft profile at the ground, not a steep hemisphere"
 
 
@@ -298,9 +306,79 @@ def test_a_grazing_sun_does_not_blow_the_ground_out_or_draw_the_grids_squares():
     static = os.path.join(os.path.dirname(HERE), "zimi", "static")
     stand = open(os.path.join(static, "almanac-stand.js"), encoding="utf-8").read()
     gl = open(os.path.join(static, "almanac-standgl.js"), encoding="utf-8").read()
-    shade = open(os.path.join(static, "almanac-terrainshade.js"), encoding="utf-8").read()
-    assert "AE_STAND_EXPOSURE_MU_FLOOR" in stand and "expoG" in stand, "the eye does not open for the sliver of Sun the flat ground gets"
-    assert "AE_SHADE_PENUMBRA_CELLS" in shade and "_aeShadeCellOut)" in shade, "a shadow's edge is never sharper than the grid's cell"
+    shade = open(
+        os.path.join(static, "almanac-terrainshade.js"), encoding="utf-8"
+    ).read()
+    assert (
+        "AE_STAND_EXPOSURE_MU_FLOOR" in stand and "expoG" in stand
+    ), "the eye does not open for the sliver of Sun the flat ground gets"
+    assert (
+        "AE_SHADE_PENUMBRA_CELLS" in shade and "_aeShadeCellOut)" in shade
+    ), "a shadow's edge is never sharper than the grid's cell"
     fine = gl[gl.index("float fine(vec3 p, float foot)") : gl.index("vec2 rocks(")]
-    assert "cos(a)" in fine, "each octave's lattice is turned: aligned, they drew squares"
-    assert "fine(vP + dpx" in gl, "the fine relief's slope is a step along the ground, not a 2 x 2 pixel derivative"
+    assert (
+        "cos(a)" in fine
+    ), "each octave's lattice is turned: aligned, they drew squares"
+    assert (
+        "fine(vP + dpx" in gl
+    ), "the fine relief's slope is a step along the ground, not a 2 x 2 pixel derivative"
+
+
+# ── Down to the ground and back up: one path, never a black frame ──
+SAMPLE_MS = 100
+DARK_MEAN = 6  # the mean of a 0..255 grey over the middle of a daylight frame; a black one is under 1
+
+
+def _mean(pg):
+    import io
+
+    import numpy as np
+    from PIL import Image
+
+    im = Image.open(io.BytesIO(pg.screenshot())).convert("L")
+    w, h = im.size
+    return float(np.asarray(im.crop((w // 5, h // 5, 4 * w // 5, 4 * h // 5))).mean())
+
+
+LOGGER = """() => { window.__log = []; (function tick() { var st = _ae.stand;
+  window.__log.push({ t: performance.now(), a: st ? st.altKm : null, mode: st ? st.mode : null, d: _ae.dist, fly: !!_ae.fly, still: !!document.querySelector('.ae-stand-still') });
+  window.__raf = requestAnimationFrame(tick); })(); }"""
+
+
+def test_the_descent_is_one_path_with_no_black_frame_and_the_ascent_is_the_same_path_back(three_d):
+    pg = three_d
+    pg.evaluate("() => _aeGoTo(Date.UTC(2026, 5, 21, 20, 0))")  # local noon over Los Angeles
+    pg.wait_for_timeout(2500)
+    start = pg.evaluate("() => _ae.dist")
+    pg.evaluate(LOGGER)
+    pg.evaluate("() => _aeStandAt('earth', 34.05, -118.24)")
+    frames = []
+    while True:  # a screenshot every moment it can take: none may be black
+        frames.append(_mean(pg))
+        if pg.evaluate("() => !!_ae.stand && _ae.stand.mode === 'ground'") or len(frames) > 120:
+            break
+    log = pg.evaluate("() => window.__log")
+    assert log[-1]["mode"] == "ground", "the descent ended on the ground"
+    assert min(frames) > DARK_MEAN, "a black frame in the descent: %s" % [round(f) for f in frames]
+    dists = [f["d"] for f in log if f["a"] is None]
+    alts = [f["a"] for f in log if f["a"] is not None]
+    assert all(b <= a + 1e-9 for a, b in zip(dists, dists[1:])), "the approach only ever comes nearer"
+    assert len(alts) > 3 and all(b <= a + 1e-6 for a, b in zip(alts, alts[1:])), "the camera's height only ever falls"
+    # and back up, along the same path
+    pg.evaluate("() => { window.__log = []; }")
+    pg.click("#ae-stand-back")
+    frames = []
+    while True:
+        frames.append(_mean(pg))
+        if pg.evaluate("() => !_ae.stand && !_ae.fly") or len(frames) > 120:
+            break
+    log = pg.evaluate("() => window.__log")
+    assert min(frames) > DARK_MEAN, "a black frame in the ascent: %s" % [round(f) for f in frames]
+    up = [f["a"] for f in log if f["a"] is not None]
+    out = [f["d"] for f in log if f["a"] is None]
+    assert len(up) > 3 and all(b >= a - 1e-6 for a, b in zip(up, up[1:])), "the ascent only ever climbs"
+    assert all(b >= a - 1e-9 for a, b in zip(out, out[1:])), "and then draws away only"
+    end = pg.evaluate("() => ({ dist: _ae.dist, fit: _aeFitDist(AE_FIT_EARTH), pick: !!_ae.pick, preset: _ae.preset })")
+    assert end["dist"] >= end["fit"] - 1e-6 and end["pick"] and end["preset"] == "earth", end  # the body whole, the place marked
+    assert end["dist"] >= start - 1e-6, (start, end)
+    assert not pg.errors, pg.errors

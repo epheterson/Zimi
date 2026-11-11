@@ -20,6 +20,7 @@ var AE_ST_BACKSCATTER = 0.07, AE_ST_SURGE = 0.9, AE_ST_SURGE_WIDTH = 0.14;   // 
 var AE_ST_ROCK_FADE_M = [8, 45];  // stones thin out with distance into plain ground (a pixel of them at range is noise, not stone)
 var AE_ST_STEPS_SKY = 30, AE_ST_STEPS_GROUND = 5, AE_ST_STEPS_SUN = 6;   // the air's march: the sky is drawn at half size, so it can afford many (fewer stripe the twilight where the shadow's edge crosses the air)
 var AE_ST_GAMMA = '2.2';
+var AE_ST_MAP_AVG_LOD = 4;   // the mip of the colour map that stands for the place's own colour once the map's texels would be blocks
 
 // The air of each body that has some. ray: Rayleigh scattering per km at the surface (red, green, blue) and its scale
 // height; mie: the dust or haze's extinction, single-scattering albedo and the forward lobe (g) per channel, its scale
@@ -475,7 +476,7 @@ var AE_ST_GROUND_FRAG = [
   AE_ST_GLSL_ATMO, AE_ST_GLSL_TONE, AE_ST_GLSL_NOISE,
   _aeStInscatterGlsl('inscatterGround', AE_ST_STEPS_GROUND),
   'uniform vec3 uCam; uniform float uKg, uPixAng, uTime;',
-  'uniform sampler2D uMap; uniform float uMapped, uGrey; uniform vec3 uBase, uGain;',
+  'uniform sampler2D uMap; uniform float uMapped, uGrey, uMapW; uniform vec2 uPlaceUv; uniform vec3 uBase, uGain;',
   'uniform vec3 uAmbient, uSkyHor, uSkyZen, uE2, uDir2;',
   'uniform vec2 uHead; uniform float uCloudDim; uniform float uGrass, uTundra, uCanopy; uniform float uLommel, uRough, uRock, uDetail, uCover, uDiffuse, uVis, uDirect; uniform vec3 uDiffSky;',
   'varying vec3 vP, vN, vDir; varying float vH, vSea, vShade;',
@@ -520,6 +521,7 @@ var AE_ST_GROUND_FRAG = [
   '  vec2 uv = vec2(atan(vDir.y, vDir.x) / (2.0 * PI) + 0.5, asin(clamp(vDir.z, -1.0, 1.0)) / PI + 0.5);',
   '  vec3 map = uBase;',
   '  if (uMapped > 0.5) { vec2 dx = dFdx(uv), dy = dFdy(uv); dx.x -= floor(dx.x + 0.5); dy.x -= floor(dy.x + 0.5); map = textureGrad(uMap, uv, dx, dy).rgb; if (uGrey > 0.5) map = vec3(map.r); }',
+  '  if (uMapped > 0.5 && uMapW < 1.0) { vec3 avg = textureLod(uMap, uPlaceUv, ' + AE_ST_MAP_AVG_LOD.toFixed(1) + ').rgb; if (uGrey > 0.5) avg = vec3(avg.r); map = mix(avg, map, uMapW); }',
   '  vec3 alb = pow(map, vec3(' + AE_ST_GAMMA + ')) * uGain;',
   '  float mott = 0.0, wm = 1.0;',
   '  for (int i = 0; i < 4; i++) { float s = 0.4 * pow(4.0, float(i)); wm = 1.0 - smoothstep(0.1, 0.4, 3.0 * foot / s); if (wm > 0.0) mott += vnoise(vP / s + 31.0 * float(i)) * 0.18 * wm; }',

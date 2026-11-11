@@ -83,12 +83,31 @@ function _aeStandViewNow() {
   var f = _ae.fly;
   return { target: _ae.target, dist: f ? f.toDist : _ae.dist, az: f ? f.toAz : _ae.az, el: f ? f.toEl : _ae.el_, preset: _ae.preset, arrived: _ae.arrived };
 }
-function _aeStandRestoreView(prev) {
+// Back from the ground: the camera is over the place at the height the descent began from (the same picture the ground's last one fades into),
+// the place marked, and it flies out the way it came to the view as it was, the body whole (never nearer than its own framing, where the map is sharp).
+function _aeStandRestoreView(prev, st) {
   if (!prev || !_aeIsOpen || !_ae.gl || _ae.stand || _ae.standPending) return;
+  var key = st.key, frame = _aeStBodyNow(key), t = AE_TARGETS[key];
   _ae.fly = null; _ae.pan = null;
-  _ae.target = prev.target; _ae.dist = prev.dist; _ae.az = prev.az; _ae.el_ = prev.el; _ae.preset = prev.preset; _ae.arrived = prev.arrived;
+  _ae.target = key; _ae.arrived = prev.arrived;
+  if (frame && t) {
+    var azel = _aeAzElOf(_aeStToScene(frame, _aeStPlaceVec(key, st.lat, st.lon)));
+    _ae.dist = _aeClampDist(t.min); _ae.az = azel.az; _ae.el_ = azel.el;
+    _ae.pick = { body: key, lat: st.lat, lon: st.lon };   // the place, as a dot
+  }
+  _ae.preset = prev.target === key ? prev.preset : null;
   _aeMarkViews();
   _ae.dirty = true; _aeKick();
+  var sharp = key === 'earth' ? _aeFitDist(AE_FIT_EARTH) : key === 'moon' ? _aeFitDist(AE_FIT_MOON) : 0;
+  var far = Math.max(prev.dist, sharp), same = prev.target === key;
+  var out = function () {
+    if (_ae.stand || _ae.standPending || !_aeIsOpen) return;
+    // The view as it was if it was of this body; else (the ground was entered from another view) the body itself, whole.
+    if (same) _aeFlyTo(key, far, { az: prev.az, el: prev.el }); else _aeFlyTo(key, sharp || _aeClampDist(t.min * AE_STAND_BACK_WHOLE), _ae.az != null ? { az: _ae.az, el: _ae.el_ } : null);
+    _ae.preset = same ? prev.preset : null; _aeMarkViews();
+  };
+  if (_aeReduceMotion()) { if (same) { _ae.dist = _aeClampDist(far); _ae.az = prev.az; _ae.el_ = prev.el; } else _ae.dist = _aeClampDist(sharp || t.min * AE_STAND_BACK_WHOLE); _ae.dirty = true; return; }
+  out();
 }
 // The terrain and the mesh, built in slices behind the flight.
 // A pending ground is wanted while it is the view's own, or a site's (almanac-standhost.js) that has not been dropped.
@@ -149,21 +168,61 @@ function _aeStandStep() {
 }
 
 // ── Going down, and back ──
+// The two views share one canvas, so the way between them is a cross-fade of a copy of the last picture of the one over the first
+// of the other: never a black frame. The ground's shaders are compiled and its geometry uploaded while the flight's last picture is
+// still on screen (a first frame that compiled in the open was a black one).
+var AE_STAND_BACK_WHOLE = 8;   // a body with no framing of its own is left at this many times its nearest distance
+var AE_STAND_XFADE_MS = 420, AE_STAND_WARM_MS = 4000, AE_STAND_WARM_PX = 8;
+// A copy of what the canvas shows now (taken in the task that drew it, before it is presented), laid over it.
+function _aeStandStill() {
+  var cv = _aeById('ae-canvas');
+  if (!cv || !cv.width || !cv.parentNode) return null;
+  try {
+    var el = document.createElement('canvas');
+    el.width = cv.width; el.height = cv.height;
+    el.getContext('2d').drawImage(cv, 0, 0);
+    el.className = 'ae-stand-still';
+    el.setAttribute('aria-hidden', 'true');
+    el.style.cssText = 'position:absolute;inset:0;width:100%;height:100%;pointer-events:none';
+    cv.parentNode.insertBefore(el, cv.nextSibling);
+    return el;
+  } catch (e) { return null; }
+}
+// The copy fades away over the new picture (the Web Animations API, which the reduced-motion rule for CSS transitions does not cut short).
+function _aeStandStillFade(el) {
+  if (!el) return;
+  var done = function () { if (el.parentNode) el.parentNode.removeChild(el); };
+  if (!el.animate) { done(); return; }
+  var a = el.animate([{ opacity: 1 }, { opacity: 0 }], { duration: AE_STAND_XFADE_MS, easing: 'ease-in-out', fill: 'forwards' });
+  a.onfinish = done; a.oncancel = done;
+  setTimeout(done, AE_STAND_XFADE_MS + 200);
+}
+// Compile the ground's programs and draw it once into a few pixels, so its first picture on screen costs nothing.
+function _aeStandWarm(st) {
+  var S = _ae.gl, r = S.renderer, THREE = S.THREE;
+  var warmed = function () {
+    try {
+      var rt = new THREE.WebGLRenderTarget(AE_STAND_WARM_PX, AE_STAND_WARM_PX);
+      r.setRenderTarget(rt); r.render(st.scene, st.camera); r.setRenderTarget(null); rt.dispose();
+    } catch (e) { r.setRenderTarget(null); }
+  };
+  var compiled = r.compileAsync ? r.compileAsync(st.scene, st.camera).catch(function () {}) : Promise.resolve();
+  return Promise.race([compiled.then(warmed), new Promise(function (res) { setTimeout(res, AE_STAND_WARM_MS); })]);
+}
 function _aeStandSwap(pend) {
   pend.swapping = true;
-  var canvas = _aeById('ae-canvas'), reduce = _aeReduceMotion(), go = function () {
-    if (_ae.standPending !== pend) { if (canvas) canvas.style.opacity = ''; return; }
+  var st = _aeStandNew(pend);
+  if (!st) { _ae.standPending = null; return; }
+  _aeStandWarm(st).then(function () {
+    if (_ae.standPending !== pend || !_ae.gl) { _aeStandDispose(st); return; }
     _ae.standPending = null;
-    var st = _aeStandNew(pend);
-    if (!st) { if (canvas) canvas.style.opacity = ''; return; }
+    var still = _aeStandStill();
     _ae.stand = st;
+    st.t0 = performance.now();   // the descent starts now, not when the ground was built
     _aeStandEnter(st);
-    if (canvas) { canvas.style.opacity = ''; setTimeout(function () { if (canvas) canvas.style.transition = ''; }, AE_STAND_FADE_MS + 40); }
-  };
-  if (reduce || !canvas) { go(); return; }
-  canvas.style.transition = 'opacity ' + AE_STAND_FADE_MS + 'ms ease';
-  canvas.style.opacity = '0';
-  setTimeout(go, AE_STAND_FADE_MS);
+    _aeStandDraw(performance.now());   // the ground's first picture is on the canvas under the copy of the last of the flight
+    _aeStandStillFade(still);
+  });
 }
 function _aeStandNew(pend) {
   var S = _ae.gl, b = AE_STAND_BODIES[pend.key];
@@ -220,17 +279,12 @@ function _aeStandLeave(history) {
   _aeKick();
 }
 function _aeStandFinishLeave(st) {
-  var canvas = _aeById('ae-canvas'), done = function () {
-    var prev = st.pend && st.pend.prev && !st.handoff ? st.pend.prev : null;   // a card's hand-off goes back to the card (_aeStandAfterClose), not to a view
-    _aeStandDrop();
-    _aeStandRestoreView(prev);   // under the fade: the view is where it was, its chip lit
-    if (canvas) { canvas.style.opacity = ''; setTimeout(function () { canvas.style.transition = ''; }, AE_STAND_FADE_MS + 40); }
-  };
   st.fading = true;
-  if (_aeReduceMotion() || !canvas) { done(); return; }
-  canvas.style.transition = 'opacity ' + AE_STAND_FADE_MS + 'ms ease';
-  canvas.style.opacity = '0';
-  setTimeout(done, AE_STAND_FADE_MS);
+  var still = _aeStandStill(), prev = st.pend && st.pend.prev && !st.handoff ? st.pend.prev : null;   // a card's hand-off goes back to the card (_aeStandAfterClose), not to a view
+  _aeStandDrop();
+  _aeStandRestoreView(prev, st);
+  if (_ae.gl && _aeIsOpen) _aeDraw(performance.now(), true);   // its first picture is on the canvas under the copy of the ground's last
+  _aeStandStillFade(still);
 }
 function _aeStandDrop(closing) {
   var st = _ae && _ae.stand;
@@ -281,8 +335,7 @@ function _aeStandGl(st, pend) {
   if (typeof _aeRingCanvas === 'function') _aeLoadTexture(S.THREE, _aeRingCanvas().toDataURL()).then(function (tx) { if (st.scene) st.ringTex = tx; else tx.dispose(); }, function () {});
   scene.add(_aeStandGroundMesh(st, pend, U, mat));
   st.scene = scene; st.camera = camera;
-  // Compile before the first frame (the driver does it off the main thread where it can).
-  if (S.renderer.compileAsync) S.renderer.compileAsync(scene, camera).catch(function () {});
+  // Compiled and warmed by _aeStandWarm before the first picture (almanac-standhost.js draws its own).
 }
 // The air's numbers as the uniforms every shader shares: the body's radius, the ground's, and its air if it has rays and dust.
 function _aeStandAirUniforms(km, groundKm, air) {
@@ -352,7 +405,7 @@ function _aeStandGroundMesh(st, pend, U, mat) {
   st.geo.push(g);
   var gu = st.ground = Object.assign({
     uCam: { value: [0, 0, 0] }, uPixAng: { value: 0.001 }, uTime: { value: 0 },
-    uMap: { value: pend.tex || null }, uMapped: { value: pend.tex ? 1 : 0 }, uGrey: { value: AE_STAND_GREY_MAP[st.key] ? 1 : 0 },
+    uMap: { value: pend.tex || null }, uMapped: { value: pend.tex ? 1 : 0 }, uMapW: { value: 1 }, uPlaceUv: { value: [pend.lon / 360 + 0.5, pend.lat / 180 + 0.5] }, uGrey: { value: AE_STAND_GREY_MAP[st.key] ? 1 : 0 },
     uBase: { value: AE_STAND_BASE[st.key] || [0.5, 0.5, 0.5] }, uGain: { value: AE_STAND_TINT[st.key] || [1, 1, 1] },
     uAmbient: { value: [0, 0, 0] }, uSkyHor: { value: [0, 0, 0] }, uSkyZen: { value: [0, 0, 0] }, uE2: { value: [0, 0, 0] }, uDir2: { value: [0, 0, 1] },
     uLommel: { value: a ? 0 : 1 }, uRough: { value: AE_STAND_ROUGH[st.key] || (st.b.fbm.amp > 100 ? 1.3 : 1) }, uRock: { value: AE_STAND_ROCK[st.key] || 0.25 }, uDetail: { value: st.key === 'earth' ? 1 : 0 }, uCloudDim: { value: 1 }, uKg: { value: 1 }, uGrass: { value: 0 }, uTundra: { value: 0 }, uCanopy: { value: 0 }, uHead: { value: [0, 1] }, uCover: { value: st.key === 'earth' ? 1 : 0 },
@@ -1014,8 +1067,15 @@ function _aeStandShadeTick(st, fr, now) {
     st.dirty = true; _ae.dirty = true;
   }
 }
+// How much of the body's colour map the ground shows, 1 down to 0: from high above it is the map; as the camera comes down the map's texels, which no
+// map holds finer than its own, would fill the screen as blocks, so it gives way to the map's local colour (a coarse average at the place) before they do.
+var AE_STAND_MAP_FADE_R = [0.015, 0.11];   // the camera's height over the body's radius where the map is gone, and where it is all there
+function _aeStandMapShare(st) {
+  return _aeSmoother(_aeClamp((st.altKm / st.b.km - AE_STAND_MAP_FADE_R[0]) / (AE_STAND_MAP_FADE_R[1] - AE_STAND_MAP_FADE_R[0]), 0, 1));
+}
 function _aeStandApplyGround(st, fr, ph, view, now) {
   var g = st.ground;
+  g.uMapW.value = _aeStandMapShare(st);
   g.uCloudDim.value = st.cloudDim === undefined ? 1 : st.cloudDim;   // the Sun's light on the ground, less under cloud
   g.uCam.value = view.pos; g.uPixAng.value = view.pixAng;
   var hl = Math.hypot(view.e[8], view.e[9]) || 1;

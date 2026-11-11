@@ -491,7 +491,7 @@ def test_a_direct_handoff_is_on_the_ground_at_once_and_says_when_its_first_frame
     hud = page.evaluate("() => document.getElementById('ae-stand-text').innerText")
     import re
 
-    assert re.search(r"☀ -?\d+°( ↓)? [NESW]+\s+⌖ \d+° [NESW]+", hud), hud  # the Sun's height is degrees, its bearing the letter
+    assert re.search(r"☀ \d+° [↑↓] · [NESW]+\s+⌖ \d+° [NESW]+", hud), hud  # the Sun's height is degrees and an arrow, its bearing the letter after a dot
     page.evaluate("() => _aeStandClose()")
     page.wait_for_function("() => !_ae.stand && window.__back === 1", timeout=60_000, polling=250)
     assert not page.errors, page.errors
