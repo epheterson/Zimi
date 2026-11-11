@@ -8,7 +8,7 @@
    "stat": "0:00",
    "state": "97d810e3",
    "sub": "",
-   "table": "718ca56b",
+   "table": "443fd209",
    "undoOff": true,
    "watch": "",
    "won": false
@@ -21,7 +21,7 @@
    "stat": "0:00",
    "state": "97d810e3",
    "sub": "",
-   "table": "16fde224",
+   "table": "8bd4bc61",
    "undoOff": true,
    "watch": "",
    "won": false
@@ -29,12 +29,12 @@
   {
    "fact": "",
    "label": "menu",
-   "moves": 6,
+   "moves": 5,
    "sheet": "GolfPlay a column\u2019s bottom card onto the waste when it is one rank higher or lower. No wrap from king to ace. The score is the cards left: fewer is better.LookCard backs\u2026Played 1 \u00b7 Won 0New gameClose",
    "stat": "0:00",
-   "state": "9ea19665",
+   "state": "62227a7e",
    "sub": "",
-   "table": "a376c702",
+   "table": "635b7a7b",
    "undoOff": false,
    "watch": "",
    "won": false
@@ -47,7 +47,7 @@
    "stat": "0:04",
    "state": "25a27180",
    "sub": "",
-   "table": "a0c8fa6a",
+   "table": "83529f1b",
    "undoOff": false,
    "watch": "",
    "won": false
@@ -60,7 +60,7 @@
    "stat": "0:04",
    "state": "5137d1a9",
    "sub": "",
-   "table": "75d7d02a",
+   "table": "95e646dd",
    "undoOff": false,
    "watch": "",
    "won": false
@@ -73,7 +73,7 @@
    "stat": "0:04",
    "state": "25a27180",
    "sub": "",
-   "table": "efa919e0",
+   "table": "4888c656",
    "undoOff": false,
    "watch": "",
    "won": false
@@ -81,12 +81,12 @@
   {
    "fact": "",
    "label": "next game",
-   "moves": 10,
+   "moves": 9,
    "sheet": "",
-   "stat": "0:01",
-   "state": "bda0616e",
+   "stat": "0:00",
+   "state": "6d93092e",
    "sub": "",
-   "table": "acf17f92",
+   "table": "b93c91ca",
    "undoOff": false,
    "watch": "",
    "won": false
@@ -99,7 +99,7 @@
    "stat": "0:00",
    "state": "f36a0a1c",
    "sub": "",
-   "table": "5d5bb69",
+   "table": "cf0cea41",
    "undoOff": true,
    "watch": "",
    "won": false
@@ -112,7 +112,7 @@
    "stat": "0:00",
    "state": "504c0263",
    "sub": "",
-   "table": "b2201d57",
+   "table": "3a5adab0",
    "undoOff": true,
    "watch": "",
    "won": true
@@ -125,7 +125,7 @@
    "stat": "0:00",
    "state": "504c0263",
    "sub": "",
-   "table": "b2201d57",
+   "table": "3a5adab0",
    "undoOff": true,
    "watch": "",
    "won": true
@@ -138,15 +138,15 @@
    "stat": "0:00",
    "state": "6b2cb8e5",
    "sub": "",
-   "table": "2231d1a7",
+   "table": "963f4341",
    "undoOff": true,
    "watch": "",
    "won": false
   }
  ],
- "events": 68,
+ "events": 66,
  "hseed": 45,
- "plays": "stray:7 stock stock stock tap:44>waste tap:32>waste tap:7>waste tap:34>waste stock stock stock tap:29>waste drag:41>waste stock stock tap:10>waste drag:50>waste tap:38>waste stock stock stock stock drag:22>waste stray:30 stock tap:39>waste tap:40>waste drag:15>waste tap:16>waste stock stray:42 drag:20>waste stray:5 tap:47>waste tap:46>waste stock tap:48>waste stock drag:28>waste tap:3>waste drag:3>waste tap:47>waste stock tap:8>waste stock stock stock stock tap:6>waste stock tap:36>waste tap:19>waste",
+ "plays": "stray:7 stock stock stock tap:44>waste tap:32>waste tap:7>waste tap:34>waste stock stock stock tap:29>waste drag:41>waste stock stock tap:10>waste drag:50>waste tap:38>waste stock stock stock stock drag:22>waste stray:30 stock tap:39>waste tap:40>waste drag:15>waste tap:16>waste stock stray:42 drag:20>waste stray:5 tap:47>waste tap:46>waste stock tap:48>waste stock drag:28>waste tap:3>waste drag:3>waste tap:47>waste stock tap:8>waste stock stock stock stock tap:6>waste stock tap:19>waste",
  "seed": 35,
- "trace": "ff1346e04e53ea3e4e60bbb1dc0cb86f20b795763778332cf857274983a3432c081dc85267e853a1430906fa617e301fad66aa23794f2782002fe09760210a0d8bd02e66a496cbe122cc39e91450e7f27ec32c3131ccf6fae8c572593831b3f44c6bbac4de87f6523f8a4a7241ebaa54977a410746153f1283ef3d8e31411b417965cc371b01f6dd24f78446fe350199937bbcdd1a00b0f7ba07b0c3876321a5963ad10f4bbe9384371f7107f2665517aa5b33ce63ffcf488e7de81f34f1dec042d89ea0c00f9780713e827de3d9f5b081e10f4103f4a8c4cbf746da70e595977f2fea89fb2f72d29a5c4030448540d9c224d2cf36c3c62e78ab38fbcd6ec56f34fb96565fbfd1917d1a35de4c981e51"
+ "trace": "3a1ab57ce3c67c2cc53f099de48524cd0c2fcbc7e2bb12420b482c2cda4b7ce9cd20f782718ff82e1220653b1dc5a815e3b2396c0e4cecb766a38b363b26c5b2b8e996350ef91165f4c31a86f444c28031bbe44b6bb6f8522c1a9f15e98b7fa482eb86b2c0540b164a233aff3d6493d2f5aeece74bea3a076cab2880985f4812b45afbf09072a6ff90e1ef211e5c932629927b1ac9510f8425105f677bc2e6031093e6aa1a8de2d33727f841a0e7dd13ec7527a97e119d4b5371d5f279f22092b0708ca6214d254414fecbda59a73c8bed974dd0f16dfe60f7b08bb5064e970adb36dabcdf36f0d4fd812124371768a8864e3e2a8ee795e1488a762189e0ec3fca24f1087b3111a1"
 }

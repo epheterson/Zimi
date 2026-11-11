@@ -876,6 +876,22 @@
       o.connect(g); g.connect(audio.destination); o.start(t); o.stop(t + len + 0.05);
     } catch (e) { /* no audio on this device: play on silently */ }
   };
+  // A card's sound: a short burst of noise through a band-pass, the snap of card on card. 'lift' is higher and quieter than
+  // 'place'. Only with Sound on, on the same shared context as the notes.
+  var CLICK = { lift: { hz: 3200, gain: 0.05, ms: 22 }, place: { hz: 1900, gain: 0.09, ms: 30 } }, CLICK_Q = 1.4;
+  Shell.click = function (kind) {
+    var c = CLICK[kind] || CLICK.place;
+    if (!Shell.sound()) return;
+    try {
+      audio = audio || new (root.AudioContext || root.webkitAudioContext)();
+      if (audio.state === 'suspended') audio.resume();
+      var n = Math.ceil(audio.sampleRate * c.ms / MS_PER_S), buf = audio.createBuffer(1, n, audio.sampleRate), data = buf.getChannelData(0), i;
+      for (i = 0; i < n; i++) data[i] = (Math.random() * 2 - 1) * Math.pow(1 - i / n, 3);
+      var src = audio.createBufferSource(), bp = audio.createBiquadFilter(), g = audio.createGain();
+      src.buffer = buf; bp.type = 'bandpass'; bp.frequency.value = c.hz; bp.Q.value = CLICK_Q; g.gain.value = c.gain;
+      src.connect(bp); bp.connect(g); g.connect(audio.destination); src.start();
+    } catch (e) { /* no audio on this device: play on silently */ }
+  };
   // The end's notes: three rising for a win, two falling for a loss (C5 E5 G5; G4 D4), quiet.
   var END_NOTES = { win: [523, 659, 784], lose: [392, 294] };
   function endNotes(result) { (END_NOTES[result] || []).forEach(function (f, i) { Shell.tone(f, 420, 0.16, i * NOTE_GAP_MS); }); }

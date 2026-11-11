@@ -405,7 +405,7 @@
     }
 
     board = Z.createBoard({
-      table: el.table, cols: HAND_COLS, heightShare: HEIGHT_SHARE, enterTaps: true,
+      table: el.table, cols: HAND_COLS, heightShare: HEIGHT_SHARE, enterTaps: true, index: 'col',
       place: function (st, m) { tg.syncView(st); return place(st, m, view); },
       canPick: function (st, pile) { return st.phase === 'play' && pile.charAt(0) === 'h' && isLegal(st, seats.view(), tg.idOf(pile)); },
       move: function (pile, idx, to) { return (to === 'trick' || to === 'deck') && pile.charAt(0) === 'h' ? tg.play(tg.idOf(pile)) : false; },

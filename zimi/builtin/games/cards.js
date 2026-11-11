@@ -83,13 +83,10 @@
   }
 
   // ── The Zimi deck ─────────────────────────────────────────────────────
-  // Original French-suited deck. Everything is drawn: indices are stroked
-  // paths (no font is ever needed), courts are geometric busts built from a
-  // few shapes, and the Ace of Spades carries the ZimiGames mark. One face is
-  // one SVG in a 100x140 box. Detail that cannot be seen on a small card is
-  // marked `zc-fine`, a small card's own layout `zc-small` / `zc-idx-row`:
-  // cards.css switches them by the card's width (container query), so the
-  // same markup serves a phone's Spider (33 px) and a desktop's Solitaire.
+  // Original French-suited deck. Everything is drawn: indices are font outlines set as paths (no font is ever needed), the courts
+  // are the public-domain Goodall figures (courts.js) framed, and the Ace of Spades carries the ZimiGames mark. One face is one SVG
+  // in a 100x140 box. The French face is one layout at every size (see frenchIndex); the Italian and Spanish decks keep a small
+  // card's own layout, `zc-small` / `zc-idx-row`, which cards.css switches by the card's width (container query).
   // Suit shapes centred on 0,0 inside ±10; one sprite, `use`d by every card.
   // The four suits as one family at card-maker proportions (clubs, diamonds, hearts, spades; a 20-unit box each): the spade's
   // cusp and flared stem are reused by the club; heart and diamond are matched to them for height and weight.
@@ -109,14 +106,14 @@
     '<g transform="rotate(32)"><path d="M-2.5-8.4a2.5 2.5 0 0 1 5 0V7.4a2.5 2.5 0 0 1-5 0z"/><circle cx="-3.6" cy="-3.4" r="1.8"/><circle cx="3.6" cy="0.8" r="1.8"/></g>'
   ];
   var ITALIAN_COLOURS = ['#b87500', '#c62828', '#2c4a86', '#2f7d4f'];
-  var CARD_RED = '#b3261e', CARD_BLACK = '#1b1b1b', CARD_CREAM = '#fdfcf8', CARD_EDGE = '#c9c4b8'; // games.css tokens, repeated for the cascade's bitmaps
+  var CARD_RED = '#bc3428', CARD_BLACK = '#22252c', CARD_CREAM = '#f9f6ee', CARD_EDGE = '#cdc6b6'; // games.css tokens, repeated for the cascade's bitmaps
   var GOLD = '#e09400', MARK_FROM = '#fb8c14', MARK_TO = '#f2582a'; // Zimi's amber, and the two ends of the Z's gradient
-  var FACE_W = 100, FACE_H = 140, ACE_SCALE = 3.3, ACE_SPADE_SCALE = 3.9;
+  var FACE_W = 100, FACE_H = 140;
   // The Ace of Spades carries the maker's mark: the Z alone, in the spade's belly (centre 0.3 of the spade's 20-unit box below its middle,
   // 9 units tall, clear of the outline on every side).
-  var ACE_Z_DY = 0.3, ACE_Z_UNITS = 5.4, ACE_Z_Y = 70 + ACE_Z_DY * ACE_SPADE_SCALE, ACE_Z_H = ACE_Z_UNITS * ACE_SPADE_SCALE, BACK_Z_H = 32.2; // and the Zimi back's
+  var ACE_Z_DY = 0.3, ACE_Z_UNITS = 5.4, BACK_Z_H = 32.2; // and the Zimi back's
   // The pips stand in a box of their own, inset from the index column: the outer columns clear the corner suit by 8 units and the top row sits below it (at 37 and 63, from 34, a count ran into it).
-  var PIP_SCALE = 0.86, PIP_SCALE_DENSE = 0.76, DENSE_FROM = 8, PIP_COLS = [39, 61], PIP_MID_X = 50, PIP_TOP = 38, PIP_BOTTOM = 102, PIP_CENTRE = 70, PIP_ROW_2 = 58.7, PIP_ROW_3 = 81.3, FLIP_AFTER_Y = 70;
+  var PIP_COLS = [39, 61], PIP_MID_X = 50, PIP_TOP = 38, PIP_BOTTOM = 102, PIP_CENTRE = 70, PIP_ROW_2 = 58.7, PIP_ROW_3 = 81.3;
   var PIPS = (function () {
     var sides = function (ys) { var o = []; ys.forEach(function (y) { PIP_COLS.forEach(function (x) { o.push([x, y]); }); }); return o; };
     var mid = function (y) { return [PIP_MID_X, y]; };
@@ -330,23 +327,33 @@
       gold('M43 32 41.4 24.4 46 27.6 50 22.4 54 27.6 58.6 24.4 57 32z') + '<path d="M43 30.2H57" stroke="currentColor" stroke-width="1" fill="none"/>' + heldItalian(s, 67, 65.6, standalone, compact, set);
   }
 
-  var COURT_PIP_X = 31.5, COURT_PIP_Y = 27, COURT_PIP_SCALE = 0.55, COURT_BAND = 7, COURT_MID_PIP = 0.62;
-  var SMALL_COURT = '<g class="zc-small" display="none" transform="translate(50 128) scale(1.55) translate(-50 -' + COURT_BASE + ')">';
-  function courtMarkup(kind, s, standalone) {
-    var art = root.ZimiCourts && root.ZimiCourts.markup(kind, s, IDX_COLUMN); // the public-domain courts (courts.js), when the page has them
-    if (art) return '<g class="zc-big">' + art + '</g>' + (standalone ? '' : '<g class="zc-small" display="none">' + root.ZimiCourts.thumb(kind, s) + '</g>');
-    var half = bust(kind, s) + placed(s, COURT_PIP_X, COURT_PIP_Y, COURT_PIP_SCALE, false, standalone);
-    var line = function (y) { return '<path d="M21 ' + y + 'H79" stroke="currentColor" stroke-width="0.8" opacity="0.55"/>'; };
-    return '<g class="zc-big"><rect x="21" y="15" width="58" height="110" rx="3.5" fill="currentColor" fill-opacity="0.07" stroke="currentColor" stroke-width="1.2"/>' +
-      '<rect class="zc-fine" x="23.6" y="17.6" width="52.8" height="104.8" rx="1.8" fill="none" stroke="' + GOLD + '" stroke-width="0.7"/>' +
-      line(COURT_BASE) + line(140 - COURT_BASE) + '<path d="M26 70H40M60 70H74" stroke="' + GOLD + '" stroke-width="1"/>' +
-      placed(s, 50, 70, COURT_MID_PIP, false, standalone) +
-      '<g>' + half + '</g><g transform="rotate(180 50 70)">' + half + '</g></g>' +
-      (standalone ? '' : SMALL_COURT + bust(kind, s, true) + '</g>');
+  // A French court: the figure fills the card under the index, COURT_MARGIN in from the left, right and bottom edges (one even
+  // margin), from COURT_TOP down (just under the index row, the Q's tail included). Under the column index (hands) it starts
+  // COURT_GAP under the column's suit. Both frames are in every face and cards.css shows the one that goes with the index (the
+  // standalone image has the row's). Without courts.js the drawn bust stands in.
+  // A covered court in a fan shows its index row and nothing of the picture: no fan steps more than indexStep.
+  function courtFrames() {
+    var w = FACE_W - 2 * COURT_MARGIN, bottom = FACE_H - COURT_MARGIN, colTop = FACE.top + FACE.colCap + FACE.colGap + FACE.colSuit + COURT_GAP;
+    return { row: { x: COURT_MARGIN, y: COURT_TOP, w: w, h: bottom - COURT_TOP }, col: { x: COURT_MARGIN, y: colTop, w: w, h: bottom - colTop } };
   }
+  function courtFrame(kind, s, f, cls, standalone) {
+    var art = root.ZimiCourts && root.ZimiCourts.panel ? root.ZimiCourts.panel(kind, s, f.x, f.y, f.w, f.h, standalone) : '';
+    if (!art) art = '<svg x="' + f.x + '" y="' + f.y + '" width="' + f.w + '" height="' + f.h + '" viewBox="24 14 52 52">' + bust(kind, s, true) + '</svg>';
+    var r = 'x="' + f.x + '" y="' + f.y + '" width="' + f.w + '" height="' + f.h + '" rx="' + COURT_RX + '"';
+    return '<g class="' + cls + '"><rect ' + r + ' fill="currentColor" fill-opacity="0.06"/>' + art +
+      '<rect class="zc-rule" ' + r + ' fill="none" stroke="currentColor" stroke-width="0.8" stroke-opacity="0.8"/></g>';
+  }
+  function courtMarkup(kind, s, standalone) {
+    var f = courtFrames();
+    return courtFrame(kind, s, f.row, 'zc-ct zc-ct-row', standalone) + (standalone ? '' : courtFrame(kind, s, f.col, 'zc-ct zc-ct-col', false));
+  }
+  var SMALL_SUIT_Y = 92, SMALL_SUIT_SCALE = 3.1, SUIT_BOX = 20, COURT_RX = 2.5, COURT_TOP = 40, COURT_GAP = 3, COURT_MARGIN = 2.5;   // SUIT_BOX: a suit shape's size in its own units
+  // What a covered face-up card shows (its index row, ending half a unit above a court's picture) as a share of its height: the most any
+  // vertical fan opens, whatever the rank (FAN_UP_SHARE).
+  var INDEX_ROW_SHARE = (COURT_TOP - 0.5) / FACE_H;
+  function indexStep(ch) { return INDEX_ROW_SHARE * ch; }
 
   // The same pip for the small card's simplified body.
-  var SMALL_SUIT_Y = 92, SMALL_SUIT_SCALE = 3.1;
   function smallSuit(s, standalone, shapes, prefix, extra) {
     return standalone ? '' : '<g class="zc-small" display="none">' + placed(s, 50, SMALL_SUIT_Y, SMALL_SUIT_SCALE, false, false, shapes, prefix) + (extra || '') + '</g>';
   }
@@ -356,25 +363,47 @@
   function faceFrame(inner, colour, standalone) {
     return standalone
       ? '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ' + FACE_W + ' ' + FACE_H + '" fill="currentColor" style="color:' + colour + '"><defs>' + MARK_GRADIENT + '</defs>' +
-        '<rect x="0.5" y="0.5" width="99" height="139" rx="7.5" fill="' + CARD_CREAM + '" stroke="' + CARD_EDGE + '"/>' + inner + '</svg>'
+        '<rect x="0.5" y="0.5" width="99" height="139" rx="5.5" fill="' + CARD_CREAM + '" stroke="' + CARD_EDGE + '"/>' + inner + '</svg>'
       : '<svg viewBox="0 0 ' + FACE_W + ' ' + FACE_H + '" fill="currentColor" aria-hidden="true"' + (colour ? ' style="color:' + colour + '"' : '') + '>' + inner + '</svg>';
   }
 
-  // One French-suited card face as SVG markup (ids 0..51, further decks
-  // wrap). The page's card element sets the suit colour.
+  // ── The French face ─────────────────────────────────────────────────────
+  // Made for a card seen at 50 px on a phone, not 63 mm in the hand: one large index and one suit, no pip grid.
+  // The index has two arrangements in every face, chosen by the board (cards.css): `zc-ix-row` puts the suit in the top right
+  // corner, beside the rank, for piles that fan downwards (the solitaires); `zc-ix-col` puts it under the rank, for hands that
+  // fan sideways and show only a card's left strip (the table games). Units are the 100 x 140 face.
+  //   FACE.cap     the rank's cap height (0.26 of the width: 13 px on a 50 px card, twice a printed card's share)
+  //   FACE.top     the cap line's distance from the top edge; FACE.side the rank's ink from the left edge
+  //   FACE.suit    the index suit's box in the row; FACE.colSuit under the rank
+  //   FACE.body    the one suit of a number card, centred at FACE.bodyY: low on the card, so a fanned strip shows the index
+  //                and clean paper, never a cut shape; FACE.ace the ace's
+  //   FACE.colCap  the rank in the column, a little smaller so a 10 fits the narrowest strip of a hand (cardtable MIN_STRIP_PX,
+  //                0.31 of a card): its ink ends 30 units in
+  var FACE = { cap: 26, colCap: 22, top: 8, side: 8, suit: 21, colSuit: 15, colGap: 4.5, body: 42, bodyY: 90, ace: 56, aceY: 94 };
+  // Optical sizes: a two-figure rank is wider and the round, heavy letters look bigger than a 7 at one cap height.
+  var OPTICAL = { '10': 0.93, Q: 0.95, K: 0.97, J: 1.02 };
+  // The rank's scale for a cap height; a smaller optical size keeps the baseline, not the cap line (rankTop).
+  function rankScale(label, cap) { return cap / GLYPH_CAP * (OPTICAL[label] || 1); }
+  function rankTop(label, cap) { return FACE.top + cap - GLYPH_CAP * rankScale(label, cap); }
+  function frenchIndex(label, s, standalone) {
+    var sc = rankScale(label, FACE.cap), w = glyphWidth(label) * sc;
+    var row = '<g class="zc-ix-row">' + glyph(label, FACE.side + w / 2, rankTop(label, FACE.cap), sc) +
+      placed(s, FACE_W - FACE.side - FACE.suit / 2, FACE.top + FACE.cap / 2, FACE.suit / SUIT_BOX, false, standalone) + '</g>';
+    if (standalone) return row;
+    var cs = rankScale(label, FACE.colCap), colCx = FACE.side + Math.max(glyphWidth(label) * cs, FACE.colSuit) / 2;
+    var col = '<g class="zc-ix-col">' + glyph(label, colCx, rankTop(label, FACE.colCap), cs) +
+      placed(s, colCx, FACE.top + FACE.colCap + FACE.colGap + FACE.colSuit / 2, FACE.colSuit / SUIT_BOX, false, standalone) + '</g>';
+    return row + col;
+  }
+
+  // One French-suited card face as SVG markup (ids 0..51, further decks wrap). The page's card element sets the suit colour.
   function faceMarkup(id, standalone) {
     var r = rank(id), s = suit(id), label = RANK_LABELS[r - 1], body;
     if (r === 1) {
-      var spadeAce = s === 3;
-      body = '<g class="zc-big">' + placed(s, 50, 70, spadeAce ? ACE_SPADE_SCALE : ACE_SCALE, false, standalone) + (spadeAce ? markZ(50, ACE_Z_Y, ACE_Z_H) : '') + '</g>' +
-        smallSuit(s, standalone, null, null, spadeAce ? markZ(50, SMALL_SUIT_Y + ACE_Z_DY * SMALL_SUIT_SCALE, ACE_Z_UNITS * SMALL_SUIT_SCALE) : '');
-    } else if (r <= 10) {
-      var pips = '';
-      PIPS[r].forEach(function (p) { pips += placed(s, p[0], p[1], r >= DENSE_FROM ? PIP_SCALE_DENSE : PIP_SCALE, p[1] > FLIP_AFTER_Y, standalone); });
-      body = '<g class="zc-big">' + pips + '</g>' + smallSuit(s, standalone);
-    } else body = courtMarkup(COURT_KINDS[r - 11], s, standalone);
-    var index = indexMarkup(label, s, standalone); // a court's art lies under its index
-    return faceFrame(r > 10 ? body + index : index + body, standalone ? (isRed(id) ? CARD_RED : CARD_BLACK) : '', standalone);
+      body = placed(s, 50, FACE.aceY, FACE.ace / SUIT_BOX, false, standalone) + (s === 3 ? markZ(50, FACE.aceY + ACE_Z_DY * FACE.ace / SUIT_BOX, ACE_Z_UNITS * FACE.ace / SUIT_BOX) : '');
+    } else if (r <= 10) body = placed(s, 50, FACE.bodyY, FACE.body / SUIT_BOX, false, standalone);
+    else body = courtMarkup(COURT_KINDS[r - 11], s, standalone);
+    return faceFrame(frenchIndex(label, s, standalone) + (r <= 10 ? '<g class="zc-body">' + body + '</g>' : body), standalone ? (isRed(id) ? CARD_RED : CARD_BLACK) : '', standalone);
   }
 
   // The Italian deck, 40 cards: id = suit * 10 + (rank - 1), suits coins,
@@ -794,7 +823,8 @@
     holder.innerHTML = '<svg id="zc-sprite" width="0" height="0" style="position:absolute" aria-hidden="true"><defs>' +
       SUIT_SHAPES.map(function (shape, s) { return '<symbol id="zc-s-' + s + '" overflow="visible">' + shape + '</symbol>'; }).join('') +
       ITALIAN_SHAPES.map(function (shape, s) { return '<symbol id="' + ITALIAN_PREFIX + s + '" overflow="visible">' + shape + '</symbol>'; }).join('') +
-      SPANISH_SHAPES.map(function (shape, s) { return '<symbol id="' + SPANISH_PREFIX + s + '" overflow="visible">' + shape + '</symbol>'; }).join('') + SPRITE_DEFS + '</defs></svg>';
+      SPANISH_SHAPES.map(function (shape, s) { return '<symbol id="' + SPANISH_PREFIX + s + '" overflow="visible">' + shape + '</symbol>'; }).join('') +
+      (root.ZimiCourts && root.ZimiCourts.symbols ? root.ZimiCourts.symbols() : '') + SPRITE_DEFS + '</defs></svg>';
     d.body.insertBefore(holder.firstChild, d.body.firstChild);
   }
   // The one note a card game gives a player: why a card would not go, what a tap on the stock did. It sits low on the felt, where
@@ -887,8 +917,12 @@
   // [{id, pile, idx, x, y, up, hidden}] in stacking order.
   var SNAP_FELT = '#285c43', SNAP_CREAM = '#fdfcf8', SNAP_RED = '#b3261e', SNAP_BLACK = '#1b1b1b', SNAP_BACK = '#23232b', SNAP_BACK_EDGE = '#e8710a', SNAP_RX = 5;
   var SNAP_SUIT = ['\u2663', '\u2666', '\u2665', '\u2660'];
-  var MAX_CARD_W = 120, CARD_ASPECT = 1.4, CARD_H_SHARE = 0.14, DRAG_SLOP = 6, SETTLE_MS = 300, Z_HOT = 500, Z_DRAG = 1000;
-  var DEAL_STAGGER_MS = 16, MIN_CARD_W = 24, TIGHT_PAD = 2, TIGHT_GAP = 2;
+  var WIDE_RATIO = 1.25, PLACE_BUZZ_MS = 8, MAX_CARD_W = 120, CARD_ASPECT = 1.4, CARD_H_SHARE = 0.14, DRAG_SLOP = 6, SETTLE_MS = 300, Z_HOT = 500, Z_DRAG = 1000;
+  var DEAL_STAGGER_MS = 30, DEAL_SPAN_MS = 900, MIN_CARD_W = 24, TIGHT_PAD = 2, TIGHT_GAP = 2, GAP_SHARE = 0.08;
+  // A flight takes FLY_BASE_MS and FLY_PER_PX_MS for each pixel it travels, at most FLY_MAX_MS: a card sent across the table is seen
+  // to travel, one settling a few pixels does not dawdle. A turned card starts to turn as the card that uncovered it lands: the
+  // flight's ease-out has it all but there at TURN_AT_LANDING of its time (a wait of the whole flight read as a pause on video).
+  var FLY_BASE_MS = 120, FLY_PER_PX_MS = 0.35, FLY_MAX_MS = 300, TURN_AT_LANDING = 0.7, TURN_MS = 200, REFUSED_MS = 260, RING_MS = 1000, REPEAT_MS = 4000;
   // More o: heightShare (how much of the table's height a card may take, for
   // layouts shorter than Klondike's columns), face(id, standalone) (a deck of
   // its own: Scopa's), enterTaps (Enter on a pile taps
@@ -901,11 +935,13 @@
   // the rules drawn at whole units of the face land on pixel edges. It only ever rounds down, so the columns still fit.
   var CRISP_STEP = 5;
   function dpr() { return Math.max(1, Math.min(3, root.devicePixelRatio || 1)); }
+  function flyMs(px) { return Math.round(Math.min(FLY_MAX_MS, FLY_BASE_MS + FLY_PER_PX_MS * px)); }
   function crispWidth(cw) { var k = dpr(); return Math.max(CRISP_STEP, Math.floor(cw * k / CRISP_STEP) * CRISP_STEP) / k; }
 
   function createBoard(o) {
-    var d = root.document, table = o.table, stage = h('div', { class: 'zc-stage' });
+    var d = root.document, table = o.table, stage = h('div', { class: 'zc-stage' + (o.index === 'col' ? ' zc-cols' : '') });
     var live = h('div', { class: 'zc-live', 'aria-live': 'polite' });
+    stage.style.setProperty('--zc-turn', TURN_MS + 'ms');
     table.appendChild(stage); table.appendChild(live);
     var els = {}, slotEls = {}, cardPos = {}, byPile = {}, slotRects = {};
     // The count chips of collapsed face-down hands (layout: counts [{ x, y, n }]), over the cards.
@@ -920,14 +956,23 @@
       d.documentElement.style.setProperty('--zc-px', 1 / dpr() + 'px');
       var W = table.clientWidth, H = table.clientHeight;
       var pad = Math.max(6, Math.min(16, Math.round(W * 0.02))), gap = Math.max(4, Math.round(W * 0.014));
-      if (o.tight) { pad = Math.min(pad, TIGHT_PAD); gap = Math.min(gap, TIGHT_GAP); }   // the solitaires' columns take every pixel of the width
-      var cols = colsFor(lastState, W, pad, gap);
+      // A wide table (landscape, desktop) may lay its piles out to the sides of the columns instead of a row over them (o.wide:
+      // { cols, heightShare }): the columns get the whole height and the cards grow with it.
+      var wide = !!(o.wide && W > H * WIDE_RATIO);
+      var cols = wide ? o.wide.cols : colsFor(lastState, W, pad, gap);
+      // The solitaires' columns take the width: a margin of TIGHT_PAD+ and a gap of GAP_SHARE of a card (4 px on a phone, 9 on a desktop),
+      // enough to see seven columns as seven, not one wall.
+      // A game whose cards sit edge to edge (Pyramid's rows, where a gap would show the covered card's suit) asks for o.gapShare 0.
+      if (o.tight) {
+        var share = o.gapShare === undefined ? GAP_SHARE : o.gapShare;
+        pad = Math.max(TIGHT_PAD, Math.min(pad, 8)); gap = share ? Math.max(TIGHT_GAP, Math.round((W - 2 * pad) / (cols + (cols - 1) * share) * share)) : 0;
+      }
       var cw = Math.floor((W - 2 * pad - (cols - 1) * gap) / cols);
-      cw = Math.max(MIN_CARD_W, Math.min(cw, MAX_CARD_W, Math.floor(H * (o.heightShare || CARD_H_SHARE))));
+      cw = Math.max(MIN_CARD_W, Math.min(cw, MAX_CARD_W, Math.floor(H * ((wide && o.wide.heightShare) || o.heightShare || CARD_H_SHARE))));
       cw = crispWidth(cw);
       // `left` centres the columns when the cards stop growing before the width does.
       var left = Math.floor((W - (cols * cw + (cols - 1) * gap)) / 2);
-      metrics = { cw: cw, ch: Math.round(cw * CARD_ASPECT), gap: gap, pad: pad, left: left, step: cw + gap, W: W, H: H, cols: cols };
+      metrics = { cw: cw, ch: Math.round(cw * CARD_ASPECT), gap: gap, pad: pad, left: left, step: cw + gap, W: W, H: H, cols: cols, wide: wide };
       stage.style.setProperty('--cw', cw + 'px');
       return metrics;
     }
@@ -997,7 +1042,7 @@
     // every transition (resize, first paint); otherwise cards ease to place.
     function render(state, mode) {
       lastState = state;
-      if (metrics && colsFor(state, metrics.W, metrics.pad, metrics.gap) !== metrics.cols) metrics = null;   // the hand outgrew (or no longer needs) its size
+      if (metrics && !metrics.wide && colsFor(state, metrics.W, metrics.pad, metrics.gap) !== metrics.cols) metrics = null;   // the hand outgrew (or no longer needs) its size
       var m = metrics || measure(), p = o.place(state, m), anyMoved = false;
       lastPlace = p;
       // A short layout sits a little above the middle instead of hugging the top bar.
@@ -1021,7 +1066,7 @@
       });
       pruneSlots(prevOrder, hadFocus);
       cardPos = {}; byPile = {};
-      var origin = p.slots[0], dealing = mode === 'deal';
+      var origin = p.slots[0], dealing = mode === 'deal', longest = 0;
       p.cards.forEach(function (c, i) {
         var e = cardEl(c.id), z = i + 1;
         cardPos[c.id] = { pile: c.pile, idx: c.idx };
@@ -1043,22 +1088,29 @@
         } else {
           e.classList.toggle('zc-instant', mode === 'instant');
           e.style.transitionDelay = '';
+          if (moved && e._x !== undefined) {
+            var fly = flyMs(Math.hypot(c.x - e._x, c.y - e._y));
+            e.style.setProperty('--zc-fly', fly + 'ms'); longest = Math.max(longest, fly);
+          }
           put(e, c.x, c.y);
         }
       });
+      // A card turned over by this move waits for the card that uncovered it to land.
+      stage.style.setProperty('--zc-turn-wait', (mode === 'instant' ? 0 : Math.round(longest * TURN_AT_LANDING)) + 'ms');
       if (dealing) {
         void table.offsetWidth;
         // Only the cards that can be seen wait their turn, so a stock's hidden rest does not hold the first card back.
-        var seen = 0;
+        var seen = 0, shown = p.cards.filter(function (c) { return !c.hidden; }).length, stagger = Math.min(DEAL_STAGGER_MS, DEAL_SPAN_MS / Math.max(1, shown));
         p.cards.forEach(function (c) {
           var e = els[c.id];
           e.classList.remove('zc-instant');
-          e.style.transitionDelay = (c.hidden ? 0 : seen++) * DEAL_STAGGER_MS + 'ms';
+          e.style.removeProperty('--zc-fly');
+          e.style.transitionDelay = (c.hidden ? 0 : seen++) * stagger + 'ms';
           put(e, c.x, c.y);
         });
         // The cards in flight are not tappable: a tap on the pile they left reaches the pile, not a card passing over it.
         stage.classList.add('zc-dealing');
-        setTimeout(function () { stage.classList.remove('zc-dealing'); p.cards.forEach(function (c) { els[c.id].style.transitionDelay = ''; }); }, p.cards.length * DEAL_STAGGER_MS + 250);
+        setTimeout(function () { stage.classList.remove('zc-dealing'); p.cards.forEach(function (c) { els[c.id].style.transitionDelay = ''; }); }, shown * stagger + 250);
       }
       // A pile with cards shows its focus on its top card; only an empty one rings its outline.
       Object.keys(slotEls).forEach(function (k) { slotEls[k].toggleAttribute('data-cards', !!byPile[k]); });
@@ -1077,16 +1129,45 @@
       var w = Math.min(a.x + a.w, b.x + b.w) - Math.max(a.x, b.x), hh = Math.min(a.y + a.h, b.y + b.h) - Math.max(a.y, b.y);
       return w > 0 && hh > 0 ? w * hh : 0;
     }
-    function beginDrag() {
+    // Held: the press lifts the card (and the run on it) at once, about the point the finger took it by.
+    function beginDrag(gx, gy) {
       drag.ids = byPile[drag.pos.pile].slice(drag.pos.idx);
       drag.ids.forEach(function (id, k) {
         var e = els[id];
+        e.style.setProperty('--zc-o', (gx - e._x) + 'px ' + (gy - e._y) + 'px');
         e.classList.add('zc-drag'); e.style.zIndex = Z_DRAG + k; e._hot = true;
       });
+      feel('lift');
     }
-    function moveDrag(dr, dx, dy) {
+    // Let go: a card that never moved (a tap) goes back to its own place in the stack at once, so it does not stay over its neighbours.
+    function dropDrag(dr) {
+      (dr.ids || []).forEach(function (id) {
+        var e = els[id];
+        e.classList.remove('zc-drag');
+        if (!dr.moved) { e._hot = false; e.style.zIndex = e._z; }
+      });
+    }
+    function moveDrag(dr, dx, dy, px, py) {
       dr.ids.forEach(function (id) { var e = els[id]; e.style.transform = 'translate(' + (e._x + dx) + 'px,' + (e._y + dy) + 'px)'; });
+      if (o.canDrop) ring(dropTargets(dr, dx, dy, px, py).map(function (t) { return t[1]; }).filter(function (id) { return o.canDrop(dr.pos.pile, dr.pos.idx, id); }).slice(0, 1));
     }
+    // The ring on the piles a held card may go to (the top card of a pile, or its empty place).
+    var ringed = [];
+    function ring(piles) {
+      ringed.forEach(function (n) { n.classList.remove('zc-target'); });
+      ringed = piles.map(function (id) { var list = byPile[id]; return list && list.length ? els[list[list.length - 1]] : slotEls[id]; }).filter(Boolean);
+      ringed.forEach(function (n) { n.classList.add('zc-target'); });
+    }
+    // A card placed is heard and felt, only with Sound on in Settings (the shell's choice; no vibrate on iOS at all).
+    function feel(kind) {
+      var S = root.ZimiShell;
+      if (!S || !S.sound || !S.sound()) return;
+      if (S.click) S.click(kind);
+      if (kind === 'place') try { if (root.navigator.vibrate) root.navigator.vibrate(PLACE_BUZZ_MS); } catch (err) { /* no haptics */ }
+    }
+    // A drop refused twice running shows where the cards could go, instead of words.
+    var refusedAt = 0;
+    function refusedAgain() { var now = Date.now(), again = now - refusedAt < REPEAT_MS; refusedAt = now; return again; }
     // Slots the dragged cards overlap, biggest overlap first; the one under
     // the pointer counts extra. The game then takes the first that is legal.
     function dropTargets(dr, dx, dy, px, py) {
@@ -1113,29 +1194,43 @@
       if (under && under.length) pos = cardPos[under[under.length - 1]];
       drag = { pos: pos, slot: slot, sx: e.clientX, sy: e.clientY, pid: e.pointerId, moved: false, ids: null, blocked: false };
       sel = null; paintSelection(); toast();
+      if (pos && !d.querySelector('.zc-dealing') && o.canPick(lastState, pos.pile, pos.idx)) {
+        var sr = stage.getBoundingClientRect();
+        beginDrag(e.clientX - sr.left, e.clientY - sr.top);
+      }
       try { table.setPointerCapture(e.pointerId); } catch (err) { /* pointer already gone */ }
     });
     table.addEventListener('pointermove', function (e) {
       if (!drag || e.pointerId !== drag.pid) return;
       var dx = e.clientX - drag.sx, dy = e.clientY - drag.sy;
       if (!drag.moved && !drag.blocked && Math.abs(dx) + Math.abs(dy) > DRAG_SLOP) {
-        if (drag.pos && o.canPick(lastState, drag.pos.pile, drag.pos.idx)) { drag.moved = true; beginDrag(); } else drag.blocked = true;
+        if (drag.ids) drag.moved = true; else drag.blocked = true;
       }
-      if (drag.moved) { moveDrag(drag, dx, dy); e.preventDefault(); }
+      if (drag.moved) { var sr = stage.getBoundingClientRect(); moveDrag(drag, dx, dy, e.clientX - sr.left, e.clientY - sr.top); e.preventDefault(); }
     });
     function endDrag(e, cancelled) {
       if (!drag || e.pointerId !== drag.pid) return;
       var dr = drag; drag = null;
       try { table.releasePointerCapture(e.pointerId); } catch (err) { /* already released */ }
+      ring([]);
       if (dr.moved) {
         var r = stage.getBoundingClientRect(), done = false;
         var targets = cancelled ? [] : dropTargets(dr, e.clientX - dr.sx, e.clientY - dr.sy, e.clientX - r.left, e.clientY - r.top);
         for (var i = 0; i < targets.length && !done; i++) done = o.move(dr.pos.pile, dr.pos.idx, targets[i][1]);
-        if (!done) { refresh(); scheduleSettle(); if (targets.length && o.refused) o.refused(dr.pos, targets[0][1]); }
+        dropDrag(dr);
+        if (done) { feel('place'); return; }
+        // Home with a small overshoot; no words. A second refusal running rings where the card could go.
+        dr.ids.forEach(function (id) { var c = els[id]; c.classList.add('zc-refused'); setTimeout(function () { c.classList.remove('zc-refused'); }, REFUSED_MS); });
+        refresh(); scheduleSettle();
+        if (targets.length && refusedAgain() && o.canDrop) {
+          ring(Object.keys(slotRects).filter(function (id) { return id !== dr.pos.pile && o.canDrop(dr.pos.pile, dr.pos.idx, id); }));
+          setTimeout(function () { ring([]); }, RING_MS);
+        }
         return;
       }
+      dropDrag(dr);
       if (cancelled || dr.blocked) return;
-      if (dr.pos) { if (!o.tap(dr.pos.pile, dr.pos.idx)) nudge(dr.pos); } else if (dr.slot && o.slotTap) o.slotTap(dr.slot);
+      if (dr.pos) { if (o.tap(dr.pos.pile, dr.pos.idx)) feel('place'); else nudge(dr.pos); } else if (dr.slot && o.slotTap) o.slotTap(dr.slot);
     }
     table.addEventListener('pointerup', function (e) { endDrag(e, false); });
     table.addEventListener('pointercancel', function (e) { endDrag(e, true); });
@@ -1521,9 +1616,9 @@
     while (down + inc <= max + 1e-9 && heaviest(down + inc) * maxStep <= room - ch) down += inc;
     return down;
   }
-  // A face-up card in a fan shows this much of its height when the table has room: its whole corner index and its whole top
-  // row of pips (PIP_TOP). Less cuts the pips through the middle into triangles beside the index.
-  var FAN_UP_SHARE = 0.34;
+  // A face-up card in a vertical fan shows at most its index row (INDEX_ROW_SHARE of its height), whatever its rank. Short columns
+  // spread to it and use the screen; long ones close up towards the game's own floor.
+  var FAN_UP_SHARE = INDEX_ROW_SHARE;
   // A fan with height to spare opens up to this share of a card's height per step, instead of huddling at FAN_UP_SHARE at the top
   // of a tall phone; a long column still shrinks to fit (fanStep takes the smaller of room and this).
   var FAN_GROW_SHARE = 0.8, FAN_GROW_AIR = 0.6;   // ... and keeps this many card heights of air under the lowest card
@@ -1601,7 +1696,9 @@
       return true;
     };
     // Why a card would not go: the game's words for a tap that had nowhere to send it, or a drop on a pile that refused it.
-    var why = function (pile, idx, to) { var t = o.why && o.why(session.state, pile, idx, to); if (t) toast(t); };
+    // The words wait for a second try running: the first "no" is the card's shake.
+    var lastWhy = 0;
+    var why = function (pile, idx, to) { var now = Date.now(), again = now - lastWhy < REPEAT_MS, t; lastWhy = now; if (again && (t = o.why && o.why(session.state, pile, idx, to))) toast(t); };
     var tap = o.tap || function (pile, idx) {
       if (pile === 'stock') return page.draw();
       var to = R.bestMove(session.state, pile, idx);
@@ -1610,8 +1707,8 @@
       return false;
     };
     board = createBoard({
-      table: page.el.table, cols: o.cols, tight: true, place: o.place, heightShare: o.heightShare, enterTaps: o.enterTaps,
-      canPick: o.canPick || R.canPick, move: page.move, tap: tap, refused: function (pos, to) { why(pos.pile, pos.idx, to); },
+      table: page.el.table, cols: o.cols, wide: o.wide, index: o.index, gapShare: o.gapShare, tight: true, place: o.place, heightShare: o.heightShare, enterTaps: o.enterTaps,
+      canPick: o.canPick || R.canPick, move: page.move, tap: tap, canDrop: function (pile, idx, to) { return !blocked() && R.legalMove(session.state, pile, idx, to); },
       slotTap: o.slotTap || (o.stock ? function (pile) { if (pile === 'stock') page.draw(); } : undefined)
     });
     session = createSession({
@@ -1643,7 +1740,7 @@
     FACT_H: FACT_H, factLine: factLine, moonPhase: moonPhase, moonLitPath: moonLitPath, faceMarkup: faceMarkup, backMarkup: backMarkup,
     italianFaceMarkup: italianFaceMarkup, italianName: italianName,
     spanishFaceMarkup: spanishFaceMarkup, spanishName: spanishName, hanafudaFaceMarkup: hanafudaFaceMarkup, hanafudaCard: hanafudaCard, hanafudaName: hanafudaName, HANA_MONTHS: HANA_MONTHS, jokerMarkup: jokerMarkup, markSvg: markSvg,
-    fmtTime: fmtTime, plural: plural, winTime: winTime, solitairePage: solitairePage, stuckWhen: stuckWhen, describePile: describePile, fanStep: fanStep, growStep: growStep, FAN_UP_SHARE: FAN_UP_SHARE, openDown: openDown, solitaireRows: solitaireRows, statusTop: statusTop, pageEls: pageEls, idsOf: idsOf, restShare: restShare,
+    fmtTime: fmtTime, plural: plural, winTime: winTime, solitairePage: solitairePage, stuckWhen: stuckWhen, describePile: describePile, fanStep: fanStep, growStep: growStep, indexStep: indexStep, FAN_UP_SHARE: FAN_UP_SHARE, openDown: openDown, solitaireRows: solitaireRows, statusTop: statusTop, pageEls: pageEls, idsOf: idsOf, restShare: restShare,
     toast: toast, store: store, createStats: createStats, h: h, sheet: sheet, segmented: segmented, backsSheet: backsSheet, backsRow: backsRow,
     T: T, createBoard: createBoard, createSession: createSession, ensureSprite: ensureSprite,
     currentBack: function () { return currentBack; }

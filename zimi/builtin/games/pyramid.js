@@ -106,15 +106,16 @@
   }
 
   // ── Layout ──────────────────────────────────────────────────────────────
-  var ROW_STEP_SHARE = 0.5, ROW_STEP_MAX = 0.6, HEIGHT_SHARE = 0.125;
+  // A pyramid is not a fan: each card shows enough of itself to be recognised and tapped, the rows overlapping. The rows step so
+  // the seven fill the room under the piles, no less than a covered card's index row and no more than half a card.
+  var ROW_STEP_MAX_SHARE = 0.5, HEIGHT_SHARE = 0.125;
 
   function place(state, m, view) {
     var P = state.piles, cw = m.cw, ch = m.ch, picked = view && view.picked;
     var x = function (col) { return m.left + col * m.step; };
-    // Stock, waste and the taken pile are one row right under the bar; the pyramid under it, its rows stepping down to fill
-    // the height: the more of a covered card shows, the easier the pyramid reads.
+    // Stock, waste and the taken pile are one row right under the bar; the pyramid under it, its rows stepping to fill the height.
     var rows = Z.solitaireRows(m), y2 = rows.top, y1 = rows.cols, slots = [], cards = [];
-    var rowStep = Math.max(ch * ROW_STEP_SHARE, Math.min(ch * ROW_STEP_MAX, (rows.room - ch) / (ROWS - 1)));
+    var rowStep = Math.max(Z.indexStep(ch), Math.min(ch * ROW_STEP_MAX_SHARE, (rows.room - ch) / (ROWS - 1)));
     var height = Math.max(m.H, y1 + rowStep * (ROWS - 1) + ch + m.pad);
     var at = function (p) { return { x: x(COLS / 2 - 0.5 - rowOf(p) / 2 + colOf(p)), y: y1 + rowOf(p) * rowStep }; };
 
@@ -162,7 +163,7 @@
 
     page = Z.solitairePage({
       refuse: function () { page.note(TX('pyr.why.noRedeals')); },
-      rules: api, id: 'pyramid', fact: true, cols: COLS, heightShare: HEIGHT_SHARE, enterTaps: true, newGame: newGame, tap: tap, stock: drawStock,
+      rules: api, id: 'pyramid', fact: true, cols: COLS, gapShare: 0, heightShare: HEIGHT_SHARE, enterTaps: true, newGame: newGame, tap: tap, stock: drawStock,
       place: function (st, m) { return place(st, m, view); },
       settle: function () { view.picked = null; paintSub(); },
       score: function (st) { return st.score; },

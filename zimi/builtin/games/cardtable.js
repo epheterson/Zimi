@@ -252,7 +252,7 @@
     function unflash() { if (view.flash) { view.flash = ''; paint(); } }
 
     board = Z.createBoard({
-      table: el.table, cols: cfg.cols || stateCols, heightShare: cfg.heightShare || 0.11, enterTaps: true, face: cfg.face,
+      table: el.table, cols: cfg.cols || stateCols, heightShare: cfg.heightShare || 0.11, enterTaps: true, face: cfg.face, index: cfg.index || 'col',
       place: function (st, m) {
         takeCounts();
         var p = cfg.place(st, m, view);

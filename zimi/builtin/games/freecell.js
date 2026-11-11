@@ -140,36 +140,43 @@
   }
 
   // ── Layout ──────────────────────────────────────────────────────────────
-  var MIN_STEP_SHARE = 0.12;
+  // Narrow: the free cells and foundations are one row right under the bar, the columns under it fanning through the rest. Wide
+  // (landscape, desktop): the cells two by two on the left, the foundations two by two on the right, the columns between with the
+  // whole height (WIDE: twelve card widths, the groups set apart by WIDE_GROUP_GAP of a card out of the spare width).
+  var UP_STEP_SHARE = Z.FAN_UP_SHARE, MIN_STEP_SHARE = 0.12;
+  var WIDE = { cols: 12, heightShare: 0.19 }, WIDE_COLUMN_COL = 2, WIDE_FOUNDATION_COL = 10, WIDE_GROUP_GAP = 0.3;
 
   function place(state, m) {
-    var P = state.piles, cw = m.cw, ch = m.ch, x = function (col) { return m.left + col * m.step; };
-    // The free cells and foundations are one row right under the bar; the columns start under it and fan through the rest.
-    var rows = Z.solitaireRows(m), y1 = rows.top, y2 = rows.cols, slots = [], cards = [];
-    var step = Z.growStep(Math.max.apply(null, COLUMNS.map(function (c) { return P[c].length - 1; })), rows.room, ch, ch * MIN_STEP_SHARE);
+    var wide = m.wide, group = wide ? Math.max(0, Math.min(m.cw * WIDE_GROUP_GAP, (m.W - 2 * m.pad - (WIDE.cols * m.cw + (WIDE.cols - 1) * m.gap)) / 2)) : 0;
+    var P = state.piles, cw = m.cw, ch = m.ch, x = function (col) { return m.left - group + col * m.step + (col >= WIDE_FOUNDATION_COL ? 2 : col >= WIDE_COLUMN_COL ? 1 : 0) * group; };
+    var rows = Z.solitaireRows(m), y1 = rows.top, y2 = wide ? m.pad : rows.cols, room = wide ? m.H - 2 * m.pad : rows.room, slots = [], cards = [];
+    var cx = function (n) { return wide ? x(n % 2) : x(n); }, cy = function (n) { return wide ? m.pad + (n < 2 ? 0 : ch + 2 * m.gap) : y1; };
+    var fx = function (n) { return wide ? x(WIDE_FOUNDATION_COL + n % 2) : x(COLS / 2 + n); }, colX = function (n) { return x(n + (wide ? WIDE_COLUMN_COL : 0)); };
+    var step = Z.fanStep(Math.max.apply(null, COLUMNS.map(function (c) { return P[c].length - 1; })), room, ch, ch * UP_STEP_SHARE, ch * MIN_STEP_SHARE);
     var bottom = y2 + ch;
 
     CELLS.forEach(function (c, n) {
-      P[c].forEach(function (id, i) { cards.push({ id: id, pile: c, idx: i, x: x(n), y: y1, up: true }); });
+      P[c].forEach(function (id, i) { cards.push({ id: id, pile: c, idx: i, x: cx(n), y: cy(n), up: true }); });
     });
     FOUNDATION.forEach(function (f, n) {
-      P[f].forEach(function (id, i) { cards.push({ id: id, pile: f, idx: i, x: x(COLS / 2 + n), y: y1, up: true, hidden: i < P[f].length - 2 }); });
+      P[f].forEach(function (id, i) { cards.push({ id: id, pile: f, idx: i, x: fx(n), y: cy(n), up: true, hidden: i < P[f].length - 2 }); });
     });
     COLUMNS.forEach(function (c, n) {
-      P[c].forEach(function (id, i) { cards.push({ id: id, pile: c, idx: i, x: x(n), y: y2 + i * step, up: true }); });
-      bottom = Math.max(bottom, y2 + Math.max(0, P[c].length - 1) * step + ch);
+      var yy = y2;
+      P[c].forEach(function (id, i) { cards.push({ id: id, pile: c, idx: i, x: colX(n), y: yy, up: true }); if (i < P[c].length - 1) yy += step; });
+      bottom = Math.max(bottom, yy + ch);
     });
     var height = Math.max(bottom + m.pad, m.H);
 
     CELLS.forEach(function (c, n) {
-      slots.push({ id: c, x: x(n), y: y1, w: cw, h: ch, label: P[c].length ? TX('fc.cell', { n: n + 1, card: Z.cardName(P[c][0]) }) : TX('fc.cellEmpty', { n: n + 1 }) });
+      slots.push({ id: c, x: cx(n), y: cy(n), w: cw, h: ch, label: P[c].length ? TX('fc.cell', { n: n + 1, card: Z.cardName(P[c][0]) }) : TX('fc.cellEmpty', { n: n + 1 }) });
     });
     FOUNDATION.forEach(function (f, n) {
       var t = P[f].length ? top(P[f]) : null;
-      slots.push({ id: f, x: x(COLS / 2 + n), y: y1, w: cw, h: ch, goal: true, mark: t === null ? 'A' : '', label: (t === null ? TX('sol.foundationEmpty') : TX('sol.foundation', { suit: TX('cards.suit.' + ['clubs', 'diamonds', 'hearts', 'spades'][Z.suit(t)]), cards: Z.plural(P[f].length, 'card') })) });
+      slots.push({ id: f, x: fx(n), y: cy(n), w: cw, h: ch, goal: true, mark: t === null ? 'A' : '', label: (t === null ? TX('sol.foundationEmpty') : TX('sol.foundation', { suit: TX('cards.suit.' + ['clubs', 'diamonds', 'hearts', 'spades'][Z.suit(t)]), cards: Z.plural(P[f].length, 'card') })) });
     });
     COLUMNS.forEach(function (c, n) {
-      slots.push({ id: c, x: x(n), y: y2, w: cw, h: Math.max(ch, height - m.pad - y2), label: Z.describePile(TX('fc.column', { n: n + 1 }), P[c], true) });
+      slots.push({ id: c, x: colX(n), y: y2, w: cw, h: Math.max(ch, height - m.pad - y2), label: Z.describePile(TX('fc.column', { n: n + 1 }), P[c], true) });
     });
     return { height: height, slots: slots, cards: cards };
   }
@@ -248,7 +255,7 @@
     }
 
     page = Z.solitairePage({
-      rules: api, id: 'freecell', place: placeWithHint, cols: COLS, newGame: randomDeal, after: autoRun, why: why,
+      rules: api, id: 'freecell', place: placeWithHint, cols: COLS, wide: WIDE, newGame: randomDeal, after: autoRun, why: why,
       stuck: Z.stuckWhen(api, hasMove),
       statText: function (sec, st) { return Z.fmtTime(sec) + ' · ' + st.moves; },
       cascadeOrder: function (st) {

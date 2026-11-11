@@ -27,35 +27,58 @@ body.zc-game { display: flex; flex-direction: column; height: 100%; overflow: hi
 /* ── Piles ─────────────────────────────────────────────────────────────── */
 .zc-slot { position: absolute; left: 0; top: 0; z-index: 0; outline: none; -webkit-tap-highlight-color: transparent; }
 .zc-slot::before { content: ""; position: absolute; left: 0; top: 0; box-sizing: border-box; width: var(--cw); height: calc(var(--cw) * 1.4);
-  border-radius: calc(var(--cw) * 0.075); border: 2px solid var(--felt-line); background: rgba(0, 0, 0, 0.08); }
+  border-radius: var(--zc-r); border: 1.5px solid var(--felt-line); background: rgba(0, 0, 0, 0.12); }
 /* A goal pile (the foundations, Spider's finished runs) is the brightest outline on the felt, not the dimmest. */
-.zc-slot[data-goal]::before { border-color: rgba(255, 255, 255, 0.5); background: rgba(255, 255, 255, 0.1); }
-.zc-slot[data-goal][data-mark]::after { color: rgba(255, 255, 255, 0.62); }
+.zc-slot[data-goal]::before { border-color: rgba(255, 255, 255, 0.34); background: rgba(255, 255, 255, 0.07); }
+.zc-slot[data-goal][data-mark]::after { color: rgba(255, 255, 255, 0.42); }
 .zc-slot[data-quiet]::before { display: none; }
 .zc-slot[data-cards]:focus-visible::before { border-color: var(--felt-line); box-shadow: none; }
 .zc-slot:focus-visible::before { border-color: var(--select-ring); box-shadow: 0 0 0 2px var(--select-ring); }
 .zc-slot[data-mark]::after { content: attr(data-mark); position: absolute; left: 0; top: 0; width: var(--cw); height: calc(var(--cw) * 1.4);
-  display: grid; place-items: center; color: rgba(255, 255, 255, 0.28); font: 650 calc(var(--cw) * 0.46)/1 var(--font); letter-spacing: -0.02em; pointer-events: none; }
+  display: grid; place-items: center; color: rgba(255, 255, 255, 0.26); font: 600 calc(var(--cw) * 0.4)/1 var(--font); letter-spacing: -0.02em; pointer-events: none; }
 .zc-slot[data-mark="\21BB"]::after { font-family: var(--font); font-weight: 400; }
 
 /* ── A card ────────────────────────────────────────────────────────────── */
+/* One light, straight above: a tight contact shadow and a soft one under it, both falling down; a lifted card's grow with its
+   height. The edge is one device pixel of warm grey (--zc-px), drawn inside the paper. Radius 0.055 of the width (a printed card's
+   is 0.05). Flights: --zc-fly is set per move by distance (cards.js FLY_*); --zc-ease is the landing curve. */
+.zc-stage { --zc-r: calc(var(--cw) * 0.055); --zc-rest: 0 0.5px 1px rgba(0, 0, 0, 0.3), 0 1.5px 4px rgba(0, 0, 0, 0.14);
+  --zc-lifted: 0 4px 6px rgba(0, 0, 0, 0.18), 0 14px 26px rgba(0, 0, 0, 0.26); --zc-ease: cubic-bezier(0.2, 0.9, 0.3, 1); }
 .zc-card { position: absolute; left: 0; top: 0; width: var(--cw); height: calc(var(--cw) * 1.4); z-index: 1;
-  border-radius: calc(var(--cw) * 0.075); background: var(--card); color: var(--suit-black);
-  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.45), 0 0 0 1px var(--card-edge);
-  transition: transform 0.17s cubic-bezier(0.25, 0.8, 0.35, 1); touch-action: none; cursor: grab; overflow: hidden; }
+  border-radius: var(--zc-r, 4px); background: var(--card); color: var(--suit-black);
+  box-shadow: var(--zc-rest), inset 0 0 0 var(--zc-px, 1px) var(--card-edge);
+  transition: transform var(--zc-fly, 0.2s) var(--zc-ease), box-shadow 0.12s ease-out; touch-action: none; cursor: grab; overflow: hidden; }
 .zc-card.zc-red { color: var(--suit-red); }
 .zc-card.zc-off { visibility: hidden; }
 .zc-card.zc-instant, .zc-instant .zc-card { transition: none; }
-.zc-card.zc-drag { transition: none; cursor: grabbing; box-shadow: 0 8px 18px rgba(0, 0, 0, 0.45), 0 0 0 1px var(--card-edge); }
+/* Held: lifted at once on the press. The lift is drawn by the face (or back) inside the card, scaled about the grab point (--zc-o,
+   set by cards.js) so the card's own transform stays its place; the paper and shadow move to it while held, and ease back on the drop. */
+.zc-card > .zc-face, .zc-card > .zc-back { border-radius: inherit; transform-origin: var(--zc-o, 50% 30%);
+  box-shadow: 0 0 0 rgba(0, 0, 0, 0), 0 0 0 rgba(0, 0, 0, 0); transition: transform 0.12s ease-out, box-shadow 0.12s ease-out; }
+.zc-card.zc-drag { transition: none; cursor: grabbing; overflow: visible; background: none; box-shadow: none; }
+.zc-card.zc-drag > .zc-face, .zc-card.zc-drag > .zc-back { background: var(--card); transform: scale(1.06) translateY(-2px);
+  box-shadow: var(--zc-lifted), inset 0 0 0 var(--zc-px, 1px) var(--card-edge); transition: transform 0.09s cubic-bezier(0.2, 0.8, 0.2, 1), box-shadow 0.09s cubic-bezier(0.2, 0.8, 0.2, 1); }
+/* A refused drop goes home with a small overshoot: the "no" is in the motion. */
+.zc-card.zc-refused { transition: transform 0.24s cubic-bezier(0.3, 1.35, 0.5, 1); }
+/* Where a drop would land: the pile ringed while a card is held over it. */
+.zc-slot.zc-target::before, .zc-card.zc-target { box-shadow: 0 0 0 1px rgba(26, 18, 9, 0.6), 0 0 0 3px var(--select-ring); }
 .zc-card.zc-focus { outline: 2px solid var(--select-ring); outline-offset: 2px; }
 /* A card you cannot play is not greyed: the cards you can play are lifted (their layout puts them higher). */
 /* The ring is three pixels of the accent with a dark line inside it: a pale card on a pale or a dark table still shows which card the hint means. */
 .zc-card.zc-glow { box-shadow: 0 0 0 1px rgba(26, 18, 9, 0.85), 0 0 0 4px var(--select-ring), 0 0 14px 5px var(--legal); }
 .zc-card.zc-sel { box-shadow: var(--select), 0 4px 10px rgba(0, 0, 0, 0.4); }
 .zc-dealing .zc-card { pointer-events: none; }
-.zc-card.zc-flip { animation: zc-flip 0.2s ease-out; }
 .zc-card.zc-hint { animation: zc-nudge 0.28s ease-in-out; }
-@keyframes zc-flip { from { transform: var(--zc-t) scaleX(0.05); } to { transform: var(--zc-t) scaleX(1); } }
+/* A turn, not a squash: the back turns away (rotateY to 90 deg), the face comes round from the other side; back and face swap at
+   the turn's edge-on moment (45%). It waits (--zc-turn-wait, set by cards.js) for the card that uncovered it to land. */
+.zc-card.zc-flip { animation: zc-turn var(--zc-turn, 0.2s) linear var(--zc-turn-wait, 0s) both; }
+@keyframes zc-turn { 0% { transform: var(--zc-t) perspective(600px) rotateY(0deg); animation-timing-function: cubic-bezier(0.5, 0, 1, 1); }
+  45% { transform: var(--zc-t) perspective(600px) rotateY(90deg); animation-timing-function: cubic-bezier(0, 0, 0.3, 1); }
+  100% { transform: var(--zc-t) perspective(600px) rotateY(0deg); } }
+.zc-stage .zc-card.zc-flip > .zc-back { display: block; animation: zc-turn-back var(--zc-turn, 0.2s) step-end var(--zc-turn-wait, 0s) both; }
+.zc-stage .zc-card.zc-flip > .zc-face { animation: zc-turn-face var(--zc-turn, 0.2s) step-end var(--zc-turn-wait, 0s) both; }
+@keyframes zc-turn-back { 0% { visibility: visible; } 45%, 100% { visibility: hidden; } }
+@keyframes zc-turn-face { 0% { visibility: hidden; } 45%, 100% { visibility: visible; } }
 @keyframes zc-nudge { 0%, 100% { margin-left: 0; } 30% { margin-left: -4px; } 70% { margin-left: 4px; } }
 .zc-card { container-type: inline-size; }
 .zc-face, .zc-back { position: absolute; inset: 0; }
@@ -76,6 +99,17 @@ body.zc-game { display: flex; flex-direction: column; height: 100%; overflow: hi
 /* The cream cut that keeps parts of one colour apart is under a pixel on a small card: it keeps a pixel. */
 @container (max-width: 56px) { .zc-face [stroke="#fdfcf8"][stroke-width="0.9"] { stroke-width: 1.4; } }
 .zc-face svg, .zc-back svg { display: block; width: 100%; height: 100%; }
+/* The French face's two index arrangements (cards.js frenchIndex): the row for piles that fan down, the column for hands that fan
+   sideways (a board made with index: 'col'); a court's frame moves down under the column. */
+.zc-ix-col { display: none; }
+.zc-cols .zc-ix-row { display: none; }
+.zc-cols .zc-ix-col { display: inline; }
+.zc-ct-col { display: none; }
+.zc-cols .zc-ct-row { display: none; }
+.zc-cols .zc-ct-col { display: inline; }
+/* In a hand a strip shows only a card's left third: the body's suit stands to the lower right, clear of the strip, so a strip is
+   the index and paper (FACE.body's left edge at 0.44 of the width, past the widest strip). */
+.zc-cols .zc-body { transform: translate(62px, 96px) scale(0.86) translate(-50px, -90px); }   /* about the suit's own centre (50, FACE.bodyY), in face units */
 .zc-card.zc-down .zc-face { display: none; }
 .zc-card:not(.zc-down) .zc-back { display: none; }
 

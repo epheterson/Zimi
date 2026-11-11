@@ -183,54 +183,63 @@
   }
 
   // ── Layout ──────────────────────────────────────────────────────────────
-  // Stock, waste and the foundations are one row right under the bar; the columns start under it and fan down through
-  // all the height that is left (up to a card's height a step).
-  var DOWN_RATIO = 0.54, MAX_DOWN_RATIO = 1, DOWN_RATIO_STEP = 0.05, UP_STEP_SHARE = Z.FAN_UP_SHARE, MIN_STEP_SHARE = 0.12, WASTE_FAN_SHARE = 0.3, WASTE_NUDGE_SHARE = 0.14;   // the waste stands a little off the stock, not against it
+  // Narrow: stock, waste and the foundations are one row right under the bar (foundations left, stock under the right thumb), the
+  // columns under it fanning down through the height that is left. Wide (landscape, desktop): stock over waste in a column on the
+  // left, the foundations two by two on the right, the columns between with the whole height (WIDE: ten card widths).
+  // A face-down card shows DOWN_SHARE of its height: enough to count them, nothing to read.
+  var DOWN_SHARE = 0.12, UP_STEP_SHARE = Z.FAN_UP_SHARE, MIN_STEP_SHARE = 0.12, WASTE_FAN_SHARE = 0.3, WASTE_NUDGE_SHARE = 0.14;   // the waste stands a little off the stock, not against it
+  var WIDE = { cols: 10, heightShare: 0.19 }, WIDE_TABLEAU_COL = 1, WIDE_FOUNDATION_COL = 8, WIDE_GROUP_GAP = 0.3;
 
   function place(state, m) {
-    var P = state.piles, cw = m.cw, ch = m.ch, x = function (col) { return m.left + col * m.step; };
-    var rows = Z.solitaireRows(m), y1 = rows.top, y2 = rows.cols, slots = [], cards = [];   // y1: the top row; y2: the columns
-    var weight = function (pile, down) {
-      var w = 0;
-      for (var i = 0; i < pile.length - 1; i++) w += pile[i].up ? 1 : down;
-      return w;
-    };
-    var heaviest = function (down) { return Math.max.apply(null, TABLEAU.map(function (t) { return weight(P[t], down); })); };
-    var down = Z.openDown(heaviest, rows.room, ch, ch * UP_STEP_SHARE, DOWN_RATIO, MAX_DOWN_RATIO, DOWN_RATIO_STEP);
-    var step = Z.growStep(heaviest(down), rows.room, ch, ch * MIN_STEP_SHARE);
+    // On a wide table the three groups (stock, columns, foundations) stand apart by up to WIDE_GROUP_GAP of a card, out of the spare width.
+    var group = m.wide ? Math.max(0, Math.min(m.cw * WIDE_GROUP_GAP, (m.W - 2 * m.pad - (WIDE.cols * m.cw + (WIDE.cols - 1) * m.gap)) / 2)) : 0;
+    var P = state.piles, cw = m.cw, ch = m.ch, x = function (col) { return m.left - group + col * m.step + (col >= WIDE_FOUNDATION_COL ? 2 : col >= WIDE_TABLEAU_COL ? 1 : 0) * group; };
+    var rows = Z.solitaireRows(m), slots = [], cards = [], wide = m.wide;
+    var y1 = rows.top, y2 = wide ? m.pad : rows.cols, room = wide ? m.H - 2 * m.pad : rows.room, tx = function (n) { return x(n + (wide ? WIDE_TABLEAU_COL : 0)); };
+    var down = ch * DOWN_SHARE;
+    // The longest column decides the face-up step: as open as UP_STEP_SHARE, closing up when the columns grow.
+    var step = Math.max(ch * MIN_STEP_SHARE, Math.min(ch * UP_STEP_SHARE, Math.min.apply(null, TABLEAU.map(function (t) {
+      var p = P[t], ups = 0, downs = 0;
+      p.forEach(function (c, i) { if (i < p.length - 1) { if (c.up) ups++; else downs++; } });
+      return ups ? (room - ch - downs * down) / ups : Infinity;
+    }))));
     var bottom = y2 + ch;
     var ids = function (pile) { return pile.map(function (c) { return c.id; }); };
-    var fan = cw * WASTE_FAN_SHARE, wx = x(1) + cw * WASTE_NUDGE_SHARE;
+    var fan = (wide ? ch : cw) * WASTE_FAN_SHARE;
+    var stockX = wide ? x(0) : x(6), stockY = y1;
+    var wx = wide ? x(0) : x(5) - cw * WASTE_NUDGE_SHARE - fan * (SHOWN_WASTE - 1), wy = wide ? m.pad + ch + 2 * m.gap : y1;
+    var fx = function (n) { return wide ? x(WIDE_FOUNDATION_COL + n % 2) : x(n); }, fy = function (n) { return wide ? m.pad + (n < 2 ? 0 : ch + 2 * m.gap) : y1; };
+    if (wide) stockY = m.pad;
 
     // stock: the top two cards drawn, the rest stacked unseen beneath
-    P.stock.forEach(function (c, i) { cards.push({ id: c.id, pile: 'stock', idx: i, x: x(0), y: y1, up: false, hidden: i < P.stock.length - 2 }); });
-    // waste: the last (up to) three cards fanned in draw 3, one in draw 1
+    P.stock.forEach(function (c, i) { cards.push({ id: c.id, pile: 'stock', idx: i, x: stockX, y: stockY, up: false, hidden: i < P.stock.length - 2 }); });
+    // waste: the last (up to) three cards fanned in draw 3 (to the right, or down on a wide table), one in draw 1
     var shown = state.draw === 3 ? SHOWN_WASTE : 1;
     P.waste.forEach(function (c, i) {
-      var k = i - (P.waste.length - Math.min(shown, P.waste.length)), seen = k >= 0;
-      cards.push({ id: c.id, pile: 'waste', idx: i, x: wx + (seen ? k * fan : 0), y: y1, up: true, hidden: !seen });
+      var k = i - (P.waste.length - Math.min(shown, P.waste.length)), seen = k >= 0, off = seen ? k * fan : 0;
+      cards.push({ id: c.id, pile: 'waste', idx: i, x: wide ? wx : wx + off, y: wide ? wy + off : wy, up: true, hidden: !seen });
     });
     FOUNDATION.forEach(function (f, n) {
-      P[f].forEach(function (c, i) { cards.push({ id: c.id, pile: f, idx: i, x: x(3 + n), y: y1, up: true, hidden: i < P[f].length - 2 }); });
+      P[f].forEach(function (c, i) { cards.push({ id: c.id, pile: f, idx: i, x: fx(n), y: fy(n), up: true, hidden: i < P[f].length - 2 }); });
     });
     TABLEAU.forEach(function (t, n) {
       var yy = y2;
       P[t].forEach(function (c, i) {
-        cards.push({ id: c.id, pile: t, idx: i, x: x(n), y: yy, up: c.up, hidden: false });
-        if (i < P[t].length - 1) yy += c.up ? step : step * down;
+        cards.push({ id: c.id, pile: t, idx: i, x: tx(n), y: yy, up: c.up, hidden: false });
+        if (i < P[t].length - 1) yy += c.up ? step : down;
       });
       bottom = Math.max(bottom, yy + ch);
     });
     var height = Math.max(bottom + m.pad, m.H);
 
-    slots.push({ id: 'stock', x: x(0), y: y1, w: cw, h: ch, mark: P.stock.length ? '' : '↻', label: Z.describePile(TX('sol.stock'), ids(P.stock), false) + (P.stock.length ? TX('sol.enterDraw') : TX('sol.enterRecycle')) });
-    slots.push({ id: 'waste', x: wx, y: y1, w: cw + fan * (SHOWN_WASTE - 1), h: ch, label: Z.describePile(TX('sol.waste'), ids(P.waste), true) });
+    slots.push({ id: 'stock', x: stockX, y: stockY, w: cw, h: ch, mark: P.stock.length ? '' : '↻', label: Z.describePile(TX('sol.stock'), ids(P.stock), false) + (P.stock.length ? TX('sol.enterDraw') : TX('sol.enterRecycle')) });
+    slots.push({ id: 'waste', x: wx, y: wy, w: wide ? cw : cw + fan * (SHOWN_WASTE - 1), h: wide ? ch + fan * (SHOWN_WASTE - 1) : ch, label: Z.describePile(TX('sol.waste'), ids(P.waste), true) });
     FOUNDATION.forEach(function (f, n) {
       var t = P[f].length ? top(P[f]).id : null;
-      slots.push({ id: f, x: x(3 + n), y: y1, w: cw, h: ch, goal: true, mark: t === null ? 'A' : '', label: (t === null ? TX('sol.foundationEmpty') : TX('sol.foundation', { suit: TX('cards.suit.' + ['clubs', 'diamonds', 'hearts', 'spades'][Z.suit(t)]), cards: Z.plural(P[f].length, 'card') })) });
+      slots.push({ id: f, x: fx(n), y: fy(n), w: cw, h: ch, goal: true, mark: t === null ? 'A' : '', label: (t === null ? TX('sol.foundationEmpty') : TX('sol.foundation', { suit: TX('cards.suit.' + ['clubs', 'diamonds', 'hearts', 'spades'][Z.suit(t)]), cards: Z.plural(P[f].length, 'card') })) });
     });
     TABLEAU.forEach(function (t, n) {
-      slots.push({ id: t, x: x(n), y: y2, w: cw, h: Math.max(ch, height - m.pad - y2), label: Z.describePile(TX('sol.tableau', { n: n + 1 }), ids(P[t]), P[t].length && top(P[t]).up) });
+      slots.push({ id: t, x: tx(n), y: y2, w: cw, h: Math.max(ch, height - m.pad - y2), label: Z.describePile(TX('sol.tableau', { n: n + 1 }), ids(P[t]), P[t].length && top(P[t]).up) });
     });
     return { height: height, slots: slots, cards: cards };
   }
@@ -275,7 +284,7 @@
 
     page = Z.solitairePage({
       rules: api, id: 'solitaire', saveOff: function () { return !!watch; }, blocked: function () { return !!watch; },
-      place: place, cols: COLS, newGame: newGame, stock: drawStock, afterStock: false, why: why,
+      place: place, cols: COLS, wide: WIDE, newGame: newGame, stock: drawStock, afterStock: false, why: why,
       refuse: function () { page.note(TX('sol.why.stockEmpty')); },
       drew: function (before, after) {
         if (after.passes === before.passes) return;
