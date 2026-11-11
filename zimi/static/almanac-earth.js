@@ -4893,6 +4893,8 @@ var AE_HD_KINDS = ['hd', 'max'];
 function _aeHdRowHtml() {
   var st = _ae.hdSt;
   var offers = (st && st.offers) || {};
+  if (st && !st.installed && st.missing && st.mode !== 'never')   // this version's release has no Almanac HD
+    return '<div class="ae-set-data ae-set-hd"><b>' + _almEsc(_aeT('alm_hd_offer')) + '</b><small>' + _almEsc(_aeT('alm_hd_missing')) + '</small></div>';
   if (!st || (!st.installed && (st.mode === 'never' || !Object.keys(offers).length))) return '';
   var busy = st.downloading, edit = !!st.can_change && !busy;
   var rows = AE_HD_KINDS.map(function (k) {
@@ -4921,7 +4923,7 @@ function _aeHdGet() {
   _aePost(AE_HD_SET_URL, { start: true }).then(function (st) {
     st.can_change = true;
     _aeHdShow(st);
-  }).catch(function () { _aeHdShow(null); }).then(function () { _aeById('ae-hd-get').disabled = false; });
+  }).catch(function () { _aeHdPollNow(); }).then(function () { _aeById('ae-hd-get').disabled = false; });   // refused (no Almanac HD in this release): the status says why
 }
 function _aeHdNotNow() {
   _prefWrite(AE_HD_LATER_KEY, '1');

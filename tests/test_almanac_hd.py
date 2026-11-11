@@ -339,7 +339,9 @@ def test_yes_reads_the_manifest_of_its_own_versions_release_then_downloads_and_c
 
 def test_a_dev_build_with_no_release_manifest_fetches_nothing(manifest):
     assert almanachd.start() == (None, "unavailable")
-    assert almanachd.status()["offer"]["approx"] is True and len(manifest["asked"]) == 1
+    # Asked, and the release names none: the Almanac says so rather than offering a download that cannot come.
+    st = almanachd.status()
+    assert st["missing"] and st["offer"] is None and len(manifest["asked"]) == 1
 
 
 def test_a_manifest_for_another_version_or_a_strange_file_is_no_offer(manifest):

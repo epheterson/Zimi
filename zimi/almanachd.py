@@ -417,10 +417,17 @@ def status():
         "offers": {},
         "offer": None,
         "downloading": None,
+        "missing": False,
     }
     if mode == outbound.NEVER:
         return out
     rel = release()
+    with _manifest_lock:
+        looked = _manifest["tried"] > 0
+    if rel is None and looked:
+        # The release was asked and names no Almanac HD (built without it, or not there yet): say so, offer nothing.
+        out["missing"] = True
+        return out
     for k in KINDS:
         if k == kind:
             continue
