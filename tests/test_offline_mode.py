@@ -34,6 +34,8 @@ def _env(tmp_path, monkeypatch):
     monkeypatch.setattr(server, "ZIM_DIR", str(zim_dir))
     monkeypatch.setattr(server, "ZIMI_DATA_DIR", str(tmp_path / "data"))
     monkeypatch.setattr(lib, "_opds_disk_loaded", True)
+    # Nothing a test earlier in this worker left in the catalog's memory: these tests start with no catalog at all.
+    monkeypatch.setattr(lib, "_opds_cache", {})
     # Offline tests assert the synchronous stale-serve path — no background
     # revalidation threads reaching for a (dead) network.
     monkeypatch.setattr(lib, "_OPDS_BG_REFRESH", False)
