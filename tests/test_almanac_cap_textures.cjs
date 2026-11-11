@@ -18,10 +18,10 @@ function fn(name) {
   throw new Error(name);
 }
 function world(withCap) {
-  const tracked = [], freed = [];
-  const C = { Math, Promise, tracked, freed, _ae: { dirty: false, ready: false }, _aeKick() {}, _aeWarmSliced() {},
+  const tracked = [], freed = [], holds = [];
+  const C = { Math, Promise, tracked, freed, holds, _ae: { dirty: false, ready: false }, _aeKick() {}, _aeWarmSliced() {},
     _aeLoadTexture: (THREE, url) => Promise.resolve({ image: url.indexOf('hi') >= 0 ? { width: 4096, height: 2048 } : { width: 1024, height: 512 }, dispose() {} }) };
-  if (withCap) C.ZimiCap = { gpuTrack: (k, b) => { tracked.push([k, b]); return true; }, gpuFree: (k) => freed.push(k) };
+  if (withCap) C.ZimiCap = { gpuTrack: (k, b) => { tracked.push([k, b]); return true; }, gpuFree: (k) => freed.push(k), hold: (ms) => holds.push(ms) };
   vm.createContext(C);
   vm.runInContext(fn('_aeLoadMap'), C);
   return C;
@@ -30,7 +30,10 @@ const S = () => ({ maps: {}, mapFailed: {}, aniso: 1, THREE: {} });
 
 (async () => {
   const C = world(true), s = S(), uni = { value: null };
-  await C._aeLoadMap(s, uni, 'moon-1k');
+  const pending = C._aeLoadMap(s, uni, 'moon-1k');
+  check(C.holds.length === 1, 'a map that starts loading holds the governor (its frames are not the device\'s pace)');
+  await pending;
+  check(C.holds.length === 2, 'and holds it again once the map is in');
   check(C.tracked.length === 1 && C.tracked[0][0] === 'map:moon-1k' && C.tracked[0][1] === 1024 * 512 * 4 * 1.34, 'a map uploaded is counted against the level\'s memory budget (w x h x 4 x 1.34 for its mips)');
   await C._aeLoadMap(s, uni, 'moon-hi');
   check(C.freed.join() === 'map:moon-1k' && C.tracked[1][0] === 'map:moon-hi' && C.tracked[1][1] === 4096 * 2048 * 4 * 1.34, 'the map that replaces it lets the first one go and is counted in its place');

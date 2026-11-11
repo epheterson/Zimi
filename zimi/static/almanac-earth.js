@@ -810,6 +810,12 @@ var AE_CSS = [
   '[dir="rtl"] .ae-card-x{right:auto;left:4px}',
   '.ae-msg{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;text-align:center;padding:24px;color:var(--text2);font-size:14px;pointer-events:none}',
   '.ae-msg[hidden]{display:none}',
+  '.ae-static .ae-tools .ae-btn:not(.ae-gear),.ae-static .ae-bottom,.ae-static .ae-labels,.ae-static .ae-fullbar{display:none}',
+  '.ae-static .ae-msg{justify-content:flex-end;padding-bottom:16vh}',
+  '.ae-static-globe{position:absolute;left:50%;top:36%;transform:translate(-50%,-50%);width:min(66vw,46vh,440px);height:auto;aspect-ratio:1;pointer-events:none}',
+  '.ae-msg{flex-direction:column;gap:14px}',
+  '.ae-msg-line{margin:0;max-width:30em}',
+  '.ae-msg-try{pointer-events:auto;font-size:13px;padding:9px 16px;min-height:36px}',
   '.ae-view.ae-blank .ae-bottom,.ae-view.ae-blank .ae-status{display:none}',
   '.ae-hint{position:absolute;left:50%;bottom:calc(100% - 18px);transform:translateX(-50%);box-sizing:border-box;width:max-content;max-width:calc(100% - 32px);padding:8px 14px;border-radius:16px;background:rgba(0,0,0,.86);color:var(--text2);font-size:12px;line-height:1.4;text-align:center;pointer-events:none;opacity:0;transition:opacity .6s}',
   '.ae-hint.ae-show{opacity:1}',
@@ -2012,7 +2018,7 @@ function _aeAddLight(m) {
 // canvas is see-through (the view's own black is behind it), so the Moon
 // can stand over the page in the hero's place before the view grows.
 function _aeBuildGl(THREE, canvas) {
-  var renderer, dpr = Math.min(window.devicePixelRatio || 1, AE_MAX_DPR);
+  var renderer, dpr = Math.min(window.devicePixelRatio || 1, typeof ZimiCap !== 'undefined' ? ZimiCap.dprCap('earth') : AE_MAX_DPR);   // the level's ratio (2 on a standard device, as 1.15.4 drew)
   try {
     renderer = new THREE.WebGLRenderer({ canvas: canvas, alpha: true, antialias: dpr < AE_MSAA_BELOW_DPR, powerPreference: 'high-performance' });
   } catch (e) {
@@ -2115,6 +2121,7 @@ function _aeBuildGl(THREE, canvas) {
 // next open asks for them again.
 function _aeLoadMap(S, uni, url, format, load) {
   if (!S.maps[url]) {
+    if (typeof ZimiCap !== 'undefined') ZimiCap.hold();   // the frames around a map's load and upload are not the device's pace
     S.maps[url] = (load ? load() : _aeLoadTexture(S.THREE, url)).then(function (tx) {
       tx.anisotropy = S.aniso;
       if (format) tx.format = format;
@@ -2131,6 +2138,7 @@ function _aeLoadMap(S, uni, url, format, load) {
       return false;
     }).then(function (ok) {
       S.mapFailed[url] = !ok;
+      if (typeof ZimiCap !== 'undefined') ZimiCap.hold();
       _ae.dirty = true;
       _aeKick();
       // Ready behind the page, a map that comes later is uploaded now too.
@@ -2337,7 +2345,7 @@ function _aeReliefFrag(frag) {
 function _aeHdBudget() {
   var phone = false;
   try { phone = (typeof matchMedia === 'function' && matchMedia('(pointer: coarse)').matches) || (navigator.deviceMemory || 8) <= 4; } catch (e) {}
-  return (phone ? AE_HD_GPU_MB_PHONE : AE_HD_GPU_MB_DESKTOP) * 1048576;
+  return Math.min(phone ? AE_HD_GPU_MB_PHONE : AE_HD_GPU_MB_DESKTOP, _aeCapGet('hdMemMB', 1e9)) * 1048576;
 }
 function _aeHdTexBytes(tx, red) { return Math.round(AE_HD_TILE_PX * AE_HD_TILE_PX * (red ? 1 : AE_HD_RGBA_BYTES) * AE_HD_MIP_FACTOR); }
 function _aeHdKey(z, x, y) { return z + '/' + x + '/' + y; }
@@ -6044,7 +6052,9 @@ function _aeRenderSettings() {
   html += '</div><p class="ae-set-why"><a href="' + AE_SAT_SOURCE_URL + '" target="_blank" rel="noopener">' + AE_SAT_SOURCE_NAME + '</a></p>';
   var why = _aeSettingsWhy(m);
   if (why) html += '<p class="ae-set-why">' + _almEsc(why) + '</p>';
+  if (typeof ZimiCap !== 'undefined') html += ZimiCap.gearHtml();   // Auto / Light / Full, and what the network adds (capability.js)
   panel.innerHTML = html;
+  if (typeof ZimiCap !== 'undefined') ZimiCap.gearBind(panel);
   var get = _aeById('ae-set-hd-get');
   if (get) get.onclick = _aeHdGet;
   if (panel.querySelectorAll) Array.prototype.forEach.call(panel.querySelectorAll('.ae-ultra-sw'), function (box) { box.onchange = function () { _aeUltraToggle(box); }; });
@@ -7858,7 +7868,7 @@ function _aeDraw(now, busy) {
     return;
   }
   _aeUpdate(_aeDisplayMs());
-  if (_ae.gl.hd && !(_ae.site && _ae.site.pose)) _aeHdUpdate(_ae.gl);
+  if (_ae.gl.hd && !(_ae.site && _ae.site.pose) && _aeCapGet('hdTiles', true)) _aeHdUpdate(_ae.gl);
   _aeMapsFrame(_ae.gl);
   if (!(_ae.site && typeof _aeHostRender === 'function' && _aeHostRender())) _ae.gl.renderer.render(_ae.gl.scene, _ae.gl.camera);   // a landing site is drawn on Stand here's ground once that is ready
   _aeDrawMini();
@@ -7872,6 +7882,8 @@ function _aeFrame() {
   if (!_aeIsOpen || document.hidden) return;
   if (typeof _almanacOpen !== 'undefined' && !_almanacOpen) { _aeFinishClose(); return; }
   var now = performance.now();
+  var fpsMax = _aeCapGet('fpsMax', 0);   // a light device draws 30 a second, not 60
+  if (fpsMax && _ae.lastDraw && now - _ae.lastDraw < 1000 / fpsMax - AE_FPS_SLACK_MS) { _ae.raf = requestAnimationFrame(_aeFrame); return; }
   var dt = _ae.lastTs ? Math.min(now - _ae.lastTs, 1000) : 0;
   _ae.lastTs = now;
   var handDone = _aeStepHand(now);
@@ -7879,6 +7891,8 @@ function _aeFrame() {
   var busy = _aeStepFly(now) || _aeBusy() || !!handDone || shifting;
   if (_ae.standPending) _aeStandStep();
   _aeDraw(now, busy);
+  _ae.lastDraw = busy ? now : 0;
+  if (busy && !_ae.stand && typeof ZimiCap !== 'undefined') ZimiCap.frame('earth', now);   // the governor sees every frame that was really painted
   if (now - _ae.lastText >= AE_TEXT_TICK_MS) { _aeUpdateText(_aeDisplayMs()); _ae.lastText = now; }
   // The last frame of a swap is drawn; what follows it (the page covered,
   // or the view gone and the hero back) happens on it, not a frame later.
@@ -8021,6 +8035,7 @@ function _aeAdoptPointer(id, x, y) {
 // The canvas's own listeners: bound again to the fresh canvas that replaces
 // one whose context was given back (_aeDisposeGl).
 function _aeBindCanvas(canvas) {
+  if (typeof ZimiCap !== 'undefined') ZimiCap.watchContext(canvas, _aeContextLost);   // a context taken away: rebuilt, or the plain line
   canvas.addEventListener('pointerdown', function (e) {
     if (_ae.setOpen) _aeShowSettings(false);   // a touch on the globe puts the panel away
     if (_ae.spin) return;                       // side by side: nothing to turn
@@ -8252,6 +8267,7 @@ function _aeMessage(text) {
   if (!m) return;
   m.textContent = text || '';
   m.hidden = !text;
+  if (text && _ae && _ae.capStatic && typeof ZimiCap !== 'undefined') { ZimiCap.staticLine(m); _aeStaticGlobe(); }   // the reason and the one tap (Full), over the Earth lit as it is now
   if (_ae && _ae.el) _ae.el.classList.toggle('ae-blank', !!text);
 }
 
@@ -8261,12 +8277,92 @@ function _aeMessage(text) {
 // at never loads them (almanac.js _almMoonPrepare). Ready means a context with its shaders compiled and its maps
 // uploaded, drawing to a single pixel until the view opens.
 var _aePreparing = null;
+// ── Capability levels (capability.js) ──
+var AE_FPS_SLACK_MS = 3;   // a frame this early is still on time (the display's rate does not divide the cap evenly)
+function _aeCapGet(key, dflt) { return typeof ZimiCap !== 'undefined' ? ZimiCap.get(key) : dflt; }
+var AE_STATICGLOBE_JS = _almAsset('/static/almanac-staticglobe.js');
+// The view set aside shows only its line, its one button and the way back, over the Earth drawn once (almanac-staticglobe.js).
+function _aeStaticGlobe() {
+  if (!_ae || !_ae.el) return;
+  _ae.el.classList.add('ae-static');
+  if (typeof _asgDraw === 'function') { _asgDraw(_ae.el); return; }
+  if (_ae.staticLoading) return;
+  _ae.staticLoading = true;
+  var s = document.createElement('script');
+  s.src = AE_STATICGLOBE_JS;
+  s.onload = function () { _ae.staticLoading = false; if (_ae.capStatic && typeof _asgDraw === 'function') _asgDraw(_ae.el); };
+  s.onerror = function () { _ae.staticLoading = false; s.remove(); };
+  document.head.appendChild(s);
+}
+function _aeNoGlText() { return _aeT(_ae && _ae.capStatic ? 'cap_static' : 'alm_earth_nogl'); }
+// What the 3D scenes on the canvas give up before the GL behind them goes.
+function _aeDropScenes() {
+  try {
+    if (_ae.site) _aeSiteLeave(true);
+    if (_ae.mission) _amStop(true);
+    if (_ae.stand || _ae.standPending) _aeStandDrop(true);
+  } catch (e) {}
+}
+// The view sets itself aside (software drawing, a device too slow, a GPU that keeps resetting): the GPU goes back, the plain
+// line says so, and the gear (Full) is the way to try again.
+function _aeCapAside() {
+  if (!_ae) return;
+  _ae.failed = _ae.capStatic = true;
+  _aeDropScenes();
+  try { _aeDisposeGl(); } catch (e) { _ae.gl = null; _ae.ready = false; }
+  _aePreparing = null;
+  if (_aeIsOpen) { _aeCoverAlmanac(true); _aeMessage(_aeNoGlText()); }
+}
+// The GPU took the context back. The scene is rebuilt on a fresh canvas and the view opens again where it was; losses in a
+// row mean this device cannot hold it, and the view gives way.
+function _aeContextLost(give) {
+  if (!_ae || !_ae.gl) return;
+  if (give) { _aeCapAside(); return; }
+  _aeDropScenes();
+  try { _aeDisposeGl(); } catch (e) { _ae.gl = null; _ae.ready = false; }
+  _aePreparing = null;
+  if (_aeIsOpen) _aeOpenWhenReady();
+}
+// Prepare the scene, then enter it (the view is open and covers the page): the end of _aeShow, and a rebuild's.
+function _aeOpenWhenReady() {
+  _aeMessage(_aeT('alm_earth_loading'));
+  _aePrepare(true).then(function (ok) {
+    if (!_aeIsOpen) return;
+    if (!ok) {
+      _aeMessage(_ae.failed ? _aeNoGlText() : _aeT(navigator.onLine === false ? 'alm_earth_unavailable' : 'alm_earth_failed'));
+      return;
+    }
+    _aeMessage('');
+    _aeResize();
+    _aeEnter();
+    _aeKick();
+  });
+}
+function _aeCapEvent(evt) {
+  if (!_ae) return;
+  if (evt === 'fallback') { _aeCapAside(); return; }
+  if (evt === 'setting' && _ae.capStatic && ZimiCap.view3d() === 'open') {   // Full or Light on a device Auto set the view aside on: it tries
+    _ae.failed = _ae.capStatic = false;
+    _ae.el.classList.remove('ae-static');
+    var pic = document.getElementById('ae-static-globe');
+    if (pic) pic.remove();
+    if (_aeIsOpen) _aeOpenWhenReady();
+    return;
+  }
+  if (evt === 'setting' && !_ae.capStatic && ZimiCap.view3d() === 'static') { _aeCapAside(); return; }
+  var S = _ae.gl;
+  if (!S) return;
+  S.renderer.setPixelRatio(Math.min(S.dpr, ZimiCap.dprCap(_ae.stand ? 'stand' : 'earth')));
+  _aeResize();
+}
+
 function _aeEnsure() {
   if (_ae) return true;
   _aeEnsureStyles();
   var el = _aeBuildDom();
   if (!el) return false;
   _ae = _aeNewState(el);
+  if (typeof ZimiCap !== 'undefined') { ZimiCap.on(_aeCapEvent); if (ZimiCap.view3d() === 'static') _ae.failed = _ae.capStatic = true; }
   _aeBindControls();
   _aeBindKeys();
   _aeBindInfo();
@@ -8654,23 +8750,11 @@ function _aeShow(fromHero, fromOrrery) {
   if (typeof updateTopbar === 'function') updateTopbar();
   var cv = _aeById('ae-canvas');
   if (cv) cv.focus({ preventScroll: true });
-  _aeLoadSats();
+  if (!_ae.capStatic) _aeLoadSats();
   if (_aeReady()) { _aeLoadMaps(_ae.gl); _aeResize(); _aeEnter(); _aeKick(); return; }
   _aeCoverAlmanac(true);
-  if (_ae.failed) { _aeMessage(_aeT('alm_earth_nogl')); return; }
-  _aeMessage(_aeT('alm_earth_loading'));
-  _aePrepare(true).then(function (ok) {
-    if (!_aeIsOpen) return;
-    if (!ok) {
-      // "Reconnect" only when the device is offline; connected, the files did not load, and the way on is to try again.
-      _aeMessage(_aeT(_ae.failed ? 'alm_earth_nogl' : navigator.onLine === false ? 'alm_earth_unavailable' : 'alm_earth_failed'));
-      return;
-    }
-    _aeMessage('');
-    _aeResize();
-    _aeEnter();
-    _aeKick();
-  });
+  if (_ae.failed) { _aeMessage(_aeNoGlText()); return; }
+  _aeOpenWhenReady();   // "Reconnect" shows only when the device is offline; connected, the files did not load and the way on is to try again
 }
 
 // Close: back into the hero when the view came from it and it is there to

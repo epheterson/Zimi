@@ -312,6 +312,7 @@ function _almLoadEarth() {
 var ALM_LOW_MEMORY_GB = 2;
 var ALM_LOW_CORES = 2;
 function _almLowPower() {
+  if (typeof ZimiCap !== 'undefined') return ZimiCap.lowPower();   // the one decision (capability.js); the test below is for its absence
   var n = navigator, c = n.connection;
   return !!((c && c.saveData) || (n.deviceMemory && n.deviceMemory <= ALM_LOW_MEMORY_GB) || (n.hardwareConcurrency && n.hardwareConcurrency <= ALM_LOW_CORES));
 }
@@ -2238,7 +2239,7 @@ var ALM_TB_TABLES = ['sunmoon', 'tides', 'twilight', 'phases', 'seasons', 'calen
 var ALM_TB_CALCS = ['distance', 'sundial', 'sunmoonday', 'units', 'sight', 'days', 'convert', 'zones'];
 // The numbers everything above is worked from ("constants rows", Eric): the
 // Earth, the Sun and Moon, the bodies' facts and axes, time, the navigator's, physics, the units.
-var ALM_TB_CONSTS = ['k_earth', 'k_sunmoon', 'k_bodies', 'k_poles', 'k_time', 'k_nav', 'k_physics', 'k_scene', 'k_units'];
+var ALM_TB_CONSTS = ['k_earth', 'k_sunmoon', 'k_bodies', 'k_poles', 'k_time', 'k_nav', 'k_physics', 'k_scene', 'k_capability', 'k_units'];
 // One line drawing each, on a 24 grid, in the stroke of the Almanac's other icons.
 var ALM_TB_ICONS = {
   sunmoon: '<path d="M3 18h18M7 18a5 5 0 0 1 10 0M12 6v3M5.6 9.6l2 2M18.4 9.6l-2 2"/>',
@@ -2262,6 +2263,7 @@ var ALM_TB_ICONS = {
   k_earth: '<circle cx="12" cy="12" r="8.5"/><path d="M3.5 12h17M12 3.5v17"/><ellipse cx="12" cy="12" rx="4" ry="8.5"/>',
   k_sunmoon: '<circle cx="9" cy="12" r="5"/><circle cx="18.5" cy="8" r="2.5"/><path d="M9 4V3M9 21v-1M1.5 12h1M3.7 6.7l.8.8M3.7 17.3l.8-.8"/>',
   k_bodies: '<circle cx="8" cy="14" r="5"/><circle cx="17.5" cy="8" r="2.5"/><circle cx="18" cy="17.5" r="1.5"/>',
+  k_capability: '<rect x="3" y="13" width="4" height="8"/><rect x="10" y="8" width="4" height="13"/><rect x="17" y="3" width="4" height="18"/>',
   k_poles: '<circle cx="12" cy="12" r="6"/><path d="M12 2v20M9.5 4.5L12 2l2.5 2.5"/>',
   k_time: '<path d="M7 3h10M7 21h10M8 3c0 5 8 5 8 9s-8 4-8 9M16 3c0 5-8 5-8 9s8 4 8 9"/>',
   k_nav: '<path d="M12 3v18M3 12h18"/><circle cx="12" cy="12" r="5"/>',

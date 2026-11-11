@@ -1446,6 +1446,22 @@ function _tbMadeFill(x) {
   if (eq) eq.addEventListener('toggle', function () { if (eq.open) _tbEqOpen(eq); });
 }
 // Which Constants tile holds each constant a method rests on.
+// Capability levels (capability.js, ZimiCap.TABLE): what each level draws, low · standard · high, one row a limit.
+function _tbCapabilityRows() {
+  if (typeof ZimiCap === 'undefined') return [];
+  var T = ZimiCap.TABLE, trio = function (key, k) { return ['low', 'standard', 'high'].map(function (l) { var v = T[l][key]; return v === 0 && key === 'fpsMax' ? '∞' : _arNum(v * (k || 1), 2); }).join(' · '); }, SRC = 'Zimi';
+  return [
+    ['cap_dpr', trio('dprMax'), 0, '×', SRC],
+    ['cap_stand_dpr', trio('standDprMax'), 0, '×', SRC],
+    ['cap_sats', trio('satMax'), 0, '', SRC],
+    ['cap_hd_mem', trio('hdMemMB'), 0, 'MB', SRC],
+    ['cap_texture', trio('textureMax'), 0, 'px', SRC],
+    ['cap_gpu', trio('gpuMB'), 0, 'MB', SRC],
+    ['cap_fps', trio('fpsMax'), 0, '/s', SRC],
+    ['cap_slow', trio('slowMs'), 0, 'ms', SRC],
+    ['cap_steps', ZimiCap.STEP.join(', '), 0, '×', SRC]
+  ];
+}
 var TB_MADE_CONST_TILE = { aberration: 'k_physics', light: 'k_physics', parallax: 'k_nav', moonk: 'k_sunmoon', synodic: 'k_sunmoon',
   sidereal: 'k_earth', year: 'k_time', tai: 'k_time' };
 
@@ -2021,6 +2037,8 @@ var TB_CONST_ROWS = {
       ['heli_beacon', SKY_HELI_BEACON_MS, 0, 'ms', SRC]
     ];
   },
+  // What each capability level draws (capability.js): the table a light device, a standard one and a roomy one read.
+  k_capability: function () { return _tbCapabilityRows(); },
   k_units: function () {
     var rows = [];
     Object.keys(TB_UNITS).forEach(function (kind) {

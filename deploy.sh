@@ -27,12 +27,14 @@ trap '$SSH nas "rmdir $LOCK" 2>/dev/null || true' EXIT
 # a deploy usually a few files). The stamp lives in .git, so a fresh clone sends
 # everything once. (Synology refuses rsync unless its rsync service is on, so tar.)
 STAMP=.git/zimi-last-deploy
-SRC="zimi docker requirements.txt Dockerfile docker-compose.nas.yml"
+# .dockerignore goes too: without it the NAS image carried the ZIMs' 37 MB of source folders.
+SRC="zimi docker requirements.txt Dockerfile docker-compose.nas.yml .dockerignore"
 if [ -f "$STAMP" ]; then
   files=$(find $SRC -type f -newer "$STAMP" ! -path '*/__pycache__/*' ! -name '*.pyc')
 else
   files=$(find $SRC -type f ! -path '*/__pycache__/*' ! -name '*.pyc')
 fi
+files=$(printf '%s\n%s\n' "$files" .dockerignore | grep . | sort -u)   # 400 bytes, always: it decides what the image copies
 touch "$STAMP.next"
 # A file deleted since the last deploy would stay in the NAS tree (tar only adds) and the image would
 # copy it: remove what the last deploy sent and this checkout no longer has. Nothing is scanned on the NAS.

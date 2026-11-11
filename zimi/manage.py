@@ -6045,6 +6045,12 @@ def handle_manage_get(handler, parsed, params):
 
         return handler._json(200, {"zims": ownzims.catalog()})
 
+    elif parsed.path == "/manage/addons":
+        # Add-ons (addons.py): what can be added, what is there, the install under way, the setting.
+        from zimi import addons as _addons
+
+        return handler._json(200, _addons.status())
+
     elif parsed.path == "/manage/outbound":
         # "What Zimi fetches from the internet": every destination, what sets
         # it off and whether it is on now. Read-only; each row names the
@@ -6056,12 +6062,6 @@ def handle_manage_get(handler, parsed, params):
         from zimi import satellites as _sats
 
         return handler._json(200, _sats.setting())
-
-    elif parsed.path == "/manage/addons":
-        # Add-ons (addons.py): what can be added, what is there, the install under way, the setting.
-        from zimi import addons as _addons
-
-        return handler._json(200, _addons.status())
 
     elif parsed.path == "/manage/voices":
         # "Voices for Dictionary": the setting and every pinned Piper voice.

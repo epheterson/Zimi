@@ -32,6 +32,7 @@ HOST = os.path.join(os.path.dirname(os.path.abspath(__file__)), "builtin", "alma
 #: What the Almanac loads, in order (they share one global scope). app.js's
 #: _ALMANAC_MODULES, then what it adds on open and on use.
 SCRIPTS = (
+    "capability.js",
     "almanac-links.js",
     "almanac-orrery.js",
     "almanac-sky.js",
@@ -47,6 +48,7 @@ SCRIPTS = (
 #: Loaded later, on first use, by the Almanac itself (by relative URL).
 LAZY = (
     "almanac-sun.js",
+    "almanac-staticglobe.js",
     "almanac-look.js",
     "almanac-oneland.js",
     "almanac-skyland.js",

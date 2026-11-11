@@ -474,13 +474,12 @@ function _orreryEarthViewAvailable() {
 function _orreryOpenEarthView(target) {
   if (!_orreryEarthViewAvailable()) return;
   _orreryMarkTried('earth');
-  _orreryCommitScenery();
-  var opts = { target: target || 'earth', fromOrrery: true };
-  if (typeof window.openAlmanacEarth !== 'function') {   // held back on a low-power device: the tap fetches it
-    _almLoadEarth().then(function () { if (typeof window.openAlmanacEarth === 'function') window.openAlmanacEarth(opts); }, function () {});
+  if (typeof window.openAlmanacEarth !== 'function') {   // held back on a small device: the tap fetches it, then comes again
+    _almLoadEarth().then(function () { if (typeof window.openAlmanacEarth === 'function') _orreryOpenEarthView(target); }, function () {});
     return;
   }
-  window.openAlmanacEarth(opts);
+  _orreryCommitScenery();
+  window.openAlmanacEarth({ target: target || 'earth', fromOrrery: true });
 }
 
 // ── The hand-over to the 3D view and back ──
