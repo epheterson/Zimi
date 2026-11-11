@@ -519,27 +519,32 @@ WHITEN_REACH = 1
 WHITEN_NEAR = 90.0
 
 
-def whiten_clipped(im, fill):
+def whiten_clipped(im, fill, rim=True):
     """A colour mosaic whose saturated pixels were written as one fill colour (Viking MDIM 2.1 colour: exactly
     (207, 231, 255) wherever a channel clipped, caldera walls and polar ice alike) with that fill as neutral white:
     too bright to measure is white, not blue. The rim one pixel round it, where the fill was blended into the pixels
     beside it, loses its blue cast in proportion to how near its colour is to the fill (to a neutral grey of its own
-    brightness); nothing further away is touched."""
+    brightness); nothing further away is touched. Light on memory: a level-0 window is gigabytes, so only the rim's
+    few pixels are ever handled as floats, and ``rim=False`` (a window reduced many times over, where the rim is a
+    fraction of an output pixel) skips the rim."""
     import numpy as np
     from PIL import Image, ImageFilter
 
-    a = np.asarray(im.convert("RGB"), dtype=np.float32)
-    f = np.array(fill, dtype=np.float32)
-    exact = np.all(a == f, axis=2)
+    a = np.array(im.convert("RGB"), dtype=np.uint8)
+    exact = (a[..., 0] == fill[0]) & (a[..., 1] == fill[1]) & (a[..., 2] == fill[2])
     if not exact.any():
         return im
-    mask = Image.fromarray(exact.astype(np.uint8) * 255)
-    rim = np.asarray(mask.filter(ImageFilter.MaxFilter(2 * WHITEN_REACH + 1)), dtype=bool) & ~exact
-    near = np.clip(1.0 - np.linalg.norm(a - f, axis=2) / WHITEN_NEAR, 0.0, 1.0) * rim
-    grey = (a @ np.array(LUMA, dtype=np.float32))[..., None]
-    out = a * (1 - near[..., None]) + grey * near[..., None]
-    out[exact] = 255.0
-    return Image.fromarray(np.clip(np.rint(out), 0, 255).astype(np.uint8), "RGB")
+    if not rim:
+        a[exact] = 255
+        return Image.fromarray(a, "RGB")
+    grown = np.asarray(Image.fromarray(exact.view(np.uint8) * 255).filter(ImageFilter.MaxFilter(2 * WHITEN_REACH + 1))) > 0
+    ys, xs = np.nonzero(grown & ~exact)
+    px = a[ys, xs].astype(np.float32)
+    near = np.clip(1.0 - np.linalg.norm(px - np.array(fill, dtype=np.float32), axis=1) / WHITEN_NEAR, 0.0, 1.0)[:, None]
+    grey = (px * np.array(LUMA, dtype=np.float32)).sum(axis=1, keepdims=True)
+    a[ys, xs] = np.clip(np.rint(px * (1 - near) + grey * near), 0, 255).astype(np.uint8)
+    a[exact] = 255
+    return Image.fromarray(a, "RGB")
 
 
 class FileMosaic:
@@ -618,7 +623,7 @@ class FileMosaic:
             np.ascontiguousarray(self.arr[iy0:iy1, ix0:ix1]), self.mode
         )
         if self.whiten:
-            piece = whiten_clipped(piece, self.whiten)
+            piece = whiten_clipped(piece, self.whiten, rim=px <= 4 * out)
         box = (x0 - ix0, y0 - iy0, x0 - ix0 + px, y0 - iy0 + px)
         return piece.resize((out, out), Image.LANCZOS, box=box)
 
@@ -630,7 +635,7 @@ class FileMosaic:
         k = max(1, self.arr.shape[1] // (size[0] * 2))
         im = Image.fromarray(np.ascontiguousarray(self.arr[::k, ::k]), self.mode)
         if self.whiten:
-            im = whiten_clipped(im, self.whiten)
+            im = whiten_clipped(im, self.whiten, rim=False)
         return im.resize(size, Image.LANCZOS)
 
     def _aux(self):
