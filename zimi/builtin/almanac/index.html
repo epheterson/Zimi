@@ -201,7 +201,8 @@ function loadScripts(list) {
 }
 
 (function() {
-  function words(lang) { return fetch('i18n/' + lang + '.json').then(function(r) { return r.json(); }, function() { return null; }); }
+  // A language's strings, or null when they cannot be had (a missing file, a bad answer): English stands under it then.
+  function words(lang) { return fetch('i18n/' + lang + '.json').then(function(r) { return r.ok ? r.json() : null; }).catch(function() { return null; }); }
   var strings = Promise.all([words('en'), _currentLang === 'en' ? null : words(_currentLang)]).then(function(got) {
     _i18nFallback = got[0] || {};
     _i18n = got[1] || _i18nFallback;

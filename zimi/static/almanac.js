@@ -8422,13 +8422,15 @@ var _RTL_CODES = ['ar','he'];
 // those are named in the list as a line of text (number, title, credit), so the sequence stays whole.
 var _GR_CREDITS_URL = '/static/golden-record/credits.json';
 var _GR_DIR = '/static/golden-record/';
-var _grImages = null;
+var _grImages = null, _grFailed = false;
+// The table is kept once it has come; a failed fetch leaves an empty list for this render and is tried again at the next.
 async function _loadGrCredits() {
-  if (_grImages) return _grImages;
+  if (_grImages && !_grFailed) return _grImages;
   try {
     var resp = await fetch(_GR_CREDITS_URL);
     _grImages = (await resp.json()).images || [];
-  } catch (e) { _grImages = []; }
+    _grFailed = false;
+  } catch (e) { _grImages = []; _grFailed = true; }
   return _grImages;
 }
 function _grCap(idx) { return t('gr_cap_' + _grImages[idx].cap); }
@@ -8503,6 +8505,8 @@ async function _renderRosettaStone(now) {
   // Golden Record image gallery (only when that inscription is selected)
   if (entry.id === 'golden-record') {
     await _loadGrCredits();
+    // Another inscription was chosen while the credits were coming: that one's render stands, not this one.
+    if ((manifest[_rosettaTextIdx] || manifest[0]) !== entry) return;
     html += _renderGoldenRecordGallery();
   }
 
@@ -8580,7 +8584,7 @@ function _renderGoldenRecordGallery() {
     var cap = _almEsc(_grCap(i)), im = _grImages[i];
     html += '<li class="gr-row' + (im.omitted ? ' gr-row-text' : '') + '"><span class="gr-n">' + (i + 1) + '</span>' +
       (im.omitted ? '' : '<button class="gr-pic" onclick="_openGrLightbox(' + i + ')" aria-label="' + cap + '">' +
-        '<img src="' + _GR_DIR + im.file + '" alt="" loading="lazy"></button>') +
+        '<img src="' + _almEsc(_GR_DIR + im.file) + '" alt="" loading="lazy"></button>') +
       '<span class="gr-txt"><span class="gr-cap">' + cap + '</span><span class="gr-by">' + _almEsc(_grCredit(i)) + '</span></span></li>';
   }
   html += '</ol>';
@@ -8640,7 +8644,7 @@ function _renderGrLightbox() {
     '<button class="gr-lb-close" onclick="_closeGrLightbox()">&times;</button>' +
     '<button class="gr-lb-arrow gr-lb-prev" onclick="event.stopPropagation();_grNav(-1)"><svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="10,2 4,8 10,14"/></svg></button>' +
     '<div class="gr-lb-main" onclick="event.stopPropagation()">' +
-      '<img src="' + _GR_DIR + im.file + '" alt="' + cap + '">' +
+      '<img src="' + _almEsc(_GR_DIR + im.file) + '" alt="' + cap + '">' +
       '<div class="gr-lb-cap">' + cap + '</div>' +
       '<div class="gr-lb-by">' + _almEsc(_grCredit(_grLightboxIdx)) + '</div>' +
       '<div class="gr-lb-num">' + (_grLightboxIdx + 1) + ' / ' + _grImages.length + '</div>' +

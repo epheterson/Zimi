@@ -202,3 +202,52 @@ def test_the_list_holds_49_pictures_in_zimi(staged):
 def test_the_kiwix_list_shows_8_pictures_and_names_41(staged):
     got = _render(os.path.join(staged[True], almanacstage.GOLDEN_RECORD))
     assert got == {"rows": ALL, "text": ALL - PUBLIC_DOMAIN, "pictures": PUBLIC_DOMAIN, "omittedLine": True}
+
+
+_NODE = r"""
+const fs = require('fs'), vm = require('vm');
+const src = fs.readFileSync(process.argv[1], 'utf8');
+function grab(re) { const m = src.match(re); if (!m) throw new Error('missing ' + re); return m[0]; }
+%s
+"""
+
+
+def _node(body):
+    import shutil
+    import subprocess
+
+    node = shutil.which("node")
+    if not node:
+        pytest.skip("node is not installed")
+    r = subprocess.run([node, "-e", _NODE % body, os.path.join(STATIC, "almanac.js")], capture_output=True, text=True, timeout=60)
+    assert r.returncode == 0, r.stderr
+    return json.loads(r.stdout)
+
+
+def test_a_failed_credits_fetch_is_tried_again_at_the_next_open():
+    got = _node(
+        r"""
+const code = [/var _GR_CREDITS_URL = [^\n]*/, /var _grImages = null, _grFailed = false;/, /async function _loadGrCredits\(\) \{[\s\S]*?\n\}/].map(grab).join('\n');
+let calls = 0;
+const ctx = { fetch: async () => { calls++; if (calls === 1) throw new Error('offline'); return { json: async () => ({ images: [{ file: 'a.gif' }] }) }; } };
+vm.createContext(ctx); vm.runInContext(code, ctx);
+(async () => {
+  const first = await ctx._loadGrCredits(), second = await ctx._loadGrCredits(), third = await ctx._loadGrCredits();
+  console.log(JSON.stringify({ first: first.length, second: second.length, third: third.length, calls }));
+})();
+"""
+    )
+    assert got == {"first": 0, "second": 1, "third": 1, "calls": 2}, got
+
+
+def test_a_picture_file_name_is_escaped_in_both_renderers():
+    got = _node(
+        r"""
+const code = [/var _GR_DIR = [^\n]*/, /function _grCap\(idx\)[^\n]*/, /function _grCredit\(idx\) \{[\s\S]*?\n\}/,
+  /function _renderGoldenRecordGallery\(\) \{[\s\S]*?\n\}/].map(grab).join('\n');
+const ctx = { t: (k) => k, _almEsc: (x) => String(x).replace(/"/g, '&quot;'), _grImages: [{ file: 'x" onerror="boom', cap: 'c', by: 'b', pd: true }] };
+vm.createContext(ctx); vm.runInContext(code, ctx);
+console.log(JSON.stringify({ raw: ctx._renderGoldenRecordGallery().includes('onerror="boom') }));
+"""
+    )
+    assert got == {"raw": False}, got

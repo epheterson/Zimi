@@ -30,8 +30,11 @@
   ]
  },
  "1.15.6": {
+  "zimi_almanac": [
+   "Ten languages, fixes and Kiwix compatibility, so the Almanac ZIM can be shared with the community."
+  ],
   "zimi_games": [
-   "Fixes and Kiwix compatibility, so both ZIMs can be shared with the community."
+   "Fixes and Kiwix compatibility, so the Games ZIM can be shared with the community."
   ]
  }
 }

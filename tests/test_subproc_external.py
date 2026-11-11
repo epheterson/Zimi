@@ -118,3 +118,27 @@ def test_a_python_path_list_naming_the_bundle_is_dropped_whatever_its_spelling(m
     assert "PYTHONPATH" not in out and "PYTHONHOME" not in out
     kept = subproc.external_env({"PYTHONPATH": "/somewhere/else", "PYTHONHOME": "/usr/lib/python3"})
     assert kept == {"PYTHONPATH": "/somewhere/else", "PYTHONHOME": "/usr/lib/python3"}
+
+
+def test_a_bare_program_name_is_looked_up_on_the_childs_path_not_in_the_bundle(monkeypatch, tmp_path):
+    """Started from the bundle's folder, "piper" must not be taken for the bundle's own file of that name: it is what PATH finds."""
+    app, outside = tmp_path / "app", tmp_path / "bin"
+    app.mkdir()
+    outside.mkdir()
+    for folder in (app, outside):
+        exe = folder / "piper"
+        exe.write_text("#!/bin/sh\n")
+        exe.chmod(0o755)
+    monkeypatch.setattr(sys, "frozen", True, raising=False)
+    monkeypatch.setattr(sys, "_MEIPASS", str(app), raising=False)
+    monkeypatch.setattr(sys, "executable", str(app / "zimi"))
+    seen = []
+    monkeypatch.setattr(subprocess, "Popen", lambda cmd, **kw: seen.append(kw))
+    monkeypatch.setenv("LD_LIBRARY_PATH", str(app))
+    monkeypatch.setenv("LD_LIBRARY_PATH_ORIG", "/usr/local/lib")
+    monkeypatch.setenv("PATH", str(outside))
+    monkeypatch.chdir(app)
+    subproc.popen(["piper", "--help"])
+    assert seen[-1]["env"]["LD_LIBRARY_PATH"] == "/usr/local/lib"
+    assert subproc._resolved("piper") == str(outside / "piper")
+    assert not subproc._in_bundle("piper")

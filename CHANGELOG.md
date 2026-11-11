@@ -16,9 +16,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 - Voices install on the portable Linux build (#151).
 - A voice missing its engine gets a Set up button.
 
-**Games and Almanac**
+**Games**
 
-- Fixes and Kiwix compatibility, so both ZIMs can be shared with the community.
+- Fixes and Kiwix compatibility, so the Games ZIM can be shared with the community.
+
+**Almanac**
+
+- Ten languages, fixes and Kiwix compatibility, so the Almanac ZIM can be shared with the community.
 
 ## [1.15.5]
 

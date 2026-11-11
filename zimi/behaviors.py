@@ -32,6 +32,7 @@ Which copy is used, first match wins:
 import logging
 import os
 import shutil
+import subprocess
 
 log = logging.getLogger("zimi.behaviors")
 

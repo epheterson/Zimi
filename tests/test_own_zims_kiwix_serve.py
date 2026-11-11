@@ -220,6 +220,8 @@ def test_the_almanac_starts_in_kiwix_and_its_3d_view_opens(browser, kiwix, kind)
 
 
 def test_the_games_shelf_and_a_game_of_each_kind_start_in_kiwix(browser, kiwix):
+    if "games" not in kiwix["books"]:
+        pytest.skip("no games file among ZIMI_KIWIX_TEST_FILES")
     book = kiwix["books"]["games"]
     with open(
         os.path.join(ROOT, "zimi", "builtin", "games", "games.json"), encoding="utf-8"

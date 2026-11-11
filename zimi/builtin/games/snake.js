@@ -90,7 +90,8 @@
   var ctx = els.cv.getContext('2d'), status = Play.status(els.msg);
   var settings = Play.load(SETTINGS_KEY, { wrap: false }), best = Play.load(BEST_KEY, {});
   var g, cs = 18, rows = ROWS, mode = 'ready', last = 0, acc = 0, pal = {}, armed = null, fx = { eat: null, dead: 0 };
-  function modeKey() { return settings.wrap ? 'wrap' : 'walls'; }
+  // The walls of the board in play (the setting changed mid-game applies to the next one), so a score lands under its own walls.
+  function modeKey() { return (g ? g.wrap : settings.wrap) ? 'wrap' : 'walls'; }
 
   function readPalette() {
     var s = getComputedStyle(document.documentElement);

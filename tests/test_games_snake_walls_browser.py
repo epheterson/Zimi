@@ -54,3 +54,23 @@ def test_walls_say_so_in_every_language():
             table.get(k)
             for k in ("snake.walls", "snake.walls.solid", "snake.walls.wrap")
         ), lang
+
+
+def test_a_walls_change_mid_game_does_not_move_the_game_to_the_other_walls_best(browser, served):
+    """The walls of the board in play decide whose best it is: switching the setting during a game applies to the next one."""
+    ctx = browser.new_context(viewport={"width": 390, "height": 844})
+    page = ctx.new_page()
+    page.add_init_script("localStorage.setItem('zimi.games.snake.best', JSON.stringify({ walls: 7, wrap: 0 }));")
+    page.goto("%s/snake.html#lang=en&dir=ltr" % served)
+    page.wait_for_selector(".gs-sp-play")
+    page.click(".gs-sp-play")
+    page.wait_for_function("__snake.mode === 'playing'")
+    open_settings(page)
+    page.locator(".gs-card .gs-row button", has_text="Wrap through").click()
+    page.keyboard.press("Escape")
+    assert page.evaluate("__snake.g.wrap") is False, "the board in play keeps its walls"
+    page.evaluate("() => { const b = document.getElementById('sn-pause'); if (/^resume/i.test(b.textContent)) b.click(); }")
+    page.wait_for_function("__snake.mode === 'over'", timeout=60_000)  # it runs into the solid wall
+    stat = page.evaluate("document.querySelector('.ar-stat').textContent")
+    assert "Best 7" in stat, stat
+    ctx.close()

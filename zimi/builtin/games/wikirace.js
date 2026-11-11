@@ -311,11 +311,11 @@
   function go(path) {
     if (busy || !race || race.done || !race.begun) return;
     busy = true;
-    var mine = race;
+    var mine = race, turn = turnId;
     provider.open(path).then(function (page) {
       busy = false;
       // A page that arrives after the race ended (Give up, New game, a slow disk) counts for nothing: one race, one result.
-      if (race !== mine || race.done) return;
+      if (race !== mine || turn !== turnId || race.done) return;
       race.steps.push({ path: page.path, title: page.title, via: 'link' });
       saveDaily();
       if (Engine.isTarget(page, race.pair.end)) { show(page); arrive(page); } else show(page);
@@ -328,8 +328,8 @@
     if (busy || !race || race.done || race.steps.length < 2) return;
     var prev = race.steps[race.steps.length - 2];
     busy = true;
-    var mine = race;
-    provider.open(prev.path).then(function (page) { busy = false; if (race !== mine || race.done) return; race.steps.push({ path: prev.path, title: prev.title, via: 'back' }); saveDaily(); show(page); }, function () { busy = false; });
+    var mine = race, turn = turnId;
+    provider.open(prev.path).then(function (page) { busy = false; if (race !== mine || turn !== turnId || race.done) return; race.steps.push({ path: prev.path, title: prev.title, via: 'back' }); saveDaily(); show(page); }, function () { busy = false; });
   }
   function giveUp() {
     if (!race || race.done || !race.begun) return;
@@ -380,7 +380,10 @@
     say(box); line.say(T('race.hot.firstDone', { chip: hotChip(race.hot.res[0]) }));
     setTimeout(function () { b.focus(); }, 0);
   }
+  // Hot-seat reuses the race object for the second player: a page the first player's click was still loading must not land in it.
+  var turnId = 0;
   function hotSecond() {
+    turnId++;
     race.hot.turn = 1; race.steps = [{ path: race.pair.start.path, title: race.pair.start.title, via: 'start' }];
     race.ms = 0; race.since = 0; race.begun = false; race.done = false; race.gave = false; race.page = null;
     paintTrail(); paintHud(); intro(race.pair, 'hotseat', null);

@@ -25,6 +25,7 @@ used by both runners, so there is one answer to "how does a child die here".
 
 import logging
 import os
+import shutil
 import signal
 import subprocess
 import sys
@@ -72,8 +73,10 @@ def _under(path, root, mod=os.path):
 
 
 def _in_bundle(program):
-    """True when ``program`` is a file inside the frozen app's folder."""
+    """True when ``program`` is a file inside the frozen app's folder. A bare name is no path (see ``_resolved``)."""
     try:
+        if not os.path.dirname(os.fspath(program)):
+            return False
         paths = {_norm(program), _norm(os.path.realpath(program))}
     except (TypeError, ValueError, OSError):
         return False
@@ -108,11 +111,24 @@ def external_env(env=None):
     return env
 
 
+def _resolved(program, env=None):
+    """``program`` as the child would find it: a bare name ("piper", "say") is looked up on the child's own PATH, not taken
+    as a file of the folder Zimi was started from."""
+    try:
+        program = os.fspath(program)
+    except TypeError:
+        return program
+    if os.path.dirname(program):
+        return program
+    path = (os.environ if env is None else env).get("PATH")
+    return shutil.which(program, path=path) or program
+
+
 def _for_program(cmd, kwargs):
     """Give a child that is not part of the bundle the machine's environment."""
     if getattr(sys, "frozen", False):
         program = cmd[0] if isinstance(cmd, (list, tuple)) else cmd
-        if not _in_bundle(program):
+        if not _in_bundle(_resolved(program, kwargs.get("env"))):
             kwargs["env"] = external_env(kwargs.get("env"))
     return kwargs
 

@@ -91,12 +91,13 @@ def test_the_clock_reads_left_to_right_in_a_right_to_left_language(base, lang):
 
 
 def test_a_latin_month_is_its_own_run_in_a_hebrew_calendar_row(base):
+    # A fixed day inside Aban (the Persian month Oct 23 to Nov 21): the row's Latin month name is there whatever today is.
     from playwright.sync_api import sync_playwright
 
     with sync_playwright() as pw:
         br, pg, _ = _open(pw, base, "he")
         rows = pg.evaluate(
-            "() => { const d = document.createElement('div'); d.innerHTML = _almRenderCrossRef(_almSelectedJDN);"
+            "() => { const d = document.createElement('div'); d.innerHTML = _almRenderCrossRef(_gregorianToJDN(2026, 11, 10));"
             " return [...d.querySelectorAll('.alm-crossref-date')].map(e => e.innerHTML); }"
         )
         latin = [r for r in rows if "Aban" in r]

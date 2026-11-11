@@ -58,3 +58,29 @@ def test_a_page_that_lands_after_give_up_counts_for_nothing(browser, served):
     ), "the late page is not a step of the race"
     assert page.evaluate("__race.race.gave") is True
     ctx.close()
+
+
+def test_a_page_the_first_player_was_loading_does_not_land_in_the_seconds_turn(browser, served):
+    """Two on one phone: the first player gives up with a link still loading; the second player's turn reuses the race, and
+    the late page must not become a step of it."""
+    ctx = browser.new_context(viewport=VIEW)
+    page = ctx.new_page()
+    page.goto("%s/wikirace.html" % served)
+    page.wait_for_function("window.__race && __race.race && __race.provider")
+    page.click("button.gm-play")
+    page.wait_for_function("__race.race.begun && __race.race.page")
+    # Two on one phone: the race the page runs is the hot-seat one (its own code paths: give up hands the phone over).
+    page.evaluate("() => { __race.race.mode = 'hotseat'; __race.race.hot = { turn: 0, res: [] }; }")
+    link = page.evaluate("document.querySelector('.rc-link').dataset.path")
+    page.evaluate(
+        "ms => { const P = __race.provider, real = P.open.bind(P);"
+        " P.open = p => real(p).then(pg => new Promise(r => setTimeout(() => r(pg), ms))); }",
+        SLOW_MS,
+    )
+    page.click('.rc-link[data-path="%s"]' % link)
+    page.evaluate("document.getElementById('rc-give').click()")
+    page.click("button.gm-play")  # the hand-off: Ready, player 2
+    page.wait_for_function("__race.race.hot.turn === 1")
+    page.wait_for_timeout(SLOW_MS * 2)
+    assert page.evaluate("__race.race.steps.length") == 1, "the first player's late page is not a step of the second player's turn"
+    ctx.close()

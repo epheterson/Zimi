@@ -2155,8 +2155,10 @@ def _maybe_fetch(lang, accent):
     if POLICY.mode()[0] != outbound.AUTO:
         return
     tag = _offer_tag(lang, accent)
-    if tag and _usable(VOICES[tag].engine) and (tag not in installed() or _needs_setup(tag, installed()[tag])):
-        start_download(tag)
+    if tag and _usable(VOICES[tag].engine):
+        rec = installed().get(tag)   # one read: a removal between two cannot leave the second without its record
+        if rec is None or _needs_setup(tag, rec):
+            start_download(tag)
 
 
 def _fetch_file(url, dest, expect):
