@@ -416,6 +416,12 @@
 #almanac-head .alm-cards { grid-template-columns: repeat(3, minmax(0, 1fr)); }
 #almanac-head .alm-card-lbl { letter-spacing: 0.03em; }   /* three across: "Next full moon" fits the tile */
 #almanac-head .alm-card-val { white-space: normal; overflow-wrap: anywhere; text-wrap: balance; }
+/* Where the browser has subgrid, the labels of one row share a line of the grid instead: the row is as tall as its tallest
+   label, so a row of one-line labels carries no empty line above them, and the values still sit on one line. */
+@supports (grid-template-rows: subgrid) {
+  #almanac-head .alm-card { display: grid; grid-template-rows: subgrid; grid-row: span 2; row-gap: 0; }
+  #almanac-head .alm-card-lbl { min-height: 0; }
+}
 .alm-about-credit { margin: 14px 0 0; font-size: 11px; color: var(--text3); }
 .alm-sky-gear { left: 4px; }
 .alm-sky-gear[aria-expanded="true"] { color: var(--amber); }
