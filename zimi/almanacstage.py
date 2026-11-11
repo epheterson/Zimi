@@ -62,6 +62,7 @@ LAZY = (
     "almanac-sites-trail.js",
     "almanac-missions.js",
     "almanac-missions-plan.js",
+    "almanac-sats.js",
     "almanac-tides.js",
     "almanac-tides.css",
     "almanac-reference.css",
@@ -381,13 +382,17 @@ def _snapshots(dest):
     assets = os.path.join(os.path.dirname(os.path.abspath(__file__)), "assets")
     out = os.path.join(dest, "data")
     os.makedirs(out, exist_ok=True)
-    for name in ("satellites-snapshot.json", "tides-snapshot.json.gz"):
+    for name in ("satellites-snapshot.json", "satellites-all-snapshot.json.gz", "tides-snapshot.json.gz"):
         if not os.path.exists(os.path.join(assets, name)):
             raise StageError("assets/%s is missing" % name)
     shutil.copyfile(
         os.path.join(assets, "satellites-snapshot.json"),
         os.path.join(out, "satellites-snapshot.json"),
     )
+    with gzip.open(os.path.join(assets, "satellites-all-snapshot.json.gz"), "rb") as f:
+        everything = f.read()
+    with open(os.path.join(out, "satellites-all-snapshot.json"), "wb") as f:
+        f.write(everything)
     with gzip.open(os.path.join(assets, "tides-snapshot.json.gz"), "rb") as f:
         raw = f.read()
     with open(os.path.join(out, "tides-snapshot.json"), "wb") as f:

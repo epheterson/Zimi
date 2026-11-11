@@ -89,6 +89,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 - Games: Drop Pin on your own map no longer says the map has not loaded over a map that has, and the map is only a map there: its search box, place chips, cards and menus are put away and the place's own name is taken off its labels.
 
 - Games: a daily played past midnight counts for the day it began; ZimCity's money warning follows this year's taxes, a kept city's buttons act on that city, and a paused city stops redrawing; Canasta fits eleven melds a side on a short wide screen.
+### Almanac
+
+- **Every satellite:** a button in the 3D Earth draws all 17,000 active satellites from CelesTrak's data (a snapshot ships; fresher data follows the Satellite data setting), filtered by Starlink, OneWeb, Iridium, GNSS, orbit and owner, with a card for each (owner, launch, altitude, speed) and the visible passes over your place, in the live sky too.
 ### Added
 
 - A map for any place from every view: the 3D view, its Go to sheet, an article with coordinates and the Almanac's place open the installed map that covers it, or offer the right one to download (smallest region, newest, size shown).
