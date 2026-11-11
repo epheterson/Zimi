@@ -590,12 +590,26 @@
   // A long name ("International Draughts") beside Undo and Menu on a phone: the title steps down a pixel at a time to
   // TITLE_MIN_PX before it is cut with an ellipsis.
   var TITLE_MIN_PX = 12;
+  // A stat that still leaves the title cut ("2048" as "2." beside "24 · Bestwert 24" at 390 px in German) goes on a second
+  // line under the title (gs-bar-stack), the way a daily's tag does, and the title gets the stat's width.
   function fitTitle() {
     var h1 = d.querySelector('.ar-bar h1');
     if (!h1) return;
-    h1.style.fontSize = '';
-    var px = parseFloat(root.getComputedStyle(h1).fontSize);
-    while (h1.scrollWidth > h1.clientWidth + 0.5 && px > TITLE_MIN_PX) { px -= 1; h1.style.fontSize = px + 'px'; }
+    var bar = h1.parentNode, stat = bar.querySelector(':scope > .ar-stat');
+    var cut = function () { return h1.scrollWidth > h1.clientWidth + 0.5; };
+    var shrink = function () {
+      h1.style.fontSize = '';
+      var px = parseFloat(root.getComputedStyle(h1).fontSize);
+      while (cut() && px > TITLE_MIN_PX) { px -= 1; h1.style.fontSize = px + 'px'; }
+    };
+    bar.classList.remove('gs-bar-stack');
+    shrink();
+    if (cut() && !hosted && stat && stat.offsetWidth && stat.textContent.trim()) { bar.classList.add('gs-bar-stack'); shrink(); }
+  }
+  // The stat changes as the game goes (a score grows): the bar is laid out again.
+  function watchStat() {
+    var stat = d.querySelector('.ar-bar > .ar-stat');
+    if (stat && root.MutationObserver) new root.MutationObserver(fitTitle).observe(stat, { childList: true, characterData: true, subtree: true });
   }
 
   // ── motion, status and the shake ──
@@ -1869,7 +1883,7 @@
     var h1 = Shell.daily && d.querySelector('.ar-bar h1');
     if (h1 && !h1.querySelector('small')) h1.appendChild(h('small', { class: 'gs-daily-tag', 'data-t': 'daily.tag', text: T('daily.tag') }));
     if (h1) h1.parentNode.insertBefore(h('span', { class: 'gs-daily-tag gs-daily-flag', 'data-t': 'daily.tag', text: T('daily.tag') }), h1.nextSibling);
-    fitTitle(); root.addEventListener('resize', fitTitle);
+    fitTitle(); watchStat(); root.addEventListener('resize', fitTitle);
     if (helpFor(ID)) d.documentElement.classList.add('gs-help');
     // Settings that a game paints itself (a clock's text) are repainted when they change.
     settings.on(function () { if (game.paint) game.paint(); });
