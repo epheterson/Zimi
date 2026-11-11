@@ -8,7 +8,7 @@
    "stat": "0:00",
    "state": "4a477fb2",
    "sub": "",
-   "table": "76e65b82",
+   "table": "5cab650e",
    "undoOff": true,
    "watch": "",
    "won": false
@@ -21,7 +21,7 @@
    "stat": "0:14",
    "state": "95216a23",
    "sub": "",
-   "table": "f55a739",
+   "table": "e26f8c16",
    "undoOff": false,
    "watch": "",
    "won": false
@@ -34,7 +34,7 @@
    "stat": "0:14",
    "state": "91ae781a",
    "sub": "",
-   "table": "c4d3597",
+   "table": "1c6ac84e",
    "undoOff": false,
    "watch": "",
    "won": false
@@ -47,7 +47,7 @@
    "stat": "0:15",
    "state": "36c52e32",
    "sub": "",
-   "table": "68185e80",
+   "table": "c88df2a",
    "undoOff": false,
    "watch": "",
    "won": false
@@ -60,7 +60,7 @@
    "stat": "0:17",
    "state": "36c52e32",
    "sub": "",
-   "table": "18b71c23",
+   "table": "211f4e9d",
    "undoOff": false,
    "watch": "",
    "won": false
@@ -73,7 +73,7 @@
    "stat": "0:00",
    "state": "1379e860",
    "sub": "",
-   "table": "fe76d593",
+   "table": "c3cc652c",
    "undoOff": true,
    "watch": "",
    "won": false
@@ -86,7 +86,7 @@
    "stat": "0:00",
    "state": "77e0b005",
    "sub": "",
-   "table": "3bd1b8b2",
+   "table": "90ef1645",
    "undoOff": true,
    "watch": "",
    "won": true
@@ -99,7 +99,7 @@
    "stat": "0:00",
    "state": "e95c585",
    "sub": "",
-   "table": "241e2588",
+   "table": "579adc62",
    "undoOff": true,
    "watch": "",
    "won": false
@@ -108,11 +108,11 @@
    "fact": "",
    "label": "shell menu",
    "moves": 0,
-   "sheet": "SpiderNew gameSettingsHow to playHistoryStatsAbout this game",
+   "sheet": "SpiderNew gameSettingsHow to playHistoryStatsAbout this game\u00a9 Zimi",
    "stat": "0:00",
    "state": "e95c585",
    "sub": "",
-   "table": "241e2588",
+   "table": "579adc62",
    "undoOff": true,
    "watch": "",
    "won": false
@@ -125,7 +125,7 @@
    "stat": "0:00",
    "state": "e95c585",
    "sub": "",
-   "table": "241e2588",
+   "table": "579adc62",
    "undoOff": true,
    "watch": "",
    "won": false
@@ -135,5 +135,5 @@
  "hseed": 43,
  "plays": "tap:358>c6 tap:92>c4 stray:41 stray:96 tap:255>c0 drag:43>c3 tap:255>c5 tap:255>c0 drag:91>c2 tap:355>c7 drag:255>c5 tap:301>c8 tap:412>c4 tap:301>c9 tap:301>c8 drag:406>c3 drag:100>c8 tap:356>c0 tap:42>c0 tap:255>c8 tap:406>c7 tap:91>c6 drag:301>c0 stray:300 tap:406>c3 tap:42>c7 tap:253>c8 tap:253>c0 stray:355 drag:39>c2 stray:198 tap:301>c3 tap:255>c4 tap:356>c5 stray:199 tap:406>c5 tap:91>c5 tap:42>c3 tap:44>c0 drag:39>c6 tap:253>c4 drag:39>c2 tap:406>c7 stock tap:310>c7 tap:403>c3 stock tap:250>c0 drag:354>c1 tap:45>c2 tap:252>c2 drag:50>c4 drag:308>c8 drag:354>c5 tap:354>c1 tap:309>c4 drag:45>c0 stock tap:50>c6 tap:304>c1 tap:308>c5 tap:308>c6 tap:252>c3 tap:304>c0 drag:205>c9 tap:45>c2 drag:355>c2 tap:250>c2 tap:45>c0 drag:254>c6 drag:414>c4 tap:149>c2 tap:411>c8 tap:411>c6 tap:252>c1 tap:250>c1 tap:411>c8 tap:304>c2 tap:304>c0 tap:201>c8 tap:50>c7 tap:355>c5 tap:50>c6 tap:355>c0 tap:355>c5 tap:308>c4 stock tap:154>c1 stock drag:360>c3 tap:247>c4 drag:150>c7 tap:150>c8 tap:99>c2 tap:150>c7 tap:150>c2 tap:409>c2 drag:99>c3 drag:361>c0 drag:47>c2 stray:403 drag:411>c6 drag:360>c3 tap:48>c0 tap:47>c8 tap:413>c1 tap:47>c0 tap:150>c0 tap:154>c2 tap:254>c2 tap:99>c8 tap:47>c2 drag:99>c0 drag:307>c8 tap:248>c9 drag:150>c6 tap:150>c2 tap:254>c6 drag:150>c0 drag:201>c4 drag:410>c2 tap:409>c6 drag:410>c8 tap:150>c2 drag:47>c4 tap:409>c4 drag:307>c2 stray:154 tap:201>c6 stray:404 drag:150>c0 tap:254>c4 tap:411>c8 tap:409>c1 tap:414>c2 stray:257 drag:409>c0 tap:307>c6 drag:410>c8 tap:414>c4 tap:47>c1 tap:362>c2 drag:303>c0 tap:414>c7 tap:47>c7 tap:356>c2 drag:411>c1 stray:299 tap:411>c1 tap:307>c8 tap:356>c5 tap:410>c8 tap:304>c2 tap:154>c4 tap:150>c4 tap:201>c8 tap:356>c0 drag:254>c2 tap:356>c5 tap:304>c0 drag:47>c6 stray:43 drag:411>c7 tap:306>c6 tap:411>c4 tap:362>c1 drag:93>c0 drag:45>c1 tap:99>c7 tap:304>c4 drag:308>c9 stray:408 tap:409>c6 tap:100>c7 tap:100>c8 tap:47>c1 tap:99>c6 tap:152>c7 tap:99>c9 drag:47>c7 drag:154>c2 drag:146>c5 drag:414>c4 drag:201>c2 drag:307>c1 drag:201>c1 drag:307>c8 tap:45>c2 tap:184>c6 tap:360>c1 tap:153>c3 stray:257 drag:351>c1 tap:353>c8 stock tap:291>c2 stray:48 stock tap:148>c4 tap:393>c2 stock tap:354>c2 tap:80>c2 stock tap:258>c4 tap:146>c2 stray:248 tap:356>c4 tap:290>c4 dead-end tap:290>c4 dead-end tap:290>c4 dead-end drag:290>c4 dead-end tap:290>c4 dead-end tap:290>c4 dead-end drag:290>c4 dead-end tap:290>c4 dead-end tap:290>c4 dead-end tap:290>c4 dead-end tap:290>c4 dead-end tap:290>c4 dead-end drag:290>c4 dead-end drag:290>c4 dead-end drag:290>c4 dead-end tap:290>c4 dead-end drag:290>c4 dead-end tap:290>c4 dead-end tap:290>c4 dead-end tap:290>c4 dead-end drag:290>c4 dead-end tap:290>c4 dead-end tap:290>c4 dead-end tap:290>c4 dead-end tap:290>c4 dead-end tap:290>c4 dead-end tap:290>c4 dead-end tap:290>c4 dead-end drag:290>c4 dead-end tap:290>c4 dead-end tap:290>c4 dead-end tap:290>c4 dead-end tap:290>c4 dead-end tap:290>c4 dead-end tap:290>c4 dead-end tap:290>c4 dead-end drag:290>c4 dead-end stray:145 drag:290>c4 dead-end drag:290>c4 dead-end drag:290>c4 dead-end drag:290>c4 dead-end tap:290>c4 dead-end tap:290>c4 dead-end drag:290>c4 dead-end tap:290>c4 dead-end tap:290>c4 dead-end drag:290>c4 dead-end tap:290>c4 dead-end stray:398 tap:290>c4 dead-end tap:290>c4 dead-end tap:290>c4 dead-end tap:290>c4 dead-end drag:290>c4 dead-end tap:290>c4 dead-end tap:290>c4 dead-end drag:290>c4 dead-end tap:290>c4 dead-end drag:290>c4 dead-end drag:290>c4 dead-end tap:290>c4 dead-end tap:290>c4 dead-end tap:290>c4 dead-end tap:290>c4 dead-end tap:290>c4 dead-end tap:403>c0",
  "seed": 33,
- "trace": "774ab31fb574b01e9b39110f8207fb9483c5a1ce68fa90cffc000ad70dd0027ec09fae26e3fd63c2c7b30a1e7711f8684eee92c344ea226f0520daa330c012d05a6f6860fdbb97f9a6d064c8260951ff3ad4aed7be6a6b720f76f7709f092fdcfe2fde673e8e741043c5b9bc41120e25160bcdd4937a02390a40756ce02d60043a98fef9cd4165f67fd7c7ff32ce28655cef18beb2f828f043e1a396d73068b57ae3a9742dfbd2d895a1bde8b2965dd6b5391b920ee80a2accc52324654f4b5e6f629b6d49bccc36b691328a09c82138f2bd9832d18ebd2a599b1d3b0bb40a4c10bfa32c34f2bea0b86b7cf735ba8148d5aadd1e1b42056656cac3ed99c5f930928a9830d9d5fe0e902172930ecd1e40d9eed5478f44f301eae9c7a098026f0fec3288e38437b1ebff63da651f3633b12e7d7d7a41d6fd80afa48304478342d8edcbd6064555d5f2569768cd0dd4a879c3d984f90708fd63e710d1b7bf02e928a270bbfe115c8ba672084ab1d48fabe14d453055d793685af2f73ebe4cb598953425c11ae19580aeedd2784115d621aa40462d3835c1dcd006a96116180e23e0995af2dbf5dccb402942ecc1bfdf59a2d8062fe01e10ec67315f0e4f6b3d946ef52943d93101ab2518280d6c26fb0cafbaddf5830331ea1baf8fc4a2338fdeb654a2df2657c5c7ce6e445217e609a55f3a5222b64dce533bd34937cb4ddb496c22c1c8aac1f63f6233ba079cb1a55fb9b7c502cb8455a4628f763f7fcda4471b0fe517515715bea1b1e7f4204d147a3c466ca8f28f7391b23eee1c2a28832dc5835c8d45367b8cada16cd433a0e4eaba36dcd3dd0049b37121aa875048b853664d262b9b1681670b4390d5cd4187312e5ccf912f5d842035ec3617f59bc954648f6227330f161b52579be65b1510e2fc1c00bb74bffab94ba441194e8897d80db6d37c1d9847f3e3b798f657717411c9d1ade00058918528a8151445e99e94f5848c52c1ec2cfc4423612442a80499ba4827a0ec6ef1b01b8f83dce76a111223034ca6100edcf5ab01fbd8c87ecef4e96fbda48fb2005024ecf9aa2e3cbd52ac35919016f142de2fb11b1ef8dd4eaf27033ffc0fc0bdc8a75300357c2f973c2233a93e1c688cfed3ee599802c0f60c8bc22258746e9f513ea610bc71b8fb88f83d8c6fd633f5292b3f3ee6a65a2683d1526103674b5b3dc61644ad9e2873e6bccddf770b497e66f93404026ace27aa145d00387fa341305975b8d4f6f608f30050c7f4c90b8c91740d147a5243e6fc0c75b168b100f36d37d099daf6ca782bd4556a62dbe8b53282d8c4398eca16a511b49687b8ed8c1075272427c6edc2f55f328acf4f1493e1859cca77e4f067239ab8079acbe1c3bfc9cb88d9cb"
+ "trace": "ed475b59e81cb1fccad965b8812dba0817acd87beb014376296988848326fe1f282074f59c9a4a9b32d7b66d2c4fcf37c01e640f598b82dbc265f1056f0c08e66655ab40dbea0acf2dce6b5189fff56fb866e9f2195f7bed1bf19ed9b39afc9413b144750ebc105a8e311037225bb6dd03aeccd9a7a0cc6e559bd074148fe35dad85df2fa1f2670823761131d00505bc9303856b3c4839b27c33988ee5f5c639bb0a9da2e547b754c229d82a3dfe1cdca6750256347a59e6fa66dbd1fe1e01da0d3701d747c3f769ba1aa4ebccd7b48dae5d4f0570fde80ce2e27c2a6174349bf2abf840861e50aa9615112980a5052e4cca94be655cfe8d4551c5ed2c00467b1314714206c6f6994c96eda6d3bd156468c7172cfb88b39703b8bb1da97102677694104a743f195e3d2ccffa4355aa9af67f8de29188899fa6cd377814856bbacc73ea5144ca18881a524e56a4047216b1ebf832399d69e139515b6b4cf80d312ba49d93ebd742d2dd18b51c7c94b668089df763620502bf83d01e841664b6cb43dce621922a144983f2402e8eab6ed9c23a0219acfbedd3eb7a811ae5377ee8dd9996193c86269390fe3bbd171add7b9c1d2b17541d3a3a1afa4515c314b2320083c4d3db0e943c4a0bf9def7e2c999187cc8ed71dbcb0651e86dc36093d2f9f0fb49f903e37af13b656906accf7ce6a427e9286a5bf936c0cc465f05e4cd0f6a25774bc9d9ba7c8bbe4c49463f006e5bcdacaa7b371e4a1ac68faa04d03f3681cfeae75ff1d293b00fcba11ae6685dbb4791558a691b962ee32346ee161b540c95cd74fd83b53ba099af770aabfb7fe301a8945b69eba04d79a5d82c32c31aa2fc9523bf0411481f9ecc16a6c9b5bf049865898203b5b58fdb6de4176a59ad2ebca5c869b9fc07cb9f7c4a4afbc6917e7abb056ecd7130f8152b11483de511b0a9cf80cc73269953c508aa5df8a80c6f8821c2648b66346c8199b8867ee3fa0f5e6bb4167ff3019be40341ad61bc820e11d3bc299c633b8df240a2d102115edaec91c5d0a9607446c14f423ba9efc8da0948b2eaa3b377767d8c761764805d208cf625b78174c6b7f4803ef87f0aeaaa08f6faff1e6c3f7a0cb468ee957c58e3af91eb84ab61618fa68d94790dc275710ecfe59727409c046582932b009896b139150a7c6ac2540e8b81620ac23d60d055da0c18da5ec1cc41fe7e8e0a8f4ef6e0a1cfdf7bad93bef0aa36e710d002bede747f3d58382f158c942eda25d76fcef545ee590ee8df6c60280db14fb9b623051fbd79f787a9b9ded1b2c6a800d10cd7ee6a47b73754fb2bf5fd37063a7fc1ddbd877f8bec41804bf6d7b613bee98dfe7968167dcaadf0a6987e07d7c7dfd6dbc46b62d1c0d41c22e729"
 }

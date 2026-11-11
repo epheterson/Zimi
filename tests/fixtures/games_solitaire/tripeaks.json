@@ -134,7 +134,7 @@
    "fact": "",
    "label": "shell new game",
    "moves": 0,
-   "sheet": "TriPeaksNew gameSettingsHow to playHistoryStatsAbout this game",
+   "sheet": "TriPeaksNew gameSettingsHow to playHistoryStatsAbout this game\u00a9 Zimi",
    "stat": "0:00",
    "state": "89683c36",
    "sub": "",
@@ -148,5 +148,5 @@
  "hseed": 47,
  "plays": "tap:37>waste tap:51>waste tap:0>waste tap:25>waste stray:20 stock drag:34>waste tap:35>waste tap:23>waste tap:24>waste stock stock tap:6>waste tap:5>waste tap:45>waste tap:46>waste stock stray:17 stock stray:19 tap:27>waste drag:41>waste tap:42>waste stock drag:28>waste drag:16>waste stock drag:1>waste stray:22 stock drag:29>waste stock stock tap:20>waste stock stray:18 stray:20 tap:22>waste stock stock drag:17>waste drag:18>waste tap:19>waste stock stray:19 drag:50>waste stock stock stock stock stock stray:30 stray:11 stock stock drag:13>waste stock stock stock stock stock stray:19 stock stock tap:1>waste stray:25 tap:15>waste tap:16>waste drag:17>waste tap:39>waste",
  "seed": 36,
- "trace": "07fa7f6772a920697a30b99b07c7a88f78c6fa2c676560eda5aa1fe2c57ce1afb26087653661bad7d7cbf10b2df3c0396b77f4137e9241bbd7f3a4d894edc9287a0f9332a24ade00b5caa08d29401ceda9ae024ef607a4ca303cb57a5a308f0d2e0d1a27af19dffb1c57ce296075428082ca00452be54d76e4c05e382c2fd4ca0006e1739cf2e91898b7c828c79413ada5d52440afc83154337dce80f246ee1904953ec8b17b9e8719b907c61c5684eff4f75e878dd1b7d762a161970c91e361589618b04691fb94dea83be741ee42cea16eb00717a619fe4af372cf589cbbb37432e1f7c11f14248e8890bac1855bae284adc0e3bd67abcd66ef04ce6450dd2bcd8b22c0686a9f2d9ea6d64b1852552be9fda23025a5ad0870ad94bf121e572037970c5cd7f1c3e0045ac1dcce4e177b0f6f46765c8b44670f631148442ac86877bf099546c3371f8810e227c1c3b0dbd8a00a6626b451e"
+ "trace": "07fa7f6772a920697a30b99b07c7a88f78c6fa2c676560eda5aa1fe2c57ce1afb26087653661bad7d7cbf10b2df3c0396b77f4137e9241bbd7f3a4d894edc9287a0f9332a24ade00b5caa08d29401ceda9ae024ef607a4ca303cb57a5a308f0d2e0d1a27af19dffb1c57ce296075428082ca00452be54d76e4c05e382c2fd4ca0006e1739cf2e91898b7c828c79413ada5d52440afc83154337dce80f246ee1904953ec8b17b9e8719b907c61c5684eff4f75e878dd1b7d762a161970c91e361589618b04691fb94dea83be741ee42cea16eb00717a619fe4af372cf589cbbb37432e1f7c11f14248e8890bac1855bae284adc0e3bd67abcd66ef04ce6450dd2bcd8b22c0686a9f2d9ea6d64b1852552be9fda23025a5ad0870ad94bf121e572037970c5cd7f1c3e0045ac1dcce4e177b0f6f46765c8b44670f631148442ac86877bf099546c3371f8810e227c1c3b0d07b2c41c906ecb24"
 }
