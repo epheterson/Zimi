@@ -2108,3 +2108,31 @@ def test_a_cold_sample_voice_does_not_spend_the_one_try(piper, monkeypatch):
     assert (
         voices._sample_speed("piper", "en") is True
     ), "the try was kept for a later warm"
+
+
+def test_what_an_engine_would_spell_out_is_not_sent_to_it():
+    """Settings > Hear said "Chinese letter" for a random English Wiktionary title in
+    Han: an engine spells out a letter of a script it does not speak."""
+    from zimi import voices
+
+    assert voices.speakable("Some dictionary words are: cat, 漢字, dog.", "en") == "Some dictionary words are: cat, , dog."
+    assert voices.speakable("漢字", "en") is None
+    assert voices.speakable("★ Wikipédia → livre", "pt") == "Wikipédia → livre"
+    assert voices.speakable("大 Wikipedia", "zh") == "大 Wikipedia"
+    assert voices.speakable("дом 漢", "ru") == "дом"
+    assert voices.script_ok("café", "fr") and not voices.script_ok("漢字", "en")
+    assert voices.script_ok("हिन्दी", "hi") and not voices.script_ok("हि", "en")
+
+
+def test_every_languages_real_samples_survive_whole():
+    """The sentences Settings and the speed sample send, in all ten languages, reach
+    the engine unchanged except for spaces."""
+    from zimi import voices
+
+    here = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "zimi", "static", "i18n")
+    for code in ("ar", "de", "en", "es", "fr", "he", "hi", "pt", "ru", "zh"):
+        with open(os.path.join(here, code + ".json"), encoding="utf-8") as f:
+            line = json.load(f)["voices_sample"].replace("{words}", "word")
+        assert voices.speakable(line, code) == line, code
+    for code, line in voices.SPEED_SAMPLES.items():
+        assert voices.speakable(line, code) == line, code

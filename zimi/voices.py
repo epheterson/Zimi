@@ -52,6 +52,7 @@ import subprocess
 import sys
 import threading
 import time
+import unicodedata
 import urllib.parse
 import urllib.request
 
@@ -1570,6 +1571,61 @@ def can_say():
 # ── saying a word ─────────────────────────────────────────────────────────
 
 
+# The scripts an engine can say for a language besides Latin (names, brands).
+# A letter of any other script is not said by an engine of this language: espeak-ng
+# spells it out ("Chinese letter", "Cyrillic letter") in place of the words.
+_LANG_SCRIPTS = {
+    "zh": ("CJK", "BOPOMOFO"),
+    "ja": ("CJK", "HIRAGANA", "KATAKANA"),
+    "ko": ("HANGUL", "CJK"),
+    "hi": ("DEVANAGARI",),
+    "mr": ("DEVANAGARI",),
+    "ne": ("DEVANAGARI",),
+    "ar": ("ARABIC",),
+    "fa": ("ARABIC",),
+    "ur": ("ARABIC",),
+    "he": ("HEBREW",),
+    "ru": ("CYRILLIC",),
+    "uk": ("CYRILLIC",),
+    "bg": ("CYRILLIC",),
+    "sr": ("CYRILLIC",),
+    "el": ("GREEK",),
+    "th": ("THAI",),
+}
+_ALWAYS_SCRIPTS = ("LATIN", "COMBINING", "MODIFIER")
+
+
+def _script_of(ch):
+    """The first word of a letter's Unicode name: LATIN, CJK, CYRILLIC..."""
+    try:
+        return unicodedata.name(ch).split(" ", 1)[0]
+    except ValueError:
+        return ""
+
+
+def script_ok(word, lang):
+    """Whether every letter of ``word`` is in a script an engine of ``lang`` says."""
+    allowed = _ALWAYS_SCRIPTS + _LANG_SCRIPTS.get(_primary(lang), ())
+    return all(_script_of(c) in allowed for c in word if c.isalpha())
+
+
+def speakable(text, lang):
+    """``text`` without what an engine of ``lang`` would spell out as filler: letters
+    of a script it does not speak, and symbols and pictographs (a star is "star
+    symbol"). None when nothing to say is left."""
+    allowed = _ALWAYS_SCRIPTS + _LANG_SCRIPTS.get(_primary(lang), ())
+    keep = []
+    for c in text:
+        if c.isalpha():
+            if _script_of(c) not in allowed:
+                c = " "
+        elif unicodedata.category(c) == "So":
+            c = " "
+        keep.append(c)
+    out = _SPACES_RE.sub(" ", "".join(keep)).strip()
+    return out if any(c.isalnum() for c in out) else None
+
+
 def clean_text(text, limit=TEXT_MAX):
     """The text as an engine gets it, or None: one line, no control
     characters, at most ``limit`` characters (TEXT_MAX, a word; see
@@ -1708,6 +1764,7 @@ def _audio(text, lang, accent="", engine=None, limit=TEXT_MAX):
     """(engine, voice, text, path): who says the word and where its audio
     is kept, or None when no engine here can say it."""
     text = clean_text(text, limit)
+    text = text and speakable(text, lang)
     if text is None or not valid_lang(lang, accent):
         return None
     if engine is not None and engine not in ENGINES:
