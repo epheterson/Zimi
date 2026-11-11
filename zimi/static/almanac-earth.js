@@ -4900,15 +4900,16 @@ function _aeHdRowHtml() {
     if (!mine && !o) return '';
     var tail = busy && busy.kind === k ? Math.floor(100 * busy.done / Math.max(1, busy.size)) + '%'
       : mine ? _aeT('alm_hd_installed') : _aeHdOfferSize(o);
+    // The one in use stays a checked, enabled radio (a disabled one reads as off); choosing it again does nothing.
     return '<label class="ae-set-choice' + (edit && !mine ? '' : ' ae-off') + '"><input type="radio" name="ae-hd-kind" class="ae-hd-kind" value="' + k + '"' +
-      (mine ? ' checked' : '') + (edit && !mine ? '' : ' disabled') + '><span><b>' + _almEsc(_aeT('alm_hd_kind_' + k)) + '</b><small>' + _almEsc(tail) + '</small></span></label>';
+      (mine ? ' checked' : '') + (edit ? '' : ' disabled') + '><span><b>' + _almEsc(_aeT('alm_hd_kind_' + k)) + '</b><small>' + _almEsc(tail) + '</small></span></label>';
   }).join('');
   var who = st.can_change || st.installed ? '' : '<small>' + _almEsc(_aeT('alm_hd_ask_admin')) + '</small>';
-  return '<div class="ae-set-data ae-set-ultra" role="radiogroup" aria-label="' + _almEsc(_aeT('alm_hd_offer')) + '"><b>' + _almEsc(_aeT('alm_hd_offer')) + '</b>' + rows + who + '</div>';
+  return '<div class="ae-set-data ae-set-hd ae-set-ultra" role="radiogroup" aria-label="' + _almEsc(_aeT('alm_hd_offer')) + '"><b>' + _almEsc(_aeT('alm_hd_offer')) + '</b>' + rows + who + '</div>';
 }
 // A size chosen: its download starts; it replaces the one installed once it is in and checked.
 function _aeHdKind(input) {
-  if (input.disabled) return;
+  if (input.disabled || (_ae.hdSt && _ae.hdSt.kind === input.value)) return;
   Array.prototype.forEach.call(document.querySelectorAll('.ae-hd-kind'), function (r) { r.disabled = true; });
   var done = function () { _aeHdPollNow(); };
   _aePost(AE_HD_SET_URL, { start: true, kind: input.value }).then(done, done);
