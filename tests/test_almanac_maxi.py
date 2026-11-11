@@ -123,8 +123,9 @@ def test_a_source_without_a_layer_list_fails_the_build(tmp_path):
 def test_the_release_step_writes_the_manifest_zimi_reads(built, tmp_path, monkeypatch):
     from zimi import almanachd
 
-    maxi.main(["--tiles", built["tiles"], "--out", str(tmp_path), "--tag", "v1.15.4"])
-    path = tmp_path / (maxi.FILE_FMT % datetime.date.today().strftime("%Y-%m"))
+    # --month: the name the release job works out from what releases shipped (gh); given here, so no network.
+    maxi.main(["--tiles", built["tiles"], "--out", str(tmp_path), "--tag", "v1.15.4", "--month", "2026-11c"])
+    path = tmp_path / (maxi.FILE_FMT % "2026-11c")
     raw = (tmp_path / "zimi_almanac_maxi.json").read_text(encoding="utf-8")
     man = json.loads(raw)
     assert set(man) == {"file", "size", "sha256", "tag"}
@@ -141,7 +142,7 @@ def test_the_release_step_writes_the_manifest_zimi_reads(built, tmp_path, monkey
 
 def test_the_tile_source_pin_names_the_immutable_input():
     pin = maxi.read_pin()
-    assert set(pin) == {"file", "size", "sha256", "tag"}
+    assert {"file", "size", "sha256", "tag"} <= set(pin) <= {"file", "size", "sha256", "tag", "chunks", "hd_size", "max_size"}
     assert (
         re.fullmatch(r"[0-9a-f]{64}", pin["sha256"])
         and pin["file"].endswith(".zim")

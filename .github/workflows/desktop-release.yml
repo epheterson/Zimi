@@ -645,14 +645,18 @@ jobs:
           name: Zimi-portable-linux-${{ matrix.arch }}
           path: dist/zimi-*-linux-${{ matrix.arch }}.tar.gz
 
-  # The Almanac's HD flavour (zimi_almanac_maxi_<month>.zim: the whole Almanac with the tile pyramids inside) and the
-  # manifest Zimi reads from its own release to offer and fetch it. Built here on every release, from the current Almanac
-  # and the pinned tile source (zimi/assets/almanac-tiles.json; the tiles take an hour to make and change when NASA
-  # reissues them, not when Zimi does), so nobody attaches anything by hand. The file is never committed.
+  # Almanac HD in two sizes (zimi/almanachd.py), and the manifest Zimi reads from its own release to offer and fetch
+  # them: HD (zimi_almanac_maxi_<month>.zim, the whole Almanac with the tile pyramids inside, one file under 2 GiB) and
+  # Maximum (zimi_almanac_ultra_<month>.zimaa, .zimab...: every layer at full resolution, cut between clusters into
+  # chunks under GitHub's 2 GiB a file). Built here on every release from the current Almanac and the pinned tile source
+  # (zimi/assets/almanac-tiles.json: itself chunks on a release of its own, made on a big machine and published with
+  # scripts/publish_almanac_tiles.py; the tiles change when NASA reissues them, not when Zimi does). Named after the
+  # last letter any release shipped this month (build_almanac_maxi.unshipped_month). Never committed. About 7 GB moves
+  # through it: /mnt has the room a runner's root disk does not.
   almanac-maxi:
     if: startsWith(github.ref, 'refs/tags/') || github.event.inputs.tag != ''
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    timeout-minutes: 120
     steps:
       - name: Checkout
         uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
@@ -666,16 +670,25 @@ jobs:
 
       - run: pip install -r requirements.txt
 
-      - name: Build the HD flavour and its manifest
+      - name: Room for the tiles (the root disk is too small for 7 GB)
+        run: |
+          sudo mkdir -p /mnt/almanac
+          sudo chown "$USER" /mnt/almanac
+          df -h /mnt
+
+      - name: Build HD, Maximum as chunks, and the manifest
         env:
           TAG: ${{ github.event.inputs.tag || github.ref_name }}
-        run: python3 scripts/build_almanac_maxi.py --out maxi --tag "$TAG"
+          GH_TOKEN: ${{ github.token }} # to read which file names releases already shipped
+        run: python3 scripts/build_almanac_maxi.py --cache /mnt/almanac/tiles --out /mnt/almanac/out --tag "$TAG"
 
-      - name: Upload the flavour and its manifest
+      - name: Upload both sizes and the manifest
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
           name: Almanac-maxi
-          path: maxi/zimi_almanac_maxi*
+          path: |
+            /mnt/almanac/out/zimi_almanac_maxi*
+            /mnt/almanac/out/zimi_almanac_ultra*
           if-no-files-found: error
 
   release:
@@ -757,8 +770,12 @@ jobs:
           for z in zimi/builtin/*.zim; do
             if [ -e "$z" ]; then cp "$z" release/; fi
           done
-          # Its HD flavour, built in this run, and the manifest Zimi reads (zimi_almanac_maxi.json).
+          # Almanac HD, built in this run: HD, Maximum's chunks, and the manifest Zimi reads (zimi_almanac_maxi.json).
+          # A tile source with nothing past HD's levels makes no Maximum, and its manifest names none.
           cp Almanac-maxi/zimi_almanac_maxi_*.zim Almanac-maxi/zimi_almanac_maxi.json release/
+          for c in Almanac-maxi/zimi_almanac_ultra_*.zim[a-z][a-z]; do
+            if [ -e "$c" ]; then cp "$c" release/; fi
+          done
           ls -la release
 
       # A GitHub build-provenance attestation for every file that ships.

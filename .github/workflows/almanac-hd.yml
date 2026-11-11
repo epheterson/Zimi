@@ -11,6 +11,11 @@ name: Almanac HD tile source
 #   2. Copy the pin it prints (the job summary, and the almanac-tiles-pin artifact) into zimi/assets/almanac-tiles.json
 #      and commit it. The next release builds its HD flavour from the new tiles.
 # It never creates or moves a tag, and nothing here is needed to release Zimi.
+#
+# Since 1.16 the tile source holds every level at full resolution (Maximum: 4.8 GB, Mars's 12.7 GB mosaic held whole):
+# more memory and disk than a standard runner has, and more than one release file. It is built on a big machine and
+# published with scripts/publish_almanac_tiles.py (checks, chunks under 2 GiB, the pin). This workflow stays as the
+# recipe for a runner that has the room (a larger or self-hosted one); on ubuntu-latest it does not finish.
 
 on:
   workflow_dispatch:
