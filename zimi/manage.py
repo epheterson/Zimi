@@ -6049,7 +6049,10 @@ def handle_manage_get(handler, parsed, params):
         # What the library keeps beside what it lists: the Almanac's data as one row, and the older copies no name serves.
         from zimi import almanachd
 
-        return handler._json(200, {"almanac_hd": almanachd.library_row(), "older": _srv.older_copies()})
+        older = _srv.older_copies()
+        listed = {o["file"] for o in older}
+        older += [o for o in almanachd.superseded() if o["file"] not in listed]   # what the size in use replaced
+        return handler._json(200, {"almanac_hd": almanachd.library_row(), "older": older})
 
     elif parsed.path == "/manage/addons":
         # Add-ons (addons.py): what can be added, what is there, the install under way, the setting.
@@ -7583,15 +7586,14 @@ def handle_manage_post(handler, parsed, data):
         # Almanac HD: {"mode": "ask"|"auto"|"never"} saves the setting (the
         # env-lock contract: ZIMI_ALMANAC_HD or ZIMI_OFFLINE wins); {"start":
         # true} queues the download, the Almanac's offer said yes; {"start":
-        # true, "part": "moon"} one Ultra part (removed with /manage/delete, as any ZIM is).
+        # true, "kind": "max"} the other size, which replaces the one installed once it is in and checked.
         from zimi import almanachd as _hd
 
         if data.get("start"):
-            dl_id, err = _hd.start(
-                activity_actor(handler), part=data.get("part") or None
-            )
-            if err == "needs_core":
-                return handler._json(409, {"error": "Almanac HD comes first"})
+            kind = data.get("kind") or "hd"
+            if kind not in _hd.KINDS:
+                return handler._json(400, {"error": "kind is hd or max"})
+            dl_id, err = _hd.start(activity_actor(handler), kind=kind)
             if err == "never":
                 return handler._json(
                     409, {"error": "Almanac HD is set to never be fetched"}

@@ -4001,7 +4001,10 @@ def _post_download_finalize(dl):
     removed_versions = []
     prefix, new_date = _srv._extract_zim_date(dl["filename"])
     old_short = _remove_renamed_predecessor(dl, removed_versions)
-    if new_date:
+    # Almanac HD replaces what it replaces itself (almanachd.on_installed); an older copy of its data is listed in
+    # Manage > Storage, never removed unasked.
+    almanac = dl.get("_source") == "almanac_hd"
+    if new_date and not almanac:
         try:
             for f in os.listdir(_srv.ZIM_DIR):
                 if (
@@ -4066,6 +4069,10 @@ def _post_download_finalize(dl):
                 break
     except Exception as e:
         log.debug("Failed to cache ZIM metadata for download history: %s", e)
+    if almanac:
+        from zimi import almanachd
+
+        almanachd.on_installed("max" if almanachd._MAX_RE.match(dl["filename"]) else "hd")
     _record_download_activity(dl, "ok")
     event_type = "updated" if dl.get("is_update") else "download"
     _srv._append_history(
@@ -4212,7 +4219,8 @@ def _download_thread(dl):
         # never be installed, whatever transport delivered it. Raising here
         # lands in the non-transient handler below (tmp removed, error set).
         try:
-            _srv.open_archive(tmp_dest)
+            if not dl.get("_chunk"):  # a chunk of a split book is not a ZIM alone: the whole book is opened once it is in
+                _srv.open_archive(tmp_dest)
         except Exception as e:
             log.error(
                 "Downloaded file failed libzim validation (%s): %s",
@@ -4227,6 +4235,12 @@ def _download_thread(dl):
         # Atomic rename: tmp → final
         os.replace(tmp_dest, dl["dest"])
         dl["done"] = True  # Mark done immediately so UI shows completion
+        if dl.get("_chunk"):
+            # A chunk of Almanac HD's Maximum, staged out of the library's sight: the book goes in once all are here.
+            from zimi import almanachd
+
+            almanachd.finish_max(dl)
+            return
         log.info(
             "Download complete: %s via %s, refreshing library",
             dl["filename"],
