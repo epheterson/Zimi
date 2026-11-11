@@ -13,32 +13,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 **Zimi**
 
-- Voices on the portable Linux build: the machine's Python and pip run with the machine's own libraries, so a first voice download sets up its engine (#151).
-- A voice whose files are here but whose engine is not shows one Set up button in Settings.
-- The Games and Almanac ZIMs open in kiwix-serve and Kiwix JS: a short note where scripts are off, a credit line, and Zimi's licences and sources in their metadata.
+- Voices install on the portable Linux build (#151).
+- A voice missing its engine gets a Set up button.
 
-**Games**
+**Games and Almanac**
 
-- The shelf works in kiwix-serve's viewer, with a World favorites row after the table.
-- The credit line is centred, left to right and right to left.
-- Library games find their books in kiwix-serve, and the word games read the biggest English Wiktionary.
-- Snake has Walls in Settings: Solid, or Wrap through.
-- Card tables reach the foot of an iPhone screen, and the title bar refits when a button's words change.
-- 2048 in German keeps its title whole.
-- Wiki Race counts nothing for a page that lands after the race ended.
-
-**Almanac**
-
-- The head tiles carry no empty line above one-line labels.
-- The Golden Record credits every picture, and the Kiwix edition shows only the eight public-domain ones.
-- The Almanac ZIM follows the browser's language in Zimi's ten languages, and its credit line is centred.
-- The Almanac ZIM's 3D view no longer shows a gear whose settings need Zimi's server.
-
-### Fixed
-
-- Programs outside the bundle that the frozen app starts get the machine's library path, not the bundle's, and `zimi doctor --check` probes it.
-- Voices: a voice with its files but no engine can be set up in one tap.
-- A ZIM file name a release shipped stays spent when that release was squash-merged.
+- Fixes and Kiwix compatibility, so both ZIMs can be shared with the community.
 
 ## [1.15.5]
 
