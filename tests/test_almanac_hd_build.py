@@ -265,3 +265,19 @@ def test_the_builders_parts_and_the_apps_are_the_same_set():
 
     assert set(hd.PARTS) == set(almanachd.PARTS)
     assert hd.part_of("terrain/earth/3/1/1.webp") == ""
+
+
+def test_marss_clipped_fill_is_white_its_rim_loses_the_blue_and_haze_is_untouched():
+    fill = (207, 231, 255)
+    a = np.zeros((9, 9, 3), dtype=np.uint8)
+    a[:] = (180, 120, 90)                 # dust
+    a[0, 0] = (200, 210, 225)             # pale haze far from any fill
+    a[4, 3:6] = fill                      # a clipped streak
+    a[3, 4] = (196, 220, 246)             # its rim: blended toward the fill
+    out = np.asarray(hd.whiten_clipped(Image.fromarray(a), fill)).astype(int)
+    assert (out[4, 3:6] == 255).all()
+    r, g, b = out[3, 4]
+    assert b - r < 12, out[3, 4]          # the cast gone
+    assert (out[0, 0] == a[0, 0]).all() and (out[8, 8] == a[8, 8]).all()
+    assert (out[3, 0] == a[3, 0]).all()   # dust beside the rim, far from the fill's colour, untouched
+    assert hd.LAYERS["planets/mars"]["whiten"] == fill

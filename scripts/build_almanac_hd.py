@@ -126,6 +126,9 @@ LAYERS = {
         "mode": "RGB",
     },
     "earth/night": {
+        # GIBS serves Black Marble in steps: almost half of a city's lit pixels equal the one beside them, so at the
+        # closest approach the lights stood as blocks. A blur of under a pixel takes the steps out, not the streets.
+        "smooth": 0.8,
         "gibs": "VIIRS_Black_Marble",
         "time": "2016-01-01/",
         "ext": "png",
@@ -166,7 +169,9 @@ LAYERS = {
                 "mars",
                 "Mars_Viking_MDIM21_ClrMosaic_global_232m.tif",
                 "RGB",
-                {"max": 7, "native": True},
+                # The mosaic's clipped pixels are one fill colour, an icy blue: white (Eric: "if it's too bright to
+                # measure isn't that white?").
+                {"max": 7, "native": True, "whiten": (207, 231, 255)},
             ),
             (
                 "mercury",
@@ -408,8 +413,9 @@ def gibs_sources(layer, cache, update):
 class GibsMosaic:
     """Reads any window of a GIBS level as one picture, a source tile at a time."""
 
-    def __init__(self, folder, level, ext, mode):
+    def __init__(self, folder, level, ext, mode, smooth=0.0):
         self.folder, self.res, self.ext, self.mode = folder, GIBS_RES(level), ext, mode
+        self.smooth = smooth
         self.cols, self.rows = GIBS_DIMS[level]
         self._cache = {}
 
@@ -438,6 +444,10 @@ class GibsMosaic:
             for c in range(c0, c1 + 1):
                 canvas.paste(self._tile(r, c), ((c - c0) * TILE, (r - r0) * TILE))
         ox, oy = x0 - c0 * TILE, y0 - r0 * TILE
+        if self.smooth:  # the source's own steps softened before the cut (Black Marble: see LAYERS)
+            from PIL import ImageFilter
+
+            canvas = canvas.filter(ImageFilter.GaussianBlur(self.smooth))
         return canvas.resize(
             (out, out), Image.LANCZOS, box=(ox, oy, ox + px, oy + px)
         )
@@ -503,6 +513,35 @@ def fill_unmapped(im, black=FILL_BLACK):
     return Image.fromarray(np.clip(out, 0, 255).astype(np.uint8)), hole
 
 
+#: How far (pixels) a whitened fill reaches into its neighbours, and how near a neighbour's colour must be to the fill's
+#: (RGB distance) to lose its cast: only the fill's own rim, never haze or frost a pixel away from it.
+WHITEN_REACH = 1
+WHITEN_NEAR = 90.0
+
+
+def whiten_clipped(im, fill):
+    """A colour mosaic whose saturated pixels were written as one fill colour (Viking MDIM 2.1 colour: exactly
+    (207, 231, 255) wherever a channel clipped, caldera walls and polar ice alike) with that fill as neutral white:
+    too bright to measure is white, not blue. The rim one pixel round it, where the fill was blended into the pixels
+    beside it, loses its blue cast in proportion to how near its colour is to the fill (to a neutral grey of its own
+    brightness); nothing further away is touched."""
+    import numpy as np
+    from PIL import Image, ImageFilter
+
+    a = np.asarray(im.convert("RGB"), dtype=np.float32)
+    f = np.array(fill, dtype=np.float32)
+    exact = np.all(a == f, axis=2)
+    if not exact.any():
+        return im
+    mask = Image.fromarray(exact.astype(np.uint8) * 255)
+    rim = np.asarray(mask.filter(ImageFilter.MaxFilter(2 * WHITEN_REACH + 1)), dtype=bool) & ~exact
+    near = np.clip(1.0 - np.linalg.norm(a - f, axis=2) / WHITEN_NEAR, 0.0, 1.0) * rim
+    grey = (a @ np.array(LUMA, dtype=np.float32))[..., None]
+    out = a * (1 - near[..., None]) + grey * near[..., None]
+    out[exact] = 255.0
+    return Image.fromarray(np.clip(np.rint(out), 0, 255).astype(np.uint8), "RGB")
+
+
 class FileMosaic:
     """A whole-globe picture in plate carree (the Moon's map), windows cut from it. ``roll``: the picture runs 0-360
     degrees east, rolled here to -180..180. ``tint``: a small colour map (-180..180) whose colours, not brightness,
@@ -521,7 +560,8 @@ class FileMosaic:
             self.mode = mode
             self.im = None
             self.res = 360.0 / self.arr.shape[1]
-            self.finish = finish or {}
+            self.finish = dict(finish or {})
+            self.whiten = self.finish.pop("whiten", None)
             self.tint = self._tint_map(tint)
             self._aux_maps = None
             return
@@ -533,9 +573,10 @@ class FileMosaic:
             rolled.paste(im.crop((half, 0, im.width, im.height)), (0, 0))
             rolled.paste(im.crop((0, 0, half, im.height)), (im.width - half, 0))
             im = rolled
-        self.im = im
+        self.im = whiten_clipped(im, finish["whiten"]) if (finish or {}).get("whiten") else im
         self.res = 360.0 / self.im.width
-        self.finish = finish or {}
+        self.finish = dict(finish or {})
+        self.whiten = self.finish.pop("whiten", None)
         self.tint = self._tint_map(tint)
         self._aux_maps = None
 
@@ -576,17 +617,21 @@ class FileMosaic:
         piece = Image.fromarray(
             np.ascontiguousarray(self.arr[iy0:iy1, ix0:ix1]), self.mode
         )
+        if self.whiten:
+            piece = whiten_clipped(piece, self.whiten)
         box = (x0 - ix0, y0 - iy0, x0 - ix0 + px, y0 - iy0 + px)
         return piece.resize((out, out), Image.LANCZOS, box=box)
 
     def _small(self, size):
         """The whole globe as a picture of ``size``: the memory map read in strides, then reduced."""
+        import numpy as np
         from PIL import Image
 
         k = max(1, self.arr.shape[1] // (size[0] * 2))
-        return Image.fromarray(self.arr[::k, ::k], self.mode).resize(
-            size, Image.LANCZOS
-        )
+        im = Image.fromarray(np.ascontiguousarray(self.arr[::k, ::k]), self.mode)
+        if self.whiten:
+            im = whiten_clipped(im, self.whiten)
+        return im.resize(size, Image.LANCZOS)
 
     def _aux(self):
         """The two helper maps a finished layer reads, both a globe 1024 wide: ``lp`` (the picture's large-scale
@@ -731,7 +776,7 @@ def native_px(res, z):
 def _cut_row(args):
     kind, src, mode, layer, out, z, y, quality, native = args
     mos = (
-        GibsMosaic(*src, mode) if kind == "gibs" else FileMosaic(src[0], mode, *src[1:])
+        GibsMosaic(*src, mode, LAYERS[layer].get("smooth", 0.0)) if kind == "gibs" else FileMosaic(src[0], mode, *src[1:])
     )
     span = 180.0 / 2**z
     px = native_px(mos.res, z) if native else TILE
@@ -992,7 +1037,7 @@ def file_source(layer, spec, cache, top, update):
             ),
         )
     tint = spec.get("tint")
-    finish = {k: spec[k] for k in ("tone", "fill") if k in spec}
+    finish = {k: spec[k] for k in ("tone", "fill", "whiten") if k in spec}
     return (
         path,
         spec.get("roll", False),
