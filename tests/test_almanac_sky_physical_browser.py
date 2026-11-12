@@ -124,6 +124,20 @@ def _settle(pg, iso):
     )
 
 
+def _page_has_done_its_late_work(pg):
+    """Until the page has drawn what it draws when it is quiet and given back the space it reserved for it.
+
+    The Almanac's late sections are drawn from a queue that runs between the page's other work, and the tide's reserved
+    height is released when it is done (17 s after load on a loaded runner, the page 24 px shorter). A test that reads a
+    place on the page, then acts on it in another turn, begins after that, not on the moment the runner's speed picks.
+    """
+    pg.wait_for_function(
+        "() => { const p = document.getElementById('almanac-place');"
+        " return !_quietJobs.length && !_quietBusy && (!p || p.style.minHeight === ''); }",
+        polling=POLL_MS,
+    )
+
+
 def _drawn(pg):
     """Until the GPU sky has its data and has painted with it."""
     pg.wait_for_function(
@@ -624,6 +638,7 @@ def test_every_bright_star_can_be_tapped_and_its_figure_comes_with_it(browser, s
     try:
         _settle(pg, NIGHT)
         _drawn(pg)
+        _page_has_done_its_late_work(pg)
         pg.wait_for_function("() => _skyNames && _skyTapStars > 500", polling=POLL_MS)
         # Nothing asks for the constellations while the default (no lines) stands.
         _frames(pg)
