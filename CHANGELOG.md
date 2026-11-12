@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Highlights
+
+**Zimi**
+
+- Voices install on the portable Linux build, pip step included (#151).
+
 ## [1.15.6]
 
 ### Highlights

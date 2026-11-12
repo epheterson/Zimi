@@ -3,7 +3,7 @@
 #   ci/smoke_portable.sh <unpacked-folder> [path-to-a-test.zim]
 # Copies the folder to a fresh "stick" with a zimi-data and a zims folder beside the executable, then:
 # `serve -d` answers /health with the ZIM, leaves zimi.pid and zimi.log in zimi-data, writes its state there
-# and nowhere else, `doctor --check` passes, `service print` points at this executable, and stopping it
+# and nowhere else, `doctor --check` passes (it makes a venv under the data folder and imports ssl with its python), `service print` points at this executable, and stopping it
 # removes the pid file.
 set -euo pipefail
 
@@ -28,7 +28,8 @@ echo "zimi config (the portable folder decides the paths)..."
 "$Z" config | tee "$STICK/config.txt"
 grep -q "portable" "$STICK/config.txt" || { echo "FAIL: config does not show the portable folder"; exit 1; }
 
-echo "zimi doctor --check (also: the machine's python3, started from the app, is not handed the bundle's libraries, #151)..."
+echo "zimi doctor --check (also: the machine's python3, and a venv python made in the data folder beside the executable"
+echo "(what voices run pip with), started from the app, are not handed the bundle's libraries, #151)..."
 "$Z" doctor --check | tee "$STICK/doctor.txt"
 grep -q "would not run properly" "$STICK/doctor.txt" && { echo "FAIL: the app leaks its environment to outside programs"; exit 1; }
 

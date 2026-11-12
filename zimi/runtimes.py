@@ -12,6 +12,7 @@ import importlib.util
 import os
 import shutil
 import sys
+import tempfile
 from collections import namedtuple
 
 DOCKER, DESKTOP, PORTABLE, PIP = "docker", "desktop", "portable", "pip"
@@ -328,16 +329,8 @@ def format_report(rows, kind):
 _OUTSIDE_PROBE = "import os, ssl; print(os.environ.get('LD_LIBRARY_PATH', ''))"
 
 
-def outside_python_problem(python=None):
-    """Frozen only: why a program that is not part of this app (the machine's
-    python3, which sets up voices) would not run properly from here, or None.
-    The bootloader's library path must not reach it (#151: its older libssl
-    broke pip on a Raspberry Pi)."""
-    if not getattr(sys, "frozen", False):
-        return None
-    python = python or shutil.which("python3")
-    if not python:
-        return None
+def _probe(python):
+    """Run the probe with ``python`` the way the app starts any outside program; a problem as text, or None."""
     from zimi import subproc
 
     try:
@@ -352,6 +345,42 @@ def outside_python_problem(python=None):
     return None
 
 
+def _venv_python_problem(python):
+    """The same probe through a venv python in the data folder, where voices keep theirs: beside the executable on a
+    portable build, which is what #151's second spawn (``<venv>/bin/python -m pip``) was. Offline: the venv has no pip."""
+    from zimi import server as _srv
+    from zimi import subproc
+
+    tools = os.path.join(_srv.ZIMI_DATA_DIR, "tools")
+    os.makedirs(tools, exist_ok=True)
+    venv = tempfile.mkdtemp(prefix="doctor-probe-", dir=tools)
+    try:
+        made = subproc.run([python, "-m", "venv", "--without-pip", venv], capture_output=True, text=True, timeout=120)
+        if made.returncode != 0:
+            return f"{python} cannot make a venv: {(made.stderr or '').strip()[-200:]}"
+        bin_dir = "Scripts" if os.name == "nt" else "bin"
+        return _probe(os.path.join(venv, bin_dir, "python" + (".exe" if os.name == "nt" else "")))
+    finally:
+        shutil.rmtree(venv, ignore_errors=True)
+
+
+def outside_python_problem(python=None, venv=False):
+    """Frozen only: why a program that is not part of this app (the machine's
+    python3, which sets up voices) would not run properly from here, or None.
+    The bootloader's library path must not reach it (#151: its older libssl
+    broke pip on a Raspberry Pi). With ``venv``, a venv made in the data
+    folder is probed too: that python is the one that runs pip."""
+    if not getattr(sys, "frozen", False):
+        return None
+    python = python or shutil.which("python3")
+    if not python:
+        return None
+    problem = _probe(python)
+    if problem is None and venv:
+        problem = _venv_python_problem(python)
+    return problem
+
+
 def cli_doctor(args):
     """`zimi doctor [--check]`. Exit 1 under --check when a bundled feature
     is missing."""
@@ -363,7 +392,7 @@ def cli_doctor(args):
         print(f"\nnot ready, though this install should have them: {', '.join(missing)}")
         if args.check:
             raise SystemExit(1)
-    outside = outside_python_problem()
+    outside = outside_python_problem(venv=args.check)
     if outside:
         print(f"\nthe machine's Python would not run properly from here: {outside}")
         if args.check:
