@@ -218,7 +218,10 @@ def test_a_card_marks_its_state_in_its_foot_beside_its_one_control(pw, world):
     keep_one(pg)
     for view in ("list", "tiles"):
         pg.evaluate("(v) => { localStorage.setItem('zimi_library_view', v); renderHome(); }", view)
-        pg.wait_for_timeout(500)
+        pg.wait_for_function(
+            "(v) => { const g = document.querySelector('#output .stats-grid'); return !!g && g.classList.contains('tiles') === (v === 'tiles'); }",
+            arg=view,
+        )
         # A ZIM the phone does not hold has no mark at all, and nothing on any card but ⋯ is a button.
         assert mark(pg, SMALL) is None
         kinds = pg.evaluate(
@@ -548,7 +551,7 @@ def test_the_menu_opens_on_a_part_kept_zim_after_a_reload(pw, world):
     pick(pg, "keep-start")
     pg.wait_for_function("() => KeepStore.state().written > 2e6", timeout=20000)
     pg.evaluate("() => KeepStore.stop()")
-    pg.wait_for_timeout(1000)
+    pg.wait_for_function("() => KeepStore.state().phase !== 'pulling'", timeout=15000)
     pg.reload(wait_until="load")
     pg.wait_for_selector(".stat-card[data-zim='%s'] .keep-ico.paused" % BIG_NAME, timeout=20000)
     errors = []
@@ -563,7 +566,11 @@ def test_the_menu_opens_on_a_part_kept_zim_after_a_reload(pw, world):
 def test_on_a_phone_the_menu_is_a_sheet_from_the_bottom(pw, world):
     br, ctx, pg = library(pw, world)
     more(pg, SMALL)
-    pg.wait_for_timeout(350)
+    # The sheet comes up by a transition: read it where it stands.
+    pg.wait_for_function(
+        "() => { const b = document.getElementById('zim-ctx-menu').getBoundingClientRect(); return Math.abs(b.bottom - innerHeight) <= 1; }",
+        timeout=30000,
+    )
     r = pg.evaluate(
         """() => { const m = document.getElementById('zim-ctx-menu'), b = m.getBoundingClientRect();
           return { sheet: m.classList.contains('sheet'), left: b.left, right: b.right, bottom: b.bottom, w: innerWidth, h: innerHeight,
