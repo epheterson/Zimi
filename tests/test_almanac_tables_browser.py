@@ -633,12 +633,9 @@ def test_back_returns_to_the_almanac_where_it_was(page):
     page.evaluate(
         "window.AlmanacRef && document.getElementById('alm-ref') && AlmanacRef.close()"
     )
-    page.wait_for_timeout(300)
+    page.wait_for_function("() => !document.getElementById('alm-ref')")
+    # The late sections (the tide) are in, and the reserve given back, from the page fixture on.
     page.evaluate("document.getElementById('alm-group-tables').scrollIntoView()")
-    # The late sections (the tide) and the phone's header settle first.
-    page.wait_for_timeout(2000)
-    page.evaluate("document.getElementById('alm-group-tables').scrollIntoView()")
-    page.wait_for_timeout(500)
     top = page.evaluate("document.getElementById('almanac-content').scrollTop")
     page.evaluate("document.querySelector(\".alm-tile[data-tb='seasons']\").click()")
     page.wait_for_function(DRAWN, timeout=60000)
@@ -653,16 +650,12 @@ def test_back_returns_to_the_almanac_where_it_was(page):
     page.evaluate("document.querySelector(\".alm-tile[data-tb='units']\").click()")
     page.wait_for_function(DRAWN, timeout=60000)
     page.go_back()
-    page.wait_for_function("() => !document.getElementById('alm-ref')")
-    page.wait_for_timeout(300)
-    assert page.evaluate("_almanacOpen")
+    page.wait_for_function("() => !document.getElementById('alm-ref') && _almanacOpen")
     # The view's own Back.
     page.evaluate("document.querySelector(\".alm-tile[data-tb='days']\").click()")
     page.wait_for_function(DRAWN, timeout=60000)
     page.click("[data-tb-close]")
-    page.wait_for_function("() => !document.getElementById('alm-ref')")
-    page.wait_for_timeout(300)
-    assert page.evaluate("_almanacOpen")
+    page.wait_for_function("() => !document.getElementById('alm-ref') && _almanacOpen")
     assert not page.errors, page.errors
 
 
