@@ -67,6 +67,38 @@ def browser(served):
         br.close()
 
 
+# The flip runs the page through the hours between two moments by frames and by Date.now(). What the test asks is that it
+# runs through them, not how many frames a runner draws in its 900 ms, so the page's frames and its clock are held and
+# stepped here, 16 ms a frame, and what the page showed at each is read. Every frame the page asks for in the meantime
+# (its other loops too) waits for the step and is handed back to the real frames after.
+STEP_THE_FLIP = """async (selector) => {
+  const real = { now: Date.now, raf: window.requestAnimationFrame, caf: window.cancelAnimationFrame };
+  const t0 = real.now.call(Date);
+  let virtual = t0, queue = [], serial = 0;
+  Date.now = () => virtual;
+  window.requestAnimationFrame = (cb) => { queue.push([++serial, cb]); return serial; };
+  window.cancelAnimationFrame = (id) => { queue = queue.filter((q) => q[0] !== id); };
+  const seen = [];
+  try {
+    const el = document.querySelector(selector), r = el.getBoundingClientRect();
+    const at = { bubbles: true, clientX: r.left + r.width / 2, clientY: r.top + r.height / 2, pointerId: 1, pointerType: 'mouse', isPrimary: true };
+    el.dispatchEvent(new PointerEvent('pointerdown', at));
+    el.dispatchEvent(new PointerEvent('pointerup', at));
+    el.dispatchEvent(new MouseEvent('click', at));
+    for (let frames = 0; _almRunToRAF && frames < 600; frames++) {
+      virtual += 16;
+      const due = queue; queue = [];
+      due.forEach((q) => q[1](virtual));
+      seen.push(_almFocusInstant().getTime());
+    }
+  } finally {
+    Date.now = real.now; window.requestAnimationFrame = real.raf; window.cancelAnimationFrame = real.caf;
+    queue.forEach((q) => real.raf.call(window, q[1]));
+  }
+  return seen;
+}"""
+
+
 def _page(browser, served, width=390, place=SF, tz=LA, init=""):
     phone = width < 600
     ctx = browser.new_context(
@@ -161,32 +193,22 @@ def test_each_part_is_typed_where_it_stands(browser, served):
         ), head
         # AM/PM flips on a tap, running back through the twelve hours (PM to AM) rather than jumping. The run is
         # stretched here so a slow software-GL frame rate still lands frames in between.
-        pg.evaluate("() => { ALM_CLOCK_FLIP_MS = 6000; }")
         before = pg.evaluate("() => _almFocusInstant().getTime()")
-        pg.evaluate(
-            "() => { window._ckSeen = []; (function rec() { window._ckSeen.push(_almFocusInstant().getTime()); if (window._ckSeen.length < 400) requestAnimationFrame(rec); })(); }"
-        )
-        pg.click("#almanac-head-time .ep[data-p=ap]")
-        pg.wait_for_function(
-            "() => !_almRunToRAF && document.querySelector('#almanac-head-time .ep[data-p=ap]').textContent === 'AM'",
-            timeout=30_000,
-            polling=POLL_MS,
-        )
+        seen = pg.evaluate(STEP_THE_FLIP, "#almanac-head-time .ep[data-p=ap]")
+        assert pg.evaluate("() => document.querySelector('#almanac-head-time .ep[data-p=ap]').textContent") == "AM"
         assert _wall(pg)[3] == 9
-        seen = pg.evaluate("() => window._ckSeen")
         half = 12 * 3600 * 1000
         between = [v for v in seen if before - half < v < before]
         assert between, "the flip jumped instead of running through the hours"
         assert between == sorted(between, reverse=True), "PM to AM runs backwards"
         # And AM to PM runs forward.
         at = pg.evaluate("() => _almFocusInstant().getTime()")
-        pg.evaluate("() => { window._ckSeen = []; (function rec() { window._ckSeen.push(_almFocusInstant().getTime()); if (window._ckSeen.length < 400) requestAnimationFrame(rec); })(); }")
-        pg.click("#almanac-head-time .ep[data-p=ap]")
-        pg.wait_for_function("() => !_almRunToRAF && _almFocusInstant().getTime() === %d" % (at + half), timeout=FRAME_BOUND_MS, polling=POLL_MS)
-        fwd = [v for v in pg.evaluate("() => window._ckSeen") if at < v < at + half]
+        seen = pg.evaluate(STEP_THE_FLIP, "#almanac-head-time .ep[data-p=ap]")
+        assert pg.evaluate("() => _almFocusInstant().getTime()") == at + half
+        fwd = [v for v in seen if at < v < at + half]
         assert fwd and fwd == sorted(fwd)
-        pg.click("#almanac-head-time .ep[data-p=ap]")
-        pg.wait_for_function("() => !_almRunToRAF && _almFocusInstant().getTime() === %d" % at, timeout=FRAME_BOUND_MS, polling=POLL_MS)
+        seen = pg.evaluate(STEP_THE_FLIP, "#almanac-head-time .ep[data-p=ap]")
+        assert pg.evaluate("() => _almFocusInstant().getTime()") == at
         # The month is a twelve-cell popover; a pick lands it.
         pg.click("#almanac-head-date .ep[data-p=month]")
         pg.wait_for_selector(".alm-ck-pop", timeout=FRAME_BOUND_MS)
