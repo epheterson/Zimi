@@ -117,6 +117,14 @@ def page(served):
         pg.on("pageerror", lambda e: pg.errors.append(str(e)))
         pg.goto(served + "/#almanac", wait_until="load")
         pg.wait_for_function("() => document.getElementById('alm-group-tables')")
+        # The page keeps growing after it is first drawn: its late sections come when the page is quiet, and the
+        # tide's reserved space is given back when the tide (or nothing) is drawn. Tests that measure the page's
+        # height or its end start from there, not from a moment the runner's speed picks.
+        pg.wait_for_function(
+            "() => { const p = document.getElementById('almanac-place');"
+            " return typeof _atRender === 'function' && !!p && p.style.minHeight === '' && !_quietJobs.length && !_quietBusy; }",
+            timeout=120_000,
+        )
         pg.evaluate("typeof _cancelAllRAF === 'function' && _cancelAllRAF()")
         yield pg
         br.close()
