@@ -411,11 +411,12 @@ def test_a_sheet_stands_above_the_keyboard(page):
         "() => { const vv = window.visualViewport; Object.defineProperty(vv, 'height', { configurable: true, get: () => innerHeight - 300 });"
         " vv.dispatchEvent(new Event('resize')); }"
     )
-    # (It moves by a transition: read it once that has run.)
+    # (It moves by a transition: read it once that has run. A transition ends at the first frame past its time, and a
+    # runner software-drawing the page makes seconds between frames: the bound is a hang's, not the transition's.)
     page.wait_for_function(
         "() => { const p = document.querySelector('.tk-pop'), q = p.querySelector('input'), top = innerHeight - 300;"
         " return p.getBoundingClientRect().bottom <= top + 1 && q.getBoundingClientRect().bottom <= top; }",
-        timeout=5000,
+        timeout=30_000,
     )
     page.evaluate("() => { delete window.visualViewport.height; }")
     page.keyboard.press("Escape")
