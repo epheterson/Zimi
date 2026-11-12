@@ -9663,8 +9663,8 @@ function _moveZimTo(zim, category) {
   document.addEventListener('mousedown', _ctxTrackPointer, true);
   document.addEventListener('wheel', function(e) { if (!menu.contains(e.target)) _ctxSelfScroll = false; },
     { capture: true, passive: true });
-  window.addEventListener('scroll', function() {
-    if (_ctxSelfScroll) return;
+  window.addEventListener('scroll', function(e) {
+    if (_ctxSelfScroll || menu.contains(e.target)) return;
     if (menu.classList.contains('visible')) closeCtx();
   }, true);
 

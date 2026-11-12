@@ -154,13 +154,34 @@ def mark(pg, zim):
     )
 
 
+def _wait_until_the_card_stops_moving(pg, zim):
+    """The card has the same place on the screen over several frames in a row.
+
+    The page closes an open menu on any scroll of the page, so a menu opened while the card is still being brought into
+    view (or moved by a late layout) is closed by that movement.
+    """
+    pg.wait_for_function(
+        """(z) => {
+            const top = document.querySelector(`.stat-card[data-zim='${z}']`).getBoundingClientRect().top;
+            const w = window.__cardStill = window.__cardStill && window.__cardStill.z === z ? window.__cardStill : { z: z, top: null, n: 0 };
+            w.n = w.top === top ? w.n + 1 : 0;
+            w.top = top;
+            return w.n >= 5;
+        }""",
+        arg=zim,
+        timeout=30000,
+        polling="raf",
+    )
+    pg.evaluate("() => { window.__cardStill = null; }")
+
+
 def more(pg, zim):
     """Tap the card's ⋯ and return the menu's lines."""
     pg.evaluate(
         "(z) => document.querySelector(`.stat-card[data-zim='${z}']`).scrollIntoView({block: 'center'})",
         zim,
     )
-    pg.wait_for_timeout(250)
+    _wait_until_the_card_stops_moving(pg, zim)
     b = pg.evaluate(
         "(z) => { const r = document.querySelector(`.stat-card[data-zim='${z}'] .card-more`).getBoundingClientRect(); return [r.left + r.width / 2, r.top + r.height / 2]; }",
         zim,
@@ -174,7 +195,7 @@ def more(pg, zim):
 
 def pick(pg, action):
     pg.click("#zim-ctx-menu [data-action='%s']" % action)
-    pg.wait_for_timeout(200)
+    pg.wait_for_selector("#zim-ctx-menu.visible", state="hidden", timeout=5000)
 
 
 def keep_one(pg):
@@ -221,6 +242,26 @@ def test_a_card_marks_its_state_in_its_foot_beside_its_one_control(pw, world):
     lines = more(pg, SMALL)
     assert "Keep offline" in lines and "Add to favorites" in lines and "About this ZIM" in lines, lines
     assert pg.evaluate("() => location.pathname") == "/"
+    ctx.close()
+    br.close()
+
+
+def test_a_scroll_inside_the_open_menu_does_not_close_it(pw, world):
+    """The page closes a menu on a scroll of the page; the menu's own (an item brought into view, a line that grows)
+    is not the page's, and closed a menu the moment it opened."""
+    br, ctx, pg = library(pw, world)
+    more(pg, SMALL)
+    scrolled = pg.evaluate(
+        """() => new Promise((done) => {
+            const m = document.getElementById('zim-ctx-menu');
+            m.style.maxHeight = '120px';
+            m.style.overflowY = 'auto';
+            m.addEventListener('scroll', () => done(m.scrollTop), { once: true });
+            m.scrollTop = 40;
+        })"""
+    )
+    assert pg.evaluate("() => document.getElementById('zim-ctx-menu').classList.contains('visible')"), "closed by its own scroll"
+    assert scrolled > 0
     ctx.close()
     br.close()
 
@@ -302,8 +343,11 @@ def test_a_74gb_pull_visibly_moves_in_the_menu(pw, world):
     assert "Pause" in lines and "Cancel download" in lines, lines
     note = pg.inner_text("#zim-ctx-menu .ctx-keep-note")
     assert "74 GB" in note and "/s" in note, note
-    pg.wait_for_timeout(2200)
-    assert pg.inner_text("#zim-ctx-menu .ctx-keep-note") != note, "the line moves while the menu is open"
+    pg.wait_for_function(
+        "(was) => document.querySelector('#zim-ctx-menu .ctx-keep-note').textContent !== was",
+        arg=note,
+        timeout=15000,
+    )  # the line moves while the menu is open
     # Pause keeps it as a ring that offers Resume.
     pick(pg, "keep-pause")
     pg.wait_for_function(
