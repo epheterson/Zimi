@@ -29,7 +29,7 @@ import pytest
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-GL_ARGS = ["--use-angle=swiftshader", "--enable-unsafe-swiftshader"]
+GL_ARGS = ["--use-angle=swiftshader", "--enable-unsafe-swiftshader", "--disable-accelerated-2d-canvas"]
 VIEW = {"width": 390, "height": 844}
 PLACE = {"lat": 37.7749, "lon": -122.4194, "name": "San Francisco"}
 NIGHT = "2026-08-10T08:00:00Z"  # 01:00 in San Francisco, Sagittarius low in the south

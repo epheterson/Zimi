@@ -22,6 +22,7 @@ TOKYO = '{"lat":35.68,"lon":139.69,"name":"Tokyo"}'
 GL_ARGS = [
     "--use-angle=swiftshader",
     "--enable-unsafe-swiftshader",
+    "--disable-accelerated-2d-canvas",
     "--ignore-gpu-blocklist",
 ]
 LA = "America/Los_Angeles"
