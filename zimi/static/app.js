@@ -7679,7 +7679,9 @@ function _moonSpritePlan(v, sizePx) {
   var N = _moonSpriteN(sizePx);
   var cv = document.createElement('canvas');
   cv.width = cv.height = N;
-  var ctx = cv.getContext('2d');
+  // Filled by putImageData and read out whole (toDataURL, drawImage): a canvas kept in memory, not on the GPU, whose readback
+  // waits on every frame the GPU is drawing (seconds on a machine whose GPU is software, with the page frozen meanwhile).
+  var ctx = cv.getContext('2d', { willReadFrequently: true });
   var img = ctx.createImageData(N, N);
   var data = img.data;
   var mapW = _moonMapWidthFor(N);
