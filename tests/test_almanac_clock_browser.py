@@ -7,6 +7,7 @@ Run one file at a time: pytest tests/test_almanac_clock_browser.py -v
 import os
 import sys
 import threading
+from datetime import datetime
 
 import pytest
 
@@ -21,6 +22,10 @@ GL_ARGS = [
     "--ignore-gpu-blocklist",
 ]
 LA = "America/Los_Angeles"
+#: The clock is under test, not the sky: the true horizon is the sky that stands still when nothing moves. The beach's life
+#: (palms, waves) repaints the sky's canvas every frame and software GL rasters each at a runner's speed, so a page
+#: whose clock is paused still answered a click seconds late.
+QUIET_SKY = '{"skin":"horizon"}'
 ALM_SECBAR_H_PX = 44  # ALM_SECBAR_H
 ALM_LINGER_WAIT_MS = 15_000  # ALM_SPD_LINGER_MS, with room for a slow machine
 
@@ -71,8 +76,8 @@ def _page(browser, served, width=390, place=SF, tz=LA, init=""):
         timezone_id=tz,
     )
     ctx.add_init_script(
-        "try { localStorage.setItem('zimi_app_theme', 'dark'); localStorage.setItem('zimi_almanac_place', %r); }"
-        " catch (e) {}" % place
+        "try { localStorage.setItem('zimi_app_theme', 'dark'); localStorage.setItem('zimi_almanac_place', %r);"
+        " localStorage.setItem('zimi_sky_settings', %r); } catch (e) {}" % (place, QUIET_SKY)
     )
     if init:
         ctx.add_init_script(init)
@@ -92,7 +97,14 @@ def _page(browser, served, width=390, place=SF, tz=LA, init=""):
 def _land(pg, iso):
     """Park the clock, paused, on an instant (a typed moment keeps the pace, so a test of typing stands it still first)."""
     pg.evaluate("(iso) => { _almClockSetRate(0); _almClockGoTo(new Date(iso)); }", iso)
-    pg.wait_for_function("() => !_almEd", timeout=5000, polling=POLL_MS)
+    # The moment is the page's answer; `!_almEd` alone was true the instant the call returned, so a timeout here was the page
+    # not answering at all, not a state that never came.
+    pg.wait_for_function(
+        "(ms) => !_almEd && _almRate === 0 && _almFocusInstant().getTime() === ms",
+        arg=int(datetime.fromisoformat(iso.replace("Z", "+00:00")).timestamp() * 1000),
+        timeout=5000,
+        polling=POLL_MS,
+    )
 
 
 def _open(pg):
