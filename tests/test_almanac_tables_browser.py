@@ -1230,6 +1230,17 @@ def test_a_busy_server_is_asked_once_more_and_a_slow_pdf_says_so(page):
     assert not page.errors, page.errors
 
 
+# The failure toast lives 3 s from the moment it is made, and the browser's dialog is asked for after the fonts and two
+# frames: on a runner drawing a frame a second the toast is gone before the dialog is asked for. What the test asserts is
+# that it was shown, so it is recorded as it is added, not looked for after.
+WATCH_TOASTS = """() => {
+  window.__toasts = [];
+  new MutationObserver((records) => records.forEach((r) => r.addedNodes.forEach((n) => {
+    if (n.nodeType === 1 && n.tagName === 'DIV') window.__toasts.push(n.textContent);
+  }))).observe(document.body, { childList: true });
+}"""
+
+
 def test_still_busy_after_the_retry_prints_the_page(page):
     """Busy twice: the toast, then the browser's own dialog over the book."""
     _open(page, "seasons")
@@ -1244,6 +1255,7 @@ def test_still_busy_after_the_retry_prints_the_page(page):
         )
 
     page.route("**/almanac/pdf", busy)
+    page.evaluate(WATCH_TOASTS)
     page.evaluate(
         "() => { window.__printed = 0; window.__pr = window.print; window.print = () => { window.__printed++; }; }"
     )
@@ -1251,9 +1263,7 @@ def test_still_busy_after_the_retry_prints_the_page(page):
         page.click("[data-tb-act='print']")
         page.wait_for_function("() => window.__printed === 1", timeout=30000)
         assert len(seen) == 2
-        assert page.evaluate(
-            "[...document.querySelectorAll('body > div')].some((d) => d.textContent === t('tb_pdf_failed'))"
-        )
+        assert page.evaluate("t('tb_pdf_failed')") in page.evaluate("window.__toasts")
         page.evaluate("_tbPrintOff()")
     finally:
         page.unroute("**/almanac/pdf")
@@ -1269,6 +1279,7 @@ def test_print_falls_back_to_the_page_when_the_pdf_fails(page):
         "**/almanac/pdf",
         lambda route: route.fulfill(status=500, body='{"error": "render failed"}'),
     )
+    page.evaluate(WATCH_TOASTS)
     page.evaluate(
         "() => { window.__printed = 0; window.__pr = window.print; window.__book = 0;"
         " window.print = () => { window.__printed++; window.__book = document.querySelectorAll('#alm-book .tb-book-page').length; }; }"
@@ -1277,9 +1288,7 @@ def test_print_falls_back_to_the_page_when_the_pdf_fails(page):
         page.click("[data-tb-act='print']")
         page.wait_for_function("() => window.__printed === 1", timeout=60000)
         assert page.evaluate("window.__book") == 1
-        assert page.evaluate(
-            "[...document.querySelectorAll('body > div')].some((d) => d.textContent === t('tb_pdf_failed'))"
-        )
+        assert page.evaluate("t('tb_pdf_failed')") in page.evaluate("window.__toasts")
         assert not page.evaluate("readerOpen")
         page.evaluate("_tbPrintOff()")
     finally:
