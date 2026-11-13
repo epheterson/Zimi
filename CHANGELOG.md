@@ -7,11 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [1.15.7]
+
 ### Highlights
 
 **Zimi**
 
 - Voices install on the portable Linux build, pip step included (#151).
+- A card's menu no longer closes by itself while a download updates.
+- Changing the date no longer freezes the page on machines without a graphics card.
 
 ## [1.15.6]
 
