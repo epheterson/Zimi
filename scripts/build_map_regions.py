@@ -163,6 +163,28 @@ STREETZIM = {
     "osm-washington-dc": [-77.6, 38.6, -76.6, 39.2],
     "osm-west-africa": [-18.0, 4.0, 16.0, 28.0],
     "osm-west-asia": [25.0, 12.0, 63.5, 42.5],
+    # Added with the 2026-11-13 catalog refresh.
+    "osm-athens": [23.4, 37.8, 24.1, 38.2],
+    "osm-cairo": [30.9, 29.8, 31.6, 30.3],
+    "osm-india-central": [73.5, 17.5, 84.5, 26.9],
+    "osm-india-central-light": [73.5, 17.5, 84.5, 26.9],
+    "osm-india-east": [83.0, 17.8, 89.9, 27.3],
+    "osm-india-east-light": [83.0, 17.8, 89.9, 27.3],
+    "osm-india-northeast": [89.6, 21.9, 97.5, 29.5],
+    "osm-india-northeast-light": [89.6, 21.9, 97.5, 29.5],
+    "osm-india-northwest": [68.1, 23.9, 81.1, 37.1],
+    "osm-india-northwest-light": [68.1, 23.9, 81.1, 37.1],
+    "osm-india-south-light": [74.0, 8.0, 85.0, 19.9],
+    "osm-india-west": [68.1, 15.6, 80.9, 24.7],
+    "osm-india-west-light": [68.1, 15.6, 80.9, 24.7],
+    "osm-kyiv": [30.2, 50.2, 30.9, 50.6],
+    "osm-moscow": [36.8, 55.1, 38.0, 56.0],
+    "osm-osaka": [135.1, 34.4, 135.8, 34.9],
+    "osm-seoul": [126.7, 37.4, 127.2, 37.7],
+    "osm-south-central-us": [-109.1, 25.8, -88.8, 37.0],
+    "osm-taipei": [121.3, 24.9, 121.7, 25.2],
+    "osm-tehran": [51.1, 35.5, 51.7, 35.9],
+    "osm-thailand": [97.3, 5.6, 105.7, 20.5],
 }
 
 
