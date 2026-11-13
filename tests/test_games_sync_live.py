@@ -127,6 +127,19 @@ def _sent(pg):
     )
 
 
+def _on_server(user, value, timeout=15):
+    """The account's stored stats, once the push has reached the server: the game's write lands in the shell as a
+    storage event, so "nothing pending" can be true before the write has been queued at all."""
+    import time
+
+    end = time.monotonic() + timeout
+    while True:
+        got = users.GAMES.load(user)["settings"].get(STATS, {}).get("v")
+        if got == value or time.monotonic() > end:
+            return got
+        time.sleep(0.1)
+
+
 def test_two_people_on_one_browser_each_see_their_own(served):
     from playwright.sync_api import sync_playwright
 
@@ -136,7 +149,7 @@ def test_two_people_on_one_browser_each_see_their_own(served):
         _sign_in(pg, "kid")
         _game_writes(pg, STATS, KID_STATS)
         _sent(pg)
-        assert users.GAMES.load("kid")["settings"][STATS]["v"] == KID_STATS
+        assert _on_server("kid", KID_STATS) == KID_STATS
         _sign_out(pg)
         assert _stats(pg) is None, "Kid's games left the screen with Kid"
         _sign_in(pg, "mum")
@@ -189,7 +202,7 @@ def test_a_browsers_games_go_to_the_first_account_quietly_and_never_to_a_second(
         )
         _sign_in(pg, "kid")
         _sent(pg)
-        assert users.GAMES.load("kid")["settings"][STATS]["v"] == KID_STATS
+        assert _on_server("kid", KID_STATS) == KID_STATS
         assert not toasts, "an empty account takes them without a word"
         _sign_out(pg)
         _sign_in(pg, "mum")
