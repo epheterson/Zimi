@@ -150,7 +150,6 @@ LAYOUT = r"""() => {
 }"""
 # The app tiles in the row, in order, each marked so a rebuild would show.
 TILES = "() => Array.from(document.querySelectorAll('#output .apps-grid .app-tile')).map(a => a.dataset.app + (a.__kept ? '' : '*'))"
-MARK = "() => document.querySelectorAll('#output .apps-grid .app-tile').forEach(a => { a.__kept = 1; })"
 SORTED = """(names) => names.every((n, i) => i === 0 || names[i - 1].localeCompare(n, undefined, {sensitivity: 'base', numeric: true}) <= 0)"""
 # The Apps page: each app's section, its banner and the ZIMs under it, and
 # how they are drawn: the banner taller than a ZIM's card and wider than the
@@ -168,15 +167,29 @@ PAGE_SHAPE = r"""() => ({ headings: Array.from(document.querySelectorAll('#outpu
   height: document.documentElement.scrollHeight })"""
 
 
-def _sort(pg, key):
-    pg.select_option("#output .lib-sort", key)
-    pg.wait_for_timeout(600)
-    # The control names the order it is in, at once (it kept the old name
-    # until the page was drawn again).
+def _names_the_order(pg, key):
+    """The control names the order it is in, at once (it kept the old name until the page was drawn again)."""
     assert pg.evaluate(
         "(k) => document.querySelector('#output .lib-sort-now').textContent === t(_LIBRARY_SORT_LABELS[k])",
         key,
     ), key
+
+
+def _sort(pg, key):
+    pg.select_option("#output .lib-sort", key)
+    _names_the_order(pg, key)
+
+
+# Choose an order and read the row in the same turn of the page, the tiles marked just before: Home redraws once more
+# when its late data lands (_renderHomeSoon, a timer), and a redraw between a mark and the read is a row drawn again
+# whatever the order did. The reorder is synchronous, so one turn holds what the order did and nothing else.
+SORT_IN_PLACE = """(k) => {
+  document.querySelectorAll('#output .apps-grid .app-tile').forEach(a => { a.__kept = 1; });
+  const sel = document.querySelector('#output .lib-sort');
+  sel.value = k;
+  sel.dispatchEvent(new Event('change', { bubbles: true }));
+  return Array.from(document.querySelectorAll('#output .apps-grid .app-tile')).map(a => a.dataset.app + (a.__kept ? '' : '*'));
+}"""
 
 
 @pytest.mark.parametrize(
@@ -208,7 +221,6 @@ def test_the_order_governs_the_apps_and_their_title_opens_their_page(
         try:
             pg.goto(served + "/")
             pg.wait_for_function(HOME, timeout=30000)
-            pg.wait_for_timeout(500)
             assert pg.evaluate("document.documentElement.dir") == (
                 "rtl" if lang == "he" else ""
             )
@@ -241,13 +253,13 @@ def test_the_order_governs_the_apps_and_their_title_opens_their_page(
 
             # The apps follow the order, sliding into place: Ask Ubuntu arrived
             # last, CrashCourse's new build landed an hour ago.
-            pg.evaluate(MARK)
-            _sort(pg, "added")
-            assert pg.evaluate(TILES)[0] == "exchange", pg.evaluate(TILES)
-            _sort(pg, "updated")
-            tiles = pg.evaluate(TILES)
+            tiles = pg.evaluate(SORT_IN_PLACE, "added")
+            assert tiles[0] == "exchange", tiles
+            _names_the_order(pg, "added")
+            tiles = pg.evaluate(SORT_IN_PLACE, "updated")
             assert tiles[0] == "tube", "an app holding a just-updated ZIM comes first"
             assert all(not t.endswith("*") for t in tiles), "moved, not drawn again"
+            _names_the_order(pg, "updated")
             _sort(pg, "alpha")
             names = pg.evaluate(
                 "() => Array.from(document.querySelectorAll('#output .apps-grid .app-tile .zt')).map(e => e.textContent)"
@@ -257,8 +269,9 @@ def test_the_order_governs_the_apps_and_their_title_opens_their_page(
             # The Apps heading opens the Apps page: each app, what is inside it.
             mid = ((text["l"] + text["r"]) / 2, (text["t"] + text["b"]) / 2)
             pg.mouse.click(*mid)
-            pg.wait_for_function("() => homeScope && homeScope.type === 'apps'")
-            pg.wait_for_timeout(300)
+            pg.wait_for_function(
+                "() => homeScope && homeScope.type === 'apps' && document.querySelectorAll('#output > .app-section').length >= 5"
+            )
             assert "scope=apps" in pg.url
             page = pg.evaluate(PAGE)
             by_app = {p["app"]: p for p in page}
@@ -311,8 +324,7 @@ def test_the_order_governs_the_apps_and_their_title_opens_their_page(
             ], tube
             # And the view: tiles, the apps' doors with them.
             pg.locator("#output .lib-view-btn").nth(1).click()
-            pg.wait_for_timeout(300)
-            assert pg.evaluate(
+            pg.wait_for_function(
                 "() => document.querySelectorAll('#output .stats-grid').length"
                 " === document.querySelectorAll('#output .stats-grid.tiles').length"
             )
@@ -394,9 +406,14 @@ def test_the_dot_says_what_lit_it(served, touch):
                     arg=dot,
                 ).json_value()
                 pg.mouse.move(x, y)
-            pg.wait_for_function("() => { const p = document.getElementById('dot-why'); return p && p.querySelector('.upd'); }", timeout=10000)
-            text = pg.inner_text("#dot-why")
-            assert "CrashCourse" in text and pg.evaluate("t('upd_updated')") in text, text
+            # The popover is read when it says it: a redraw of Home under a pointer that does not move opens it again, at
+            # "Loading…", and the first one's words are gone by the time they are read.
+            text = pg.wait_for_function(
+                "(want) => { const p = document.getElementById('dot-why'), t = p && p.innerText;"
+                " return t && want.every((w) => t.includes(w)) ? t : null; }",
+                arg=["CrashCourse", pg.evaluate("t('upd_updated')")],
+                timeout=10000,
+            ).json_value()
             assert not pg.evaluate("() => typeof _tubeOpen !== 'undefined' && _tubeOpen"), "the dot is not the tile"
             if os.environ.get("ZIMI_SHOTS"):
                 pg.screenshot(path=os.path.join(os.environ["ZIMI_SHOTS"], "dot-why-%s.png" % ("tap" if touch else "hover")))

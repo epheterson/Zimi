@@ -35,7 +35,7 @@ import pytest
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-GL_ARGS = ["--use-angle=swiftshader", "--enable-unsafe-swiftshader"]
+GL_ARGS = ["--use-angle=swiftshader", "--enable-unsafe-swiftshader", "--disable-accelerated-2d-canvas"]
 VIEW = {"width": 390, "height": 844}
 SF = {"lat": 37.8063, "lon": -122.4659, "name": "San Francisco"}
 PENSACOLA = {"lat": 30.4044, "lon": -87.2112, "name": "Pensacola"}

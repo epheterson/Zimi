@@ -7,20 +7,29 @@ Run one file at a time: pytest tests/test_almanac_clock_browser.py -v
 import os
 import sys
 import threading
+from datetime import datetime
 
 import pytest
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 POLL_MS = 100
+#: What a wait on the page's state is bounded by, as a hang's bound and not as the state's pace: a transition, a computed
+#: style or a part redrawn lands with a frame, and a runner software-drawing the page makes seconds between frames.
+FRAME_BOUND_MS = 30_000
 SF = '{"lat":37.77,"lon":-122.42,"name":"San Francisco"}'
 TOKYO = '{"lat":35.68,"lon":139.69,"name":"Tokyo"}'
 GL_ARGS = [
     "--use-angle=swiftshader",
     "--enable-unsafe-swiftshader",
+    "--disable-accelerated-2d-canvas",
     "--ignore-gpu-blocklist",
 ]
 LA = "America/Los_Angeles"
+#: The clock is under test, not the sky: the true horizon is the sky that stands still when nothing moves. The beach's life
+#: (palms, waves) repaints the sky's canvas every frame and software GL rasters each at a runner's speed, so a page
+#: whose clock is paused still answered a click seconds late.
+QUIET_SKY = '{"skin":"horizon"}'
 ALM_SECBAR_H_PX = 44  # ALM_SECBAR_H
 ALM_LINGER_WAIT_MS = 15_000  # ALM_SPD_LINGER_MS, with room for a slow machine
 
@@ -59,6 +68,38 @@ def browser(served):
         br.close()
 
 
+# The flip runs the page through the hours between two moments by frames and by Date.now(). What the test asks is that it
+# runs through them, not how many frames a runner draws in its 900 ms, so the page's frames and its clock are held and
+# stepped here, 16 ms a frame, and what the page showed at each is read. Every frame the page asks for in the meantime
+# (its other loops too) waits for the step and is handed back to the real frames after.
+STEP_THE_FLIP = """async (selector) => {
+  const real = { now: Date.now, raf: window.requestAnimationFrame, caf: window.cancelAnimationFrame };
+  const t0 = real.now.call(Date);
+  let virtual = t0, queue = [], serial = 0;
+  Date.now = () => virtual;
+  window.requestAnimationFrame = (cb) => { queue.push([++serial, cb]); return serial; };
+  window.cancelAnimationFrame = (id) => { queue = queue.filter((q) => q[0] !== id); };
+  const seen = [];
+  try {
+    const el = document.querySelector(selector), r = el.getBoundingClientRect();
+    const at = { bubbles: true, clientX: r.left + r.width / 2, clientY: r.top + r.height / 2, pointerId: 1, pointerType: 'mouse', isPrimary: true };
+    el.dispatchEvent(new PointerEvent('pointerdown', at));
+    el.dispatchEvent(new PointerEvent('pointerup', at));
+    el.dispatchEvent(new MouseEvent('click', at));
+    for (let frames = 0; _almRunToRAF && frames < 600; frames++) {
+      virtual += 16;
+      const due = queue; queue = [];
+      due.forEach((q) => q[1](virtual));
+      seen.push(_almFocusInstant().getTime());
+    }
+  } finally {
+    Date.now = real.now; window.requestAnimationFrame = real.raf; window.cancelAnimationFrame = real.caf;
+    queue.forEach((q) => real.raf.call(window, q[1]));
+  }
+  return seen;
+}"""
+
+
 def _page(browser, served, width=390, place=SF, tz=LA, init=""):
     phone = width < 600
     ctx = browser.new_context(
@@ -71,8 +112,8 @@ def _page(browser, served, width=390, place=SF, tz=LA, init=""):
         timezone_id=tz,
     )
     ctx.add_init_script(
-        "try { localStorage.setItem('zimi_app_theme', 'dark'); localStorage.setItem('zimi_almanac_place', %r); }"
-        " catch (e) {}" % place
+        "try { localStorage.setItem('zimi_app_theme', 'dark'); localStorage.setItem('zimi_almanac_place', %r);"
+        " localStorage.setItem('zimi_sky_settings', %r); } catch (e) {}" % (place, QUIET_SKY)
     )
     if init:
         ctx.add_init_script(init)
@@ -92,13 +133,20 @@ def _page(browser, served, width=390, place=SF, tz=LA, init=""):
 def _land(pg, iso):
     """Park the clock, paused, on an instant (a typed moment keeps the pace, so a test of typing stands it still first)."""
     pg.evaluate("(iso) => { _almClockSetRate(0); _almClockGoTo(new Date(iso)); }", iso)
-    pg.wait_for_function("() => !_almEd", timeout=5000, polling=POLL_MS)
+    # The moment is the page's answer; `!_almEd` alone was true the instant the call returned, so a timeout here was the page
+    # not answering at all, not a state that never came.
+    pg.wait_for_function(
+        "(ms) => !_almEd && _almRate === 0 && _almFocusInstant().getTime() === ms",
+        arg=int(datetime.fromisoformat(iso.replace("Z", "+00:00")).timestamp() * 1000),
+        timeout=FRAME_BOUND_MS,
+        polling=POLL_MS,
+    )
 
 
 def _open(pg):
     """A tap on the resting clock's time opens it: the slider shows."""
     pg.click("#almanac-head-time .ep[data-p=hour]")
-    pg.wait_for_function("() => !document.querySelector('#almanac-head .alm-clock').classList.contains('alm-ck-rest')", timeout=5000)
+    pg.wait_for_function("() => !document.querySelector('#almanac-head .alm-clock').classList.contains('alm-ck-rest')", timeout=FRAME_BOUND_MS)
 
 
 def _wall(pg):
@@ -116,12 +164,12 @@ def _edit(pg, part, text, key="Enter"):
     pg.wait_for_function(
         "(p) => !!_almEd && _almEd.part === p && document.activeElement && document.activeElement.className === 'ef'",
         arg=part,
-        timeout=5000,
+        timeout=FRAME_BOUND_MS,
         polling=POLL_MS,
     )
     pg.keyboard.type(text)
     pg.keyboard.press(key)
-    pg.wait_for_function("() => !_almEd", timeout=10_000, polling=POLL_MS)
+    pg.wait_for_function("() => !_almEd", timeout=FRAME_BOUND_MS, polling=POLL_MS)
 
 
 def test_each_part_is_typed_where_it_stands(browser, served):
@@ -146,43 +194,33 @@ def test_each_part_is_typed_where_it_stands(browser, served):
         ), head
         # AM/PM flips on a tap, running back through the twelve hours (PM to AM) rather than jumping. The run is
         # stretched here so a slow software-GL frame rate still lands frames in between.
-        pg.evaluate("() => { ALM_CLOCK_FLIP_MS = 6000; }")
         before = pg.evaluate("() => _almFocusInstant().getTime()")
-        pg.evaluate(
-            "() => { window._ckSeen = []; (function rec() { window._ckSeen.push(_almFocusInstant().getTime()); if (window._ckSeen.length < 400) requestAnimationFrame(rec); })(); }"
-        )
-        pg.click("#almanac-head-time .ep[data-p=ap]")
-        pg.wait_for_function(
-            "() => !_almRunToRAF && document.querySelector('#almanac-head-time .ep[data-p=ap]').textContent === 'AM'",
-            timeout=30_000,
-            polling=POLL_MS,
-        )
+        seen = pg.evaluate(STEP_THE_FLIP, "#almanac-head-time .ep[data-p=ap]")
+        assert pg.evaluate("() => document.querySelector('#almanac-head-time .ep[data-p=ap]').textContent") == "AM"
         assert _wall(pg)[3] == 9
-        seen = pg.evaluate("() => window._ckSeen")
         half = 12 * 3600 * 1000
         between = [v for v in seen if before - half < v < before]
         assert between, "the flip jumped instead of running through the hours"
         assert between == sorted(between, reverse=True), "PM to AM runs backwards"
         # And AM to PM runs forward.
         at = pg.evaluate("() => _almFocusInstant().getTime()")
-        pg.evaluate("() => { window._ckSeen = []; (function rec() { window._ckSeen.push(_almFocusInstant().getTime()); if (window._ckSeen.length < 400) requestAnimationFrame(rec); })(); }")
-        pg.click("#almanac-head-time .ep[data-p=ap]")
-        pg.wait_for_function("() => !_almRunToRAF && _almFocusInstant().getTime() === %d" % (at + half), timeout=10_000, polling=POLL_MS)
-        fwd = [v for v in pg.evaluate("() => window._ckSeen") if at < v < at + half]
+        seen = pg.evaluate(STEP_THE_FLIP, "#almanac-head-time .ep[data-p=ap]")
+        assert pg.evaluate("() => _almFocusInstant().getTime()") == at + half
+        fwd = [v for v in seen if at < v < at + half]
         assert fwd and fwd == sorted(fwd)
-        pg.click("#almanac-head-time .ep[data-p=ap]")
-        pg.wait_for_function("() => !_almRunToRAF && _almFocusInstant().getTime() === %d" % at, timeout=10_000, polling=POLL_MS)
+        seen = pg.evaluate(STEP_THE_FLIP, "#almanac-head-time .ep[data-p=ap]")
+        assert pg.evaluate("() => _almFocusInstant().getTime()") == at
         # The month is a twelve-cell popover; a pick lands it.
         pg.click("#almanac-head-date .ep[data-p=month]")
-        pg.wait_for_selector(".alm-ck-pop", timeout=5000)
+        pg.wait_for_selector(".alm-ck-pop", timeout=FRAME_BOUND_MS)
         assert pg.locator(".alm-ck-pop button").count() == 12
         pg.click(".alm-ck-pop button[data-m='3']")
-        pg.wait_for_function("() => !_almEd", timeout=10_000, polling=POLL_MS)
+        pg.wait_for_function("() => !_almEd", timeout=FRAME_BOUND_MS, polling=POLL_MS)
         assert _wall(pg)[1] == 3 and pg.locator(".alm-ck-pop").count() == 0
         # Typing a day the month does not have lands on its last.
         pg.click("#almanac-head-date .ep[data-p=month]")
         pg.click(".alm-ck-pop button[data-m='2']")
-        pg.wait_for_function("() => !_almEd", timeout=10_000, polling=POLL_MS)
+        pg.wait_for_function("() => !_almEd", timeout=FRAME_BOUND_MS, polling=POLL_MS)
         _edit(pg, "day", "31")
         assert _wall(pg)[1:3] == [2, 28]
         assert not errors, errors
@@ -195,10 +233,10 @@ def test_escape_puts_a_part_back_and_a_tap_away_lands_it(browser, served):
     try:
         _land(pg, "2026-11-07T20:34:00Z")
         pg.click("#almanac-head-date .ep[data-p=day]")
-        pg.wait_for_function("() => !!_almEd", timeout=5000)
+        pg.wait_for_function("() => !!_almEd", timeout=FRAME_BOUND_MS)
         pg.keyboard.type("21")
         pg.keyboard.press("Escape")
-        pg.wait_for_function("() => !_almEd", timeout=5000)
+        pg.wait_for_function("() => !_almEd", timeout=FRAME_BOUND_MS)
         assert _wall(pg)[2] == 7
         assert pg.evaluate(
             "() => document.getElementById('almanac-head-date').textContent"
@@ -206,14 +244,14 @@ def test_escape_puts_a_part_back_and_a_tap_away_lands_it(browser, served):
         pg.click("#almanac-head-date .ep[data-p=day]")
         pg.keyboard.type("21")
         pg.mouse.click(5, 600)  # away
-        pg.wait_for_function("() => !_almEd", timeout=10_000, polling=POLL_MS)
+        pg.wait_for_function("() => !_almEd", timeout=FRAME_BOUND_MS, polling=POLL_MS)
         assert _wall(pg)[2] == 21
         # Another part lands the first and opens itself.
         pg.click("#almanac-head-date .ep[data-p=day]")
         pg.keyboard.type("3")
         pg.click("#almanac-head-time .ep[data-p=hour]")
         pg.wait_for_function(
-            "() => !!_almEd && _almEd.part === 'hour'", timeout=10_000, polling=POLL_MS
+            "() => !!_almEd && _almEd.part === 'hour'", timeout=FRAME_BOUND_MS, polling=POLL_MS
         )
         assert _wall(pg)[2] == 3
         pg.keyboard.press("Escape")
@@ -231,7 +269,7 @@ def test_the_nearest_part_to_the_finger_wins(browser, served):
         box = pg.locator("#almanac-head-date .ep[data-p=day]").bounding_box()
         # Six pixels off to the left, outside the day, nearer to it than to the month.
         pg.mouse.click(box["x"] - 3, box["y"] + box["height"] / 2)
-        pg.wait_for_function("() => !!_almEd", timeout=5000)
+        pg.wait_for_function("() => !!_almEd", timeout=FRAME_BOUND_MS)
         assert pg.evaluate("() => _almEd.part") == "day"
         pg.keyboard.press("Escape")
         # Well clear of every part: nothing opens.
@@ -257,13 +295,13 @@ def test_a_minus_means_bc(browser, served):
         pg.click("#almanac-head-date .ep[data-p=era]")
         pg.wait_for_function(
             "() => document.getElementById('almanac-head-date').textContent.indexOf('BC') < 0",
-            timeout=10_000,
+            timeout=FRAME_BOUND_MS,
             polling=POLL_MS,
         )
         assert _wall(pg)[0] == 44
         # While the year is typed the field says it the way it is typed.
         pg.click("#almanac-head-date .ep[data-p=year]")
-        pg.wait_for_function("() => !!_almEd && _almEd.input", timeout=5000)
+        pg.wait_for_function("() => !!_almEd && _almEd.input", timeout=FRAME_BOUND_MS)
         assert pg.evaluate("() => _almEd.input.value") == "44"
         # A number pad has no minus: the era beside the field flips it, and keeps the field's focus.
         assert pg.locator(".alm-ck-era").inner_text() == "AD"
@@ -274,7 +312,7 @@ def test_a_minus_means_bc(browser, served):
         )
         assert pg.evaluate("() => document.activeElement === _almEd.input")
         pg.keyboard.press("Enter")
-        pg.wait_for_function("() => !_almEd", timeout=10_000, polling=POLL_MS)
+        pg.wait_for_function("() => !_almEd", timeout=FRAME_BOUND_MS, polling=POLL_MS)
         assert _wall(pg)[0] == -43
         assert not errors, errors
     finally:
@@ -369,7 +407,7 @@ def test_the_slider_drags_continuously_and_lands_on_its_stops(browser, served):
         pg.mouse.move(_stop_x(box, 3), y)
         pg.mouse.move(_stop_x(box, 4.05), y)
         pg.mouse.up()
-        pg.wait_for_function("() => _almRate === 1", timeout=5000)
+        pg.wait_for_function("() => _almRate === 1", timeout=FRAME_BOUND_MS)
         # A tap on a unit's mark goes to its stop.
         pg.click("#almanac-head .alm-spd-mark[data-stop='7']", force=True)
         assert pg.evaluate("() => _almRate") == 86400
@@ -386,7 +424,7 @@ def test_the_middle_button_pauses_and_resumes(browser, served):
         # At real time the thumb stands on the button: a tap on the thumb pauses.
         box = pg.locator("#almanac-head .alm-spd-range").bounding_box()
         pg.mouse.click(_stop_x(box, 4), box["y"] + box["height"] / 2)
-        pg.wait_for_function("() => _almRate === 0", timeout=5000)
+        pg.wait_for_function("() => _almRate === 0", timeout=FRAME_BOUND_MS)
         held = pg.evaluate("() => _almFocusInstant().getTime()")
         pg.wait_for_timeout(1200)
         assert (
@@ -413,7 +451,7 @@ def test_the_middle_button_pauses_and_resumes(browser, served):
         # Running fast, the parts are not underlined and a tap on one types nothing.
         pg.wait_for_function(
             "() => /rgba\\(0, 0, 0, 0\\)|transparent/.test(getComputedStyle(document.querySelector('#almanac-head-time .ep[data-p=hour]')).textDecorationColor)",
-            timeout=5000,
+            timeout=FRAME_BOUND_MS,
             polling=POLL_MS,
         )
         # The part is redrawn every tick at this pace and can be momentarily empty, so the tap is dispatched, not aimed.
@@ -434,7 +472,7 @@ def test_the_middle_button_pauses_and_resumes(browser, served):
         pg.wait_for_function("(a) => _almFocusInstant().getTime() < a", arg=a, timeout=30_000, polling=POLL_MS)
         # Now is the way home.
         pg.click("#almanac-head .alm-ck-now")
-        pg.wait_for_function("() => _almRate === 1 && !_almFocus", timeout=5000)
+        pg.wait_for_function("() => _almRate === 1 && !_almFocus", timeout=FRAME_BOUND_MS)
         assert pg.evaluate(
             "() => document.querySelector('#almanac-head .alm-ck-now').hidden"
         )
@@ -451,14 +489,14 @@ def test_the_clock_and_the_section_bar_pin_as_one_strip(browser, served):
         pg.evaluate("() => document.getElementById('almanac-content').scrollTo(0, 900)")
         pg.wait_for_function(
             "() => !document.getElementById('alm-pin').hidden",
-            timeout=5000,
+            timeout=FRAME_BOUND_MS,
             polling=POLL_MS,
         )
         # At rest the strip is the section bar alone: the time pins only while the clock is in use.
         bare = pg.evaluate("() => [getComputedStyle(document.querySelector('#alm-pin .alm-pin-clock')).display, document.getElementById('alm-pin').getBoundingClientRect().height]")
         assert bare[0] == "none" and bare[1] < ALM_SECBAR_H_PX + 8, bare
         pg.evaluate("() => _almClockOpenUp(true)")
-        pg.wait_for_function("() => getComputedStyle(document.querySelector('#alm-pin .alm-pin-clock')).display !== 'none'", timeout=5000, polling=POLL_MS)
+        pg.wait_for_function("() => getComputedStyle(document.querySelector('#alm-pin .alm-pin-clock')).display !== 'none'", timeout=FRAME_BOUND_MS, polling=POLL_MS)
         got = pg.evaluate(
             """() => { var pin = document.getElementById('alm-pin'), r = pin.getBoundingClientRect(), c = pin.querySelector('.alm-clock').getBoundingClientRect(), b = document.getElementById('alm-secbar').getBoundingClientRect();
           return { top: r.top, h: r.height, clockBottom: c.bottom, barTop: b.top, bars: document.querySelectorAll('.alm-secbar, .alm-pin').length,
@@ -475,12 +513,12 @@ def test_the_clock_and_the_section_bar_pin_as_one_strip(browser, served):
         pg.click("#alm-pin .ep[data-p=day]")
         pg.wait_for_function(
             "() => !!_almEd && _almEd.root.getAttribute('data-v') === 'pin'",
-            timeout=5000,
+            timeout=FRAME_BOUND_MS,
             polling=POLL_MS,
         )
         pg.keyboard.type("12")
         pg.keyboard.press("Enter")
-        pg.wait_for_function("() => !_almEd", timeout=10_000, polling=POLL_MS)
+        pg.wait_for_function("() => !_almEd", timeout=FRAME_BOUND_MS, polling=POLL_MS)
         assert _wall(pg)[2] == 12
         assert (
             pg.evaluate(
@@ -492,7 +530,7 @@ def test_the_clock_and_the_section_bar_pin_as_one_strip(browser, served):
         pg.evaluate("() => document.getElementById('almanac-content').scrollTo(0, 0)")
         pg.wait_for_function(
             "() => document.getElementById('alm-pin').hidden",
-            timeout=5000,
+            timeout=FRAME_BOUND_MS,
             polling=POLL_MS,
         )
         assert not errors, errors
@@ -534,7 +572,7 @@ def test_one_clock_in_the_page_the_orrery_and_the_3d_view(browser, served):
         )
         # Play in the view: forward runs the one clock, the page's moment moves, the view draws it.
         pg.click("#ae-clock .alm-spd-play", force=True)
-        pg.wait_for_function("() => _almRate !== 0", timeout=5000)
+        pg.wait_for_function("() => _almRate !== 0", timeout=FRAME_BOUND_MS)
         a = pg.evaluate("() => _almFocusInstant().getTime()")
         pg.evaluate("() => _almClockSetRate(3600)")
         pg.wait_for_function("(a) => _almFocusInstant().getTime() > a + 60000", arg=a, timeout=30_000, polling=POLL_MS)
@@ -567,7 +605,7 @@ def test_one_clock_in_the_page_the_orrery_and_the_3d_view(browser, served):
         pg.click("#ae-clock .ep[data-p=day]")
         pg.wait_for_function(
             "() => !!_almEd && _almEd.root.getAttribute('data-v') === 'foot'",
-            timeout=5000,
+            timeout=FRAME_BOUND_MS,
             polling=POLL_MS,
         )
         pg.keyboard.press("Escape")
@@ -578,7 +616,7 @@ def test_one_clock_in_the_page_the_orrery_and_the_3d_view(browser, served):
         assert abs(shift["shift"] - shift["half"]) < 1.5, shift
         # Closing the view leaves the page on the moment.
         pg.evaluate("() => _aeClose()")
-        pg.wait_for_function("() => !_aeIsOpen", timeout=10_000, polling=POLL_MS)
+        pg.wait_for_function("() => !_aeIsOpen", timeout=FRAME_BOUND_MS, polling=POLL_MS)
         assert pg.evaluate("() => _almFocusInstant().getTime()") == held
         assert not errors, errors
     finally:
@@ -599,7 +637,7 @@ def test_the_slider_rests_at_now_and_a_picked_day_keeps_the_pace(browser, served
         pg.click("#almanac-head-time .ep[data-p=hour]")
         assert not pg.evaluate(rests) and pg.evaluate(shown) and pg.evaluate("() => !_almEd")
         pg.mouse.click(195, 700)
-        pg.wait_for_function(rests, timeout=5000, polling=POLL_MS)
+        pg.wait_for_function(rests, timeout=FRAME_BOUND_MS, polling=POLL_MS)
         # A day picked on the calendar: the next day at the same time of day, and the clock runs on at 1x, in step.
         pg.evaluate(
             "() => { var f = _almFocusInstant(); _almSelectDay(_gregorianToJDN(f.getFullYear(), f.getMonth() + 1, f.getDate()) + 1); }"
@@ -672,7 +710,7 @@ def test_the_rate_does_not_persist(browser, served):
         # A run through the hours under way (AM/PM flipped) as it closes: it stops with the page.
         pg.evaluate("() => { _almReduceMotion = function () { return false; }; _almClockRunTo(new Date(Date.now() + 12 * 3600e3), function (at) { _almClockHeld = false; _almClockGoTo(at); }); }")
         pg.evaluate("() => closeAlmanac()")
-        pg.wait_for_function("() => _almRate === 1 && !_almClockRunning && !_almRunToRAF && _almFocus === null", timeout=5000)
+        pg.wait_for_function("() => _almRate === 1 && !_almClockRunning && !_almRunToRAF && _almFocus === null", timeout=FRAME_BOUND_MS)
         pg.wait_for_timeout(2500)   # past the run's length: nothing came back to life
         assert pg.evaluate("() => !_almRunToRAF && !_almClockRunning && _almFocus === null")
         assert not errors, errors
@@ -688,7 +726,7 @@ def test_a_day_picked_keeps_the_place_s_time_of_day(browser, served):
         _land(pg, "2026-11-07T23:00:00Z")   # 08:00 Nov 8 in Tokyo, 15:00 Nov 7 in Los Angeles
         assert _wall(pg)[:4] == [2026, 11, 8, 8]
         pg.evaluate("() => _almSelectDay(_gregorianToJDN(2026, 11, 20))")
-        pg.wait_for_function("() => !_almRunToRAF", timeout=5000, polling=POLL_MS)
+        pg.wait_for_function("() => !_almRunToRAF", timeout=FRAME_BOUND_MS, polling=POLL_MS)
         assert _wall(pg)[:4] == [2026, 11, 20, 8]
         assert not errors, errors
     finally:

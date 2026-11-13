@@ -24,6 +24,7 @@ sys.path.insert(0, ROOT)
 GL_ARGS = [
     "--use-angle=swiftshader",
     "--enable-unsafe-swiftshader",
+    "--disable-accelerated-2d-canvas",
     "--ignore-gpu-blocklist",
 ]
 PHONE = {"width": 390, "height": 844}

@@ -16,6 +16,7 @@ SF = '{"lat":37.77,"lon":-122.42,"name":"San Francisco"}'
 GL_ARGS = [
     "--use-angle=swiftshader",
     "--enable-unsafe-swiftshader",
+    "--disable-accelerated-2d-canvas",
     "--ignore-gpu-blocklist",
 ]
 READY_MS = 180_000

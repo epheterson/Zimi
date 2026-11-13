@@ -7679,7 +7679,9 @@ function _moonSpritePlan(v, sizePx) {
   var N = _moonSpriteN(sizePx);
   var cv = document.createElement('canvas');
   cv.width = cv.height = N;
-  var ctx = cv.getContext('2d');
+  // Filled by putImageData and read out whole (toDataURL, drawImage): a canvas kept in memory, not on the GPU, whose readback
+  // waits on every frame the GPU is drawing (seconds on a machine whose GPU is software, with the page frozen meanwhile).
+  var ctx = cv.getContext('2d', { willReadFrequently: true });
   var img = ctx.createImageData(N, N);
   var data = img.data;
   var mapW = _moonMapWidthFor(N);
@@ -9661,8 +9663,8 @@ function _moveZimTo(zim, category) {
   document.addEventListener('mousedown', _ctxTrackPointer, true);
   document.addEventListener('wheel', function(e) { if (!menu.contains(e.target)) _ctxSelfScroll = false; },
     { capture: true, passive: true });
-  window.addEventListener('scroll', function() {
-    if (_ctxSelfScroll) return;
+  window.addEventListener('scroll', function(e) {
+    if (_ctxSelfScroll || menu.contains(e.target)) return;
     if (menu.classList.contains('visible')) closeCtx();
   }, true);
 

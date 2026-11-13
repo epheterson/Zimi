@@ -32,7 +32,7 @@ import pytest
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-GL_ARGS = ["--use-angle=swiftshader", "--enable-unsafe-swiftshader"]
+GL_ARGS = ["--use-angle=swiftshader", "--enable-unsafe-swiftshader", "--disable-accelerated-2d-canvas"]
 VIEW = {"width": 390, "height": 844}
 SF = {
     "lat": 37.7749,
@@ -117,6 +117,14 @@ def page(served):
         pg.on("pageerror", lambda e: pg.errors.append(str(e)))
         pg.goto(served + "/#almanac", wait_until="load")
         pg.wait_for_function("() => document.getElementById('alm-group-tables')")
+        # The page keeps growing after it is first drawn: its late sections come when the page is quiet, and the
+        # tide's reserved space is given back when the tide (or nothing) is drawn. Tests that measure the page's
+        # height or its end start from there, not from a moment the runner's speed picks.
+        pg.wait_for_function(
+            "() => { const p = document.getElementById('almanac-place');"
+            " return typeof _atRender === 'function' && !!p && p.style.minHeight === '' && !_quietJobs.length && !_quietBusy; }",
+            timeout=120_000,
+        )
         pg.evaluate("typeof _cancelAllRAF === 'function' && _cancelAllRAF()")
         yield pg
         br.close()
@@ -403,11 +411,12 @@ def test_a_sheet_stands_above_the_keyboard(page):
         "() => { const vv = window.visualViewport; Object.defineProperty(vv, 'height', { configurable: true, get: () => innerHeight - 300 });"
         " vv.dispatchEvent(new Event('resize')); }"
     )
-    # (It moves by a transition: read it once that has run.)
+    # (It moves by a transition: read it once that has run. A transition ends at the first frame past its time, and a
+    # runner software-drawing the page makes seconds between frames: the bound is a hang's, not the transition's.)
     page.wait_for_function(
         "() => { const p = document.querySelector('.tk-pop'), q = p.querySelector('input'), top = innerHeight - 300;"
         " return p.getBoundingClientRect().bottom <= top + 1 && q.getBoundingClientRect().bottom <= top; }",
-        timeout=5000,
+        timeout=30_000,
     )
     page.evaluate("() => { delete window.visualViewport.height; }")
     page.keyboard.press("Escape")
@@ -625,12 +634,9 @@ def test_back_returns_to_the_almanac_where_it_was(page):
     page.evaluate(
         "window.AlmanacRef && document.getElementById('alm-ref') && AlmanacRef.close()"
     )
-    page.wait_for_timeout(300)
+    page.wait_for_function("() => !document.getElementById('alm-ref')")
+    # The late sections (the tide) are in, and the reserve given back, from the page fixture on.
     page.evaluate("document.getElementById('alm-group-tables').scrollIntoView()")
-    # The late sections (the tide) and the phone's header settle first.
-    page.wait_for_timeout(2000)
-    page.evaluate("document.getElementById('alm-group-tables').scrollIntoView()")
-    page.wait_for_timeout(500)
     top = page.evaluate("document.getElementById('almanac-content').scrollTop")
     page.evaluate("document.querySelector(\".alm-tile[data-tb='seasons']\").click()")
     page.wait_for_function(DRAWN, timeout=60000)
@@ -645,16 +651,12 @@ def test_back_returns_to_the_almanac_where_it_was(page):
     page.evaluate("document.querySelector(\".alm-tile[data-tb='units']\").click()")
     page.wait_for_function(DRAWN, timeout=60000)
     page.go_back()
-    page.wait_for_function("() => !document.getElementById('alm-ref')")
-    page.wait_for_timeout(300)
-    assert page.evaluate("_almanacOpen")
+    page.wait_for_function("() => !document.getElementById('alm-ref') && _almanacOpen")
     # The view's own Back.
     page.evaluate("document.querySelector(\".alm-tile[data-tb='days']\").click()")
     page.wait_for_function(DRAWN, timeout=60000)
     page.click("[data-tb-close]")
-    page.wait_for_function("() => !document.getElementById('alm-ref')")
-    page.wait_for_timeout(300)
-    assert page.evaluate("_almanacOpen")
+    page.wait_for_function("() => !document.getElementById('alm-ref') && _almanacOpen")
     assert not page.errors, page.errors
 
 
@@ -1228,6 +1230,17 @@ def test_a_busy_server_is_asked_once_more_and_a_slow_pdf_says_so(page):
     assert not page.errors, page.errors
 
 
+# The failure toast lives 3 s from the moment it is made, and the browser's dialog is asked for after the fonts and two
+# frames: on a runner drawing a frame a second the toast is gone before the dialog is asked for. What the test asserts is
+# that it was shown, so it is recorded as it is added, not looked for after.
+WATCH_TOASTS = """() => {
+  window.__toasts = [];
+  new MutationObserver((records) => records.forEach((r) => r.addedNodes.forEach((n) => {
+    if (n.nodeType === 1 && n.tagName === 'DIV') window.__toasts.push(n.textContent);
+  }))).observe(document.body, { childList: true });
+}"""
+
+
 def test_still_busy_after_the_retry_prints_the_page(page):
     """Busy twice: the toast, then the browser's own dialog over the book."""
     _open(page, "seasons")
@@ -1242,6 +1255,7 @@ def test_still_busy_after_the_retry_prints_the_page(page):
         )
 
     page.route("**/almanac/pdf", busy)
+    page.evaluate(WATCH_TOASTS)
     page.evaluate(
         "() => { window.__printed = 0; window.__pr = window.print; window.print = () => { window.__printed++; }; }"
     )
@@ -1249,9 +1263,7 @@ def test_still_busy_after_the_retry_prints_the_page(page):
         page.click("[data-tb-act='print']")
         page.wait_for_function("() => window.__printed === 1", timeout=30000)
         assert len(seen) == 2
-        assert page.evaluate(
-            "[...document.querySelectorAll('body > div')].some((d) => d.textContent === t('tb_pdf_failed'))"
-        )
+        assert page.evaluate("t('tb_pdf_failed')") in page.evaluate("window.__toasts")
         page.evaluate("_tbPrintOff()")
     finally:
         page.unroute("**/almanac/pdf")
@@ -1267,6 +1279,7 @@ def test_print_falls_back_to_the_page_when_the_pdf_fails(page):
         "**/almanac/pdf",
         lambda route: route.fulfill(status=500, body='{"error": "render failed"}'),
     )
+    page.evaluate(WATCH_TOASTS)
     page.evaluate(
         "() => { window.__printed = 0; window.__pr = window.print; window.__book = 0;"
         " window.print = () => { window.__printed++; window.__book = document.querySelectorAll('#alm-book .tb-book-page').length; }; }"
@@ -1275,9 +1288,7 @@ def test_print_falls_back_to_the_page_when_the_pdf_fails(page):
         page.click("[data-tb-act='print']")
         page.wait_for_function("() => window.__printed === 1", timeout=60000)
         assert page.evaluate("window.__book") == 1
-        assert page.evaluate(
-            "[...document.querySelectorAll('body > div')].some((d) => d.textContent === t('tb_pdf_failed'))"
-        )
+        assert page.evaluate("t('tb_pdf_failed')") in page.evaluate("window.__toasts")
         assert not page.evaluate("readerOpen")
         page.evaluate("_tbPrintOff()")
     finally:

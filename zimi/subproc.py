@@ -55,8 +55,10 @@ _PYI_PREFIX = "_PYI_"
 
 
 def _bundle_dirs():
-    """The frozen app's folders, as the bootloader wrote them and with symlinks resolved, each normalised for comparing."""
-    raw = {getattr(sys, "_MEIPASS", None), os.path.dirname(sys.executable)}
+    """The frozen app itself: its unpack folder and its executable file, as the bootloader wrote them and with symlinks
+    resolved, each normalised for comparing. Not the folder the executable sits in: a portable build keeps its data
+    (zims/, zimi-data/, the voices venv) beside it, and that is no part of the app (#151)."""
+    raw = {getattr(sys, "_MEIPASS", None), sys.executable}
     raw = {d for d in raw if d}
     return sorted({_norm(d) for d in raw} | {_norm(os.path.realpath(d)) for d in raw})
 
@@ -73,7 +75,7 @@ def _under(path, root, mod=os.path):
 
 
 def _in_bundle(program):
-    """True when ``program`` is a file inside the frozen app's folder. A bare name is no path (see ``_resolved``)."""
+    """True when ``program`` is the frozen app's executable or a file inside its unpack folder. A bare name is no path (see ``_resolved``)."""
     try:
         if not os.path.dirname(os.fspath(program)):
             return False

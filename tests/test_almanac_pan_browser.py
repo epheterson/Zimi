@@ -22,6 +22,7 @@ sys.path.insert(0, ROOT)
 GL_ARGS = [
     "--use-angle=swiftshader",
     "--enable-unsafe-swiftshader",
+    "--disable-accelerated-2d-canvas",
     "--ignore-gpu-blocklist",
 ]
 VIEW = {"width": 390, "height": 844}
@@ -171,9 +172,15 @@ def test_two_fingers_slide_the_view_across_the_station_and_pinch_zooms(station):
     dist0 = pg.evaluate("() => _ae.dist")
     # Two fingers 120 px apart move together 40 px right and 30 px down, spreading to 160 px: slide and zoom at once.
     touches(cdp, "touchStart", [(135, 400), (255, 400)])
+    # Moves reach the page aligned to its frames, and a frame holds only the latest of the moves sent before it: two sent
+    # back to back on a slow runner arrive as one (the spread and the slide together), and the slide is then measured
+    # at a different distance from the station. Each is sent once the page has taken the one before.
     touches(cdp, "touchMove", [(115, 415), (275, 415)])
+    pg.wait_for_function(
+        "() => !!_ae.pinch && _ae.pinch.span === 160 && _ae.pinch.mx === 195 && _ae.pinch.my === 415",
+        timeout=10_000,
+    )
     touches(cdp, "touchMove", [(155, 430), (315, 430)])
-    # Moves reach the page aligned to its frames: the state is read once the last one has, not while it is on its way.
     pg.wait_for_function(
         "() => !!_ae.pinch && _ae.pinch.span === 160 && _ae.pinch.mx === 235 && _ae.pinch.my === 430",
         timeout=10_000,

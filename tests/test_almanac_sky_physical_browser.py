@@ -29,7 +29,7 @@ import pytest
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-GL_ARGS = ["--use-angle=swiftshader", "--enable-unsafe-swiftshader"]
+GL_ARGS = ["--use-angle=swiftshader", "--enable-unsafe-swiftshader", "--disable-accelerated-2d-canvas"]
 VIEW = {"width": 390, "height": 844}
 PLACE = {"lat": 37.7749, "lon": -122.4194, "name": "San Francisco"}
 NIGHT = "2026-08-10T08:00:00Z"  # 01:00 in San Francisco, Sagittarius low in the south
@@ -120,6 +120,20 @@ def _settle(pg, iso):
     pg.wait_for_function(
         "(t) => _skyState && _skyState.nowTime === t && !_skyState.moonAnim && _skyState.baseBodies",
         arg=_ms(iso),
+        polling=POLL_MS,
+    )
+
+
+def _page_has_done_its_late_work(pg):
+    """Until the page has drawn what it draws when it is quiet and given back the space it reserved for it.
+
+    The Almanac's late sections are drawn from a queue that runs between the page's other work, and the tide's reserved
+    height is released when it is done (17 s after load on a loaded runner, the page 24 px shorter). A test that reads a
+    place on the page, then acts on it in another turn, begins after that, not on the moment the runner's speed picks.
+    """
+    pg.wait_for_function(
+        "() => { const p = document.getElementById('almanac-place');"
+        " return !_quietJobs.length && !_quietBusy && (!p || p.style.minHeight === ''); }",
         polling=POLL_MS,
     )
 
@@ -624,6 +638,7 @@ def test_every_bright_star_can_be_tapped_and_its_figure_comes_with_it(browser, s
     try:
         _settle(pg, NIGHT)
         _drawn(pg)
+        _page_has_done_its_late_work(pg)
         pg.wait_for_function("() => _skyNames && _skyTapStars > 500", polling=POLL_MS)
         # Nothing asks for the constellations while the default (no lines) stands.
         _frames(pg)

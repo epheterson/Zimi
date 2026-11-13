@@ -147,13 +147,17 @@ def test_manage_maps_pane_redraws_when_the_source_changes(served, browser_ctx):
         "() => typeof _browseView !== 'undefined' && _browseView === 'drilldown' && manageCategoryFilter === 'maps'",
         timeout=WAIT_MS,
     )
-    pg.evaluate(
-        "() => { window._drills = []; var real = drillCategory; drillCategory = function (k) { window._drills.push(k); }; window._realDrill = real; }"
+    # The account's value comes in: the shell writes it and announces it. The calls are counted in the one turn of the page
+    # that announces it: the catalog, the library list and the downloads redraw this same view when their own answers land
+    # (a runner's speed decides whether one lands between two of the test's turns), and those are not this announcement's.
+    drills = pg.evaluate(
+        """() => {
+            var calls = [], real = drillCategory;
+            drillCategory = function (k) { calls.push(k); };
+            try { localStorage.setItem(SK.MAPS_SOURCE, 'streetzim'); _prefApplied([SK.MAPS_SOURCE]); }
+            finally { drillCategory = real; localStorage.removeItem(SK.MAPS_SOURCE); }
+            return calls;
+        }"""
     )
-    # The account's value comes in: the shell writes it and announces it.
-    pg.evaluate(
-        "() => { localStorage.setItem(SK.MAPS_SOURCE, 'streetzim'); _prefApplied([SK.MAPS_SOURCE]); }"
-    )
-    assert pg.evaluate("window._drills") == ["maps"]
-    pg.evaluate("() => { drillCategory = window._realDrill; localStorage.removeItem(SK.MAPS_SOURCE); }")
+    assert drills == ["maps"]
     pg.close()
