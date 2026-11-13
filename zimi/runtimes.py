@@ -242,29 +242,20 @@ _FEATURES = (
 # or a browser beside it; every row says where to get that.
 _PORTABLE_WAYS = {
     "bittorrent": Way(
-        EXTERNAL,
-        "not in the portable build; a qBittorrent or Transmission you run works, or use Docker",
+        EXTERNAL, "not in the portable build; a qBittorrent or Transmission you run works, or use Docker"
     ),
     "voices": Way(ABSENT, "not in the portable build; use Docker or pip"),
     "pdf": Way(BUNDLED, ""),
     "mcp": Way(ABSENT, "not in the portable build; use pip or Docker"),
-    "rendered": Way(
-        ABSENT,
-        "needs a browser engine the portable build does not carry; use pip or Docker",
-    ),
+    "rendered": Way(ABSENT, "needs a browser engine the portable build does not carry; use pip or Docker"),
     "import": Way(ABSENT, "needs Python 3.14 beside the build; use pip or Docker"),
     "alive": Way(ABSENT, "needs the browser engine and warc2zim; use pip or Docker"),
-    "singlefile": Way(
-        EXTERNAL,
-        "npm install -g single-file-cli (Node 24+), and a Chromium or Chrome for it to drive",
-    ),
+    "singlefile": Way(EXTERNAL, "npm install -g single-file-cli (Node 24+), and a Chromium or Chrome for it to drive"),
     "video": Way(ABSENT, "yt-dlp is not in the portable build; use pip or Docker"),
     "reddot": Way(ABSENT, "needs a Python beside the build; use pip or Docker"),
     "zimit": Way(EXTERNAL, "Docker; Zimi runs the zimit image"),
 }
-FEATURES = tuple(
-    f._replace(ways={**f.ways, PORTABLE: _PORTABLE_WAYS[f.key]}) for f in _FEATURES
-)
+FEATURES = tuple(f._replace(ways={**f.ways, PORTABLE: _PORTABLE_WAYS[f.key]}) for f in _FEATURES)
 
 
 def install_kind():
@@ -343,9 +334,7 @@ def _probe(python):
     from zimi import subproc
 
     try:
-        done = subproc.run(
-            [python, "-c", _OUTSIDE_PROBE], capture_output=True, text=True, timeout=30
-        )
+        done = subproc.run([python, "-c", _OUTSIDE_PROBE], capture_output=True, text=True, timeout=30)
     except Exception as e:
         return f"could not run {python}: {e}"
     if done.returncode != 0:
@@ -358,8 +347,7 @@ def _probe(python):
 
 def _venv_python_problem(python):
     """The same probe through a venv python in the data folder, where voices keep theirs: beside the executable on a
-    portable build, which is what #151's second spawn (``<venv>/bin/python -m pip``) was. Offline: the venv has no pip.
-    """
+    portable build, which is what #151's second spawn (``<venv>/bin/python -m pip``) was. Offline: the venv has no pip."""
     from zimi import server as _srv
     from zimi import subproc
 
@@ -368,18 +356,11 @@ def _venv_python_problem(python):
     try:
         os.makedirs(tools, exist_ok=True)
         venv = tempfile.mkdtemp(prefix="doctor-probe-", dir=tools)
-        made = subproc.run(
-            [python, "-m", "venv", "--without-pip", venv],
-            capture_output=True,
-            text=True,
-            timeout=120,
-        )
+        made = subproc.run([python, "-m", "venv", "--without-pip", venv], capture_output=True, text=True, timeout=120)
         if made.returncode != 0:
             return f"{python} cannot make a venv: {(made.stderr or '').strip()[-200:]}"
         bin_dir = "Scripts" if os.name == "nt" else "bin"
-        return _probe(
-            os.path.join(venv, bin_dir, "python" + (".exe" if os.name == "nt" else ""))
-        )
+        return _probe(os.path.join(venv, bin_dir, "python" + (".exe" if os.name == "nt" else "")))
     except Exception as e:
         return f"{python} cannot make a venv in {tools}: {e}"
     finally:
@@ -412,9 +393,7 @@ def cli_doctor(args):
     print(format_report(rows, kind))
     missing = problems(rows)
     if missing:
-        print(
-            f"\nnot ready, though this install should have them: {', '.join(missing)}"
-        )
+        print(f"\nnot ready, though this install should have them: {', '.join(missing)}")
         if args.check:
             raise SystemExit(1)
     outside = outside_python_problem(venv=args.check)
