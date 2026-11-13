@@ -146,3 +146,54 @@ def test_a_bare_program_name_is_looked_up_on_the_childs_path_not_in_the_bundle(m
     assert seen[-1]["env"]["LD_LIBRARY_PATH"] == "/usr/local/lib"
     assert os.path.normcase(subproc._resolved("piper")) == os.path.normcase(str(outside / name))
     assert not subproc._in_bundle("piper")
+
+
+def test_a_venv_in_the_data_folder_beside_the_executable_is_not_the_bundle(monkeypatch, tmp_path):
+    """#151: the voices venv lives in <release folder>/zims/.zimi/tools/voices, beside the executable. Its python is an
+    outside program, so the install command (``<venv>/bin/python -m pip``) must get the machine's environment too."""
+    import json
+
+    folder = tmp_path / "zimi-1.0-linux-arm64"
+    (folder / "_internal").mkdir(parents=True)
+    (folder / "zimi").write_text("", encoding="utf-8")
+    bundle = folder / "_internal"
+    (bundle / "libssl.so.3").write_text("not a library", encoding="utf-8")
+    venv = folder / "zims" / ".zimi" / "tools" / "voices"
+    subprocess.run([sys.executable, "-m", "venv", str(venv)], check=True, capture_output=True)
+    python = venv / ("Scripts/python.exe" if os.name == "nt" else "bin/python")
+
+    monkeypatch.setattr(sys, "frozen", True, raising=False)
+    monkeypatch.setattr(sys, "_MEIPASS", str(bundle), raising=False)
+    monkeypatch.setattr(sys, "executable", str(folder / "zimi"))
+    monkeypatch.setenv("LD_LIBRARY_PATH", str(bundle))
+    monkeypatch.setenv("LD_LIBRARY_PATH_ORIG", "/usr/local/lib")
+    monkeypatch.setenv("PYTHONHOME", str(bundle))
+    monkeypatch.setenv("_PYI_APPLICATION_HOME_DIR", str(bundle))
+
+    assert not subproc._in_bundle(str(python))
+    assert subproc._in_bundle(str(folder / "zimi")) and subproc._in_bundle(str(bundle / "lib" / "x.so"))
+    probe = "import json, os, ssl; print(json.dumps({k: v for k, v in os.environ.items() if k.startswith(('LD_', 'PYTHONHOME', '_PYI_'))}))"
+    child = subproc.popen([str(python), "-c", probe], stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+    out, err = child.communicate(timeout=60)
+    assert child.returncode == 0, err
+    seen = json.loads(out)
+    assert seen == {"LD_LIBRARY_PATH": "/usr/local/lib"}, seen
+
+
+def test_doctor_probes_a_venv_python_in_the_data_folder(monkeypatch, tmp_path):
+    """`zimi doctor --check` in the portable smoke test: the venv python (the one that runs pip) is probed too."""
+    from zimi import runtimes
+    from zimi import server as srv
+
+    machine_python = sys.executable
+    folder = tmp_path / "app"
+    (folder / "_internal").mkdir(parents=True)
+    monkeypatch.setattr(sys, "frozen", True, raising=False)
+    monkeypatch.setattr(sys, "_MEIPASS", str(folder / "_internal"), raising=False)
+    monkeypatch.setattr(sys, "executable", str(folder / "zimi"))
+    monkeypatch.setattr(srv, "ZIMI_DATA_DIR", str(folder / "zimi-data"))
+    monkeypatch.setenv("LD_LIBRARY_PATH", str(folder / "_internal"))
+    assert runtimes.outside_python_problem(machine_python, venv=True) is None
+    assert os.listdir(folder / "zimi-data" / "tools") == [], "the probe venv is removed"
+    monkeypatch.setattr(subproc, "run", subprocess.run)  # the old behaviour
+    assert "library path" in runtimes.outside_python_problem(machine_python, venv=True)
