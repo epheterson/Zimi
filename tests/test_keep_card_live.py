@@ -217,7 +217,10 @@ def test_a_card_marks_its_state_in_its_foot_beside_its_one_control(pw, world):
     br, ctx, pg = library(pw, world)
     keep_one(pg)
     for view in ("list", "tiles"):
-        pg.evaluate("(v) => { localStorage.setItem('zimi_library_view', v); renderHome(); }", view)
+        pg.evaluate(
+            "(v) => { localStorage.setItem('zimi_library_view', v); renderHome(); }",
+            view,
+        )
         pg.wait_for_function(
             "(v) => { const g = document.querySelector('#output .stats-grid'); return !!g && g.classList.contains('tiles') === (v === 'tiles'); }",
             arg=view,
@@ -239,11 +242,18 @@ def test_a_card_marks_its_state_in_its_foot_beside_its_one_control(pw, world):
             SMALL,
         )
         assert 0 <= corner[0] <= 8 and 0 <= corner[1] <= 8, (view, corner)
-        w = pg.evaluate("(z) => document.querySelector(`.stat-card[data-zim='${z}'] .card-more`).getBoundingClientRect().width", SMALL)
+        w = pg.evaluate(
+            "(z) => document.querySelector(`.stat-card[data-zim='${z}'] .card-more`).getBoundingClientRect().width",
+            SMALL,
+        )
         assert w >= (44 if view == "list" else 34), (view, w)
     # ⋯ opens the card's menu and goes nowhere.
     lines = more(pg, SMALL)
-    assert "Keep offline" in lines and "Add to favorites" in lines and "About this ZIM" in lines, lines
+    assert (
+        "Keep offline" in lines
+        and "Add to favorites" in lines
+        and "About this ZIM" in lines
+    ), lines
     assert pg.evaluate("() => location.pathname") == "/"
     ctx.close()
     br.close()
@@ -254,16 +264,16 @@ def test_a_scroll_inside_the_open_menu_does_not_close_it(pw, world):
     is not the page's, and closed a menu the moment it opened."""
     br, ctx, pg = library(pw, world)
     more(pg, SMALL)
-    scrolled = pg.evaluate(
-        """() => new Promise((done) => {
+    scrolled = pg.evaluate("""() => new Promise((done) => {
             const m = document.getElementById('zim-ctx-menu');
             m.style.maxHeight = '120px';
             m.style.overflowY = 'auto';
             m.addEventListener('scroll', () => done(m.scrollTop), { once: true });
             m.scrollTop = 40;
-        })"""
-    )
-    assert pg.evaluate("() => document.getElementById('zim-ctx-menu').classList.contains('visible')"), "closed by its own scroll"
+        })""")
+    assert pg.evaluate(
+        "() => document.getElementById('zim-ctx-menu').classList.contains('visible')"
+    ), "closed by its own scroll"
     assert scrolled > 0
     ctx.close()
     br.close()
@@ -316,7 +326,9 @@ def test_removing_a_kept_zim_asks_first(pw, world):
     assert "Remove from this phone" in lines, lines
     pick(pg, "keep-remove")
     pg.wait_for_selector(".pw-overlay.open", timeout=5000)
-    assert "wikipedia" in pg.evaluate("() => [..._keepNames]"), "nothing goes before the answer"
+    assert "wikipedia" in pg.evaluate(
+        "() => [..._keepNames]"
+    ), "nothing goes before the answer"
     pg.click("#ac-ok")
     pg.wait_for_function("() => !document.querySelector('.keep-ico')", timeout=15000)
     ctx.close()
@@ -354,7 +366,7 @@ def test_a_74gb_pull_visibly_moves_in_the_menu(pw, world):
     # Pause keeps it as a ring that offers Resume.
     pick(pg, "keep-pause")
     pg.wait_for_function(
-        "(z) => document.querySelector(`.stat-card[data-zim='${z}'] .keep-ico`).dataset.k === 'paused'",
+        "(z) => { const b = document.querySelector(`.stat-card[data-zim='${z}'] .keep-ico`); return b && b.dataset.k === 'paused'; }",
         arg=BIG_NAME,
         timeout=10000,
     )
@@ -496,7 +508,11 @@ def test_online_on_this_phone_opens_the_categories(pw, world):
         "() => [...document.querySelectorAll('#output .cat-heading')].map(e => e.innerText.trim().toLowerCase())"
     )
     # Directly below the collections, before the big library flow.
-    assert heads.index("mine") + 1 == heads.index("on this phone") < heads.index("encyclopedias"), heads
+    assert (
+        heads.index("mine") + 1
+        == heads.index("on this phone")
+        < heads.index("encyclopedias")
+    ), heads
     ctx.close()
     br.close()
 
@@ -521,7 +537,11 @@ def _about_keep_note(pg, zim):
 
 def test_storage_the_browser_refuses_is_never_offered(pw, world):
     # Safari's Private Browsing: getDirectory is there and throws when used.
-    br, ctx, pg = _page_with(pw, world, "navigator.storage.getDirectory = () => Promise.reject(new DOMException('no', 'UnknownError'));")
+    br, ctx, pg = _page_with(
+        pw,
+        world,
+        "navigator.storage.getDirectory = () => Promise.reject(new DOMException('no', 'UnknownError'));",
+    )
     pg.wait_for_function("() => _keepStorageOk === false", timeout=10000)
     assert not pg.query_selector(".keep-ico"), "no mark a tap cannot keep"
     assert "cannot keep files" in _about_keep_note(pg, SMALL)
@@ -530,7 +550,9 @@ def test_storage_the_browser_refuses_is_never_offered(pw, world):
 
 
 def test_an_insecure_address_says_https_is_needed(pw, world):
-    br, ctx, pg = _page_with(pw, world, "Object.defineProperty(window, 'isSecureContext', { value: false });")
+    br, ctx, pg = _page_with(
+        pw, world, "Object.defineProperty(window, 'isSecureContext', { value: false });"
+    )
     assert pg.evaluate("() => _keepAvailable()") is False
     assert "HTTPS" in _about_keep_note(pg, SMALL)
     ctx.close()
@@ -553,7 +575,9 @@ def test_the_menu_opens_on_a_part_kept_zim_after_a_reload(pw, world):
     pg.evaluate("() => KeepStore.stop()")
     pg.wait_for_function("() => KeepStore.state().phase !== 'pulling'", timeout=15000)
     pg.reload(wait_until="load")
-    pg.wait_for_selector(".stat-card[data-zim='%s'] .keep-ico.paused" % BIG_NAME, timeout=20000)
+    pg.wait_for_selector(
+        ".stat-card[data-zim='%s'] .keep-ico.paused" % BIG_NAME, timeout=20000
+    )
     errors = []
     pg.on("pageerror", lambda e: errors.append(str(e)))
     lines = more(pg, BIG_NAME)
@@ -576,7 +600,12 @@ def test_on_a_phone_the_menu_is_a_sheet_from_the_bottom(pw, world):
           return { sheet: m.classList.contains('sheet'), left: b.left, right: b.right, bottom: b.bottom, w: innerWidth, h: innerHeight,
                    head: (m.querySelector('.ctx-head') || {}).innerText || '', backdrop: !document.getElementById('ctx-backdrop').hidden }; }"""
     )
-    assert r["sheet"] and r["left"] == 0 and r["right"] == r["w"] and abs(r["bottom"] - r["h"]) <= 1, r
+    assert (
+        r["sheet"]
+        and r["left"] == 0
+        and r["right"] == r["w"]
+        and abs(r["bottom"] - r["h"]) <= 1
+    ), r
     assert "Wikiquote" in r["head"] and r["backdrop"], r
     # A submenu opens in place under its row, inside the sheet.
     pg.click("#zim-ctx-menu > .ctx-item:has(> .ctx-sub)")
@@ -584,10 +613,15 @@ def test_on_a_phone_the_menu_is_a_sheet_from_the_bottom(pw, world):
         """() => { const s = document.querySelector('#zim-ctx-menu .sub-open > .ctx-sub'), b = s && s.getBoundingClientRect();
           return s && { pos: getComputedStyle(s).position, left: b.left, right: b.right, w: innerWidth }; }"""
     )
-    assert sub and sub["pos"] == "static" and sub["left"] >= 0 and sub["right"] <= sub["w"], sub
+    assert (
+        sub and sub["pos"] == "static" and sub["left"] >= 0 and sub["right"] <= sub["w"]
+    ), sub
     # The backdrop closes it.
     pg.mouse.click(195, 40)
-    pg.wait_for_function("() => !document.getElementById('zim-ctx-menu').classList.contains('visible')", timeout=3000)
+    pg.wait_for_function(
+        "() => !document.getElementById('zim-ctx-menu').classList.contains('visible')",
+        timeout=3000,
+    )
     assert pg.evaluate("() => document.getElementById('ctx-backdrop').hidden")
     ctx.close()
     br.close()
