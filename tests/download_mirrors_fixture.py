@@ -173,27 +173,31 @@ def make_meta4(filename, body, mirrors, piece=PIECE, with_pieces=True):
 
 
 class MirrorSet:
-    """Several fake download mirrors for one ZIM, plus the .meta4 naming them."""
+    """Several fake download mirrors for one ZIM, plus the .meta4 naming them.
+
+    Like Kiwix, the .meta4 and the download's direct URL come from an
+    `origin` that is not itself one of the listed download mirrors (Kiwix's
+    is a redirector); it serves the file too, so it works as the fallback.
+    """
 
     def __init__(self, cert, key, filename, body, countries):
         self.filename = filename
         self.body = body
+        self.origin = FakeMirror(cert, key, filename, body, "")
         self.mirrors = [FakeMirror(cert, key, filename, body, c) for c in countries]
         self.set_meta4()
 
     def set_meta4(self, listed=None, **kw):
-        """Serve a .meta4 listing `listed` (default: every mirror). The
-        .meta4 is always served by the first mirror, whose URL is also the
-        download's direct URL."""
+        """Serve a .meta4 listing `listed` (default: every download mirror)."""
         listed = self.mirrors if listed is None else listed
-        self.mirrors[0].meta4 = make_meta4(self.filename, self.body, listed, **kw)
+        self.origin.meta4 = make_meta4(self.filename, self.body, listed, **kw)
 
     @property
     def meta4_url(self):
-        return self.mirrors[0].url + ".meta4"
+        return self.origin.url + ".meta4"
 
     def close(self):
-        for m in self.mirrors:
+        for m in [self.origin, *self.mirrors]:
             m.close()
 
 

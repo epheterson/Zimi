@@ -126,11 +126,30 @@ def test_a_meta4_with_no_usable_mirror_downloads_from_the_direct_url(download_mi
 
 
 def test_the_direct_url_is_tried_when_every_listed_mirror_fails(download_mirrors):
+    mirrors = download_mirrors(countries=("nl", "fr"))
+    for m in mirrors.mirrors:
+        m.fail_status = 503
+    dl_id = _start(mirrors)
+    assert wait_for(lambda: download_status(dl_id)["done"]), "download never finished"
+    row = download_status(dl_id)
+    assert row["error"] is None
+    assert _finished_bytes(mirrors) == mirrors.body
+    # The direct URL is not a download mirror: the row names it as the host in
+    # use, and no listed mirror claims to be active.
+    assert row["mirror_host"] == "127.0.0.1"
+    assert [r["state"] for r in row["mirrors"]] == ["ready", "ready"]
+
+
+def test_the_direct_url_waits_until_every_listed_mirror_has_been_tried(
+    download_mirrors, monkeypatch
+):
+    # Whatever order the download mirrors are shuffled into, the direct URL
+    # (Kiwix's redirector) comes after them. Reversing stands in for the
+    # unluckiest shuffle: it would put an appended direct URL first.
+    monkeypatch.setattr(lib._random, "shuffle", lambda xs: xs.reverse())
     mirrors = download_mirrors(countries=("us", "nl", "fr"))
-    direct, nl, fr = mirrors.mirrors
-    nl.fail_status = fr.fail_status = 503
-    mirrors.set_meta4(listed=[nl, fr])  # the direct URL's host is not listed
     dl_id = _start(mirrors)
     assert wait_for(lambda: download_status(dl_id)["done"]), "download never finished"
     assert download_status(dl_id)["error"] is None
-    assert _finished_bytes(mirrors) == mirrors.body
+    assert mirrors.origin.requests == [], "the direct URL was tried first"
+    assert [r["state"] for r in download_status(dl_id)["mirrors"]].count("active") == 1

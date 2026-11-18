@@ -4071,8 +4071,8 @@ def _post_download_finalize(dl):
 def _download_thread(dl):
     """Background thread that downloads a file with mirror rotation.
 
-    Tries mirrors in random order for load distribution. On failure, rotates
-    to the next mirror. Downloads to a .zim.tmp file first, then atomically
+    Tries the .meta4's download mirrors in random order for load
+    distribution, then the direct URL. On failure, rotates to the next one. Downloads to a .zim.tmp file first, then atomically
     renames on completion. The .tmp file is preserved across mirror attempts
     so resume works even when switching mirrors.
 
@@ -4087,16 +4087,18 @@ def _download_thread(dl):
         try:
             fetched = _fetch_mirrors(meta4)
             if fetched and fetched.mirrors:
-                # The download mirrors are the .meta4's; the direct URL (a
-                # redirector to one of them) stays only as a last resort.
                 # Kept whole: each mirror's country and priority, and the
                 # piece checksums later checks read.
                 dl["_metalink"] = fetched
                 dl["mirrors"] = [m.url for m in fetched.mirrors]
-                mirrors = dl["mirrors"] + [u for u in mirrors if u not in dl["mirrors"]]
+                # The download mirrors are the .meta4's, in shuffled order;
+                # the direct URL (a redirector to one of them) comes after
+                # every one of them, as the last resort.
+                listed = list(dl["mirrors"])
+                _random.shuffle(listed)
+                mirrors = listed + [u for u in mirrors if u not in listed]
         except Exception as e:
             log.debug("meta4 mirror fetch failed (%s) — using direct URL", e)
-    _random.shuffle(mirrors)
     try:
         # BT-first attempt when a backend is configured AND we can find a
         # plausible torrent companion. Falls through to the HTTP mirror loop
