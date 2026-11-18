@@ -255,11 +255,69 @@ def test_a_metalink_without_pieces_still_lists_its_download_mirrors():
     "xml, why",
     [
         ("<html>503 Service Unavailable</html>", "an error page, not a metalink"),
-        (META4.replace('priority="3"', 'priority="third"'), "bad priority"),
-        (META4.replace(' priority="3"', ""), "no priority"),
+        (None, "no body at all"),
     ],
 )
 def test_a_metalink_it_cannot_read_yields_nothing_rather_than_an_error(xml, why):
     """A broken .meta4 falls back to the direct URL; it must not kill the
     download thread."""
     assert read_download(xml) is None, why
+
+
+# One odd <url> costs that mirror its place in Kiwix's order, never the
+# whole list: the old ElementTree reader gave it priority 99 and kept it.
+
+_NY = "https://ny.mirror.driftle.ss/kiwix/" + _SAMPLE_PATH
+
+
+def _mirrors_of(xml):
+    download = read_download(xml)
+    assert download is not None, "one odd <url> lost every mirror"
+    return download.mirrors
+
+
+def test_a_mirror_without_a_priority_is_kept_with_priority_99():
+    mirrors = _mirrors_of(META4.replace(' priority="3"', ""))
+    assert len(mirrors) == 7
+    assert (_NY, 99) in [(m.url, m.priority) for m in mirrors]
+
+
+def test_a_mirror_with_a_priority_that_is_not_a_number_is_kept_with_priority_99():
+    mirrors = _mirrors_of(META4.replace('priority="3"', 'priority="third"'))
+    assert (_NY, 99) in [(m.url, m.priority) for m in mirrors]
+
+
+def test_single_quoted_attributes_are_read_too():
+    xml = META4.replace('<url location="nl" priority="4">', "<url location='nl' priority='4'>")
+    nl = [m for m in _mirrors_of(xml) if "nluug" in m.url]
+    assert [(m.country, m.priority) for m in nl] == [("nl", 4)]
+
+
+def test_download_mirrors_follow_their_priority_not_their_place_in_the_file():
+    lines = META4.splitlines(keepends=True)
+    first = next(i for i, ln in enumerate(lines) if 'priority="1"' in ln)
+    last = next(i for i, ln in enumerate(lines) if 'priority="7"' in ln)
+    lines[first], lines[last] = lines[last], lines[first]
+    priorities = [m.priority for m in _mirrors_of("".join(lines))]
+    assert priorities == [1, 2, 3, 4, 5, 6, 7]
+
+
+def test_a_mirror_without_a_priority_goes_after_those_with_one():
+    mirrors = _mirrors_of(META4.replace(' priority="3"', ""))
+    assert mirrors[-1].url == _NY
+
+
+def test_an_escaped_ampersand_in_a_mirror_url_is_decoded():
+    xml = META4.replace(f">{_NY}<", f">{_NY}?a=1&amp;b=2<")
+    assert _NY + "?a=1&b=2" in [m.url for m in _mirrors_of(xml)]
+
+
+def test_a_priority_of_digit_like_symbols_is_not_a_number():
+    # "²".isdigit() is True, but it is no priority int() can read.
+    mirrors = _mirrors_of(META4.replace('priority="3"', 'priority="²"'))
+    assert (_NY, 99) in [(m.url, m.priority) for m in mirrors]
+
+
+def test_the_kiwix_home_page_is_not_a_download_mirror_even_inside_file():
+    xml = META4.replace("</file>", "  <url>https://kiwix.org/</url>\n  </file>")
+    assert not [m for m in _mirrors_of(xml) if m.url.rstrip("/") == "https://kiwix.org"]

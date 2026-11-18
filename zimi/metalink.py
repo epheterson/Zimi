@@ -23,6 +23,7 @@ the standing traffic the network discipline exists to prevent.
 """
 
 import hashlib
+import html
 import re
 
 from typing import NamedTuple
@@ -42,7 +43,8 @@ _PIECE_HASH = re.compile(r"<hash>([0-9a-fA-F]{40})</hash>")
 # inside <file>: the <publisher> block carries a bare <url> of its own.
 _FILE = re.compile(r"<file\b.*?</file>", re.S)
 _URL = re.compile(r"<url\b([^>]*)>([^<]+)</url>")
-_ATTR = re.compile(r'(\w+)="([^"]*)"')
+_PUBLISHER = "https://kiwix.org"  # Kiwix's home page, which serves no file
+_ATTR = re.compile(r"""(\w+)=(?:"([^"]*)"|'([^']*)')""")
 
 # How each whole-file hash is stored in the info dict. Kiwix's torrents carry
 # all three; md5sum as hex text, the other two as raw bytes. Getting this wrong
@@ -163,18 +165,24 @@ def read_download(xml: str) -> Download | None:
             return None
         mirrors = []
         for attrs, href in _URL.findall(file_block.group(0)):
-            href = href.strip()
-            if not href.startswith("https://"):
+            href = html.unescape(href.strip())
+            if not href.startswith("https://") or href.rstrip("/") == _PUBLISHER:
                 continue
-            attr = dict(_ATTR.findall(attrs))
+            attr = {name: dq or sq for name, dq, sq in _ATTR.findall(attrs)}
+            priority = attr.get("priority", "")
             mirrors.append(
-                Mirror(href, attr.get("location", ""), int(attr["priority"]))
+                Mirror(
+                    href,
+                    attr.get("location", ""),
+                    int(priority) if priority.isdecimal() else 99,
+                )
             )
+        mirrors.sort(key=lambda m: m.priority)  # stable: ties keep file order
         pieces = _PIECES.search(xml)
         if not pieces:
             return Download(mirrors, None, [])
         return Download(
             mirrors, int(pieces.group(1)), _PIECE_HASH.findall(pieces.group(2))
         )
-    except (ValueError, KeyError, AttributeError):
+    except TypeError:  # not text at all
         return None
