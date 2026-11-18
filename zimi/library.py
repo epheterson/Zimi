@@ -4698,8 +4698,8 @@ def _mirror_rows(dl):
     """The download's mirrors as the downloads status reports them: each
     download mirror, its country, and whether it is the one in use."""
     current = dl.get("_mirror_url")
-    listed = dl.get("_metalink")
-    country = {m.url: m.country for m in listed.mirrors} if listed else {}
+    metalink = dl.get("_metalink")
+    country = {m.url: m.country for m in metalink.mirrors} if metalink else {}
     return [
         {
             "url": url,

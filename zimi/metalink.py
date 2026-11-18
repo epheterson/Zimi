@@ -39,9 +39,9 @@ _SIZE = re.compile(r"<size>(\d+)</size>")
 _PIECES = re.compile(r'<pieces\s+length="(\d+)"[^>]*>(.*?)</pieces>', re.S)
 _HASH = re.compile(r'<hash\s+type="([^"]+)">([0-9a-fA-F]+)</hash>')
 _PIECE_HASH = re.compile(r"<hash>([0-9a-fA-F]{40})</hash>")
+_COMMENT = re.compile(r"<!--.*?-->", re.S)
 # A download mirror: <url location="us" priority="1">https://…</url>. Only
 # inside <file>: the <publisher> block carries a bare <url> of its own.
-_COMMENT = re.compile(r"<!--.*?-->", re.S)
 _FILE = re.compile(r"<file\b.*?</file>", re.S)
 _URL = re.compile(r"<url\b([^>]*)>([^<]+)</url>")
 _PUBLISHER = "https://kiwix.org"  # Kiwix's home page, which serves no file
