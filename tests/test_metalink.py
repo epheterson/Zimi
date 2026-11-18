@@ -361,10 +361,18 @@ def test_escaped_characters_in_an_attribute_are_decoded():
     assert [m.country for m in nl] == ["nl"]
 
 
+_NL = "https://ftp.nluug.nl/pub/kiwix/" + _SAMPLE_PATH
+
+
 def test_a_mirror_listed_twice_is_one_download_mirror():
-    nl = "https://ftp.nluug.nl/pub/kiwix/" + _SAMPLE_PATH
-    xml = META4.replace("</file>", f'  <url location="fr" priority="9">{nl}</url>\n  </file>')
-    assert [(m.country, m.priority) for m in _mirrors_of(xml) if m.url == nl] == [("nl", 4)]
+    xml = META4.replace("</file>", f'  <url location="fr" priority="9">{_NL}</url>\n  </file>')
+    assert [(m.country, m.priority) for m in _mirrors_of(xml) if m.url == _NL] == [("nl", 4)]
+
+
+def test_a_mirror_listed_twice_keeps_its_better_priority_even_when_listed_first():
+    worse_first = f'<size>236789540</size>\n    <url location="fr" priority="9">{_NL}</url>'
+    xml = META4.replace("<size>236789540</size>", worse_first)
+    assert [(m.country, m.priority) for m in _mirrors_of(xml) if m.url == _NL] == [("nl", 4)]
 
 
 def test_a_commented_out_hash_does_not_change_the_infohash():
