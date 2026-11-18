@@ -25,7 +25,9 @@ the standing traffic the network discipline exists to prevent.
 import hashlib
 import re
 
-__all__ = ["infohash_from_metalink", "magnet_uri", "bencode"]
+from typing import NamedTuple
+
+__all__ = ["infohash_from_metalink", "magnet_uri", "bencode", "read_download"]
 
 # The metalink is small, fixed-shape XML from one generator (MirrorBrain), and
 # the five fields wanted are unambiguous. Regexes rather than an XML parse:
@@ -36,6 +38,11 @@ _SIZE = re.compile(r"<size>(\d+)</size>")
 _PIECES = re.compile(r'<pieces\s+length="(\d+)"[^>]*>(.*?)</pieces>', re.S)
 _HASH = re.compile(r'<hash\s+type="([^"]+)">([0-9a-fA-F]+)</hash>')
 _PIECE_HASH = re.compile(r"<hash>([0-9a-fA-F]{40})</hash>")
+# A download mirror: <url location="us" priority="1">https://…</url>. Only
+# inside <file>: the <publisher> block carries a bare <url> of its own.
+_FILE = re.compile(r"<file\b.*?</file>", re.S)
+_URL = re.compile(r"<url\b([^>]*)>([^<]+)</url>")
+_ATTR = re.compile(r'(\w+)="([^"]*)"')
 
 # How each whole-file hash is stored in the info dict. Kiwix's torrents carry
 # all three; md5sum as hex text, the other two as raw bytes. Getting this wrong
@@ -107,7 +114,7 @@ def infohash_from_metalink(xml: str) -> str | None:
             )
 
         return hashlib.sha1(bencode(info)).hexdigest()  # noqa: S324 - BT spec
-    except (ValueError, AttributeError):
+    except (ValueError, KeyError, AttributeError):
         return None
 
 
@@ -125,3 +132,49 @@ def magnet_uri(infohash: str, display_name: str = "") -> str:
 
         uri += "&dn=" + quote(display_name)
     return uri
+
+
+class Mirror(NamedTuple):
+    """One download mirror Kiwix lists for a file."""
+
+    url: str
+    country: str
+    priority: int
+
+
+class Download(NamedTuple):
+    """What a download needs from the metalink: where to fetch the file from,
+    and the checksum of each piece (empty when the metalink publishes none)."""
+
+    mirrors: list
+    piece_length: int | None
+    piece_hashes: list
+
+
+def read_download(xml: str) -> Download | None:
+    """The download mirrors and piece checksums a metalink describes.
+
+    None when the metalink cannot be read: the caller falls back to the
+    direct URL, so like the infohash this never raises.
+    """
+    try:
+        file_block = _FILE.search(xml)
+        if not file_block:
+            return None
+        mirrors = []
+        for attrs, href in _URL.findall(file_block.group(0)):
+            href = href.strip()
+            if not href.startswith("https://"):
+                continue
+            attr = dict(_ATTR.findall(attrs))
+            mirrors.append(
+                Mirror(href, attr.get("location", ""), int(attr["priority"]))
+            )
+        pieces = _PIECES.search(xml)
+        if not pieces:
+            return Download(mirrors, None, [])
+        return Download(
+            mirrors, int(pieces.group(1)), _PIECE_HASH.findall(pieces.group(2))
+        )
+    except (ValueError, KeyError, AttributeError):
+        return None

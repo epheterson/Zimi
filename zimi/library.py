@@ -4086,9 +4086,12 @@ def _download_thread(dl):
     if meta4:
         try:
             fetched = _fetch_mirrors(meta4)
-            for m in fetched:
-                if m not in mirrors:
-                    mirrors.append(m)
+            if fetched and fetched.mirrors:
+                # The download mirrors are the .meta4's; the direct URL (a
+                # redirector to one of them) stays only as a last resort.
+                dl["mirrors"] = [m.url for m in fetched.mirrors]
+                dl["_mirror_country"] = {m.url: m.country for m in fetched.mirrors}
+                mirrors = dl["mirrors"] + [u for u in mirrors if u not in dl["mirrors"]]
         except Exception as e:
             log.debug("meta4 mirror fetch failed (%s) — using direct URL", e)
     _random.shuffle(mirrors)
@@ -4268,33 +4271,19 @@ def _download_thread(dl):
 
 
 def _fetch_mirrors(meta4_url):
-    """Fetch mirror URLs from a Metalink .meta4 file. Returns list of URLs sorted by priority."""
+    """Fetch a .meta4 and read it: the download mirrors in Kiwix's order and
+    the piece checksums (a metalink.Download). None when the fetch or the
+    read fails; the download then uses its direct URL."""
+    from zimi import metalink
+
     try:
         req = urllib.request.Request(meta4_url, headers={"User-Agent": USER_AGENT})
         with urllib.request.urlopen(req, timeout=15, context=_srv.SSL_CTX) as resp:
-            xml_bytes = resp.read()
-        root = ET.fromstring(xml_bytes)
-        ns = "urn:ietf:params:xml:ns:metalink"
-        mirrors = []
-        for file_el in root.findall(f"{{{ns}}}file"):
-            for url_el in file_el.findall(f"{{{ns}}}url"):
-                href = (url_el.text or "").strip()
-                if not href or not href.startswith("https://"):
-                    continue
-                # Skip publisher URL (kiwix.org root)
-                if href.rstrip("/") == "https://kiwix.org":
-                    continue
-                try:
-                    priority = int(url_el.get("priority", "99"))
-                except (ValueError, TypeError):
-                    priority = 99
-                location = url_el.get("location", "")
-                mirrors.append((priority, location, href))
-        mirrors.sort(key=lambda x: x[0])
-        return [m[2] for m in mirrors]
+            xml = resp.read().decode("utf-8", "replace")
     except Exception as e:
         log.warning("Failed to fetch mirrors from %s: %s", meta4_url, e)
-        return []
+        return None
+    return metalink.read_download(xml)
 
 
 def _validate_zim_filename(filename):
@@ -4701,6 +4690,25 @@ def _start_import(url, size_bytes=None, actor=None):
     return dl_id, None
 
 
+def _mirror_rows(dl):
+    """The download's mirrors as the downloads status reports them: each
+    download mirror, its country, and whether it is the one in use."""
+    current = dl.get("_mirror_url")
+    country = dl.get("_mirror_country", {})
+    return [
+        {
+            "url": url,
+            "host": urlparse(url).netloc,
+            "country": country.get(url, ""),
+            "state": "active" if url == current else "ready",
+            "speed_bps": None,
+            "measured_at": None,
+            "reason": None,
+        }
+        for url in dl.get("mirrors", [])
+    ]
+
+
 def _get_downloads():
     """Get status of all active/queued/completed downloads.
 
@@ -4732,6 +4740,7 @@ def _get_downloads():
                     "url": dl["url"],
                     "mirror_host": mirror_host,
                     "mirror_count": mirror_count,
+                    "mirrors": _mirror_rows(dl),
                     "size_bytes": size,
                     "total_bytes": total,
                     "downloaded_bytes": downloaded,
@@ -4760,6 +4769,7 @@ def _get_downloads():
                     "url": dl["url"],
                     "mirror_host": "",
                     "mirror_count": len(dl.get("mirrors", [])),
+                    "mirrors": [],
                     "size_bytes": 0,
                     "total_bytes": dl.get("size_bytes") or 0,
                     "downloaded_bytes": 0,

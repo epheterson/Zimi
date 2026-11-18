@@ -206,6 +206,9 @@ a = Analysis(
         'zimi.transmission',
         'zimi.runtimes',
         'zimi.ownzims',
+        # Read lazily by the download thread (the download mirrors and piece
+        # checksums in a .meta4).
+        'zimi.metalink',
         'libzim',
         # Soft BT dependency: guarantees the extension is bundled when a
         # wheel is present. Absent → PyInstaller warns, does not fail.

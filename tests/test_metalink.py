@@ -177,3 +177,89 @@ def test_magnet_without_a_name_is_just_the_infohash():
     uri = magnet_uri("ab0bf6a5be066e722ba849a30e3920c045c53deb")
     assert uri == "magnet:?xt=urn:btih:ab0bf6a5be066e722ba849a30e3920c045c53deb"
     assert "tr=" not in uri
+
+
+# ── the download mirrors and pieces a download draws on ────────────────────
+#
+# The mirror probe, the Change mirror menu and piece checks all start from what
+# Kiwix's .meta4 says: which download mirrors serve the file, in which country,
+# in Kiwix's own order, and the checksum of every piece.
+
+from zimi.metalink import read_download  # noqa: E402
+
+_SAMPLE_PATH = "zim/stack_exchange/ja.stackoverflow.com_mul_all_2026-02.zim"
+
+
+def test_download_mirrors_come_in_kiwix_order_with_country_and_priority():
+    mirrors = read_download(META4).mirrors
+    assert [(m.url, m.country, m.priority) for m in mirrors] == [
+        ("https://mirror.triplebit.org/download.kiwix.org/" + _SAMPLE_PATH, "us", 1),
+        ("https://wi.mirror.driftle.ss/kiwix/" + _SAMPLE_PATH, "us", 2),
+        ("https://ny.mirror.driftle.ss/kiwix/" + _SAMPLE_PATH, "us", 3),
+        ("https://ftp.nluug.nl/pub/kiwix/" + _SAMPLE_PATH, "nl", 4),
+        ("https://mirror.download.kiwix.org/" + _SAMPLE_PATH, "fr", 5),
+        ("https://mirrors.dotsrc.org/kiwix/" + _SAMPLE_PATH, "dk", 6),
+        (
+            "https://mirror-sites-in.mblibrary.info/mirror-sites/download.kiwix.org/"
+            + _SAMPLE_PATH,
+            "aq",
+            7,
+        ),
+    ]
+
+
+def test_a_download_mirror_not_on_https_is_left_out():
+    """Downloads only ever go over https, so a plain-http mirror is not one."""
+    plain = "http://plain.example.org/" + _SAMPLE_PATH
+    xml = META4.replace(
+        "</file>", f'  <url location="de" priority="8">{plain}</url>\n  </file>'
+    )
+    urls = [m.url for m in read_download(xml).mirrors]
+    assert plain not in urls
+    assert len(urls) == 7
+
+
+def test_the_publishers_own_url_is_not_a_download_mirror():
+    """<publisher> carries a bare https://kiwix.org; it serves no file."""
+    download = read_download(META4)
+    assert download is not None, "the publisher's bare <url> broke the read"
+    assert "https://kiwix.org" not in [m.url for m in download.mirrors]
+
+
+def test_whitespace_around_a_mirror_url_is_not_part_of_it():
+    url = "https://ftp.nluug.nl/pub/kiwix/" + _SAMPLE_PATH
+    xml = META4.replace(f">{url}<", f">\n      {url}\n    <")
+    assert url in [m.url for m in read_download(xml).mirrors]
+
+
+def test_pieces_come_with_their_size_and_one_checksum_each():
+    # 236,789,540 bytes in 4 MiB pieces is 57 pieces, the last one short.
+    download = read_download(META4)
+    assert download.piece_length == 4194304
+    assert len(download.piece_hashes) == 57
+    assert download.piece_hashes[0] == "27b8727b351571932cd68180f4a970b6b13194dd"
+    # The whole-file sha-1 sits outside <pieces> and is not a piece.
+    assert "a2d3d733081915a1e18e120fd9ad01fb8ec9f551" not in download.piece_hashes
+
+
+def test_a_metalink_without_pieces_still_lists_its_download_mirrors():
+    """Some files publish no piece checksums; the download goes ahead
+    without piece checks rather than not at all."""
+    start, end = META4.index("<pieces"), META4.index("</pieces>") + len("</pieces>")
+    download = read_download(META4[:start] + META4[end:])
+    assert download is not None and len(download.mirrors) == 7
+    assert (download.piece_length, download.piece_hashes) == (None, [])
+
+
+@pytest.mark.parametrize(
+    "xml, why",
+    [
+        ("<html>503 Service Unavailable</html>", "an error page, not a metalink"),
+        (META4.replace('priority="3"', 'priority="third"'), "bad priority"),
+        (META4.replace(' priority="3"', ""), "no priority"),
+    ],
+)
+def test_a_metalink_it_cannot_read_yields_nothing_rather_than_an_error(xml, why):
+    """A broken .meta4 falls back to the direct URL; it must not kill the
+    download thread."""
+    assert read_download(xml) is None, why
