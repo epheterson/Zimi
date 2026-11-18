@@ -41,6 +41,7 @@ _HASH = re.compile(r'<hash\s+type="([^"]+)">([0-9a-fA-F]+)</hash>')
 _PIECE_HASH = re.compile(r"<hash>([0-9a-fA-F]{40})</hash>")
 # A download mirror: <url location="us" priority="1">https://…</url>. Only
 # inside <file>: the <publisher> block carries a bare <url> of its own.
+_COMMENT = re.compile(r"<!--.*?-->", re.S)
 _FILE = re.compile(r"<file\b.*?</file>", re.S)
 _URL = re.compile(r"<url\b([^>]*)>([^<]+)</url>")
 _PUBLISHER = "https://kiwix.org"  # Kiwix's home page, which serves no file
@@ -153,6 +154,12 @@ class Download(NamedTuple):
     piece_hashes: list
 
 
+def _number(text: str, default):
+    """A metalink attribute as a number, or `default` when it is not one
+    int() can read (not decimal digits, or absurdly long)."""
+    return int(text) if text.isdecimal() and len(text) <= 18 else default
+
+
 def read_download(xml: str) -> Download | None:
     """The download mirrors and piece checksums a metalink describes.
 
@@ -160,6 +167,7 @@ def read_download(xml: str) -> Download | None:
     direct URL, so like the infohash this never raises.
     """
     try:
+        xml = _COMMENT.sub("", xml)  # commented-out markup is not markup
         file_block = _FILE.search(xml)
         if not file_block:
             return None
@@ -169,20 +177,18 @@ def read_download(xml: str) -> Download | None:
             if not href.startswith("https://") or href.rstrip("/") == _PUBLISHER:
                 continue
             attr = {name: dq or sq for name, dq, sq in _ATTR.findall(attrs)}
-            priority = attr.get("priority", "")
             mirrors.append(
                 Mirror(
                     href,
                     attr.get("location", ""),
-                    int(priority) if priority.isdecimal() else 99,
+                    _number(attr.get("priority", ""), 99),
                 )
             )
         mirrors.sort(key=lambda m: m.priority)  # stable: ties keep file order
         pieces = _PIECES.search(xml)
-        if not pieces:
+        piece_length = _number(pieces.group(1), None) if pieces else None
+        if piece_length is None:
             return Download(mirrors, None, [])
-        return Download(
-            mirrors, int(pieces.group(1)), _PIECE_HASH.findall(pieces.group(2))
-        )
+        return Download(mirrors, piece_length, _PIECE_HASH.findall(pieces.group(2)))
     except TypeError:  # not text at all
         return None

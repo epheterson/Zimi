@@ -321,3 +321,24 @@ def test_a_priority_of_digit_like_symbols_is_not_a_number():
 def test_the_kiwix_home_page_is_not_a_download_mirror_even_inside_file():
     xml = META4.replace("</file>", "  <url>https://kiwix.org/</url>\n  </file>")
     assert not [m for m in _mirrors_of(xml) if m.url.rstrip("/") == "https://kiwix.org"]
+
+
+def test_a_priority_too_long_to_be_a_number_is_kept_with_priority_99():
+    # Python refuses int() on more than 4,300 digits.
+    mirrors = _mirrors_of(META4.replace('priority="3"', 'priority="%s"' % ("9" * 5000)))
+    assert (_NY, 99) in [(m.url, m.priority) for m in mirrors]
+
+
+def test_a_piece_length_too_long_to_be_a_number_means_no_piece_checks():
+    xml = META4.replace('<pieces length="4194304"', '<pieces length="%s"' % ("4" * 5000))
+    download = read_download(xml)
+    assert download is not None and len(download.mirrors) == 7
+    assert (download.piece_length, download.piece_hashes) == (None, [])
+
+
+def test_a_url_inside_an_xml_comment_is_not_a_download_mirror():
+    hidden = "https://retired.example.org/" + _SAMPLE_PATH
+    xml = META4.replace(
+        "</file>", f'  <!-- <url location="xx" priority="0">{hidden}</url> -->\n  </file>'
+    )
+    assert hidden not in [m.url for m in _mirrors_of(xml)]
