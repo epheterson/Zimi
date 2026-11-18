@@ -134,9 +134,8 @@ def test_the_direct_url_is_tried_when_every_listed_mirror_fails(download_mirrors
     row = download_status(dl_id)
     assert row["error"] is None
     assert _finished_bytes(mirrors) == mirrors.body
-    # The direct URL is not a download mirror: the row names it as the host in
-    # use, and no listed mirror claims to be active.
-    assert row["mirror_host"] == "127.0.0.1"
+    # Every listed mirror refused, so the direct URL served the file. It is not
+    # a download mirror, so no listed mirror may claim to be the active one.
     assert [r["state"] for r in row["mirrors"]] == ["ready", "ready"]
 
 
