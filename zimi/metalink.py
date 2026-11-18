@@ -45,7 +45,7 @@ _COMMENT = re.compile(r"<!--.*?-->", re.S)
 _FILE = re.compile(r"<file\b.*?</file>", re.S)
 _URL = re.compile(r"<url\b([^>]*)>([^<]+)</url>")
 _PUBLISHER = "https://kiwix.org"  # Kiwix's home page, which serves no file
-_ATTR = re.compile(r"""(\w+)=(?:"([^"]*)"|'([^']*)')""")
+_ATTR = re.compile(r"""(\w+)\s*=\s*(?:"([^"]*)"|'([^']*)')""")
 
 # How each whole-file hash is stored in the info dict. Kiwix's torrents carry
 # all three; md5sum as hex text, the other two as raw bytes. Getting this wrong
@@ -86,6 +86,7 @@ def infohash_from_metalink(xml: str) -> str | None:
     catalog of thousands must not stop a build.
     """
     try:
+        xml = _COMMENT.sub("", xml)  # commented-out markup is not markup
         name = _NAME.search(xml)
         size = _SIZE.search(xml)
         pieces = _PIECES.search(xml)
@@ -157,6 +158,7 @@ class Download(NamedTuple):
 def _number(text: str, default):
     """A metalink attribute as a number, or `default` when it is not one
     int() can read (not decimal digits, or absurdly long)."""
+    text = text.strip()
     return int(text) if text.isdecimal() and len(text) <= 18 else default
 
 
@@ -176,7 +178,9 @@ def read_download(xml: str) -> Download | None:
             href = html.unescape(href.strip())
             if not href.startswith("https://") or href.rstrip("/") == _PUBLISHER:
                 continue
-            attr = {name: dq or sq for name, dq, sq in _ATTR.findall(attrs)}
+            attr = {
+                name: html.unescape(dq or sq) for name, dq, sq in _ATTR.findall(attrs)
+            }
             mirrors.append(
                 Mirror(
                     href,
@@ -185,6 +189,8 @@ def read_download(xml: str) -> Download | None:
                 )
             )
         mirrors.sort(key=lambda m: m.priority)  # stable: ties keep file order
+        seen = set()  # a URL listed twice is one mirror, at its best priority
+        mirrors = [m for m in mirrors if not (m.url in seen or seen.add(m.url))]
         pieces = _PIECES.search(xml)
         piece_length = _number(pieces.group(1), None) if pieces else None
         if piece_length is None:

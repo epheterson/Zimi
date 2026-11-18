@@ -342,3 +342,32 @@ def test_a_url_inside_an_xml_comment_is_not_a_download_mirror():
         "</file>", f'  <!-- <url location="xx" priority="0">{hidden}</url> -->\n  </file>'
     )
     assert hidden not in [m.url for m in _mirrors_of(xml)]
+
+
+def test_spaces_around_an_attributes_equals_sign_are_allowed():
+    xml = META4.replace('<url location="nl" priority="4">', '<url location = "nl" priority = "4">')
+    nl = [m for m in _mirrors_of(xml) if "nluug" in m.url]
+    assert [(m.country, m.priority) for m in nl] == [("nl", 4)]
+
+
+def test_a_priority_padded_with_spaces_is_still_its_number():
+    mirrors = _mirrors_of(META4.replace('priority="3"', 'priority=" 3 "'))
+    assert (_NY, 3) in [(m.url, m.priority) for m in mirrors]
+
+
+def test_escaped_characters_in_an_attribute_are_decoded():
+    xml = META4.replace('<url location="nl" priority="4">', '<url location="n&#108;" priority="4">')
+    nl = [m for m in _mirrors_of(xml) if "nluug" in m.url]
+    assert [m.country for m in nl] == ["nl"]
+
+
+def test_a_mirror_listed_twice_is_one_download_mirror():
+    nl = "https://ftp.nluug.nl/pub/kiwix/" + _SAMPLE_PATH
+    xml = META4.replace("</file>", f'  <url location="fr" priority="9">{nl}</url>\n  </file>')
+    assert [(m.country, m.priority) for m in _mirrors_of(xml) if m.url == nl] == [("nl", 4)]
+
+
+def test_a_commented_out_hash_does_not_change_the_infohash():
+    stale = '<!-- <hash type="sha-256">' + "0" * 64 + "</hash> -->"
+    xml = META4.replace("</file>", f"  {stale}\n  </file>")
+    assert infohash_from_metalink(xml) == _real_infohash()
