@@ -114,7 +114,7 @@ def infohash_from_metalink(xml: str) -> str | None:
             )
 
         return hashlib.sha1(bencode(info)).hexdigest()  # noqa: S324 - BT spec
-    except (ValueError, KeyError, AttributeError):
+    except (ValueError, AttributeError):
         return None
 
 

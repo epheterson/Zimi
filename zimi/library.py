@@ -4089,8 +4089,10 @@ def _download_thread(dl):
             if fetched and fetched.mirrors:
                 # The download mirrors are the .meta4's; the direct URL (a
                 # redirector to one of them) stays only as a last resort.
+                # Kept whole: each mirror's country and priority, and the
+                # piece checksums later checks read.
+                dl["_metalink"] = fetched
                 dl["mirrors"] = [m.url for m in fetched.mirrors]
-                dl["_mirror_country"] = {m.url: m.country for m in fetched.mirrors}
                 mirrors = dl["mirrors"] + [u for u in mirrors if u not in dl["mirrors"]]
         except Exception as e:
             log.debug("meta4 mirror fetch failed (%s) — using direct URL", e)
@@ -4694,7 +4696,8 @@ def _mirror_rows(dl):
     """The download's mirrors as the downloads status reports them: each
     download mirror, its country, and whether it is the one in use."""
     current = dl.get("_mirror_url")
-    country = dl.get("_mirror_country", {})
+    listed = dl.get("_metalink")
+    country = {m.url: m.country for m in listed.mirrors} if listed else {}
     return [
         {
             "url": url,
