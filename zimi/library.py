@@ -12,7 +12,6 @@ import ipaddress
 import json
 import logging
 import os
-import random as _random
 import re
 import shutil
 import ssl
@@ -4091,12 +4090,6 @@ def _download_thread(dl):
                 # piece checksums later checks read.
                 dl["_metalink"] = fetched
                 dl["mirrors"] = [m.url for m in fetched.mirrors]
-                # The download mirrors are the .meta4's, in shuffled order;
-                # the direct URL (a redirector to one of them) comes after
-                # every one of them, as the last resort.
-                listed = list(dl["mirrors"])
-                _random.shuffle(listed)
-                mirrors = listed + [u for u in mirrors if u not in listed]
         except Exception as e:
             log.debug("meta4 mirror fetch failed (%s) — using direct URL", e)
     try:
@@ -4173,6 +4166,16 @@ def _download_thread(dl):
                 False  # HTTP verifies nothing; the row must not say it does
             )
 
+        # The download mirrors, fastest first by the mirror probe (Kiwix's
+        # order when there is nothing to probe); the direct URL (a redirector
+        # to one of them) comes after every one of them, as the last resort.
+        if dl.get("_metalink"):
+            dl["probing"] = True
+            try:
+                dl["mirrors"] = _rank_download_mirrors(dl)
+            finally:
+                dl["probing"] = False
+            mirrors = dl["mirrors"] + [u for u in mirrors if u not in dl["mirrors"]]
         success = False
         last_error = None
         for mirror_url in mirrors:
@@ -4190,6 +4193,11 @@ def _download_thread(dl):
                 break
             last_error = err
             log.warning("Mirror failed for %s: %s", dl["filename"], err)
+            # Still a download mirror (a later move may try it again), but
+            # at the back of the list and marked as having failed.
+            dl.setdefault("_mirror_failed", set()).add(mirror_url)
+            if mirror_url in dl.get("mirrors", []):
+                dl["mirrors"] = [u for u in dl["mirrors"] if u != mirror_url] + [mirror_url]
         if not success:
             dl["done"] = True
             dl["error"] = f"All {len(mirrors)} mirror(s) failed. Last: {last_error}"
@@ -4272,6 +4280,18 @@ def _download_thread(dl):
                 retire_stale_seeds()
             except Exception:
                 pass
+
+
+def _rank_download_mirrors(dl):
+    """The download's mirrors in the order to try them, from the probe."""
+    from zimi import mirrorrank
+
+    metalink = dl["_metalink"]
+    return mirrorrank.rank(
+        dl["mirrors"],
+        metalink.piece_length or mirrorrank.DEFAULT_PROBE_BYTES,
+        size_bytes=dl.get("size_bytes"),
+    )
 
 
 def _fetch_mirrors(meta4_url):
@@ -4698,6 +4718,7 @@ def _mirror_rows(dl):
     """The download's mirrors as the downloads status reports them: each
     download mirror, its country, and whether it is the one in use."""
     current = dl.get("_mirror_url")
+    failed = dl.get("_mirror_failed", ())
     metalink = dl.get("_metalink")
     country = {m.url: m.country for m in metalink.mirrors} if metalink else {}
     return [
@@ -4705,7 +4726,9 @@ def _mirror_rows(dl):
             "url": url,
             "host": urlparse(url).netloc,
             "country": country.get(url, ""),
-            "state": "active" if url == current else "ready",
+            "state": "active"
+            if url == current
+            else "failed" if url in failed else "ready",
             "speed_bps": None,
             "measured_at": None,
             "reason": None,
@@ -4746,6 +4769,7 @@ def _get_downloads():
                     "mirror_host": mirror_host,
                     "mirror_count": mirror_count,
                     "mirrors": _mirror_rows(dl),
+                    "probing": bool(dl.get("probing")),
                     "size_bytes": size,
                     "total_bytes": total,
                     "downloaded_bytes": downloaded,
@@ -4775,6 +4799,7 @@ def _get_downloads():
                     "mirror_host": "",
                     "mirror_count": len(dl.get("mirrors", [])),
                     "mirrors": [],
+                    "probing": False,
                     "size_bytes": 0,
                     "total_bytes": dl.get("size_bytes") or 0,
                     "downloaded_bytes": 0,

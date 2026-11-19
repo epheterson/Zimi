@@ -9,6 +9,10 @@ Per mirror, a test can set:
   - `chunk_delay`: seconds slept between 16 KiB writes (a slow mirror),
   - `fail_status`: answer every request with this HTTP status,
   - `corrupt_piece`: index of one piece served with flipped bytes,
+  - `fail_first`: answer this many requests with 503 first (a probe that
+    fails on a mirror that then serves),
+  - `drop_after`: cut each transfer off after this many bytes (a mirror that
+    errors part-way),
 and read `requests`: the Range header of every request it received.
 
 The certificate is self-signed and made with the `openssl` command, so the
@@ -66,6 +70,8 @@ class FakeMirror:
         self.chunk_delay = 0.0
         self.fail_status = None
         self.corrupt_piece = None
+        self.fail_first = 0
+        self.drop_after = None
         self.meta4 = None  # bytes served at <file>.meta4, set by the fixture
         self.requests = []
         mirror = self
@@ -84,6 +90,10 @@ class FakeMirror:
                 mirror.requests.append(self.headers.get("Range"))
                 if mirror.fail_status:
                     self.send_error(mirror.fail_status)
+                    return
+                if mirror.fail_first > 0:
+                    mirror.fail_first -= 1
+                    self.send_error(503)
                     return
                 data = mirror.served_bytes()
                 start, end = 0, len(data) - 1
@@ -107,8 +117,11 @@ class FakeMirror:
                 self.end_headers()
                 try:
                     pos = start
-                    while pos <= end:
-                        chunk = data[pos : min(pos + CHUNK, end + 1)]
+                    stop = end
+                    if mirror.drop_after is not None:
+                        stop = min(end, start + mirror.drop_after - 1)
+                    while pos <= stop:
+                        chunk = data[pos : min(pos + CHUNK, stop + 1)]
                         self.wfile.write(chunk)
                         pos += len(chunk)
                         if mirror.chunk_delay:

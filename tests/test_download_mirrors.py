@@ -103,6 +103,7 @@ def test_manage_downloads_route_lists_the_download_mirrors(download_mirrors, mon
     assert _EXISTING_ACTIVE_FIELDS <= set(row)
     assert row["mirror_count"] == 3
     assert sorted(m["country"] for m in row["mirrors"]) == ["fr", "nl", "us"]
+    assert row["probing"] is False
 
 
 # ── the direct URL stays the fallback ──────────────────────────────────────
@@ -135,17 +136,15 @@ def test_the_direct_url_is_tried_when_every_listed_mirror_fails(download_mirrors
     assert row["error"] is None
     assert _finished_bytes(mirrors) == mirrors.body
     # Every listed mirror refused, so the direct URL served the file. It is not
-    # a download mirror, so no listed mirror may claim to be the active one.
-    assert [r["state"] for r in row["mirrors"]] == ["ready", "ready"]
+    # a download mirror: no listed mirror is active, and each shows it failed.
+    assert [r["state"] for r in row["mirrors"]] == ["failed", "failed"]
 
 
 def test_the_direct_url_waits_until_every_listed_mirror_has_been_tried(
-    download_mirrors, monkeypatch
+    download_mirrors,
 ):
-    # Whatever order the download mirrors are shuffled into, the direct URL
-    # (Kiwix's redirector) comes after them. Reversing stands in for the
-    # unluckiest shuffle: it would put an appended direct URL first.
-    monkeypatch.setattr(lib._random, "shuffle", lambda xs: xs.reverse())
+    # Whatever order the download mirrors are tried in, the direct URL
+    # (Kiwix's redirector) comes after them.
     mirrors = download_mirrors(countries=("us", "nl", "fr"))
     dl_id = _start(mirrors)
     assert wait_for(lambda: download_status(dl_id)["done"]), "download never finished"

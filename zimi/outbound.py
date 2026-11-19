@@ -119,6 +119,9 @@ class FetchPolicy:
 # accounts for it. The coverage test reads this.
 SOURCES = {
     "library": ("catalog", "downloads", "bittorrent"),
+    # The mirror probe: one Range request per download mirror, as a download
+    # someone started begins.
+    "mirrorrank": ("downloads",),
     # The NOMAD box's own admin, on the LAN, when the owner turned it on.
     "nomadapi": ("nomad",),
     # The operator's own client, as the BitTorrent engine (#53).
