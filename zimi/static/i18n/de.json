@@ -1785,7 +1785,7 @@
   "dl_eta_left": "noch {time}",
   "dl_eta_under_minute": "unter einer Minute",
   "dl_verifying": "Vorhandene Daten werden geprüft · {pct}%",
-  "dl_testing_mirrors": "Spiegel werden getestet…",
+  "dl_testing_mirrors": "Download-Spiegel werden getestet…",
   "remember_me": "Angemeldet bleiben",
   "remove": "Entfernen",
   "cat_zimi": "Zimi",

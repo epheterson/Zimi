@@ -1785,7 +1785,7 @@
   "dl_eta_left": "{time} शेष",
   "dl_eta_under_minute": "एक मिनट से कम",
   "dl_verifying": "पहले से डाउनलोड डेटा की जाँच · {pct}%",
-  "dl_testing_mirrors": "मिरर जाँचे जा रहे हैं…",
+  "dl_testing_mirrors": "डाउनलोड मिरर जाँचे जा रहे हैं…",
   "remember_me": "मुझे याद रखें",
   "remove": "हटाएं",
   "cat_zimi": "Zimi",

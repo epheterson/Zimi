@@ -1785,7 +1785,7 @@
   "dl_eta_left": "剩余 {time}",
   "dl_eta_under_minute": "不到一分钟",
   "dl_verifying": "正在校验已下载的数据 · {pct}%",
-  "dl_testing_mirrors": "正在测试镜像…",
+  "dl_testing_mirrors": "正在测试下载镜像…",
   "remember_me": "记住我",
   "remove": "移除",
   "cat_zimi": "Zimi",

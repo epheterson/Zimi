@@ -1,4 +1,4 @@
-"""The Downloads row says "Testing mirrors…" while the mirror probe runs.
+"""The Downloads row says "Testing download mirrors…" while the mirror probe runs.
 
 A real server, a real download against fake download mirrors whose probes
 are held open, and Chromium at phone width on Manage → Downloads.
@@ -63,7 +63,7 @@ def test_the_row_says_testing_mirrors_while_the_probe_runs(served, monkeypatch):
             pg.locator('.manage-tab[data-tab="downloads"]').click()
             row = pg.locator("#manage-downloads .dl-row").first
             row.wait_for(timeout=20000)
-            assert "Testing mirrors…" in row.inner_text()
+            assert "Testing download mirrors…" in row.inner_text()
             wide = pg.evaluate(
                 "() => document.documentElement.scrollWidth - document.documentElement.clientWidth"
             )
