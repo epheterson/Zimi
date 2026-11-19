@@ -129,7 +129,7 @@ def test_a_mirror_that_errors_hands_over_to_the_next_ranked_one_mid_file(
 ):
     mirrors = download_mirrors(countries=("us", "nl", "fr"))
     us, nl, fr = mirrors.mirrors
-    us.chunk_delay = 2 * SLOW  # ranked last
+    us.chunk_delay = 10 * SLOW  # ranked last, far behind: no jitter swaps it
     nl.chunk_delay = SLOW  # ranked second
     fr.drop_after = 3 * PIECE  # ranked first, then cuts off part-way
     row = _finish(_start(mirrors))
@@ -233,3 +233,159 @@ def test_cancelling_during_the_probe_ends_it_at_once(download_mirrors, monkeypat
     assert wait_for(lambda: download_status(dl_id)["done"], timeout=10), "never ended"
     assert time.monotonic() - cancelled_at < 2, "the probe ran on after Cancel"
     assert download_status(dl_id)["error"] == "Cancelled"
+
+
+def test_on_a_link_too_slow_to_finish_any_probe_the_fastest_still_wins(
+    download_mirrors, monkeypatch
+):
+    # Seven mirrors × 4 MiB in 10 s needs about 23 Mbps; on a slower link
+    # every probe is still receiving at the cap. Its rate so far ranks it.
+    monkeypatch.setattr(mirrorrank, "PROBE_CAP_SECONDS", 1.0)
+    mirrors = download_mirrors(countries=("us", "nl", "fr"))
+    us, nl, fr = mirrors.mirrors
+    # A chunk now and one every delay: by the 1 s cap fr has sent 3 of the
+    # probe's 4 chunks, nl 2 and us 1, and none has finished.
+    us.chunk_delay, nl.chunk_delay, fr.chunk_delay = 2.0, 0.55, 0.35
+    dl_id = _start(mirrors)
+    assert wait_for(lambda: download_status(dl_id)["probing"], timeout=5)
+    assert wait_for(lambda: not download_status(dl_id)["probing"], timeout=5)
+    for m in mirrors.mirrors:
+        m.chunk_delay = 0  # the probe is over; let the download run
+    row = _finish(dl_id)
+    assert [r["host"] for r in row["mirrors"]] == [fr.host, nl.host, us.host]
+
+
+def test_a_probe_that_breaks_never_fails_the_download_or_loses_its_bytes(
+    download_mirrors, monkeypatch
+):
+    import zimi.server as srv
+
+    def broken(*a, **k):
+        raise StopIteration  # the shape the wait-loop race once raised
+
+    monkeypatch.setattr(mirrorrank, "rank", broken)
+    mirrors = download_mirrors(countries=("us", "nl"))
+    partial = os.path.join(srv.ZIM_DIR, mirrors.filename + ".tmp")
+    with open(partial, "wb") as f:
+        f.write(mirrors.body[: 2 * PIECE])  # a download resuming after a restart
+    _finish(_start(mirrors))
+    with open(os.path.join(srv.ZIM_DIR, mirrors.filename), "rb") as f:
+        assert f.read() == mirrors.body
+    us = mirrors.mirrors[0]
+    assert f"bytes={2 * PIECE}-" in us.requests, "the partial was not resumed"
+
+
+def test_a_meta4_without_pieces_is_probed_with_the_default_probe_size(
+    download_mirrors, monkeypatch
+):
+    monkeypatch.setattr(mirrorrank, "DEFAULT_PROBE_BYTES", 32 * 1024)
+    mirrors = download_mirrors(countries=("us", "nl", "fr"))
+    mirrors.set_meta4(with_pieces=False)
+    slow_us, slow_nl, fast_fr = mirrors.mirrors
+    slow_us.chunk_delay = slow_nl.chunk_delay = SLOW
+    row = _finish(_start(mirrors))
+    assert all("bytes=0-32767" in m.requests for m in mirrors.mirrors)
+    assert _active_host(row) == [fast_fr.host]
+
+
+def test_pausing_during_the_probe_ends_it_at_once(download_mirrors, monkeypatch):
+    import time
+
+    monkeypatch.setattr(mirrorrank, "PROBE_CAP_SECONDS", 30.0)
+    mirrors = download_mirrors(countries=("us", "nl"))
+    for m in mirrors.mirrors:
+        m.chunk_delay = 5.0
+    dl_id = _start(mirrors)
+    assert wait_for(lambda: download_status(dl_id)["probing"], timeout=5)
+    paused_at = time.monotonic()
+    lib._active_downloads[dl_id]["paused"] = True  # what Pause sets
+    assert wait_for(lambda: not download_status(dl_id)["probing"], timeout=10)
+    assert time.monotonic() - paused_at < 3, "the probe ran on after Pause"
+    for m in mirrors.mirrors:
+        m.chunk_delay = 0
+    lib._active_downloads[dl_id]["paused"] = False  # Resume
+    _finish(dl_id)
+
+
+def test_a_failed_mirror_is_tried_again_after_the_rest(download_mirrors, monkeypatch):
+    # "failed" = errored this download, still retried after the rest.
+    monkeypatch.setattr(mirrorrank, "PROBE_MIN_FILE_BYTES", 10**12)  # no probe
+    mirrors = download_mirrors(countries=("us", "nl"))
+    for m in mirrors.mirrors:
+        m.fail_first = 1  # a passing hiccup on each download mirror
+    mirrors.origin.fail_status = 503  # and the direct URL is down
+    row = _finish(_start(mirrors))
+    us, nl = mirrors.mirrors
+    assert len(us.requests) == 2, "us was not tried again after the rest"
+    assert _active_host(row) == [us.host]
+
+
+def test_a_download_without_a_meta4_is_not_tried_again(download_mirrors):
+    # Peer pulls and direct URLs keep their behaviour: one try, then fail.
+    mirrors = download_mirrors(countries=("us",))
+    mirrors.origin.fail_status = 503
+    dl_id, err = lib._start_download(mirrors.origin.url)
+    assert err is None, err
+    assert wait_for(lambda: download_status(dl_id)["done"], timeout=30)
+    assert len(mirrors.origin.requests) == 1
+
+
+def test_a_resumed_download_with_little_left_is_not_probed(download_mirrors, monkeypatch):
+    import zimi.server as srv
+
+    mirrors = download_mirrors(countries=("us", "nl"))
+    have = len(mirrors.body) - 2 * PIECE  # all but two pieces already on disk
+    with open(os.path.join(srv.ZIM_DIR, mirrors.filename + ".tmp"), "wb") as f:
+        f.write(mirrors.body[:have])
+    # The file is over the threshold; what is left of it is not.
+    monkeypatch.setattr(mirrorrank, "PROBE_MIN_FILE_BYTES", 3 * PIECE)
+    _finish(_start(mirrors))
+    assert _probes(mirrors) == []
+
+
+def _ranked_after_probe(dl_id):
+    assert wait_for(lambda: download_status(dl_id)["probing"], timeout=5)
+    assert wait_for(lambda: not download_status(dl_id)["probing"], timeout=10)
+    return [r["host"] for r in download_status(dl_id)["mirrors"]]
+
+
+def test_a_mirror_gone_silent_is_ranked_by_what_it_sent(download_mirrors, monkeypatch):
+    monkeypatch.setattr(mirrorrank, "PROBE_CAP_SECONDS", 1.0)
+    mirrors = download_mirrors(countries=("us", "nl"))
+    us, nl = mirrors.mirrors
+    us.stall_after = 16 * 1024  # both still connected at the cap, silent;
+    nl.stall_after = 48 * 1024  # nl sent three times as much first
+    ranked = _ranked_after_probe(_start(mirrors))
+    for m in mirrors.mirrors:
+        m.stall_after = None
+    assert ranked == [nl.host, us.host]
+
+
+def test_a_mirror_that_ended_its_reply_early_ranks_below_one_still_sending(
+    download_mirrors, monkeypatch
+):
+    monkeypatch.setattr(mirrorrank, "PROBE_CAP_SECONDS", 1.0)
+    mirrors = download_mirrors(countries=("fr", "us"))
+    cut_fr, us = mirrors.mirrors
+    cut_fr.drop_after = 48 * 1024  # more bytes, but the reply ended short
+    us.stall_after = 16 * 1024  # fewer bytes, still sending
+    dl_id = _start(mirrors)
+    _ranked_after_probe(dl_id)
+    for m in mirrors.mirrors:
+        m.stall_after = m.drop_after = None
+    _finish(dl_id)
+    assert [r for r in cut_fr.requests if r != _PROBE] == [], (
+        "the download went first to the mirror whose reply ended early"
+    )
+
+
+def test_failed_mirrors_get_exactly_one_more_try(download_mirrors, monkeypatch):
+    monkeypatch.setattr(mirrorrank, "PROBE_MIN_FILE_BYTES", 10**12)  # no probe
+    mirrors = download_mirrors(countries=("us", "nl"))
+    for m in [mirrors.origin, *mirrors.mirrors]:
+        m.fail_status = 503  # down for good
+    dl_id = _start(mirrors)
+    assert wait_for(lambda: download_status(dl_id)["done"], timeout=30), "it kept trying"
+    assert download_status(dl_id)["error"]
+    assert [len(m.requests) for m in mirrors.mirrors] == [2, 2]
+    assert len(mirrors.origin.requests) == 1

@@ -4070,8 +4070,9 @@ def _post_download_finalize(dl):
 def _download_thread(dl):
     """Background thread that downloads a file with mirror rotation.
 
-    Tries the .meta4's download mirrors in random order for load
-    distribution, then the direct URL. On failure, rotates to the next one. Downloads to a .zim.tmp file first, then atomically
+    Tries the .meta4's download mirrors fastest first, by the mirror probe
+    (Kiwix's order when nothing was probed), then the direct URL; mirrors
+    that failed get one more try after that. On failure, rotates to the next. Downloads to a .zim.tmp file first, then atomically
     renames on completion. The .tmp file is preserved across mirror attempts
     so resume works even when switching mirrors.
 
@@ -4173,12 +4174,20 @@ def _download_thread(dl):
             dl["probing"] = True
             try:
                 dl["mirrors"] = _rank_download_mirrors(dl)
+            except Exception as e:
+                # The probe only picks where to start. Whatever goes wrong in
+                # it, the download goes ahead in Kiwix's order: it must never
+                # fail the download or cost a resumed one its bytes.
+                log.debug("mirror probe failed for %s: %r", dl["filename"], e)
             finally:
                 dl["probing"] = False
             mirrors = dl["mirrors"] + [u for u in mirrors if u not in dl["mirrors"]]
         success = False
         last_error = None
-        for mirror_url in mirrors:
+        queue = list(mirrors)
+        tried_again = False
+        while queue:
+            mirror_url = queue.pop(0)
             if dl.get("cancelled"):
                 dl["done"] = True
                 dl["error"] = "Cancelled"
@@ -4198,6 +4207,13 @@ def _download_thread(dl):
             dl.setdefault("_mirror_failed", set()).add(mirror_url)
             if mirror_url in dl.get("mirrors", []):
                 dl["mirrors"] = [u for u in dl["mirrors"] if u != mirror_url] + [mirror_url]
+            if not queue and not tried_again and dl.get("_metalink"):
+                # Everything has been tried once, the direct URL included:
+                # the download mirrors that failed get one more go, in turn,
+                # since a mirror's error is often a passing one.
+                tried_again = True
+                # By now every download mirror has been tried, and failed.
+                queue = list(dl["mirrors"])
         if not success:
             dl["done"] = True
             dl["error"] = f"All {len(mirrors)} mirror(s) failed. Last: {last_error}"
@@ -4287,13 +4303,19 @@ def _rank_download_mirrors(dl):
     from zimi import mirrorrank
 
     metalink = dl["_metalink"]
+    # The catalog's Download button and updates send no size; the .meta4
+    # knows it. A download resuming from a partial has only the rest to fetch.
+    size = dl.get("size_bytes") or metalink.size
+    try:
+        have = os.path.getsize(dl["dest"] + ".tmp")
+    except OSError:
+        have = 0
     return mirrorrank.rank(
         dl["mirrors"],
         metalink.piece_length or mirrorrank.DEFAULT_PROBE_BYTES,
-        # The catalog's Download button and updates send no size; the
-        # .meta4 knows it.
-        size_bytes=dl.get("size_bytes") or metalink.size,
-        stop=lambda: dl.get("cancelled"),
+        bytes_left=None if size is None else max(0, size - have),
+        # Cancel or Pause ends the probe; a paused download waits in the loop.
+        stop=lambda: dl.get("cancelled") or dl.get("paused"),
     )
 
 

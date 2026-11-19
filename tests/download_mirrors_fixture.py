@@ -13,6 +13,8 @@ Per mirror, a test can set:
     fails on a mirror that then serves),
   - `drop_after`: cut each transfer off after this many bytes (a mirror that
     errors part-way),
+  - `stall_after`: after this many bytes, go silent for a minute (a mirror
+    still connected but no longer sending),
 and read `requests`: the Range header of every request it received.
 
 The certificate is self-signed and made with the `openssl` command, so the
@@ -72,6 +74,7 @@ class FakeMirror:
         self.corrupt_piece = None
         self.fail_first = 0
         self.drop_after = None
+        self.stall_after = None
         self.meta4 = None  # bytes served at <file>.meta4, set by the fixture
         self.requests = []
         mirror = self
@@ -121,8 +124,16 @@ class FakeMirror:
                     if mirror.drop_after is not None:
                         stop = min(end, start + mirror.drop_after - 1)
                     while pos <= stop:
+                        silent_until = time.monotonic() + 60
+                        while (
+                            mirror.stall_after is not None
+                            and pos - start >= mirror.stall_after
+                            and time.monotonic() < silent_until
+                        ):
+                            time.sleep(0.05)  # until the test lifts the stall
                         chunk = data[pos : min(pos + CHUNK, stop + 1)]
                         self.wfile.write(chunk)
+                        self.wfile.flush()
                         pos += len(chunk)
                         if mirror.chunk_delay:
                             time.sleep(mirror.chunk_delay)
