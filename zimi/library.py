@@ -4290,7 +4290,10 @@ def _rank_download_mirrors(dl):
     return mirrorrank.rank(
         dl["mirrors"],
         metalink.piece_length or mirrorrank.DEFAULT_PROBE_BYTES,
-        size_bytes=dl.get("size_bytes"),
+        # The catalog's Download button and updates send no size; the
+        # .meta4 knows it.
+        size_bytes=dl.get("size_bytes") or metalink.size,
+        stop=lambda: dl.get("cancelled"),
     )
 
 

@@ -159,7 +159,7 @@ class FakeMirror:
         self.server.server_close()
 
 
-def make_meta4(filename, body, mirrors, piece=PIECE, with_pieces=True):
+def make_meta4(filename, body, mirrors, piece=PIECE, with_pieces=True, with_size=True):
     """A Kiwix-shaped .meta4 listing `mirrors` in order, priority 1..n."""
     urls = "\n".join(
         f'    <url location="{m.country}" priority="{i}">{m.url}</url>'
@@ -177,8 +177,8 @@ def make_meta4(filename, body, mirrors, piece=PIECE, with_pieces=True):
         '<metalink xmlns="urn:ietf:params:xml:ns:metalink">\n'
         "  <publisher><name>Kiwix project</name><url>https://kiwix.org</url></publisher>\n"
         f'  <file name="{filename}">\n'
-        f"    <size>{len(body)}</size>\n"
-        f'    <hash type="sha-256">{hashlib.sha256(body).hexdigest()}</hash>\n'
+        + (f"    <size>{len(body)}</size>\n" if with_size else "")
+        + f'    <hash type="sha-256">{hashlib.sha256(body).hexdigest()}</hash>\n'
         f"{pieces}{urls}\n"
         "  </file>\n"
         "</metalink>\n"

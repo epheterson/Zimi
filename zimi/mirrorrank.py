@@ -18,12 +18,13 @@ PROBE_CAP_SECONDS = 10.0
 DEFAULT_PROBE_BYTES = 4 * 1024 * 1024
 
 
-def rank(urls, probe_bytes, size_bytes=None):
+def rank(urls, probe_bytes, size_bytes=None, stop=None):
     """`urls` (download mirrors in Kiwix's order), fastest first.
 
     Mirrors the probe could not time (refused, failed, too slow for the cap)
     follow the timed ones, in Kiwix's order; with none timed, a file too
     small to probe, or ZIMI_OFFLINE set, Kiwix's order is returned as it is.
+    `stop()` turning true (the download was cancelled) ends the wait at once.
     """
     from zimi import p2p
 
@@ -32,13 +33,14 @@ def rank(urls, probe_bytes, size_bytes=None):
         return urls
     if p2p.is_offline():  # ZIMI_OFFLINE: no request leaves for a probe
         return urls
-    speeds = _probe_all(urls, probe_bytes)
+    speeds = _probe_all(urls, probe_bytes, stop or (lambda: False))
     timed = sorted((u for u in urls if speeds.get(u)), key=lambda u: -speeds[u])
     return timed + [u for u in urls if not speeds.get(u)]
 
 
-def _probe_all(urls, probe_bytes):
-    """{url: bytes per second} for each mirror the probe could time."""
+def _probe_all(urls, probe_bytes, stop):
+    """{url: bytes per second} for each mirror the probe could time, by the
+    cap or by `stop()`, whichever comes first."""
     deadline = time.monotonic() + PROBE_CAP_SECONDS
     speeds = {}
 
@@ -50,8 +52,11 @@ def _probe_all(urls, probe_bytes):
     threads = [threading.Thread(target=run, args=(u,), daemon=True) for u in urls]
     for t in threads:
         t.start()
-    for t in threads:
-        t.join(max(0.0, deadline - time.monotonic()))
+    while any(t.is_alive() for t in threads) and not stop():
+        left = deadline - time.monotonic()
+        if left <= 0:
+            break
+        next(t for t in threads if t.is_alive()).join(min(0.1, left))
     return dict(speeds)
 
 

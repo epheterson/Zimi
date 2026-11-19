@@ -153,6 +153,7 @@ class Download(NamedTuple):
     mirrors: list
     piece_length: int | None
     piece_hashes: list
+    size: int | None = None  # the file's length in bytes, when published
 
 
 def _number(text: str, default):
@@ -191,10 +192,14 @@ def read_download(xml: str) -> Download | None:
         mirrors.sort(key=lambda m: m.priority)  # stable: ties keep file order
         seen = set()  # a URL listed twice is one mirror, at its best priority
         mirrors = [m for m in mirrors if not (m.url in seen or seen.add(m.url))]
+        size = _SIZE.search(file_block.group(0))
+        size = _number(size.group(1), None) if size else None
         pieces = _PIECES.search(xml)
         piece_length = _number(pieces.group(1), None) if pieces else None
         if piece_length is None:
-            return Download(mirrors, None, [])
-        return Download(mirrors, piece_length, _PIECE_HASH.findall(pieces.group(2)))
+            return Download(mirrors, None, [], size)
+        return Download(
+            mirrors, piece_length, _PIECE_HASH.findall(pieces.group(2)), size
+        )
     except TypeError:  # not text at all
         return None

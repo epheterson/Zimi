@@ -97,8 +97,21 @@ def test_a_file_under_the_size_threshold_is_not_probed(download_mirrors, monkeyp
     assert _probes(mirrors) == []
 
 
+def test_a_large_file_started_without_a_size_is_probed_by_its_meta4_size(
+    download_mirrors,
+):
+    # The catalog's Download button and every update send no size; the
+    # .meta4 says how big the file is.
+    mirrors = download_mirrors(countries=("us", "nl", "fr"))
+    dl_id, err = lib._start_download(mirrors.meta4_url)
+    assert err is None, err
+    _finish(dl_id)
+    assert all(_PROBE in m.requests for m in mirrors.mirrors)
+
+
 def test_a_file_of_unknown_size_is_not_probed(download_mirrors):
     mirrors = download_mirrors(countries=("us", "nl", "fr"))
+    mirrors.set_meta4(with_size=False)
     dl_id, err = lib._start_download(mirrors.meta4_url)
     assert err is None, err
     _finish(dl_id)
@@ -204,3 +217,19 @@ def test_a_mirror_that_cuts_its_probe_short_is_not_ranked_on_it(download_mirrors
     assert [r for r in cut_fr.requests if r != _PROBE] == [], (
         "the download was sent to a mirror whose probe never finished"
     )
+
+
+def test_cancelling_during_the_probe_ends_it_at_once(download_mirrors, monkeypatch):
+    import time
+
+    monkeypatch.setattr(mirrorrank, "PROBE_CAP_SECONDS", 30.0)
+    mirrors = download_mirrors(countries=("us", "nl"))
+    for m in mirrors.mirrors:
+        m.chunk_delay = 5.0  # the probe would run the full cap
+    dl_id = _start(mirrors)
+    assert wait_for(lambda: download_status(dl_id)["probing"], timeout=5)
+    cancelled_at = time.monotonic()
+    lib._cancel_download(dl_id)
+    assert wait_for(lambda: download_status(dl_id)["done"], timeout=10), "never ended"
+    assert time.monotonic() - cancelled_at < 2, "the probe ran on after Cancel"
+    assert download_status(dl_id)["error"] == "Cancelled"

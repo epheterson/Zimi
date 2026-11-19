@@ -379,3 +379,12 @@ def test_a_commented_out_hash_does_not_change_the_infohash():
     stale = '<!-- <hash type="sha-256">' + "0" * 64 + "</hash> -->"
     xml = META4.replace("</file>", f"  {stale}\n  </file>")
     assert infohash_from_metalink(xml) == _real_infohash()
+
+
+def test_the_files_size_comes_with_its_download_mirrors():
+    assert read_download(META4).size == 236789540
+
+
+def test_a_metalink_without_a_size_says_so():
+    download = read_download(META4.replace("<size>236789540</size>", ""))
+    assert download is not None and download.size is None
