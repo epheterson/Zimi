@@ -7691,6 +7691,9 @@ async function _refreshDownloadsInner(useCache) {
         // libtorrent re-verifying what is already on disk after a restart.
         // Nothing is being downloaded; the bar shows how much has been read.
         h += '<span class="dl-size">' + tH('dl_verifying', {pct: Math.round(pct)}) + '</span>';
+      } else if (dl.probing) {
+        // The mirror probe: timing every download mirror before the start.
+        h += '<span class="dl-size">' + tH('dl_testing_mirrors') + '</span>';
       } else if (indeterminate) {
         h += '<span class="dl-size">' + tH('bt_connecting') + '</span>';
       } else {

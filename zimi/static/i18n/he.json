@@ -1785,6 +1785,7 @@
   "dl_eta_left": "נותרו {time}",
   "dl_eta_under_minute": "פחות מדקה",
   "dl_verifying": "מאמת את מה שכבר בדיסק · {pct}%",
+  "dl_testing_mirrors": "בודק מראות…",
   "remember_me": "זכור אותי",
   "remove": "הסרה",
   "cat_zimi": "Zimi",

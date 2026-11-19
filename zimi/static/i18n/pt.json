@@ -1785,6 +1785,7 @@
   "dl_eta_left": "faltam {time}",
   "dl_eta_under_minute": "menos de um minuto",
   "dl_verifying": "Verificando o que já está no disco · {pct}%",
+  "dl_testing_mirrors": "Testando espelhos…",
   "remember_me": "Lembrar de mim",
   "remove": "Remover",
   "cat_zimi": "Zimi",

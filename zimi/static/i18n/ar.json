@@ -1785,6 +1785,7 @@
   "dl_eta_left": "متبقٍ {time}",
   "dl_eta_under_minute": "أقل من دقيقة",
   "dl_verifying": "جارٍ التحقق مما تم تنزيله · {pct}%",
+  "dl_testing_mirrors": "جارٍ اختبار المرايا…",
   "remember_me": "تذكرني",
   "remove": "إزالة",
   "cat_zimi": "Zimi",
