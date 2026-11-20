@@ -3749,20 +3749,18 @@ def _checksum_ok(dl, path):
     return not want or _file_sha256(path) == str(want).lower()
 
 
-# A pause at least this long reconnects before reading on: mirrors drop
-# connections left idle.
-PAUSE_RECONNECT_SECONDS = 5.0
 # Before the download mirrors that failed get their one more go: time for a
 # passing error to pass.
 MIRROR_RETRY_WAIT_SECONDS = 5.0
 
 
 def _wait_while_paused(dl):
-    """Hold while `dl` is paused (and not cancelled); the seconds it held."""
-    started = time.monotonic()
+    """Hold while `dl` is paused (and not cancelled); whether it held at all."""
+    held = False
     while dl.get("paused") and not dl.get("cancelled"):
+        held = True
         time.sleep(0.2)
-    return time.monotonic() - started
+    return held
 
 
 def _wait_unless_cancelled(dl, seconds):
@@ -3860,18 +3858,19 @@ def _download_from_url(dl, url, tmp_dest):
         dl["downloaded_bytes"] = 0  # reset: mirror doesn't support resume
         existing_size = 0
         mode = "wb"
-    reconnect = False
+    # A mirror may drop a connection a pause left idle. When this one can
+    # resume (it answered a Range, or says it takes them), a connection that
+    # broke after a pause asks it again for the rest, rather than count that
+    # as its failure; one still open just reads on.
+    can_resume = mode == "ab" or resp.headers.get("Accept-Ranges", "").lower() == "bytes"
+    was_paused = False
     try:
         with open(tmp_dest, mode) as f:
             while not dl.get("cancelled"):
                 # Pause = freeze the read loop without releasing the slot. The
                 # user can pause some active downloads to give bandwidth to
-                # another. A mirror may drop the idle connection meanwhile:
-                # after a long pause, ask the same mirror again for the rest
-                # rather than count a dropped connection as its failure.
-                if _wait_while_paused(dl) >= PAUSE_RECONNECT_SECONDS:
-                    reconnect = True
-                    break
+                # another.
+                was_paused = _wait_while_paused(dl) or was_paused
                 if dl.get("cancelled"):
                     break
                 chunk = resp.read(65536)
@@ -3885,15 +3884,17 @@ def _download_from_url(dl, url, tmp_dest):
                     time.sleep(delay)
     except (urllib.error.URLError, TimeoutError, ConnectionError, OSError) as e:
         resp.close()
+        if was_paused and can_resume and not dl.get("cancelled"):
+            return _download_from_url(dl, url, tmp_dest)  # resumes from the partial
         return False, f"Transfer error from {urlparse(url).hostname}: {e}"
     resp.close()
-    if reconnect and not dl.get("cancelled"):
-        return _download_from_url(dl, url, tmp_dest)  # resumes from the partial
     if dl.get("cancelled"):
         return True, "Cancelled"
     # Verify size
     if total > 0:
         actual = os.path.getsize(tmp_dest)
+        if actual < total and was_paused and can_resume:
+            return _download_from_url(dl, url, tmp_dest)  # resumes from the partial
         if actual != total:
             return (
                 False,
@@ -4213,8 +4214,6 @@ def _download_thread(dl):
                 # it, the download goes ahead in Kiwix's order: it must never
                 # fail the download or cost a resumed one its bytes.
                 log.debug("mirror probe failed for %s: %r", dl["filename"], e)
-            finally:
-                dl["probing"] = False
             mirrors = dl["mirrors"] + [u for u in mirrors if u not in dl["mirrors"]]
         success = False
         last_error = None
@@ -4251,15 +4250,17 @@ def _download_thread(dl):
                 # By now every download mirror has been tried, and failed.
                 queue = list(dl["mirrors"])
                 _wait_unless_cancelled(dl, MIRROR_RETRY_WAIT_SECONDS)
+                _wait_while_paused(dl)
         if not success:
             if dl.get("cancelled"):
                 dl["done"] = True
                 dl["error"] = "Cancelled"
                 return
             dl["done"] = True
-            dl["error"] = (
-                f"All {len(mirrors)} mirror(s) failed after {tries} tries. Last: {last_error}"
-            )
+            # A .meta4 download tries again; the count says so. Others (a
+            # peer pull, a checksum-named release file) keep their error.
+            again = f" after {tries} tries" if dl.get("_metalink") else ""
+            dl["error"] = f"All {len(mirrors)} mirror(s) failed{again}. Last: {last_error}"
             _record_download_activity(dl, "failed", str(last_error or ""))
             _srv._append_history(
                 {
@@ -4357,17 +4358,24 @@ def _rank_download_mirrors(dl):
         _wait_while_paused(dl)
         if dl.get("cancelled"):
             return dl["mirrors"]
+        stopped = []  # Cancel or Pause ended this probe
+
+        def stop():
+            if dl.get("cancelled") or dl.get("paused"):
+                stopped.append(True)
+            return bool(stopped)
+
         dl["probing"] = True
         try:
             ranked = mirrorrank.rank(
                 dl["mirrors"],
                 metalink.piece_length or mirrorrank.DEFAULT_PROBE_BYTES,
                 bytes_left=None if size is None else _bytes_left(dl["dest"], size),
-                stop=lambda: dl.get("cancelled") or dl.get("paused"),
+                stop=stop,
             )
         finally:
             dl["probing"] = False
-        if dl.get("cancelled") or not dl.get("paused"):
+        if dl.get("cancelled") or not stopped:
             return ranked
 
 

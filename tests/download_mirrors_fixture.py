@@ -24,7 +24,9 @@ engine's real TLS path is used; a machine without `openssl` skips.
 import hashlib
 import os
 import shutil
+import socket
 import ssl
+import struct
 import subprocess
 import tempfile
 import threading
@@ -75,7 +77,9 @@ class FakeMirror:
         self.fail_first = 0
         self.drop_after = None
         self.stall_after = None
-        self.hang_up = False  # close the connection before the next write
+        self.hang_up = False  # True: close before the next write; "reset": drop abruptly
+        self.no_range = False  # ignore Range: always the whole file, as a 200
+        self.fail_delay = 0.0  # seconds to wait before a fail_status answer
         self.meta4 = None  # bytes served at <file>.meta4, set by the fixture
         self.requests = []
         mirror = self
@@ -93,6 +97,7 @@ class FakeMirror:
                     return
                 mirror.requests.append(self.headers.get("Range"))
                 if mirror.fail_status:
+                    time.sleep(mirror.fail_delay)
                     self.send_error(mirror.fail_status)
                     return
                 if mirror.fail_first > 0:
@@ -101,7 +106,7 @@ class FakeMirror:
                     return
                 data = mirror.served_bytes()
                 start, end = 0, len(data) - 1
-                rng = self.headers.get("Range")
+                rng = None if mirror.no_range else self.headers.get("Range")
                 if rng:
                     a, _, b = rng.split("=", 1)[1].partition("-")
                     start = int(a)
@@ -118,6 +123,8 @@ class FakeMirror:
                 else:
                     self.send_response(200)
                 self.send_header("Content-Length", str(end - start + 1))
+                if not mirror.no_range:
+                    self.send_header("Accept-Ranges", "bytes")
                 self.end_headers()
                 try:
                     pos = start
@@ -133,6 +140,13 @@ class FakeMirror:
                             and not mirror.hang_up
                         ):
                             time.sleep(0.05)  # until the test lifts the stall
+                        if mirror.hang_up == "reset":
+                            # An abrupt drop: the reader sees a reset, not an end.
+                            self.connection.setsockopt(
+                                socket.SOL_SOCKET, socket.SO_LINGER, struct.pack("ii", 1, 0)
+                            )
+                            self.connection.close()
+                            return
                         if mirror.hang_up:
                             return  # the mirror drops the connection mid-file
                         chunk = data[pos : min(pos + CHUNK, stop + 1)]

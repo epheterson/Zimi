@@ -23,9 +23,9 @@ def rank(urls, probe_bytes, bytes_left=None, stop=None):
 
     `bytes_left` is what the download still has to fetch (None: unknown).
     Mirrors the probe could not time (refused, failed, ended early) follow
-    the timed ones, in Kiwix's order; with none timed, a single mirror, too
-    little (or an unknown amount) left to fetch, or ZIMI_OFFLINE set, Kiwix's
-    order is returned as it is.
+    the timed ones, in Kiwix's order; with none timed, a single download
+    mirror, too little (or an unknown amount) left to fetch, or ZIMI_OFFLINE
+    set, Kiwix's order is returned as it is.
     `stop()` turning true (the download was cancelled or paused) ends the
     wait at once; already true, nothing is probed.
     """
@@ -53,6 +53,7 @@ class _ProbeRun:
         self.received = {url: 0 for url in urls}  # bytes so far, per mirror
         self.finished = {}  # url -> bytes per second, for whole pieces
         self.failed = set()
+        self.over = False  # the run has ended: its probes stop reading
 
 
 def _probe_all(urls, probe_bytes, stop):
@@ -78,6 +79,7 @@ def _probe_all(urls, probe_bytes, stop):
         if not alive or left <= 0:
             break
         alive[0].join(min(0.1, left))
+    run.over = True  # whatever stop() says later (Resume), this run is done
     elapsed = max(time.monotonic() - started, 1e-6)
     speeds = dict(run.finished)
     for url in urls:
@@ -106,7 +108,7 @@ def _probe(url, nbytes, run):
             req, timeout=max(0.1, run.deadline - start), context=srv.SSL_CTX
         ) as resp:
             while run.received[url] < nbytes:
-                if time.monotonic() >= run.deadline or run.stop():
+                if run.over or time.monotonic() >= run.deadline or run.stop():
                     return  # still receiving: timed by what arrived
                 # read1: whatever has arrived, so a slow reply still counts.
                 chunk = resp.read1(min(65536, nbytes - run.received[url]))
