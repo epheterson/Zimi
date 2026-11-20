@@ -75,6 +75,7 @@ class FakeMirror:
         self.fail_first = 0
         self.drop_after = None
         self.stall_after = None
+        self.hang_up = False  # close the connection before the next write
         self.meta4 = None  # bytes served at <file>.meta4, set by the fixture
         self.requests = []
         mirror = self
@@ -129,8 +130,11 @@ class FakeMirror:
                             mirror.stall_after is not None
                             and pos - start >= mirror.stall_after
                             and time.monotonic() < silent_until
+                            and not mirror.hang_up
                         ):
                             time.sleep(0.05)  # until the test lifts the stall
+                        if mirror.hang_up:
+                            return  # the mirror drops the connection mid-file
                         chunk = data[pos : min(pos + CHUNK, stop + 1)]
                         self.wfile.write(chunk)
                         self.wfile.flush()
@@ -264,6 +268,8 @@ def download_mirrors(monkeypatch, tmp_path):
     from zimi import p2p
 
     monkeypatch.setattr(p2p, "get_backend", lambda *a, **k: None)
+    # Pause and Resume go through the real /manage route (manage_post).
+    monkeypatch.setattr(srv, "ZIMI_MANAGE", True, raising=False)
 
     before = set(lib._active_downloads)
     sets = []
@@ -304,3 +310,31 @@ def download_status(dl_id):
     import zimi.library as lib
 
     return next((r for r in lib._get_downloads() if r["id"] == dl_id), None)
+
+
+def manage_post(path, **data):
+    """POST `data` to a /manage route through the real handler, as the UI does."""
+    import json
+    import threading
+    import urllib.request
+    from http.server import ThreadingHTTPServer
+
+    from zimi.http import ZimHandler
+    from zimi.manage import _generate_api_token
+
+    server = ThreadingHTTPServer(("127.0.0.1", 0), ZimHandler)
+    threading.Thread(target=server.serve_forever, daemon=True).start()
+    try:
+        req = urllib.request.Request(
+            f"http://127.0.0.1:{server.server_address[1]}{path}",
+            data=json.dumps(data).encode(),
+            headers={
+                "Authorization": f"Bearer {_generate_api_token()}",
+                "Content-Type": "application/json",
+            },
+        )
+        with urllib.request.urlopen(req, timeout=10) as resp:
+            return json.loads(resp.read())
+    finally:
+        server.shutdown()
+        server.server_close()

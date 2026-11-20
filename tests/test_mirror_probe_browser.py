@@ -44,7 +44,7 @@ def test_the_row_says_testing_mirrors_while_the_probe_runs(served, monkeypatch):
     from playwright.sync_api import sync_playwright
 
     base, download_mirrors = served
-    monkeypatch.setattr(mirrorrank, "PROBE_MIN_FILE_BYTES", 0)
+    monkeypatch.setattr(mirrorrank, "PROBE_MIN_BYTES_LEFT", 0)
     monkeypatch.setattr(mirrorrank, "PROBE_CAP_SECONDS", 30.0)
     mirrors = download_mirrors(countries=("us", "nl"))
     for m in mirrors.mirrors:

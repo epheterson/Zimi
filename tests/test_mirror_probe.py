@@ -20,6 +20,7 @@ from download_mirrors_fixture import (  # noqa: E402,F401
     PIECE,
     download_mirrors,
     download_status,
+    manage_post,
     wait_for,
 )
 
@@ -29,7 +30,7 @@ SLOW = 0.05  # seconds between 16 KiB writes: a piece takes ~0.2 s
 @pytest.fixture(autouse=True)
 def _probe_every_file(monkeypatch):
     """The fake ZIMs are tiny; probe them as if they were large."""
-    monkeypatch.setattr(mirrorrank, "PROBE_MIN_FILE_BYTES", 0)
+    monkeypatch.setattr(mirrorrank, "PROBE_MIN_BYTES_LEFT", 0)
 
 
 def _start(mirrors):
@@ -92,7 +93,7 @@ def _probes(mirrors):
 
 def test_a_file_under_the_size_threshold_is_not_probed(download_mirrors, monkeypatch):
     mirrors = download_mirrors(countries=("us", "nl", "fr"))
-    monkeypatch.setattr(mirrorrank, "PROBE_MIN_FILE_BYTES", len(mirrors.body) + 1)
+    monkeypatch.setattr(mirrorrank, "PROBE_MIN_BYTES_LEFT", len(mirrors.body) + 1)
     _finish(_start(mirrors))
     assert _probes(mirrors) == []
 
@@ -203,7 +204,7 @@ def test_the_status_says_probing_while_the_probe_runs(download_mirrors, monkeypa
 
 def test_a_file_exactly_at_the_size_threshold_is_probed(download_mirrors, monkeypatch):
     mirrors = download_mirrors(countries=("us", "nl"))
-    monkeypatch.setattr(mirrorrank, "PROBE_MIN_FILE_BYTES", len(mirrors.body))
+    monkeypatch.setattr(mirrorrank, "PROBE_MIN_BYTES_LEFT", len(mirrors.body))
     _finish(_start(mirrors))
     assert all(_PROBE in m.requests for m in mirrors.mirrors)
 
@@ -288,28 +289,85 @@ def test_a_meta4_without_pieces_is_probed_with_the_default_probe_size(
     assert _active_host(row) == [fast_fr.host]
 
 
-def test_pausing_during_the_probe_ends_it_at_once(download_mirrors, monkeypatch):
+def test_pausing_during_the_probe_ends_it_and_resume_probes_again(
+    download_mirrors, monkeypatch
+):
     import time
 
     monkeypatch.setattr(mirrorrank, "PROBE_CAP_SECONDS", 30.0)
     mirrors = download_mirrors(countries=("us", "nl"))
+    us, nl = mirrors.mirrors
     for m in mirrors.mirrors:
         m.chunk_delay = 5.0
     dl_id = _start(mirrors)
     assert wait_for(lambda: download_status(dl_id)["probing"], timeout=5)
     paused_at = time.monotonic()
-    lib._active_downloads[dl_id]["paused"] = True  # what Pause sets
+    assert manage_post("/manage/pause", id=dl_id)["status"] == "paused"
     assert wait_for(lambda: not download_status(dl_id)["probing"], timeout=10)
     assert time.monotonic() - paused_at < 3, "the probe ran on after Pause"
-    for m in mirrors.mirrors:
-        m.chunk_delay = 0
-    lib._active_downloads[dl_id]["paused"] = False  # Resume
-    _finish(dl_id)
+    # Paused, nothing is fetched: neither the download nor another probe.
+    asked = [len(m.requests) for m in mirrors.mirrors]
+    time.sleep(1.5)
+    assert [len(m.requests) for m in mirrors.mirrors] == asked, "fetched while paused"
+    # The cut-short probe told nothing; Resume measures again, and nl is
+    # now the fast one.
+    us.chunk_delay, nl.chunk_delay = SLOW, 0
+    assert manage_post("/manage/resume", id=dl_id)["status"] == "resumed"
+    row = _finish(dl_id)
+    assert [m.requests.count(_PROBE) for m in mirrors.mirrors] == [2, 2]
+    assert _active_host(row) == [nl.host]
+
+
+def test_a_probe_already_stopped_sends_nothing(download_mirrors):
+    import time
+
+    mirrors = download_mirrors(countries=("us", "nl"))
+    urls = [m.url for m in mirrors.mirrors]
+    got = mirrorrank.rank(urls, PIECE, bytes_left=10**12, stop=lambda: True)
+    assert got == urls
+    time.sleep(1.0)  # time for any request already on its way to land
+    assert [m.requests for m in mirrors.mirrors] == [[], []]
+
+
+def test_a_download_with_one_download_mirror_is_not_probed(download_mirrors):
+    mirrors = download_mirrors(countries=("us",))
+    _finish(_start(mirrors))
+    assert _probes(mirrors) == []
+
+
+def test_a_mirror_that_dropped_a_paused_download_carries_on_after_resume(
+    download_mirrors, monkeypatch
+):
+    import time
+
+    import zimi.server as srv
+
+    # A paused download leaves its connection idle; a mirror may drop it.
+    monkeypatch.setattr(mirrorrank, "PROBE_MIN_BYTES_LEFT", 10**12)  # no probe
+    monkeypatch.setattr(lib, "PAUSE_RECONNECT_SECONDS", 0.5)
+    mirrors = download_mirrors(countries=("us", "nl"))
+    us, nl = mirrors.mirrors
+    us.chunk_delay = 0.3
+    dl_id = _start(mirrors)
+    assert wait_for(lambda: download_status(dl_id)["downloaded_bytes"] > 0, timeout=10)
+    manage_post("/manage/pause", id=dl_id)
+    time.sleep(1.5)  # the read in flight lands; the download sits paused
+    us.hang_up = True
+    time.sleep(1.0)  # the mirror notices at its next write, and hangs up
+    us.hang_up = False
+    us.chunk_delay = 0
+    manage_post("/manage/resume", id=dl_id)
+    row = _finish(dl_id)
+    assert nl.requests == [], "the paused download left a mirror that was fine"
+    assert len(us.requests) == 2 and us.requests[1].startswith("bytes="), us.requests
+    assert _active_host(row) == [us.host]
+    with open(os.path.join(srv.ZIM_DIR, mirrors.filename), "rb") as f:
+        assert f.read() == mirrors.body
 
 
 def test_a_failed_mirror_is_tried_again_after_the_rest(download_mirrors, monkeypatch):
     # "failed" = errored this download, still retried after the rest.
-    monkeypatch.setattr(mirrorrank, "PROBE_MIN_FILE_BYTES", 10**12)  # no probe
+    monkeypatch.setattr(mirrorrank, "PROBE_MIN_BYTES_LEFT", 10**12)  # no probe
     mirrors = download_mirrors(countries=("us", "nl"))
     for m in mirrors.mirrors:
         m.fail_first = 1  # a passing hiccup on each download mirror
@@ -338,7 +396,7 @@ def test_a_resumed_download_with_little_left_is_not_probed(download_mirrors, mon
     with open(os.path.join(srv.ZIM_DIR, mirrors.filename + ".tmp"), "wb") as f:
         f.write(mirrors.body[:have])
     # The file is over the threshold; what is left of it is not.
-    monkeypatch.setattr(mirrorrank, "PROBE_MIN_FILE_BYTES", 3 * PIECE)
+    monkeypatch.setattr(mirrorrank, "PROBE_MIN_BYTES_LEFT", 3 * PIECE)
     _finish(_start(mirrors))
     assert _probes(mirrors) == []
 
@@ -380,7 +438,7 @@ def test_a_mirror_that_ended_its_reply_early_ranks_below_one_still_sending(
 
 
 def test_failed_mirrors_get_exactly_one_more_try(download_mirrors, monkeypatch):
-    monkeypatch.setattr(mirrorrank, "PROBE_MIN_FILE_BYTES", 10**12)  # no probe
+    monkeypatch.setattr(mirrorrank, "PROBE_MIN_BYTES_LEFT", 10**12)  # no probe
     mirrors = download_mirrors(countries=("us", "nl"))
     for m in [mirrors.origin, *mirrors.mirrors]:
         m.fail_status = 503  # down for good
@@ -389,3 +447,41 @@ def test_failed_mirrors_get_exactly_one_more_try(download_mirrors, monkeypatch):
     assert download_status(dl_id)["error"]
     assert [len(m.requests) for m in mirrors.mirrors] == [2, 2]
     assert len(mirrors.origin.requests) == 1
+    # Every try counts: two mirrors twice each, and the direct URL once.
+    assert "after 5 tries" in download_status(dl_id)["error"]
+
+
+def test_the_retry_waits_a_moment_first(download_mirrors, monkeypatch):
+    import time
+
+    monkeypatch.setattr(mirrorrank, "PROBE_MIN_BYTES_LEFT", 10**12)  # no probe
+    monkeypatch.setattr(lib, "MIRROR_RETRY_WAIT_SECONDS", 1.5)
+    mirrors = download_mirrors(countries=("us",))
+    us = mirrors.mirrors[0]
+    us.fail_first = 1  # a passing hiccup
+    mirrors.origin.fail_status = 503
+    started = time.monotonic()
+    _finish(_start(mirrors))
+    assert time.monotonic() - started >= 1.5, "tried again at once"
+    assert len(us.requests) == 2
+
+
+def test_cancelling_during_the_wait_before_the_retry_ends_it_at_once(
+    download_mirrors, monkeypatch
+):
+    import time
+
+    monkeypatch.setattr(mirrorrank, "PROBE_MIN_BYTES_LEFT", 10**12)  # no probe
+    monkeypatch.setattr(lib, "MIRROR_RETRY_WAIT_SECONDS", 30.0)
+    mirrors = download_mirrors(countries=("us",))
+    for m in [mirrors.origin, *mirrors.mirrors]:
+        m.fail_status = 503
+    dl_id = _start(mirrors)
+    # The direct URL is tried last in the first pass; then the wait.
+    assert wait_for(lambda: len(mirrors.origin.requests) == 1, timeout=10)
+    time.sleep(0.3)
+    cancelled_at = time.monotonic()
+    manage_post("/manage/cancel", id=dl_id)
+    assert wait_for(lambda: download_status(dl_id)["done"], timeout=10)
+    assert time.monotonic() - cancelled_at < 3, "the wait ran on after Cancel"
+    assert len(mirrors.mirrors[0].requests) == 1

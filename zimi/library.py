@@ -838,6 +838,16 @@ def _drain_queue():
 from zimi.p2p import DISK_FLOOR_BYTES as _DISK_FLOOR_BYTES
 
 
+def _bytes_left(dest, size):
+    """What a download of `size` bytes to `dest` still has to fetch: a
+    resumable partial (`dest`.tmp) already holds its bytes."""
+    try:
+        have = os.path.getsize(dest + ".tmp")
+    except OSError:
+        have = 0
+    return max(0, size - have)
+
+
 def _refuse_for_disk_space(size_bytes, dest=None):
     """Return an error string when there's no room, else None.
 
@@ -852,10 +862,7 @@ def _refuse_for_disk_space(size_bytes, dest=None):
         return None  # can't tell — don't block
     needed = int(size_bytes or 0)
     if needed and dest:
-        try:
-            needed = max(0, needed - os.path.getsize(dest + ".tmp"))
-        except OSError:
-            pass
+        needed = _bytes_left(dest, needed)
     if needed and usage.free < needed + _DISK_FLOOR_BYTES:
         return "Not enough disk space (%s free, %s needed)" % (
             _fmt_gb(usage.free),
@@ -3742,6 +3749,29 @@ def _checksum_ok(dl, path):
     return not want or _file_sha256(path) == str(want).lower()
 
 
+# A pause at least this long reconnects before reading on: mirrors drop
+# connections left idle.
+PAUSE_RECONNECT_SECONDS = 5.0
+# Before the download mirrors that failed get their one more go: time for a
+# passing error to pass.
+MIRROR_RETRY_WAIT_SECONDS = 5.0
+
+
+def _wait_while_paused(dl):
+    """Hold while `dl` is paused (and not cancelled); the seconds it held."""
+    started = time.monotonic()
+    while dl.get("paused") and not dl.get("cancelled"):
+        time.sleep(0.2)
+    return time.monotonic() - started
+
+
+def _wait_unless_cancelled(dl, seconds):
+    """Hold for `seconds`, or until `dl` is cancelled."""
+    deadline = time.monotonic() + seconds
+    while not dl.get("cancelled") and time.monotonic() < deadline:
+        time.sleep(min(0.2, max(0.0, deadline - time.monotonic())))
+
+
 def _download_from_url(dl, url, tmp_dest):
     """Attempt to download from a single URL. Returns (success, error_msg).
 
@@ -3830,15 +3860,18 @@ def _download_from_url(dl, url, tmp_dest):
         dl["downloaded_bytes"] = 0  # reset: mirror doesn't support resume
         existing_size = 0
         mode = "wb"
+    reconnect = False
     try:
         with open(tmp_dest, mode) as f:
             while not dl.get("cancelled"):
                 # Pause = freeze the read loop without releasing the slot. The
                 # user can pause some active downloads to give bandwidth to
-                # another. The HTTP connection may idle-timeout while paused;
-                # if so, the next read fails and the mirror loop retries.
-                while dl.get("paused") and not dl.get("cancelled"):
-                    time.sleep(1)
+                # another. A mirror may drop the idle connection meanwhile:
+                # after a long pause, ask the same mirror again for the rest
+                # rather than count a dropped connection as its failure.
+                if _wait_while_paused(dl) >= PAUSE_RECONNECT_SECONDS:
+                    reconnect = True
+                    break
                 if dl.get("cancelled"):
                     break
                 chunk = resp.read(65536)
@@ -3854,6 +3887,8 @@ def _download_from_url(dl, url, tmp_dest):
         resp.close()
         return False, f"Transfer error from {urlparse(url).hostname}: {e}"
     resp.close()
+    if reconnect and not dl.get("cancelled"):
+        return _download_from_url(dl, url, tmp_dest)  # resumes from the partial
     if dl.get("cancelled"):
         return True, "Cancelled"
     # Verify size
@@ -4171,7 +4206,6 @@ def _download_thread(dl):
         # order when there is nothing to probe); the direct URL (a redirector
         # to one of them) comes after every one of them, as the last resort.
         if dl.get("_metalink"):
-            dl["probing"] = True
             try:
                 dl["mirrors"] = _rank_download_mirrors(dl)
             except Exception as e:
@@ -4186,12 +4220,14 @@ def _download_thread(dl):
         last_error = None
         queue = list(mirrors)
         tried_again = False
+        tries = 0
         while queue:
             mirror_url = queue.pop(0)
             if dl.get("cancelled"):
                 dl["done"] = True
                 dl["error"] = "Cancelled"
                 return
+            tries += 1
             ok, err = _download_from_url(dl, mirror_url, tmp_dest)
             if ok:
                 if err == "Cancelled":
@@ -4214,9 +4250,16 @@ def _download_thread(dl):
                 tried_again = True
                 # By now every download mirror has been tried, and failed.
                 queue = list(dl["mirrors"])
+                _wait_unless_cancelled(dl, MIRROR_RETRY_WAIT_SECONDS)
         if not success:
+            if dl.get("cancelled"):
+                dl["done"] = True
+                dl["error"] = "Cancelled"
+                return
             dl["done"] = True
-            dl["error"] = f"All {len(mirrors)} mirror(s) failed. Last: {last_error}"
+            dl["error"] = (
+                f"All {len(mirrors)} mirror(s) failed after {tries} tries. Last: {last_error}"
+            )
             _record_download_activity(dl, "failed", str(last_error or ""))
             _srv._append_history(
                 {
@@ -4299,24 +4342,33 @@ def _download_thread(dl):
 
 
 def _rank_download_mirrors(dl):
-    """The download's mirrors in the order to try them, from the probe."""
+    """The download's mirrors in the order to try them, from the probe.
+
+    A paused download is probed once it is resumed; a probe that Pause cut
+    short measured too little to go on, so Resume probes again.
+    """
     from zimi import mirrorrank
 
     metalink = dl["_metalink"]
     # The catalog's Download button and updates send no size; the .meta4
     # knows it. A download resuming from a partial has only the rest to fetch.
     size = dl.get("size_bytes") or metalink.size
-    try:
-        have = os.path.getsize(dl["dest"] + ".tmp")
-    except OSError:
-        have = 0
-    return mirrorrank.rank(
-        dl["mirrors"],
-        metalink.piece_length or mirrorrank.DEFAULT_PROBE_BYTES,
-        bytes_left=None if size is None else max(0, size - have),
-        # Cancel or Pause ends the probe; a paused download waits in the loop.
-        stop=lambda: dl.get("cancelled") or dl.get("paused"),
-    )
+    while True:
+        _wait_while_paused(dl)
+        if dl.get("cancelled"):
+            return dl["mirrors"]
+        dl["probing"] = True
+        try:
+            ranked = mirrorrank.rank(
+                dl["mirrors"],
+                metalink.piece_length or mirrorrank.DEFAULT_PROBE_BYTES,
+                bytes_left=None if size is None else _bytes_left(dl["dest"], size),
+                stop=lambda: dl.get("cancelled") or dl.get("paused"),
+            )
+        finally:
+            dl["probing"] = False
+        if dl.get("cancelled") or not dl.get("paused"):
+            return ranked
 
 
 def _fetch_mirrors(meta4_url):
