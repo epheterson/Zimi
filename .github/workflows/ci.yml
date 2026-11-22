@@ -9,6 +9,9 @@ on:
   push:
     branches: [main]
   pull_request:
+    # A release goes up as parts into a line/ branch, each read by review, and one PR
+    # of the whole line into main: the matrix runs once, on that one.
+    branches: [main]
     types: [opened, synchronize, reopened, ready_for_review]
   workflow_dispatch:
 
