@@ -148,6 +148,24 @@ def test_a_bare_program_name_is_looked_up_on_the_childs_path_not_in_the_bundle(m
     assert not subproc._in_bundle("piper")
 
 
+def test_the_docker_probes_run_through_the_subproc_runner(monkeypatch):
+    """A docker probe is a child of the app like any other: it gets the machine's environment and is reaped."""
+    from zimi import crawler
+
+    seen = []
+
+    class Done:
+        returncode = 0
+        stdout = "--flag"
+        stderr = ""
+
+    monkeypatch.setattr("zimi.subproc.run", lambda cmd, **kw: seen.append(cmd) or Done())
+    crawler._zimit_help_cache.clear()
+    assert crawler._probe(["docker", "info"])
+    assert crawler._image_supports_flag("docker", "img", "--flag")
+    assert [c[0] for c in seen] == ["docker", "docker"]
+
+
 def test_a_venv_in_the_data_folder_beside_the_executable_is_not_the_bundle(monkeypatch, tmp_path):
     """#151: the voices venv lives in <release folder>/zims/.zimi/tools/voices, beside the executable. Its python is an
     outside program, so the install command (``<venv>/bin/python -m pip``) must get the machine's environment too."""

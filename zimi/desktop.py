@@ -446,9 +446,7 @@ class ServerThread(threading.Thread):
             zimi.load_cache()
             zimi._migrate_data_files()
 
-            from http.server import ThreadingHTTPServer
-
-            server = ThreadingHTTPServer((self.host, port), zimi.ZimHandler)
+            server = zimi.ZimiHTTPServer((self.host, port), zimi.ZimHandler)
             self.ready.set()  # UI can load now — /list works from cache
 
             # BT sidecar, UPnP, LAN discovery, download resume, mirror
@@ -1215,9 +1213,7 @@ def _serve(zim_dir, port, on_ready, host=LOOPBACK_HOST):
     # Build title indexes in background
     threading.Thread(target=zimi._build_all_title_indexes, daemon=True).start()
 
-    from http.server import ThreadingHTTPServer
-
-    server = ThreadingHTTPServer((host, port), zimi.ZimHandler)
+    server = zimi.ZimiHTTPServer((host, port), zimi.ZimHandler)
     actual_port = server.server_address[1]
     # Same background services as the GUI and the serve CLI — this path
     # is what CI smoke-tests, so it must exercise the real thing.
@@ -1275,7 +1271,6 @@ _SMOKE_APP_RENDERED_JS = """
 
 
 def _smoke_app_rendered(window):
-    import json
     import time
 
     verdict = None

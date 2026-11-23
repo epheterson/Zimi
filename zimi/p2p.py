@@ -37,7 +37,6 @@ log = logging.getLogger(__name__)
 
 DEFAULT_BT_PORT = 6881
 DEFAULT_RATIO_CAP = 2.0
-DEFAULT_SEED_BANDWIDTH_KB = 2048  # 2 MB/s
 
 
 def _bool_env(key: str, default: bool = False) -> bool:

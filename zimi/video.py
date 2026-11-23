@@ -28,7 +28,6 @@ import html as _html
 import importlib
 import json
 import logging
-import mimetypes
 import os
 import re
 import shutil
@@ -147,6 +146,19 @@ def _yt_dlp():
         return importlib.import_module("yt_dlp")
     except ImportError:
         return None
+
+
+def _yt_dlp_or_install(say=None):
+    """The yt_dlp module. Under Automatically a missing one is installed first through the video add-on; when policy
+    keeps it out, None comes back and the caller raises its refusal."""
+    mod = _yt_dlp()
+    if mod is not None:
+        return mod
+    from zimi import addons
+
+    if addons.supported() and addons.ensure("video", say):
+        return _yt_dlp()
+    return None
 
 
 def video_available():
@@ -760,6 +772,8 @@ def create_video_zim(
     raises CreateError for anything the user must fix (yt-dlp missing,
     offline mode, empty playlist, nothing under budget)."""
     mod = _yt_dlp()
+    if mod is None and not is_offline():
+        mod = _yt_dlp_or_install(progress)
     if mod is None:
         raise CreateError(INSTALL_HINT)
     if is_offline():

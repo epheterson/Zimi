@@ -37,7 +37,6 @@ import html as _html
 import http.client
 import json
 import logging
-import mimetypes
 import os
 import pathlib
 import posixpath
@@ -726,15 +725,6 @@ def _zim_file_item_class():
     return _FileItem
 
 
-def _scan_folder(root):
-    """Yield ``(fs_path, zim_path)`` for every packagable file under root,
-    depth-first and sorted for a deterministic build. Hidden files/dirs,
-    junk, and symlinks are skipped (zimi.folderfiles.walk): a symlink could
-    point outside the folder, and 'package this folder' must never read
-    beyond it."""
-    yield from _folderfiles.walk(root)
-
-
 # A licence file anywhere in a folder, or a README below its top: reachable (a page can link to it), never one of the
 # ZIM's articles. The folder's own README stays what it is, often the page a documents-only folder opens on.
 _NOTICE_FILE = re.compile(r"(licen[cs]e|copying|notice)([.-][a-z0-9-]+)?(\.(txt|md))?$", re.I)
@@ -1239,6 +1229,8 @@ def _create_folder_zim(
     exclude=(),
     flavour=None,
     extra_items=None,
+    mime_overrides=None,
+    long_description=None,
 ):
     """Package a folder of files into one ZIM. Returns a summary dict:
     ``{"path", "pages", "assets", "main", "registered", "language",
@@ -1255,7 +1247,8 @@ def _create_folder_zim(
 
     ``flavour`` is the openZIM Flavour (``maxi``): another build of the same
     Name. ``extra_items(creator)`` adds entries the folder does not hold, for
-    a build that streams them from somewhere else (Almanac HD's tiles)."""
+    a build that streams them from somewhere else (Almanac HD's tiles).
+    ``mime_overrides`` maps an extension (``.bin``) to the type its files are stored as."""
     folder = os.path.abspath(folder)
     if not os.path.isdir(folder):
         raise CreateError(
@@ -1390,7 +1383,7 @@ def _create_folder_zim(
                     key = _saved_page_key(text) if ext in _folderfiles.PAGE_EXTS else None
                     pages.append((zim_path, page_title, key[0] if key else ""))
             else:
-                mime = _saved.mime_for(zim_path, fs_path, use_hints)
+                mime = (mime_overrides or {}).get(os.path.splitext(zim_path.lower())[1]) or _saved.mime_for(zim_path, fs_path, use_hints)
                 creator.add_item(file_cls(zim_path, named or stem, fs_path, mime, front=not _is_notice_file(zim_path)))
                 assets.append(zim_path)
                 mimetypes.add(mime)
@@ -1467,7 +1460,7 @@ def _create_folder_zim(
             # The folder's NAME, never its path — see the privacy rule in
             # zimwriter's provenance block.
             source=meta.get("source") or base_name,
-            long_description=meta.get("longdescription"),
+            long_description=long_description or meta.get("longdescription"),
             license=meta.get("license"),
             # Repackaging the same folder next month is a new EDITION of this
             # ZIM, so the Name comes from the folder, never from the date.
@@ -4270,11 +4263,6 @@ def _scope_kwargs(args, wanted):
         exclude=getattr(args, "exclude", None) or (),
         extra_hops=getattr(args, "extra_hops", None) or 0,
     )
-
-
-def _flag_or(args, name, default):
-    value = getattr(args, name, None)
-    return default if value is None else value
 
 
 def cli_create(args):

@@ -556,3 +556,16 @@ def test_hot_zims_env_lock_wins_over_restore(monkeypatch, tmp_path):
     assert status == 200
     assert "hot_zims" not in body["applied"]  # env-locked → skipped
     assert server.get_hot_zims() == ["locked_zim"]
+
+
+def test_the_preview_counts_the_collections_only_replace_would_remove(monkeypatch, tmp_path):
+    _setup(monkeypatch, tmp_path)
+    server._save_collections({"version": 1, "favorites": [], "collections": {"mine": {"zims": []}, "also mine": {"zims": []}}})
+    status, body = _apply(
+        _Handler(),
+        {"schema": "zimi-backup", "collections": {"version": 1, "favorites": [], "collections": {"mine": {"zims": []}}}},
+    )
+    assert status == 200
+    # the preview is a merge (nothing lost), and it says what Replace would drop
+    assert body["preview"]["collections"]["col_dropped"] == 1
+    assert set(server._load_collections()["collections"]) == {"mine", "also mine"}

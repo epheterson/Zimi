@@ -19,7 +19,7 @@ import threading
 # "saved" (its saved store, users.sync_user_data), each an account's own;
 # "library" (a ZIM added, removed or replaced, server._set_listing), every
 # window's (announced for owner None).
-TOPICS = ("settings", "saved", "library")
+TOPICS = ("settings", "saved", "library", "debuglog")  # "debuglog": the server's debug log switched, every window's (debuglog.py)
 _LOG_MAX = 256  # announcements kept for a stream that was busy writing
 
 # This run of the server: a window's place in the log ("<boot>.<seq>") from

@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <!-- Add-ons (zimi/addons.py) put Python packages with compiled extensions (Playwright's greenlet) in the data
+         folder, fetched at the person's tap and checked against pinned hashes. The hardened runtime refuses to load a
+         library the app did not sign unless this is set. It is the only entitlement; the runtime itself stays on. -->
+    <key>com.apple.security.cs.disable-library-validation</key>
+    <true/>
+</dict>
+</plist>

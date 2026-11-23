@@ -250,6 +250,8 @@ def test_disk_cache_record_gains_no_new_keys(zim_dir):
         # older Zimi ignores it.
         "feeds",
         "feeds_v",  # which rules decided feeds, so a new source re-reads old records once
+        "mname",  # the ZIM's own Name, so a copy of an own ZIM under another file name is known without opening it
+        "icon_v",  # which illustration rule chose the icon, so a better rule re-reads old records once
     }
     assert set(written) <= known
 

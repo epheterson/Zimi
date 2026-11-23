@@ -14,11 +14,20 @@ WebKit typelibs, no libtorrent, no zimi-voice. libzim's native library is collec
 
 import glob
 import os
+import sys
 import sysconfig
 
 from PyInstaller.utils.hooks import collect_submodules
 
 REPO_ROOT = os.path.dirname(SPECPATH)
+
+# Standard-library modules the add-ons' packages import that the app itself may not (yt-dlp needs optparse): kept in the
+# frozen app so an add-on's Python code runs in it. The list lives with the pinned wheels (scripts/pin_addon_wheels.py).
+# Read by path: importing zimi.addon_wheels would import the zimi package, the server and libzim, at build time.
+_wheels = {}
+with open(os.path.join(REPO_ROOT, 'zimi', 'addon_wheels.py'), encoding='utf-8') as _f:
+    exec(compile(_f.read(), 'addon_wheels.py', 'exec'), _wheels)
+FROZEN_STDLIB = _wheels['FROZEN_STDLIB']
 
 # Everything in the package that is loaded by name at run time, less what only a window or an MCP client uses.
 _LEFT_OUT = ('zimi.desktop', 'zimi.winsparkle', 'zimi.mcp_server')
@@ -55,7 +64,7 @@ a = Analysis(
         # disk beside the package, not only inside the frozen archive (#151).
         (os.path.join(REPO_ROOT, 'zimi/voicehelper.py'), 'zimi'),
     ] + builtin_datas,
-    hiddenimports=['libzim', 'certifi', 'fitz', 'PIL'] + zimi_modules + zeroconf_modules,
+    hiddenimports=['libzim', 'certifi', 'fitz', 'PIL'] + zimi_modules + zeroconf_modules + list(FROZEN_STDLIB),
     hookspath=[],
     hooksconfig={},
     runtime_hooks=[],

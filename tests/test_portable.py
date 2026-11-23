@@ -115,8 +115,9 @@ def test_doctor_is_honest_for_the_portable_kind():
     assert "(portable)" in text
     ways = {f.key: way.how for f, way, _ in rows}
     assert ways["pdf"] == runtimes.BUNDLED
-    for absent in ("voices", "rendered", "video"):
-        assert ways[absent] == runtimes.ABSENT, absent
+    assert ways["voices"] == runtimes.ABSENT
+    for addon in ("rendered", "video"):
+        assert ways[addon] == runtimes.ADDON, addon
 
 
 def test_portable_flag_is_a_boot_flag():

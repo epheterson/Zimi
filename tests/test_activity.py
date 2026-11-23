@@ -564,7 +564,7 @@ def test_health_check_records_what_it_found():
 def test_health_route_starts_a_watcher(monkeypatch):
     from zimi import health
 
-    monkeypatch.setattr(health, "start_check", lambda: (True, "started"))
+    monkeypatch.setattr(health, "start_check", lambda deep=False: (True, "started"))
     monkeypatch.setattr(
         health,
         "get_state",
@@ -583,7 +583,7 @@ def test_a_refused_start_journals_nothing(monkeypatch):
     and will file it when IT finishes."""
     from zimi import health
 
-    monkeypatch.setattr(health, "start_check", lambda: (False, "already running"))
+    monkeypatch.setattr(health, "start_check", lambda deep=False: (False, "already running"))
     monkeypatch.setattr(health, "get_state", lambda: {"phase": "done"})
     _post("/manage/health-check", {})
     time.sleep(0.05)

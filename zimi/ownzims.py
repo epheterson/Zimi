@@ -23,6 +23,7 @@ import datetime
 import hashlib
 import os
 import re
+import shutil
 import subprocess
 import sys
 import tempfile
@@ -44,18 +45,32 @@ def _stage_almanac(dest):
     almanacstage.stage(dest)
 
 
+def _stage_games(dest):
+    """The Games' folder as it is, plus Zimi's footer from static/ (one definition for Home, the Games and the Almanac)."""
+    from zimi import almanacstage
+
+    shutil.copytree(os.path.join(SOURCE_ROOT, "games"), dest, dirs_exist_ok=True)
+    almanacstage.copy_footer(dest)
+
+
 OWN = (
-    Own("games", "zimi_games", "Zimi"),
+    Own("games", "zimi_games", "Zimi", _stage_games),
     Own("almanac", "zimi_almanac", "Zimi", _stage_almanac),
 )
+#: The folder a staged source is built in, when it is not the served name: the folder becomes the ZIM's Name
+#: (zimi_eng_<folder>), and a library knows a newer copy of the same book by its Name, so it never changes. The
+#: Games were built straight from builtin/games before they were staged.
+STAGED_FOLDER = {"zimi_games": "games"}
 OWN_TAG = "zimi:own"
-# The ZIM's Title leads with the thing and ends " · Zimi" for other readers (Kiwix); inside Zimi it is just the thing.
-_BRAND_SUFFIX = " \u00b7 Zimi"
+# The ZIM's Title is "Zimi <thing>" (zimi.txt in each source folder is its one definition; the Almanac's flavours and
+# the HD tile builds read it from there); inside Zimi it is just the thing.
+_BRAND_PREFIX = "Zimi "
 
 
 def display_title(title):
-    """The name Zimi shows for one of its own ZIMs ("Games · Zimi" -> "Games")."""
-    return title[: -len(_BRAND_SUFFIX)] if title.endswith(_BRAND_SUFFIX) else title
+    """The name Zimi shows for one of its own ZIMs ("Zimi Games" -> "Games")."""
+    return title[len(_BRAND_PREFIX):] if title.startswith(_BRAND_PREFIX) else title
+
 
 
 SOURCE_ROOT = os.path.join(os.path.dirname(os.path.abspath(__file__)), "builtin")
@@ -172,9 +187,10 @@ def is_own_path(path):
     )
 
 
-#: Folders of an own ZIM the phone does not keep ahead of time: the games' 214 puzzle files (16 MB) and their thumbnails
-#: come as they are played, through the worker's usual network-first copy. Everything else is the app itself.
-OFFLINE_SKIP = ("puzzles/", "thumbs/")
+#: Folders of an own ZIM the phone does not keep ahead of time. None: the games' puzzle files and thumbnails are kept with
+#: the rest (a game opens with no signal whether or not it was played before); the worker decides whether this device keeps
+#: anything ahead (sw.js keepOwnAhead).
+OFFLINE_SKIP = ()
 _offline_cache = {}  # name -> (file identity, [paths])
 _offline_lock = threading.Lock()
 _OFFLINE_RUN = 64  # entries read per hold of the library lock
@@ -236,6 +252,61 @@ def name_of_file(filename):
     """The own ZIM a file name (``zimi_games_2026-10.zim``) is, or None."""
     name = re.sub(_DATED, "", os.path.basename(filename))
     return name if any(o.name == name for o in OWN) else None
+
+
+_ident_cache = {}  # path -> ((size, mtime), (Name, Date))
+_ident_lock = threading.Lock()
+def identity(path):
+    """``(Name, Date)`` metadata of a ZIM file, "" for what it lacks, None when it cannot be read. From the library's
+    metadata cache when it holds this file version (no archive opened); else read once per file version, and the cache
+    keeps it from then on (server.load_cache)."""
+    try:
+        st = os.stat(path)
+    except OSError:
+        return None
+    key = (st.st_size, st.st_mtime_ns)
+    with _ident_lock:
+        hit = _ident_cache.get(path)
+        if hit and hit[0] == key:
+            return hit[1]
+    from zimi import server as _srv
+
+    cached = _srv.cached_identity(path)
+    if cached is not None:
+        with _ident_lock:
+            _ident_cache[path] = (key, cached)
+        return cached
+    from libzim.reader import Archive
+
+    try:
+        a = Archive(path)
+        vals = tuple(bytes(a.get_metadata(k)).decode("utf-8", "replace").strip() if k in a.metadata_keys else "" for k in ("Name", "Date"))
+    except Exception:
+        return None
+    with _ident_lock:
+        _ident_cache[path] = (key, vals)
+    return vals
+
+
+def _date_key(date):
+    """A ZIM's Date metadata (2026-11 or 2026-11-08) as a sortable string, a missing day or month counting as 0."""
+    parts = (date or "").split("-")[:3]
+    return "-".join((parts + ["00", "00"])[i].zfill(4 if i == 0 else 2) for i in range(3))
+
+
+def family_of(path):
+    """The own ZIM's served name (``zimi_almanac``) whose Name metadata this file carries, and whether the file is
+    strictly newer than the package's, or None. A different ZIM, whatever its file name, is None."""
+    if is_own_path(path):
+        return None
+    mine = identity(path)
+    if not mine or not mine[0]:
+        return None
+    for o in OWN:
+        theirs = identity(zim_path(o)) if zim_path(o) else None
+        if theirs and theirs[0] == mine[0]:
+            return o.name, _date_key(mine[1]) > _date_key(theirs[1])
+    return None
 
 
 def zim_paths():
@@ -352,13 +423,13 @@ def _with_source(own, fn):
     with tempfile.TemporaryDirectory(prefix="zimi-own-") as tmp:
         # The folder's name becomes the ZIM's Name and its source: a fixed one, so every edition (and every
         # flavour, write_zim) carries the same Name instead of one with the temp folder's random suffix.
-        dest = os.path.join(tmp, own.name)
+        dest = os.path.join(tmp, STAGED_FOLDER.get(own.name, own.name))
         os.mkdir(dest)
         own.stage(dest)
         return fn(dest)
 
 
-#: Written into each own ZIM at build time, never into its source: the build's year, for the credit line the pages
+#: Written into each own ZIM at build time, never into its source: the build's year and Zimi's version, for the credit line the pages
 #: draw outside Zimi (games/shell.js, almanac/index.html). The same day as the ZIM's Date metadata, not the reader's clock;
 #: kept out of the source so the source hash, and with it --check, stays the source's alone.
 BUILD_FILE = "zimibuild.js"
@@ -367,7 +438,11 @@ BUILD_FILE = "zimibuild.js"
 def with_build_year(extra_items=None):
     from zimi.zimwriter import make_asset_item
 
-    body = ("window.ZIMI_BUILT_YEAR = %d;\n" % datetime.date.today().year).encode("ascii")
+    from zimi.server import ZIMI_VERSION
+
+    body = (
+        "window.ZIMI_BUILT_YEAR = %d;\nwindow.ZIMI_BUILT_VERSION = %r;\n" % (datetime.date.today().year, ZIMI_VERSION)
+    ).encode("ascii")
 
     def add(creator):
         creator.add_item(make_asset_item(BUILD_FILE, "text/javascript", body))
@@ -375,6 +450,41 @@ def with_build_year(extra_items=None):
             extra_items(creator)
 
     return add
+
+
+#: libzim compresses an entry only when its type is a text one, and stores octet-stream as it is. The Almanac's data files
+#: (.bin: heights, spacecraft models, tracks) shrink by a third to a half that way; the reader takes the bytes, not the type.
+COMPRESSED_BINARY_TYPES = {".bin": "text/plain"}
+
+
+#: The sentence of the Almanac's LongDescription that says which edition a file is; a flavour swaps it (FLAVOUR_TEXT).
+STANDARD_EDITION = "This is the standard edition, without the high-resolution map tiles."
+#: ``(own name, Flavour)`` -> the Description (80 characters at most, the openZIM limit) and the edition sentence a flavour
+#: carries. Title stays the standard edition's, so a reader lists the files side by side; the Description tells them apart.
+FLAVOUR_TEXT = {
+    ("zimi_almanac", "maxi"): (
+        "The Almanac with high-resolution maps of Earth, Moon and planets",
+        "This is the maxi edition, with the high-resolution map tiles inside.",
+    ),
+    ("zimi_almanac", "ultra"): (
+        "The Almanac with maximum-resolution maps of Earth, Moon and planets",
+        "This is the maximum edition, with every map tile at its source's full resolution.",
+    ),
+}
+
+
+def flavour_text(folder, own, flavour):
+    """``{"description", "long_description"}`` a flavour of ``own`` says about itself, built from the folder's zimi.txt;
+    {} for the standard edition (no flavour) and for a flavour with nothing of its own."""
+    if (own.name, flavour) not in FLAVOUR_TEXT:
+        return {}
+    from zimi import folderfiles
+
+    description, edition = FLAVOUR_TEXT[(own.name, flavour)]
+    long_description = folderfiles.read_sidecar(os.path.join(folder, "zimi.txt"), {"longdescription"}).get("longdescription", "")
+    if STANDARD_EDITION not in long_description:
+        raise RuntimeError("%s's zimi.txt LongDescription no longer holds the standard edition's sentence" % own.name)
+    return {"description": description, "long_description": long_description.replace(STANDARD_EDITION, edition)}
 
 
 def write_zim(own, path, flavour=None, extra_items=None):
@@ -390,7 +500,9 @@ def write_zim(own, path, flavour=None, extra_items=None):
             out_path=path,
             register=False,
             flavour=flavour,
+            **flavour_text(folder, own, flavour),
             extra_items=with_build_year(extra_items),
+            mime_overrides=COMPRESSED_BINARY_TYPES,
         )
         return path
 
@@ -421,7 +533,7 @@ def build(own):
         for stale in (new, new + ".tmp"):
             if os.path.exists(stale):
                 os.remove(stale)
-        creator.create_folder_zim(folder, out_path=new, register=False, extra_items=with_build_year())
+        creator.create_folder_zim(folder, out_path=new, register=False, extra_items=with_build_year(), mime_overrides=COMPRESSED_BINARY_TYPES)
         os.replace(new, path)
         with open(path + _STAMP_EXT, "w", encoding="ascii") as f:
             f.write(want + "\n")

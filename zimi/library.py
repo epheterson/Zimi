@@ -6,6 +6,7 @@ maintain a single source of truth.
 """
 
 import datetime
+import errno
 import glob
 import gzip
 import ipaddress
@@ -15,7 +16,6 @@ import os
 import random as _random
 import re
 import shutil
-import ssl
 import threading
 import time
 import xml.etree.ElementTree as ET
@@ -26,6 +26,7 @@ from urllib.parse import urlparse, urlencode, quote
 
 import zimi.server as _srv
 from zimi import renames as _renames
+from zimi import zimparts
 from zimi.safety import join_inside, loggable
 
 log = logging.getLogger("zimi")
@@ -621,15 +622,7 @@ def _within_download_window(now_min=None):
     """True when downloads may start NOW. Always True when scheduling is off,
     or when the window is malformed (never trap downloads on bad config)."""
     sched = _load_download_schedule()
-    if not sched["enabled"]:
-        return True
-    start = _parse_hhmm(sched["start"])
-    end = _parse_hhmm(sched["end"])
-    if start is None or end is None:
-        return True
-    if now_min is None:
-        now_min = _now_local_minutes()
-    return _in_window(now_min, start, end)
+    return not sched["enabled"] or _in_window_now(sched, now_min)
 
 
 def _schedule_defers_now():
@@ -845,7 +838,6 @@ def _refuse_for_disk_space(size_bytes, dest=None):
     A resumable partial (.tmp) already occupies its bytes — count only
     what's left to fetch, or a 90%-done resume gets refused for the
     space it has already used."""
-    from zimi import p2p as _p2p
 
     try:
         usage = shutil.disk_usage(_srv.ZIM_DIR)
@@ -1079,11 +1071,7 @@ def _record_torrent_metadata(filename, *, info_hash, torrent_url, staging_dir):
     is preserved under ZIMI_DATA_DIR/bt/torrents/."""
     manifest_path = _torrents_manifest_path()
     os.makedirs(os.path.dirname(manifest_path), exist_ok=True)
-    try:
-        with open(manifest_path, encoding="utf-8") as f:
-            manifest = json.load(f)
-    except (OSError, ValueError):
-        manifest = {}
+    manifest = _srv._read_json_file(manifest_path, {})
     entry = {
         "info_hash": info_hash or "",
         "torrent_url": torrent_url or "",
@@ -1112,11 +1100,7 @@ def _record_torrent_metadata(filename, *, info_hash, torrent_url, staging_dir):
 
 def _get_torrent_metadata():
     """The saved filename -> {info_hash, magnet, torrent_url, ...} map."""
-    try:
-        with open(_torrents_manifest_path(), encoding="utf-8") as f:
-            return json.load(f)
-    except (OSError, ValueError):
-        return {}
+    return _srv._read_json_file(_torrents_manifest_path(), {})
 
 
 # ── Seed intent ledger ──
@@ -1145,12 +1129,7 @@ def _seed_ledger_path():
 
 
 def _seed_ledger():
-    try:
-        with open(_seed_ledger_path(), encoding="utf-8") as f:
-            data = json.load(f)
-            return data if isinstance(data, dict) else {}
-    except (OSError, ValueError):
-        return {}
+    return _srv._read_json_dict(_seed_ledger_path())
 
 
 def record_seed(filename, origin="download"):
@@ -1354,11 +1333,10 @@ def resume_pending_downloads():
     via the normal range machinery. Returns how many were resubmitted.
     """
     path = _pending_downloads_path()
-    try:
-        with open(path, encoding="utf-8") as f:
-            items = json.load(f).get("pending", [])
-    except (OSError, ValueError):
+    data = _srv._read_json_file(path)
+    if data is None:
         return 0
+    items = data.get("pending", [])
 
     # The manifest is NOT deleted up front: a crash during the resume
     # window must not lose every pending transfer. The single rewrite at
@@ -1433,11 +1411,7 @@ def resume_pending_downloads():
     with _download_lock:
         _persist_pending_downloads()
         if kept:
-            try:
-                with open(path, encoding="utf-8") as f:
-                    current = json.load(f).get("pending", [])
-            except (OSError, ValueError):
-                current = []
+            current = _srv._read_json_file(path, {}).get("pending", [])
             have = {c.get("filename") for c in current}
             current.extend(k for k in kept if k.get("filename") not in have)
             _srv._atomic_write_json(path, {"pending": current})
@@ -1449,15 +1423,8 @@ def resume_pending_downloads():
 def _pending_download_filenames():
     """Filenames recorded in downloads.json — these resume on next start, so
     their partials are still wanted even before the resume actually fires."""
-    try:
-        with open(_pending_downloads_path(), encoding="utf-8") as f:
-            return {
-                it.get("filename")
-                for it in json.load(f).get("pending", [])
-                if it.get("filename")
-            }
-    except (OSError, ValueError):
-        return set()
+    pending = _srv._read_json_file(_pending_downloads_path(), {}).get("pending", [])
+    return {it.get("filename") for it in pending if it.get("filename")}
 
 
 def classify_partials():
@@ -1756,10 +1723,18 @@ def _thumb_dir():
 _THUMB_MAX_BYTES = 2 * 1024 * 1024  # ceiling on one cached catalog thumbnail
 
 
+# The two catalogs a thumbnail may come from: Kiwix's, and the community's.
+COMMUNITY_OPDS_BASE = "https://opds.community.library.kiwix.org"
+_THUMB_PREFIXES = ("https://library.kiwix.org/", COMMUNITY_OPDS_BASE + "/")
+
+
+def is_thumb_url(url):
+    return bool(url) and url.startswith(_THUMB_PREFIXES)
+
+
 def _fetch_thumb(url):
     """Fetch a thumbnail from Kiwix, caching to disk. Returns (bytes, content_type) or (None, None)."""
-    # Only allow library.kiwix.org
-    if not url.startswith("https://library.kiwix.org/"):
+    if not is_thumb_url(url):
         return None, None
     # Use URL hash as filename
     import hashlib as _hl
@@ -2005,12 +1980,6 @@ def offline_catalog():
     return items, source, as_of
 
 
-def _offline_catalog_stamp():
-    """Epoch seconds of the catalog offline_catalog() would hand back: when the
-    cache was fetched, or the snapshot's build date. 0 when unknown."""
-    return _offline_catalog_stamped()[3]
-
-
 def _offline_catalog_matching_stamped(query):
     """``(items, stamp)``: the catalog on disk (or the package's snapshot),
     narrowed to `query`, and its stamp, from one read."""
@@ -2029,6 +1998,128 @@ def _offline_catalog_matching_stamped(query):
 def _offline_catalog_matching(query):
     """The catalog on disk (or the package's snapshot), narrowed to `query`."""
     return _offline_catalog_matching_stamped(query)[0]
+
+
+def _installed_bases():
+    """The date-stripped file names of every book on disk, lower-cased, for
+    the catalog's installed mark. A book in another program's folder is
+    installed too (the catalog does not offer a second copy), and a split
+    book counts under its whole name."""
+    from zimi import libfolders
+
+    return {
+        _srv._extract_zim_date(zimparts.book_filename(path))[0].lower()
+        for path in zimparts.in_folder(_srv.ZIM_DIR) + libfolders.zim_paths()
+    }
+
+
+def _download_installed(download_url, local_bases):
+    """Whether a ZIM with this download's name (date aside) is installed."""
+    if not download_url:
+        return False
+    dl_base, _ = _srv._extract_zim_date(download_url.split("/")[-1])
+    return dl_base.lower() in local_bases
+
+
+def _parse_opds_items(root, ns, icon_base, source=""):
+    """The entries of an OPDS feed as catalog items. ``icon_base`` completes a
+    relative thumbnail link; ``source`` tags every item (community ZIMs)."""
+    atom_ns = ns["atom"]
+    local_bases = _installed_bases()
+    items = []
+    for entry in root.findall("atom:entry", ns):
+        name = ""
+        title = ""
+        summary = ""
+        language = ""
+        category = ""
+        author = ""
+        date = ""
+        article_count = 0
+        media_count = 0
+        size_bytes = 0
+        download_url = ""
+        icon_url = ""
+
+        # Most fields are in the Atom namespace (default)
+        _t = lambda tag: entry.findtext(f"{{{atom_ns}}}{tag}") or ""
+        name = _t("name")
+        title = _t("title")
+        summary = _t("summary")
+        language = _t("language")
+        category = _t("category")
+        try:
+            article_count = int(_t("articleCount"))
+        except (ValueError, TypeError):
+            pass
+        try:
+            media_count = int(_t("mediaCount"))
+        except (ValueError, TypeError):
+            pass
+
+        # Author is nested: <author><name>...</name></author>
+        author_el = entry.find("atom:author/atom:name", ns)
+        if author_el is not None and author_el.text and author_el.text != "-":
+            author = author_el.text
+
+        # Date from dc:issued
+        date_el = entry.find("dc:issued", ns)
+        if date_el is not None and date_el.text:
+            date = date_el.text[:10]  # Just YYYY-MM-DD
+
+        for link in entry.findall("atom:link", ns):
+            rel = link.get("rel", "")
+            href = link.get("href", "")
+            ltype = link.get("type", "")
+            if (
+                rel == "http://opds-spec.org/acquisition/open-access"
+                and ltype == "application/x-zim"
+            ):
+                download_url = href
+                try:
+                    size_bytes = int(link.get("length", "0"))
+                except (ValueError, TypeError):
+                    pass
+            elif rel == "http://opds-spec.org/image/thumbnail":
+                icon_url = icon_base + href if href.startswith("/") else href
+        # The icon shipped with the snapshot loads at once and offline; the
+        # live one is one round trip to Kiwix per picture.
+        from zimi import catalog_snapshot
+
+        shipped_icon = catalog_snapshot.icon_for(name)
+        if shipped_icon:
+            icon_url = "/catalog-icon/" + shipped_icon
+
+        # Determine if installed by matching download URL filename against local ZIMs
+        installed = _download_installed(download_url, local_bases)
+
+        # Normalize language to 2-letter codes (OPDS uses 3-letter)
+        if language:
+            norm_parts = []
+            for lp in language.split(","):
+                lp = lp.strip().lower()
+                if lp:
+                    norm_parts.append(_srv._ISO639_3_TO_1.get(lp, lp))
+            language = ",".join(norm_parts)
+        item = {
+            "name": name,
+            "title": title,
+            "summary": summary,
+            "language": language,
+            "category": category,
+            "author": author,
+            "date": date,
+            "article_count": article_count,
+            "media_count": media_count,
+            "size_bytes": size_bytes,
+            "download_url": download_url,
+            "icon_url": icon_url,
+            "installed": installed,
+        }
+        if source:
+            item["source"] = source
+        items.append(item)
+    return items
 
 
 def _fetch_kiwix_catalog(
@@ -2085,20 +2176,20 @@ def _fetch_kiwix_catalog(
                 del _opds_cache[k]
 
     if serve_stale is not None:
-        # Hand back the stale copy now; revalidate in the background.
-        _kick_catalog_refresh(query, lang, count, start, _internal=_internal)
+        # Hand back the stale copy now. Only the update check and the upkeep
+        # (_internal) revalidate it: opening the catalog never reaches Kiwix.
+        if _internal:
+            _kick_catalog_refresh(query, lang, count, start, _internal=True)
         return serve_stale[0], serve_stale[1], None
 
     if not _background and not _internal:
         # Cold: nothing cached for this page yet. The catalog on disk (or the
-        # snapshot in the package) answers now and the live one is fetched
-        # behind it, the same stale-while-revalidate as an expired page. The
-        # first browse used to wait on Kiwix (Eric: "if catalog is baked in
-        # and cached why did it take a while when I clicked maps").
+        # snapshot in the package) answers now, and nothing is fetched behind
+        # it: the update check and the upkeep bring the live one ("refresh
+        # only when Zimi does its update check, never on catalog open").
         fallback, fallback_stamp = _offline_catalog_matching_stamped(query)
         if fallback:
             _catalog_stale_ts = fallback_stamp or time.time()
-            _kick_catalog_refresh(query, lang, count, start, _internal=_internal)
             return len(fallback), fallback[start : start + count], None
 
     from zimi import p2p as _p2p
@@ -2195,113 +2286,7 @@ def _fetch_kiwix_catalog(
     except (ValueError, TypeError):
         total = 0
 
-    # Build set of installed filename bases (date-stripped) for accurate matching
-    local_bases = set()
-    from zimi import libfolders
-
-    # A ZIM in another program's folder is installed too: the catalog says so
-    # instead of offering a second copy of it.
-    for path in glob.glob(os.path.join(_srv.ZIM_DIR, "*.zim")) + libfolders.zim_paths():
-        base, _ = _srv._extract_zim_date(os.path.basename(path))
-        local_bases.add(base.lower())
-    items = []
-    for entry in root.findall("atom:entry", ns):
-        name = ""
-        title = ""
-        summary = ""
-        language = ""
-        category = ""
-        author = ""
-        date = ""
-        article_count = 0
-        media_count = 0
-        size_bytes = 0
-        download_url = ""
-        icon_url = ""
-
-        # Most fields are in the Atom namespace (default)
-        _t = lambda tag: entry.findtext(f"{{{atom_ns}}}{tag}") or ""
-        name = _t("name")
-        title = _t("title")
-        summary = _t("summary")
-        language = _t("language")
-        category = _t("category")
-        try:
-            article_count = int(_t("articleCount"))
-        except (ValueError, TypeError):
-            pass
-        try:
-            media_count = int(_t("mediaCount"))
-        except (ValueError, TypeError):
-            pass
-
-        # Author is nested: <author><name>...</name></author>
-        author_el = entry.find("atom:author/atom:name", ns)
-        if author_el is not None and author_el.text and author_el.text != "-":
-            author = author_el.text
-
-        # Date from dc:issued
-        date_el = entry.find("dc:issued", ns)
-        if date_el is not None and date_el.text:
-            date = date_el.text[:10]  # Just YYYY-MM-DD
-
-        for link in entry.findall("atom:link", ns):
-            rel = link.get("rel", "")
-            href = link.get("href", "")
-            ltype = link.get("type", "")
-            if (
-                rel == "http://opds-spec.org/acquisition/open-access"
-                and ltype == "application/x-zim"
-            ):
-                download_url = href
-                try:
-                    size_bytes = int(link.get("length", "0"))
-                except (ValueError, TypeError):
-                    pass
-            elif rel == "http://opds-spec.org/image/thumbnail":
-                icon_url = (
-                    "https://library.kiwix.org" + href if href.startswith("/") else href
-                )
-        # The icon shipped with the snapshot loads at once and offline; the
-        # live one is one round trip to Kiwix per picture.
-        from zimi import catalog_snapshot
-
-        shipped_icon = catalog_snapshot.icon_for(name)
-        if shipped_icon:
-            icon_url = "/catalog-icon/" + shipped_icon
-
-        # Determine if installed by matching download URL filename against local ZIMs
-        installed = False
-        if download_url:
-            dl_fn = download_url.split("/")[-1]
-            dl_base, _ = _srv._extract_zim_date(dl_fn)
-            installed = dl_base.lower() in local_bases
-
-        # Normalize language to 2-letter codes (OPDS uses 3-letter)
-        if language:
-            norm_parts = []
-            for lp in language.split(","):
-                lp = lp.strip().lower()
-                if lp:
-                    norm_parts.append(_srv._ISO639_3_TO_1.get(lp, lp))
-            language = ",".join(norm_parts)
-        items.append(
-            {
-                "name": name,
-                "title": title,
-                "summary": summary,
-                "language": language,
-                "category": category,
-                "author": author,
-                "date": date,
-                "article_count": article_count,
-                "media_count": media_count,
-                "size_bytes": size_bytes,
-                "download_url": download_url,
-                "icon_url": icon_url,
-                "installed": installed,
-            }
-        )
+    items = _parse_opds_items(root, ns, "https://library.kiwix.org")
 
     with _opds_lock:
         _opds_cache[cache_key] = (time.time(), total, items)
@@ -2318,6 +2303,134 @@ def _fetch_kiwix_catalog(
     # contact, so they earn no follow-on traffic.
     _kick_magnet_resolution()
     return total, items, None
+
+
+# ── community ZIMs ────────────────────────────────────────────────────────
+# Kiwix's community library (kiwix/operations#822) is a second OPDS catalog, a
+# few dozen entries. Its items join the main catalog's last page, tagged
+# source "community", so search, categories and downloads treat them as any
+# other. They are read from memory, the copy on disk, or the snapshot shipped
+# in the package: opening the catalog never reaches the network. The copy is
+# refreshed only by the update check and the standing upkeep (refresh_community):
+# one conditional request (ETag), and a failure waits longer each time.
+COMMUNITY_OPDS_URL = COMMUNITY_OPDS_BASE + "/catalog/v2/entries?count=500"
+COMMUNITY_SOURCE = "community"
+_COMMUNITY_TTL = 86400  # a copy younger than this is not asked for again
+_COMMUNITY_TIMEOUT_S = 15
+_COMMUNITY_BACKOFF_S = 3600  # after one failure; doubled for each more, up to a day
+_COMMUNITY_BACKOFF_MAX_S = 86400
+_community = None  # {"at", "items", "etag", "fails", "next_try"}
+_community_lock = threading.Lock()
+
+
+def _community_path():
+    return os.path.join(_srv.ZIMI_DATA_DIR, "catalog_community.json")
+
+
+def _community_state():
+    """The community catalog as last kept: memory, else disk, else the snapshot
+    shipped in the package (``at`` 0: never fetched here)."""
+    global _community
+    with _community_lock:
+        if _community is not None:
+            return _community
+    try:
+        with open(_community_path(), encoding="utf-8") as f:
+            data = json.load(f)
+        state = {
+            "at": float(data["at"]),
+            "items": list(data["items"]),
+            "etag": str(data.get("etag") or ""),
+            "fails": int(data.get("fails") or 0),
+            "next_try": float(data.get("next_try") or 0),
+        }
+    except (OSError, ValueError, KeyError, TypeError):
+        from zimi import catalog_snapshot
+
+        state = {"at": 0.0, "items": catalog_snapshot.community_entries(), "etag": "", "fails": 0, "next_try": 0.0}
+    with _community_lock:
+        if _community is None:
+            _community = state
+        return _community
+
+
+def _community_save(state):
+    global _community
+    with _community_lock:
+        _community = state
+    try:
+        _srv._atomic_write_json(_community_path(), state)
+    except OSError as e:
+        log.debug("community catalog persist failed: %s", e)
+
+
+def parse_community(xml_bytes):
+    """The items of the community feed's XML."""
+    ns = {"atom": "http://www.w3.org/2005/Atom", "dc": "http://purl.org/dc/terms/"}
+    return _parse_opds_items(ET.fromstring(xml_bytes), ns, COMMUNITY_OPDS_BASE, COMMUNITY_SOURCE)
+
+
+def refresh_community():
+    """Ask the community catalog whether it changed: one conditional request,
+    never more than once a day, and after a failure not again until a longer
+    wait has passed. True when new entries arrived. Called by the update check
+    and the standing upkeep only."""
+    from zimi import p2p as _p2p
+
+    if _p2p.is_offline():
+        return False
+    state = dict(_community_state())
+    now = time.time()
+    if now < state["next_try"] or now - state["at"] < _COMMUNITY_TTL:
+        return False
+    headers = {"User-Agent": USER_AGENT, "Accept-Encoding": "gzip"}
+    if state["etag"] and state["at"]:
+        headers["If-None-Match"] = state["etag"]
+    try:
+        req = urllib.request.Request(COMMUNITY_OPDS_URL, headers=headers)
+        with urllib.request.urlopen(req, timeout=_COMMUNITY_TIMEOUT_S, context=_srv.SSL_CTX) as resp:
+            body = resp.read()
+            if (resp.headers.get("Content-Encoding") or "").lower() == "gzip":
+                body = gzip.decompress(body)
+            etag = resp.headers.get("ETag") or ""
+        items = parse_community(body)
+    except urllib.error.HTTPError as e:
+        if e.code == 304 and state["at"]:
+            _community_save({**state, "at": now, "fails": 0, "next_try": 0.0})
+            return False
+        return _community_failed(state, now, e)
+    except Exception as e:
+        return _community_failed(state, now, e)
+    _community_save({"at": now, "items": items, "etag": etag, "fails": 0, "next_try": 0.0})
+    return True
+
+
+def _community_failed(state, now, err):
+    fails = state["fails"] + 1
+    wait = min(_COMMUNITY_BACKOFF_S * 2 ** (fails - 1), _COMMUNITY_BACKOFF_MAX_S)
+    log.warning("Community catalog refresh failed (next try in %d s): %s", wait, loggable(err))
+    _community_save({**state, "fails": fails, "next_try": now + wait})
+    return False
+
+
+def community_items(query="", lang=""):
+    """The community catalog's items matching ``query`` (title, name or summary)
+    and ``lang`` (a 3-letter code or the 2-letter one). Never fetches."""
+    items = _community_state()["items"]
+    needle = query.lower()
+    short = _srv._ISO639_3_TO_1.get(lang, lang)
+    local_bases = _installed_bases()
+    return [
+        {**it, "installed": _download_installed(it["download_url"], local_bases)}
+        for it in items
+        if (
+            not needle
+            or needle in it["title"].lower()
+            or needle in it["name"].lower()
+            or needle in it["summary"].lower()
+        )
+        and (not lang or short in it["language"].split(","))
+    ]
 
 
 def _note_opds_response_headers(cache_key, headers):
@@ -2377,7 +2490,8 @@ def maintenance_catalog_refresh():
     if not _catalog_refresh_wanted():
         log.debug("maintenance: catalog refresh skipped (idle instance)")
         return False
-    _fetch_kiwix_catalog("", "eng", 500, 0, _internal=True)
+    _full_catalog()  # the pages the catalog view reads, each revalidated if stale
+    refresh_community()
     return True
 
 
@@ -3581,12 +3695,18 @@ def _check_updates():
     Fetches a large batch from the catalog and matches by base name.
     Returns list of {name, installed_date, latest_date, download_url}.
     """
+    refresh_community()  # the community copy is asked for here, with the Kiwix pages below
     zims = _owned_zim_files()
     listed = {z.get("name"): z for z in _srv._zim_list_cache or []}
     # Build lookup: catalog_prefix → (short_name, installed_date, filename)
     # Match by checking if installed filename starts with catalog name + '_'
     installed_files = []
     for name, path in zims.items():
+        if zimparts.is_split(path):
+            # Split by hand to fit its disk (FAT32's 4 GB cap); an update
+            # would download one whole file the disk may not hold, and the
+            # old chunks would outlive it. The operator updates it by hand.
+            continue
         filename = os.path.basename(path)
         prefix, date = _srv._extract_zim_date(filename)
         if date:
@@ -3613,7 +3733,8 @@ def _check_updates():
 
     # Full catalog across all pages — reuses the browse UI's warm SWR cache
     # (empty lang, count 500), so the common path makes no extra Kiwix requests.
-    all_items = _full_catalog()
+    # The community catalog's copy (read from memory, no request) is matched alike.
+    all_items = _full_catalog() + community_items()
     if not all_items:
         return updates
 
@@ -3743,7 +3864,35 @@ def _checksum_ok(dl, path):
     return not want or _file_sha256(path) == str(want).lower()
 
 
-def _download_from_url(dl, url, tmp_dest):
+MIRROR_ROUNDS = 2  # a .meta4 download tries every mirror this many times, no more
+MIRROR_ROUND_WAIT_S = 5  # the wait between rounds
+MIRROR_WAIT_STEP_S = 0.2  # how often the wait looks at Cancel and Pause
+PAUSE_RESUMES_MAX = 3  # same-mirror reconnects after a pause, per attempt
+PAUSE_POLL_S = 1  # how often a paused read loop looks at Pause and Cancel
+
+
+def _wait_before_next_round(dl):
+    """Wait MIRROR_ROUND_WAIT_S before the mirrors' second round. Pause holds
+    the clock, Cancel ends the wait at once. False when cancelled."""
+    waited = 0.0
+    while waited < MIRROR_ROUND_WAIT_S:
+        if dl.get("cancelled"):
+            return False
+        time.sleep(MIRROR_WAIT_STEP_S)
+        if not dl.get("paused"):
+            waited += MIRROR_WAIT_STEP_S
+    return not dl.get("cancelled")
+
+
+def _resume_after_pause(dl, url, tmp_dest, pause_resumes_left):
+    """A connection that broke after a pause is the pause's doing, not the
+    mirror's: reconnect to the same mirror from the partial. Bounded by
+    PAUSE_RESUMES_MAX; a break with no pause in between is a real failure."""
+    log.info("Connection dropped after a pause (%s): resuming on the same mirror", dl["filename"])
+    return _download_from_url(dl, url, tmp_dest, pause_resumes_left - 1)
+
+
+def _download_from_url(dl, url, tmp_dest, pause_resumes_left=PAUSE_RESUMES_MAX):
     """Attempt to download from a single URL. Returns (success, error_msg).
 
     Downloads to a .zim.tmp file first. Supports resuming via HTTP Range header.
@@ -3831,6 +3980,8 @@ def _download_from_url(dl, url, tmp_dest):
         dl["downloaded_bytes"] = 0  # reset: mirror doesn't support resume
         existing_size = 0
         mode = "wb"
+    ranges_ok = resp.status == 206 or "bytes" in (resp.headers.get("Accept-Ranges") or "")
+    paused_here = False
     try:
         with open(tmp_dest, mode) as f:
             while not dl.get("cancelled"):
@@ -3839,7 +3990,8 @@ def _download_from_url(dl, url, tmp_dest):
                 # another. The HTTP connection may idle-timeout while paused;
                 # if so, the next read fails and the mirror loop retries.
                 while dl.get("paused") and not dl.get("cancelled"):
-                    time.sleep(1)
+                    paused_here = True
+                    time.sleep(PAUSE_POLL_S)
                 if dl.get("cancelled"):
                     break
                 chunk = resp.read(65536)
@@ -3851,8 +4003,12 @@ def _download_from_url(dl, url, tmp_dest):
                 delay = _download_throttle.consume(len(chunk), _download_rate_bps())
                 if delay > 0:
                     time.sleep(delay)
-    except (urllib.error.URLError, TimeoutError, ConnectionError, OSError) as e:
+    except (urllib.error.URLError, TimeoutError, ConnectionError, OSError, http.client.HTTPException) as e:
         resp.close()
+        if getattr(e, "errno", None) == errno.ENOSPC:
+            dl["_nospace"] = True   # the disk, not the network: said as such (Almanac HD's gear)
+        elif paused_here and ranges_ok and pause_resumes_left > 0:
+            return _resume_after_pause(dl, url, tmp_dest, pause_resumes_left)
         return False, f"Transfer error from {urlparse(url).hostname}: {e}"
     resp.close()
     if dl.get("cancelled"):
@@ -3861,6 +4017,8 @@ def _download_from_url(dl, url, tmp_dest):
     if total > 0:
         actual = os.path.getsize(tmp_dest)
         if actual != total:
+            if paused_here and ranges_ok and pause_resumes_left > 0:
+                return _resume_after_pause(dl, url, tmp_dest, pause_resumes_left)
             return (
                 False,
                 f"Size mismatch from {urlparse(url).hostname}: expected {total}, got {actual}",
@@ -3990,7 +4148,10 @@ def _post_download_finalize(dl):
     removed_versions = []
     prefix, new_date = _srv._extract_zim_date(dl["filename"])
     old_short = _remove_renamed_predecessor(dl, removed_versions)
-    if new_date:
+    # Almanac HD replaces what it replaces itself (almanachd.on_installed); an older copy of its data is listed in
+    # Manage > Storage, never removed unasked.
+    almanac = dl.get("_source") == "almanac_hd"
+    if new_date and not almanac:
         try:
             for f in os.listdir(_srv.ZIM_DIR):
                 if (
@@ -4055,6 +4216,10 @@ def _post_download_finalize(dl):
                 break
     except Exception as e:
         log.debug("Failed to cache ZIM metadata for download history: %s", e)
+    if almanac:
+        from zimi import almanachd
+
+        almanachd.on_installed("max" if almanachd._MAX_RE.match(dl["filename"]) else "hd")
     _record_download_activity(dl, "ok")
     event_type = "updated" if dl.get("is_update") else "download"
     _srv._append_history(
@@ -4084,14 +4249,17 @@ def _download_thread(dl):
     # or unreachable meta4 fetch must never stall the /manage/download POST).
     meta4 = dl.get("_meta4")
     if meta4:
+        # Kiwix ranks its mirrors (priority, lowest first): keep that order,
+        # the direct URL (a redirector) last.
+        direct = mirrors
+        mirrors = []
         try:
-            fetched = _fetch_mirrors(meta4)
-            for m in fetched:
-                if m not in mirrors:
-                    mirrors.append(m)
+            mirrors = list(_fetch_mirrors(meta4))
         except Exception as e:
             log.debug("meta4 mirror fetch failed (%s) — using direct URL", e)
-    _random.shuffle(mirrors)
+        mirrors += [m for m in direct if m not in mirrors]
+    else:
+        _random.shuffle(mirrors)
     try:
         # BT-first attempt when a backend is configured AND we can find a
         # plausible torrent companion. Falls through to the HTTP mirror loop
@@ -4159,7 +4327,8 @@ def _download_thread(dl):
             # A BT attempt left _source="bt" and stale peer counts on the dl;
             # reset them so the UI reflects the HTTP transport it's now on
             # (matters most for a user-triggered switch-to-direct).
-            dl["_source"] = "http"
+            if dl.get("_source") in (None, "bt"):   # an own source (almanac_hd) keeps its name: it decides what happens after
+                dl["_source"] = "http"
             dl["bt_peers"] = 0
             dl["switch_direct"] = False
             dl["checking"] = (
@@ -4168,24 +4337,37 @@ def _download_thread(dl):
 
         success = False
         last_error = None
-        for mirror_url in mirrors:
-            if dl.get("cancelled"):
+        rounds = MIRROR_ROUNDS if meta4 else 1
+        for round_no in range(rounds):
+            if round_no and not _wait_before_next_round(dl):
                 dl["done"] = True
                 dl["error"] = "Cancelled"
                 return
-            ok, err = _download_from_url(dl, mirror_url, tmp_dest)
-            if ok:
-                if err == "Cancelled":
+            for mirror_url in mirrors:
+                if dl.get("cancelled"):
                     dl["done"] = True
                     dl["error"] = "Cancelled"
                     return
-                success = True
+                ok, err = _download_from_url(dl, mirror_url, tmp_dest)
+                if ok:
+                    if err == "Cancelled":
+                        dl["done"] = True
+                        dl["error"] = "Cancelled"
+                        return
+                    success = True
+                    break
+                last_error = err
+                log.warning("Mirror failed for %s: %s", dl["filename"], err)
+            if success:
                 break
-            last_error = err
-            log.warning("Mirror failed for %s: %s", dl["filename"], err)
         if not success:
             dl["done"] = True
-            dl["error"] = f"All {len(mirrors)} mirror(s) failed. Last: {last_error}"
+            tries = f" after {rounds} tries" if rounds > 1 else ""
+            dl["error"] = f"All {len(mirrors)} mirror(s) failed{tries}. Last: {last_error}"
+            if dl.get("_source") == "almanac_hd":
+                from zimi import almanachd
+
+                almanachd.on_failed(dl, "disk" if dl.get("_nospace") else "network", str(last_error or ""))
             _record_download_activity(dl, "failed", str(last_error or ""))
             _srv._append_history(
                 {
@@ -4201,7 +4383,8 @@ def _download_thread(dl):
         # never be installed, whatever transport delivered it. Raising here
         # lands in the non-transient handler below (tmp removed, error set).
         try:
-            _srv.open_archive(tmp_dest)
+            if not dl.get("_chunk"):  # a chunk of a split book is not a ZIM alone: the whole book is opened once it is in
+                _srv.open_archive(tmp_dest)
         except Exception as e:
             log.error(
                 "Downloaded file failed libzim validation (%s): %s",
@@ -4216,6 +4399,12 @@ def _download_thread(dl):
         # Atomic rename: tmp → final
         os.replace(tmp_dest, dl["dest"])
         dl["done"] = True  # Mark done immediately so UI shows completion
+        if dl.get("_chunk"):
+            # A chunk of Almanac HD's Maximum, staged out of the library's sight: the book goes in once all are here.
+            from zimi import almanachd
+
+            almanachd.finish_max(dl)
+            return
         log.info(
             "Download complete: %s via %s, refreshing library",
             dl["filename"],
@@ -4229,6 +4418,12 @@ def _download_thread(dl):
         is_transient = isinstance(
             e, (urllib.error.URLError, TimeoutError, ConnectionError, OSError)
         )
+        if dl.get("_source") == "almanac_hd" and not dl.get("cancelled"):
+            from zimi import almanachd
+
+            reason = "disk" if getattr(e, "errno", None) == errno.ENOSPC else (
+                "checksum" if "checksum" in str(e) or "validation" in str(e) else "network" if is_transient else "failed")
+            almanachd.on_failed(dl, reason, type(e).__name__)
         if not is_transient:
             try:
                 os.remove(tmp_dest)

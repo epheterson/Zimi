@@ -22,6 +22,7 @@ import os
 import threading
 
 import zimi.server as _srv
+from zimi import zimparts
 
 log = logging.getLogger("zimi")
 
@@ -181,11 +182,12 @@ def owner(path, folder_labels=None):
 
 
 def _zims_in(folder):
-    return sorted(glob.glob(os.path.join(folder, "*.zim")))
+    return zimparts.in_folder(folder)
 
 
 def zim_paths():
-    """Every ``*.zim`` in the folders, folder by folder, name order."""
+    """Every book (``*.zim``, or a split book's ``.zimaa``) in the folders,
+    folder by folder, name order."""
     return [p for d in dirs() for p in _zims_in(d)]
 
 
