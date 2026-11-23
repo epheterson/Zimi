@@ -19,18 +19,28 @@ moon-v1.webp
   Almanac hero, the Today card, the sky scene; app.js _MOON_MAP_URL).
   https://svs.gsfc.nasa.gov/4720
 
+moon-2k-v1.webp
+  The 4096 map below, resized to 2048x1024 (Lanczos), greyscale, WebP quality
+  80. Fetched after the first paint and what the hero is drawn from (it is
+  drawn at most 2048 wide; app.js _MOON_MAP_MID_URL). Public domain, as below.
+
 moon-4k-v1.webp
   NASA Scientific Visualization Studio, CGI Moon Kit (lroc_color_poles_4k.tif),
   from the Lunar Reconnaissance Orbiter Camera's Wide Angle Camera mosaic.
   Public domain. Greyscale, 4096x2048, WebP quality 75 (cwebp 1.6.0). Fetched
-  after the first paint and drawn wherever a Moon is wide enough to show it
-  (the hero, the 3D view; app.js _MOON_MAP_HI_URL). Credited with the other
+  when the 3D view opens, for a Moon wider than the 2048 map serves
+  (app.js _MOON_MAP_HI_URL). Credited with the other
   NASA images in the 3D view ("Images: NASA").
   https://svs.gsfc.nasa.gov/4720
 
 three-r186.min.js (three-LICENSE.txt)
   three.js r186, MIT License. Tree-shaken and minified; the build line is in
   the file's first comment.
+
+satellites-all-snapshot.json.gz (zimi/assets), the satellites' elements
+  CelesTrak (celestrak.org) GP data for the active group and its SATCAT (owner, launch date, radar cross-section),
+  fetched when the release was cut and, where the Satellite data setting allows, again at runtime. Credited in the
+  3D view as CelesTrak.
 
 satellite-7.1.0.min.js (satellite.js-LICENSE.txt)
   satellite.js 7.1.0, MIT License: SGP4/SDP4 only. The build line is in the
@@ -88,6 +98,21 @@ landmarks-v1.json
   checked against Wikidata's (CC0). Each row also has a fame (the number of Wikipedia editions with an article on it, from Wikidata, plus a bonus for the body's best-known places) that orders the names. 139 KB, fetched the first time a body with landmarks
   is near.
   https://planetarynames.wr.usgs.gov/
+
+landmarks-earth-v1.json, landmarks-earth-names-<lang>-v1.json
+  The Earth's natural and human features, built by scripts/build_landmarks_earth.py from Natural Earth 5.1.2
+  (naturalearthdata.com; public domain; GeoJSON from github.com/nvkelso/natural-earth-vector, tag v5.1.2):
+  geography_regions_polys (ranges, deserts, plateaus, plains, capes, islands), geography_regions_points (islands, capes,
+  waterfalls, the poles), geography_regions_elevation_points (peaks), geography_marine_polys (oceans, seas, gulfs, bays,
+  straits), lakes, rivers_lake_centerlines and populated_places. Rows are [name, lat, lon, kind, qid, size_km, src, fame,
+  rank], 2,904 of them: the features Natural Earth first names at a zoom of 5.9 or lower, `rank` being that zoom (the 3D
+  view names a feature once the view is close enough for its zoom, the lowest ranks first). A polygon is placed at its
+  centroid, a river at the middle of its longest piece. Q-IDs are Natural Earth's own wikidataid; a lake's English name is
+  Wikidata's label (CC0) and `fame` is the number of Wikipedia editions with an article (Wikidata, CC0). Names in
+  Arabic, German, Spanish, French, Hebrew, Hindi, Portuguese, Russian and Chinese are Natural Earth's name_<lang>, one
+  file per language, parallel to the rows, "" where it has none and the English name is shown. 169 KB (66 KB compressed)
+  with 23 to 85 KB (9 to 19 KB compressed) of names for the reader's language, fetched the first time the Landmarks layer
+  is on with the Earth in view, or a name is searched for; never with the page.
 
 Almanac HD (zimi_almanac_maxi_<month>.zim, not in this folder: the HD flavour of the
 Almanac, built on each release from a pinned tile source and fetched once on an
@@ -169,6 +194,9 @@ saturn-v1.webp, uranus-v1.webp, neptune-v1.webp
 space-tracks-v1.json, scripts/build_space_tracks.py, scripts/fit_moon_orbits.py
   Spacecraft and outer-planet state vectors from JPL Horizons (public), thinned
   for Hermite interpolation; the big moons' mean circular orbits fitted to it.
+  Spitzer, Kepler and Gaia (retired) end on the day each was switched off (infobox
+  dates on their Wikipedia pages: 30 Jan 2020, 15 Nov 2018, 27 Mar 2025); the view
+  holds each at its table's last place.
 
 asteroids-v1.bin (scripts/build_asteroids.py)
   The main belt's asteroids brighter than H 14 (17,992), osculating elements
@@ -179,7 +207,9 @@ iss-v1.bin (scripts/build_craft_models.py)
   The International Space Station: NASA 3D Resources' "International Space
   Station (ISS) (B)", credit NASA/Michael D. Carbajal; the collection's terms:
   "These assets are free and without copyright". No textures (no logo).
-  Simplified from 174,000 triangles to 31,000 and quantized, 331 KB.
+  Simplified from 174,000 triangles to 26,000, given smooth normals with
+  creases and a physical material per class (cell, truss, shell, radiator),
+  and quantized (ZCR2), about 500 KB.
 
 craft-<model>-v1.bin (scripts/build_craft_models.py)
   The probes close up, from NASA 3D Resources (github.com/nasa/NASA-3D-Resources;
@@ -188,13 +218,104 @@ craft-<model>-v1.bin (scripts/build_craft_models.py)
   pioneer: "Pioneer 10", NASA/JPL/Eyes on the Solar System
   juno: "Juno (B)" (no individual credit listed)
   parker: "Parker Solar Probe", NASA/Matthew J. Garcia
-  webb: "James Webb Space Telescope (B)", NASA/Christopher R. Meaney
+  webb: "James Webb Space Telescope (A)", NASA/Christopher R. Meaney
   galileo: "Galileo", NASA/JPL/Solar System Simulator
-  cassini: "Cassini-Huygens (B)", NASA/JPL/Solar System Simulator
-  Each material's colour (a texture's mean colour, so no printed logo carries
-  over) as a palette of up to eight, simplified to 10,000-31,000 triangles and
-  quantized; 50-200 KB gzipped each. New Horizons and Europa Clipper have no
-  model there and stay a point.
+  cassini: "Cassini Assembly" (454,000 triangles), no individual credit listed
+  kepler: "Kepler (A)" (no individual credit listed), 92 KB
+    https://github.com/nasa/NASA-3D-Resources/blob/master/3D%20Models/Kepler%20(A)/Kepler%20(A).glb
+  osirisrex: "OSIRIS-REx" (no individual credit listed; drawn for OSIRIS-APEX), 100 KB
+    https://github.com/nasa/NASA-3D-Resources/tree/master/3D%20Models (folder "Origins, Spectral Interpretation, Resource Identification, and Security - Regolith Explorer (OSIRIS-REx)")
+  newhorizons: New Horizons 3D model, NASA, 98 KB: https://science.nasa.gov/resource/new-horizons-3d-model
+    (file https://assets.science.nasa.gov/content/dam/science/psd/solar/2023/09/n/New_Horizons.glb)
+  clipper: Europa Clipper downloadable 3D model, NASA/JPL-Caltech, 154 KB
+    (file https://assets.science.nasa.gov/content/dam/science/missions/europa-clipper/3d/clipper_spacecraft.glb)
+  psyche, lucy: NASA/JPL, Eyes on the Solar System (eyes.nasa.gov), 123 KB and 146 KB:
+    https://eyes.nasa.gov/assets/static/models/sc_psyche/psyche.gltf and .../sc_lucy/lucy.gltf
+  hubble: "Hubble Space Telescope (A)" (no individual credit listed), 144 KB, 13.3 m across (drawn at its SGP4 place round the Earth)
+    https://github.com/nasa/NASA-3D-Resources/blob/master/3D%20Models/Hubble%20Space%20Telescope%20(A)/Hubble%20Space%20Telescope%20(A).glb
+  chandra: "Chandra X-ray Observatory" (no individual credit listed), 119 KB, 19.5 m across (its solar arrays), drawn at its SGP4 place
+    https://github.com/nasa/NASA-3D-Resources/blob/master/3D%20Models/Chandra%20X-ray%20Observatory/Chandra%20X-ray%20Observatory.glb
+    (hubble and chandra were Sent-chooser pictures only; on 2026-11-22 they became stock models, with elements from CelesTrak's
+    "science" group: zimi/satellites.py, scripts/build_satellite_snapshot.py)
+  (kepler, newhorizons to lucy moved here from the Almanac HD pack on 2026-11-21 so the standard Almanac draws them; the pack's
+  textured versions of New Horizons, Clipper, OSIRIS-REx, Psyche and Lucy still upgrade them where it is installed.)
+  Each material as a palette entry of up to twelve (colour, roughness,
+  metalness: gold foil, silver blanket, solar cell, aluminium, paint; a
+  texture's mean colour, so no printed logo carries over), simplified to
+  7,000-14,000 triangles, given smooth normals with creases and quantized
+  (ZCR2).
+
+hd/craft/<model>.zcr2, the Sent chooser's craft (scripts/build_craft_models.py --hd, scripts/build_sent_models.py --hd)
+  One model for each craft the Sent list can name, carried by the Almanac HD pack
+  (index.json beside them); the standard Almanac shows each as its picture, one sheet
+  (sent-thumbs-v1.webp, scripts/build_sent_thumbs.py, 128 px cells).
+  Real NASA geometry, simplified to 2,800-9,000 triangles with the same
+  pipeline as above (a texture's mean colour, smooth normals with creases,
+  ZCR2); sizes are the model's own units taken as metres, or the craft's
+  published span where the file's units are not metres (MRO, Mir,
+  Compton), so a size is approximate:
+  From NASA 3D Resources ("These assets are free and without copyright"):
+  lro "Lunar Reconnaissance Orbiter (B)"; mgs "Mars Global Surveyor";
+  odyssey "Mars Odyssey"; mro "Mars Reconnaissance Orbiter (MRO) (A)" (colours
+  set by hand: its textures average to near black); maven "Mars Atmosphere and
+  Volatile EvolutioN (MAVEN) (A)"; messenger "MErcury Surface, Space ENvironment,
+  GEochemistry, and Ranging (MESSENGER)"; magellan "Magellan"; mir "Mir";
+  compton "Gamma Ray Observatory" (Compton);
+  spitzer "Spitzer Space Telescope"; kepler "Kepler (A)"; osirisrex "OSIRIS-REx" (also OSIRIS-APEX); hubble "Hubble Space Telescope (A)";
+  chandra "Chandra X-ray Observatory"; tess "Transiting Exoplanet Survey Satellite (TESS) (B)";
+  fermi "Fermi Gamma-ray Large Area Space Telescope"; landsat1 "Landsat 1, 2, and 3";
+  landsat8 "Landsat 8" (also Landsat 9); terra "Terra"; aqua "Aqua (A)"; tdrs
+  "Tracking and Data Relay Satellites (TDRS) (D)" (shown for TDRS-13); goes
+  "Geostationary Operational Environmental Satellites" (GOES-16, -18); none lists
+  an individual credit. Their spans are set from the craft's published size.
+  From NASA's own 3D resources pages (science.nasa.gov/3d-resources; "free to
+  download and use"): clipper, Europa Clipper downloadable 3D model (NASA/JPL-
+  Caltech); newhorizons, New Horizons 3D model (NASA).
+  Credit "NASA/JPL-Caltech, Eyes on the Solar System" (https://eyes.nasa.gov/apps/solar-system/),
+  used under NASA's media usage guidelines (https://www.nasa.gov/nasa-brand-center/images-and-media/);
+  NASA 3D Resources has no model of these. Each file retrieved 2026-11-13 from:
+    psyche (array cells coloured by hand): https://eyes.nasa.gov/assets/static/models/sc_psyche/psyche.gltf
+    lucy: https://eyes.nasa.gov/assets/static/models/sc_lucy/lucy.gltf
+    lcross: https://eyes.nasa.gov/assets/static/models/sc_lcross/lcross.gltf
+    lunar-prospector: https://eyes.nasa.gov/assets/static/models/sc_lunar_prospector/lunar_prospector.gltf
+    explorer1: https://eyes.nasa.gov/assets/static/models/sc_explorer_1_v2/explorer_1.gltf
+    ladee: https://eyes.nasa.gov/assets/static/models/sc_ladee/ladee.gltf
+  (each with its .bin and textures beside it). They sit only in the Almanac HD pack.
+  Written for Zimi (scripts/build_sent_models.py), no third-party geometry:
+  reconstructions from each craft's published dimensions and photographs, the
+  main body, arrays, dishes, booms and legs at their published sizes and no
+  surface detail a photograph does not show (about 300 to 2,700
+  triangles; 5 to 50 KB each, with cell grids, rimmed dishes, instruments). Sources of the dimensions: the agencies' mission
+  pages, the NSSDC master catalogue and each craft's Wikipedia article.
+  Approximate. skylab (NASA's own model is an exploded pre-launch cluster in
+  loose pieces), luna2, sputnik1, sputnik2, ranger (Rangers 4 and 7 to 9),
+  lunar-orbiter (Lunar Orbiters 1, 2, 3, 5), venera4 (Veneras 4 to 6), vega
+  (Vega 1, 2), mars3 (Mars 2 and 3, and Mars 6 of the same family), phobos
+  (Phobos 1, 2), fobosgrunt, mars96, salyut7, mex, venusexpress, tgo,
+  schiaparelli, beagle2, solarorbiter, juice, smart1, change1, kaguya,
+  chandrayaan1, chandrayaan2o, danuri, hayabusa2, hope, tianwen1, hakuto,
+  beresheet, peregrine, luna25, tiangong (Tiangong-1 and -2), uars, pvo,
+  akatsuki, marsobserver, mco, mpl, ds2, vanguard1, gps (a GPS III satellite), gaia
+  (ESA).
+  Reused models: Luna 5 uses luna9 (the same Ye-6 lander), Luna 15 and 18 use
+  luna-sampler (the Ye-8-5 lander), Chandrayaan-2's lander uses vikram.
+  ESA, JAXA, ISRO, CNSA, KARI, UAE and Roscosmos craft are all in this group:
+  no licence to redistribute their own 3D models was found, so none is used.
+
+hd/craft/ in the Almanac HD ZIM (scripts/build_craft_hd.py)
+  The same craft from the same NASA files with no triangle taken out (up to
+  260,000; Webb's 494,000 become 443,000), their textures (WebP, at most 2048
+  px) and one mesh to a material, and the station at all 172,000 triangles.
+  Stock and HD come from one file each, so the pointing and the size are shared:
+  iss: "International Space Station (ISS) (B)", NASA/Michael D. Carbajal
+  voyager: "Voyager Probe (A)", NASA/Christopher R. Meaney
+  pioneer: "Pioneer 10", NASA/JPL/Eyes on the Solar System
+  juno: "Juno (B)" (no individual credit listed)
+  parker: "Parker Solar Probe", NASA/Matthew J. Garcia
+  webb: "James Webb Space Telescope (A)", NASA/Christopher R. Meaney
+  galileo: "Galileo", NASA/JPL/Solar System Simulator
+  cassini: "Cassini Assembly" (453,987 triangles, 259,000 kept), no individual credit listed
+  All NASA 3D Resources: "free and without copyright".
 
   - The Apollo 11, 12, 15, 16 and 17 sites, past the global map: LRO Narrow
     Angle Camera mosaics (NASA/GSFC/Arizona State University, public domain)
@@ -202,6 +323,152 @@ craft-<model>-v1.bin (scripts/build_craft_models.py)
   - Mercury, Venus, Mars, Jupiter and Saturn at 8192 px: Solar System Scope's
     8k maps, CC BY 4.0, credited on the view while drawn.
 
+Map overlay on the 3D Earth (almanac-maps.js)
+  - Roads and place names read at run time from the installed Kiwix/StreetZim
+    map ZIM's vector tiles (OpenMapTiles schema). Map data (c) OpenStreetMap
+    contributors, ODbL; credited on the view while drawn. Nothing is shipped.
+craft-site-<model>-v1.bin, sites-v1.json (scripts/build_site_models.py)
+  The landers, rovers, flags and the Saturn V the 3D view stands on the Moon and
+  the planets (almanac-sites.js), in the ZCRF format of the probes above.
+  From NASA 3D Resources ("These assets are free and without copyright"):
+  lm, lm-ascent: "Apollo Lunar Module", no credit listed: the descent stage (what stayed) and the ascent stage as two
+    models in one frame, so a site can show the ascent stage until the liftoff
+  perseverance-body, perseverance-wheel: "Mars 2020 Perseverance Rover", NASA/JPL-Caltech;
+    also the Curiosity site's rover (the same family; the wheels split off to turn)
+  ingenuity: "Ingenuity Mars Helicopter", NASA/JPL-Caltech
+  mer: "Mars Exploration Rover - Opportunity (MER-B)" for Spirit and Opportunity, NASA/JPL-Caltech
+  insight: "InSight Cruise Lander (arm deployed)", NASA/JPL-Caltech
+  saturn5: "Saturn V", no credit listed
+  Written for Zimi from the craft's published dimensions (boxes, cylinders, spheres;
+  no third-party geometry): the Lunar Roving Vehicle, Lunokhod, the Chang'e lander,
+  Yutu, Zhurong, Viking, Pathfinder, Sojourner, Phoenix, Huygens, Venera,
+  Surveyor, the US and Chinese flags, Launch Complex 39A and its tower.
+  sites-v1.json: where each model stands at a landing the landmarks file names,
+  the landing's instant (NASA mission pages, NSSDC, CNSA) and the rovers' wheels.
+  The six Apollo sites (scripts/build_apollo_sites.py) also hold what the crews left and where, each row with a
+  source key ("sources" in the file) and its error in metres:
+  - Positions of the descent stages, the ALSEP central stations, the seismometers, the rovers' final parking places
+    and the laser-ranged retroreflectors of Apollo 11, 14 and 15: Wagner, Nelson, Plescia, Robinson, Speyerer and
+    Mazarico 2017, "Coordinates of anthropogenic features on the Moon", Icarus 283, 92 (LROC, Arizona State
+    University; the PDS shapefile ANTHROPOGENIC_OBJECTS). Where another source disagrees this one is used.
+  - Apollo 11: Pustynski and Jones, "Photogrammetric Analysis of Apollo 11 Imagery" (Apollo Lunar Surface Journal,
+    NASA history; the flag's distances, the lander's heading); the USGS 1978 Apollo 11 site map, 1:250 (public
+    domain; positions of the TV camera, the footpaths and the craters near the lander).
+  - Apollo 12 and 14: the ALSJ planimetric maps on LROC images M175428601R and M175388134R (B. J. McInall; their
+    10 m grids read for the positions of the flag, the TV camera, the S-band antenna and the MET, and Cone Crater;
+    positions only, none of the artwork is used); James Fincannon's ALSJ flag pages (the hot-fire check).
+  - Apollo 15, 16, 17: the planimetric maps of the Preliminary Science Reports (NASA, public domain): the flags,
+    the craters near the lander; the ALSJ flag and final-parking pages for the bearings.
+  - Models written for Zimi from published dimensions: the ALSEP central station (34,800 cm3 stowed, NASA ALSEP
+    Design Summary, 1970; its sunshield, mast and antenna schematic), the Passive Seismic Experiment (15 by 11 in
+    shroud, same document), the Apollo 11 seismometer package (panels 1.866 by 0.328 m, Pustynski), the laser
+    retroreflector arrays (46 cm, 100 cubes; 300 cubes for Apollo 15; ILRS), the S-band antenna (3 m dish on a 2 m
+    tripod, ALSJ), the Modular Equipment Transporter (16 by 4 in tires), the television camera on its tripod and the
+    fallen flag. The shapes are schematic where no drawing was found; the sizes are the published ones.
+  - Craters: depth and rim from the Lunar Sourcebook's fresh-crater relations (table 4.1, as the ALSJ quotes them).
+  The Saturn V's flight (almanac-sites-launch.js) is computed from thrust, mass and
+  burn rate (NASA Saturn V flight manual, SA-506); the pitch program is fitted to
+  the Apollo 11 flight report's altitude, range and speed at first-stage cut-off.
+
+traverses-v1.json (scripts/build_traverses.py)
+  Curiosity's and Perseverance's drives, a point per sol where the route turns:
+  NASA/JPL's MMGIS waypoint files (mars.nasa.gov/mmgis-maps/MSL, /M20), public
+  domain, credit "NASA/JPL-Caltech/MSL and Mars 2020 teams". 45 KB.
+
+terrain-<body>-v2.bin (scripts/build_terrain.py)
+  The heights Stand here (almanac-stand.js) walks on, 256 x 128 metres above the
+  body's mean radius, int16, about 64 KB each. Public domain:
+  earth: NOAA NCEI, ETOPO 2022 (60 arc-second surface), a U.S. Government work.
+  moon: NASA SVS CGI Moon Kit, LOLA elevation at 64 pixels a degree (16 for the
+    shipped map).
+  mars: USGS Astrogeology, MOLA DEM mosaic (463 m), NASA/MGS.
+  venus: USGS Astrogeology, Magellan topography (4641 m), NASA/JPL.
+  mercury: USGS Astrogeology, MESSENGER DEM (665 m), NASA/JHUAPL/CIW.
+  ceres: USGS Astrogeology, Dawn FC HAMO DTM (60 pixels a degree), Dawn Team,
+    NASA/JPL-Caltech/UCLA/MPS/DLR/IDA.
+  vesta: USGS Astrogeology, Dawn FC HAMO DTM (48 pixels a degree), Dawn Team,
+    DLR.
+  pluto, charon: USGS Astrogeology, New Horizons LORRI/MVIC global DEMs (300 m),
+    NASA/JHUAPL/SwRI/LPI.
+  phobos: USGS Astrogeology, Mars Express HRSC global DEM (2 pixels a degree),
+    ESA/DLR/FU Berlin through Europlanet, released to the public domain.
+  enceladus: USGS Astrogeology, Cassini ISS shape model (Bland et al. 2019),
+    heights above its triaxial ellipsoid, NASA/JPL/SSI/USGS.
+  Titan, Io, Europa, Ganymede and Callisto have no global height map in the public
+  domain at a usable resolution: they stand on a sphere with generated detail. The
+  craters, hills and rock beneath what the maps hold are generated for every
+  body (seeded by the place, so the same spot is always the same ground) and the
+  view says so in the Almanac's Constants. The Almanac HD release adds the
+  same heights at each model's own resolution (terrain/<body>/ tiles).
+
+land-v1.bin (scripts/build_landmask.py)
+  Where the Earth's coasts are, for Stand here: Natural Earth 1:10 million land
+  polygons (ne_10m_land, public domain, naturalearthdata.com), rasterised to
+  8192 x 4096 and stored as runs (214 KB). The Great Lakes read as land.
+
+landcover-v1.bin (scripts/build_landcover.py)
+  What the land is, one degree a cell, for the live sky's foreground and Stand here's
+  trees (read by almanac-oneland.js): the Blue Marble colour map (NASA Earth Observatory,
+  public domain, earth-day-v1.webp) classified by colour into broadleaf and conifer forest,
+  grass, shrub and desert, snow and ice, and tundra, with each cell's mean colour, and
+  Natural Earth's land polygons (land-v1.bin) for sea and coast. 36 KB. A classification
+  of a picture, not a survey: a cell is the class most of its land pixels look like.
+  Tundra is not found by colour: it is land that is not snow and lies poleward of the
+  Arctic tree line, a coarse longitude table (about 68 N across Eurasia, 58 N round
+  Hudson Bay and Labrador, 60 N in western Alaska; all of Greenland and Iceland) after the
+  CAFF Circumpolar Arctic Vegetation Map (CAVM Team 2003) and Callaghan et al. 2002
+  (Ambio 31), good to a couple of degrees, and the ground south of 55 S.
+
+missions-v1.json, craft-ms-*-v1.bin (scripts/build_missions.py, scripts/build_mission_models.py)
+  Apollo 11: NASA Apollo 11 Mission Report MSC-00171 (events, states, masses), public
+  domain; the Moon's and Sun's places from JPL Horizons (NASA/JPL, public domain). The
+  spacecraft's paths are integrated and fitted to the report: JPL has no ephemeris of
+  Columbia or Eagle. Voyager 1 and 2, flyby dates and distances: JPL Horizons. The
+  vehicles are written from published dimensions (Saturn V Flight Manual, Apollo
+  Operations Handbook, Grumman LM press kit).
+  - Jupiter and Saturn at 8192 px: Solar System Scope's 8k maps, CC BY 4.0,
+    credited on the view while drawn (a gas giant has no public-domain surface
+    mosaic).
+  - Every other world, from NASA/USGS global mosaics (public domain,
+    planetarymaps.usgs.gov/mosaic/), at the mosaic's own pixel size or, where it
+    is far finer, reduced to what a phone can use:
+      Mercury  Mercury_MESSENGER_MDIS_Basemap_BDR_Mosaic_Global_166m.tif
+               (to 32768 px; colour ratios from mercury-v1)
+      Venus    Venus_Magellan_C3-MDIR_Colorized_Global_Mosaic_4641m.tif
+      Mars     Mars_Viking_MDIM21_ClrMosaic_global_232m.tif (to 32768 px)
+      Moon     Lunar_LRO_LROC-WAC_Mosaic_global_100m_June2013.tif (to 65536 px)
+      Io       Io_GalileoSSI-Voyager_Global_Mosaic_ClrMerge_1km.tif
+      Europa   Europa_Voyager_GalileoSSI_global_mosaic_500m.tif
+      Ganymede Ganymede_Voyager_GalileoSSI_global_mosaic_1km.tif (colour from ganymede-v1)
+      Callisto Callisto_Voyager_GalileoSSI_global_mosaic_1km.tif
+      Titan    Titan_ISS_P19658_Mosaic_Global_4km.tif
+      Mimas    Mimas/Cassini_DLR_Mimas.zip: MI_170630_DLR_basemap_degrees.tif (Cassini ISS, DLR)
+      Enceladus Enceladus_Cassini_ISS_Global_Mosaic_100m_HPF.tif
+      Tethys   Tethys_Cassini_mosaic_global_293m.tif
+      Dione    Dione_Cassini_Voyager_mosaic_global_154m.tif
+      Rhea     Rhea_Cassini_Voyager_mosaic_global_417m.tif
+      Iapetus  Iapetus_Cassini_Voyager_mosaic_global_783m.tif
+      Triton   Triton_Voyager2_ClrMosaic_GlobalFill_600m.tif
+      Pluto    Pluto_NewHorizons_Global_Mosaic_300m_Jul2017_8bit.tif (colour from pluto-v1)
+      Charon   Charon_NewHorizons_Global_Mosaic_300m_Jul2017_8bit.tif
+      Vesta    Vesta_Dawn_FC_HAMO_Mosaic_Global_74ppd.tif
+      Ceres    Ceres_Dawn_FC_HAMO_DTM_DLR_Global_60ppd_Oct2016.tif (elevation, drawn
+               as shaded relief: no albedo mosaic is in the public domain)
+      Phobos   Phobos_Viking_Mosaic_40ppd_DLRcontrol.tif
+    The Cassini mosaics of Enceladus, Tethys, Dione and Rhea are high-pass
+    filtered by their makers: relief without the large-scale tone. Greyscale
+    mosaics take their colour from the small map shipped here
+    (scripts/build_almanac_hd.py FileMosaic): the colour ratios, never the
+    brightness. Sources are pinned by SHA-256 in that script. The small maps of
+    Enceladus, Tethys, Dione, Rhea, Iapetus, Triton, Charon, Phobos, Vesta and
+    Ceres (<name>-v1.webp, 1024 x 512) are the same mosaics reduced
+    (build_almanac_hd.py --small-maps).
+
+almanac-sun.js
+  Code, not data: the Sun's prominences, flares and finer surface, made up by
+  the Sun's own rules (like the sunspots) and labelled illustrative in the view.
+  Rotation: IAU WGCCRE 2015 (Carrington rate), differential rotation from
+  Snodgrass and Ulrich 1990.
 ../golden-record/ (the Almanac's Golden Record gallery, almanac.js)
   49 of the 116 pictures on the Voyager Golden Record (1977), as NASA publishes
   them: scans of the original pictures, 640x480, each with its owner's credit

@@ -84,7 +84,7 @@ function fakeCtx() {
 
 // The reader's language: English strings from the shipped file, planet names
 // through the Almanac's own lookup, so a raw English planet name shows up.
-const EN = JSON.parse(read('i18n/en.json'));
+const EN = Object.assign(JSON.parse(read('i18n/en.json')), JSON.parse(read('i18n/almanac/en.json')));
 const HE_PLANETS = { mars: 'מאדים', jupiter: 'צדק', earth: 'כדור הארץ' };
 let reduce = false;
 const S = {
@@ -96,6 +96,7 @@ const S = {
   EN, HE_PLANETS,
 };
 vm.createContext(S);
+S._almAsset = (p) => p;   // app.js: a /static address with its version; here, as it is
 vm.runInContext(require("./sk.cjs")(), S);   // app.js SK, loaded before every Almanac file
 vm.runInContext(require("./sk.cjs").prefWriteSource(), S);
 vm.runInContext(
@@ -112,11 +113,10 @@ for (const fn of ['_dateToJD', '_jdToJulianCentury', '_solveKepler', '_orrDeepRa
                   '_parseHex', '_hexToRgba', '_lighten', '_darken', '_jdnToGregorian', '_cnDeltaTdays', '_computeEclipses']) {
   vm.runInContext(extractFn(almSrc, fn), S);
 }
-for (const v of ['_VOYAGERS', '_HELIO_TERMINATION_AU', '_HELIOPAUSE_AU', '_KUIPER_INNER_AU', '_ORBIT_VIS']) {
+for (const v of ['_VOYAGERS', '_HELIO_TERMINATION_AU', '_HELIOPAUSE_AU', '_KUIPER_INNER_AU']) {
   vm.runInContext(extractVar(almSrc, v), S);
 }
-const auToVis = extractFn(almSrc, '_auToVis');
-vm.runInContext(almSrc.slice(almSrc.indexOf('var _AU_VIS_X'), almSrc.indexOf(auToVis) + auToVis.length), S);
+vm.runInContext(extractFn(almSrc, '_solarSqueeze'), S);
 vm.runInContext(read('almanac-orrery.js'), S);
 vm.runInContext(require('./moon_model.cjs')(), S);   // app.js's Moon model, which the shader is written from
 vm.runInContext(read('almanac-ephem.js'), S);

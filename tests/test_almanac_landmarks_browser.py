@@ -15,12 +15,8 @@ import pytest
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-GL_ARGS = [
-    "--use-angle=swiftshader",
-    "--enable-unsafe-swiftshader",
-    "--disable-accelerated-2d-canvas",
-    "--ignore-gpu-blocklist",
-]
+from browser_slots import WEBGL_ARGS
+GL_ARGS = WEBGL_ARGS + ['--disable-accelerated-2d-canvas']
 VIEW = {"width": 390, "height": 844}
 PLACE = '{"lat":37.77,"lon":-122.42,"name":"San Francisco"}'
 READY_MS = 240_000
@@ -92,7 +88,7 @@ def test_fly_to_the_apollo_11_site(served):
             pg.evaluate("() => new Promise(r => requestAnimationFrame(() => requestAnimationFrame(r)))")   # let a frame draw the names
             assert pg.evaluate(LABELS) == []
             # The pin turns them on, pressed and remembered on this device.
-            pg.click("#ae-lm-btn")
+            pg.evaluate("() => document.getElementById('ae-lm-btn').click()")   # (its button stays in the page, unseen: the name pill's sheet presses it)
             assert pg.evaluate("localStorage.getItem('zimi_alm_landmarks')") == "1"
             assert pg.get_attribute("#ae-lm-btn", "aria-pressed") == "true"
             # Seen from the Earth's side, the near side faces us: its landings are named.
@@ -112,7 +108,7 @@ def test_fly_to_the_apollo_11_site(served):
                 "Array.from(document.querySelectorAll('#ae-lms .ae-lm')).find(b => b.textContent === 'Apollo 11').click()"
             )
             card = pg.inner_text("#ae-card")
-            assert "Apollo 11" in card and "Landing site" in card, card
+            assert "Apollo 11" in card, card   # (the site card is its face, name, year and two verbs)
             pg.evaluate("_aeLmFly(_ae.lm.body, _ae.lm.row)")   # as Go to flies to a site (the card has no button for it)
             pg.wait_for_function(
                 "() => { _ae.dirty = true; _aeKick(); return !_ae.fly; }",
@@ -123,25 +119,26 @@ def test_fly_to_the_apollo_11_site(served):
             # with the row under it, the view keeps most of the screen).
             assert not pg.query_selector("#ae-lm-fly")
             box = pg.evaluate("""() => { var c = document.getElementById('ae-card').getBoundingClientRect(), v = document.getElementById('ae-views').getBoundingClientRect(),
-                t = document.getElementById('ae-clock'); return { card: c.height, top: Math.min(c.top, v.top), time: !!t && t.offsetParent !== null }; }""")
+                t = document.getElementById('ae-pin').getBoundingClientRect(); return { card: c.height, top: Math.min(c.top, v.top), pinBottom: t.bottom, cardTop: c.top }; }""")
             assert box["card"] <= 0.25 * VIEW["height"] + 1, box
             assert box["top"] >= 0.6 * VIEW["height"], box
-            assert not box["time"], box   # the time row steps aside while a card is open
-            # Over the site, as near as allowed, the site at the middle of the screen.
+            assert box["pinBottom"] <= box["cardTop"], box   # the strip stands along the top: a card at the foot never meets it
+            # Over the site, as near as allowed, the site at the middle of the picture (which stands a little above the
+            # screen's middle, over the controls along the foot).
             spot = pg.evaluate("""() => {
                 var b = _aeLmBodies()[0], d = _aeLmDir(b, 0.67408, 23.47297);
                 var p = [b.center[0] + d[0] * b.r, b.center[1] + d[1] * b.r, b.center[2] + d[2] * b.r];
                 _aePlaceCamera(); _ae.gl.camera.updateMatrixWorld();
                 var s = _aeProject(p);
-                return { x: s.x / _ae.w, y: s.y / _ae.h, dist: _ae.dist, min: AE_TARGETS.moon.min, target: _ae.target };
+                return { x: s.x / _ae.w, y: (s.y + (_ae.infoShift || 0)) / _ae.h, dist: _ae.dist, min: AE_TARGETS.moon.min, target: _ae.target };
             }""")
             assert spot["target"] == "moon"
             assert spot["dist"] == pytest.approx(spot["min"], rel=1e-6)
             assert abs(spot["x"] - 0.5) < 0.03 and abs(spot["y"] - 0.5) < 0.03, spot
             # Off again, a landing site chosen in Go to: the flight there shows that one name and its card, alone.
             pg.evaluate("_aeLmSetLayer(false); _ae.lm = null; _aeRenderCard(); window._almReduceMotion = function () { return true; }; _aePreset('earth'); window._almReduceMotion = undefined;")
-            pg.click("#ae-go-btn")
-            pg.click("#ae-go .ae-go-row:has-text('Apollo 11')")
+            pg.click("#ae-find")
+            pg.click("#ae-go [data-ae-go^='lm:moon:']:has-text('Apollo 11')")
             pg.wait_for_function(
                 "() => { _ae.dirty = true; _aeKick(); return !_ae.fly && _ae.target === 'moon' && (" + LABELS + ")().length > 0; }",
                 timeout=60_000,

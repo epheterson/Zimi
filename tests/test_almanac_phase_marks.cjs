@@ -33,9 +33,10 @@ function extractFn(src, name) {
   throw new Error('unbalanced braces extracting ' + name);
 }
 
-const S = { Math, Date, Intl, Object, JSON, console };
+const S = { Math, Date, Intl, Object, JSON, console, Map };
 vm.createContext(S);
 vm.runInContext('var _tzFmtCache = {}; var _currentLang = "en";', S);
+vm.runInContext(almSrc.match(/var ALM_TZ_OFFSET_SLOT_MS = [^\n]+\n/)[0] + almSrc.match(/var _tzOffsetMemo = [^\n]+\n/)[0], S);   // _tzUtcOffsetMin's memo
 vm.runInContext(almSrc.slice(almSrc.indexOf('var _PRINCIPAL_PHASES'), almSrc.indexOf('];', almSrc.indexOf('var _PRINCIPAL_PHASES')) + 2), S);
 for (const name of ['_gregorianToJDN', '_tzFmt', '_tzUtcOffsetMin', '_principalPhaseOnDay']) {
   vm.runInContext(extractFn(almSrc, name), S);

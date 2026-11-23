@@ -91,9 +91,9 @@ def test_on_a_phone_the_sky_is_a_section_of_its_own(browser, served, width, spli
         keys = pg.evaluate("() => _almSecBar.sections.map(s => s.key)")
         if split:
             assert keys[:3] == ["today", "sky", "calendar"], keys
-            # Scrolled to the sky, the bar shows and names it.
-            pg.evaluate("() => { document.querySelector('.alm-sky-info').scrollIntoView({block: 'start'}); }")
-            pg.wait_for_timeout(400)
+            # Sent to the sky (its pill), the bar shows and names it; a plain scroll names a section once it fills the page.
+            pg.evaluate("() => _almSecGo('sky')")
+            pg.wait_for_function("() => !_almSecBar.lock", timeout=10_000)   # the scroll has ended: the bar is no longer held, it works the name out
             pg.evaluate("_almSecBarSync()")
             assert pg.evaluate("_almSecBar.cur") == "sky"
             assert pg.evaluate("document.getElementById('alm-secbar').hidden") is False
@@ -118,6 +118,45 @@ def test_a_part_not_laid_out_never_names_its_section(browser, served):
         pg.evaluate("""() => { const s = _almSecBar.sections.filter(x => x.key === 'solar')[0];
             s.els.forEach(e => { e.style.display = 'none'; }); _almSecBarSync(); }""")
         assert pg.evaluate("_almSecBar.cur") == "calendar"
+        assert not errors, errors
+    finally:
+        ctx.close()
+
+
+@pytest.mark.parametrize("width", [390, 1280])
+def test_the_pill_moves_when_the_next_section_fills_the_page(browser, served, width):
+    """the pill switched only when a section's top reached the bar, so the page showed none of the
+    previous section while it was still the one named. Scrolling down, a section is named once it has risen into the
+    upper part of the room under the bar, and the next one never already sits there while the old one is named."""
+    ctx, pg, errors = _page(browser, served, width)
+    try:
+        pg.wait_for_function("() => typeof _almSecBar !== 'undefined' && _almSecBar && _almSecBar.sections",
+                             timeout=60_000, polling=POLL_MS)
+        pg.wait_for_timeout(1500)
+        probe = """() => {
+            const root = document.getElementById('almanac-content'), st = _almSecBar, top = root.getBoundingClientRect().top;
+            const bar = _almSecBarLine(), room = root.clientHeight - bar;
+            const laid = st.sections.map(s => ({ key: s.key, top: s.els.map(e => e.getBoundingClientRect()).filter(r => r.height > 0)
+                .reduce((m, r) => Math.min(m, r.top), 1e9) - top - bar })).filter(s => s.top < 1e8);
+            const i = laid.findIndex(s => s.key === st.cur);
+            return { cur: st.cur, room, own: i < 0 ? null : laid[i].top, next: i < 0 || i + 1 >= laid.length ? null : laid[i + 1].top,
+                     max: root.scrollHeight - root.clientHeight, y: root.scrollTop };
+        }"""
+        seen, y, step = set(), 0, 140
+        while y <= 40 * 140:
+            pg.evaluate("y => { document.getElementById('almanac-content').scrollTop = y; }", y)
+            pg.wait_for_timeout(120)
+            m = pg.evaluate(probe)
+            seen.add(m["cur"])
+            if m["next"] is not None and m["y"] < m["max"] - 4:
+                # The next section is not yet in the upper two fifths of the room (it would be the one named).
+                assert m["next"] >= 0.4 * m["room"] - 4, ("the next section fills the page but the old one is named", y, m)
+            if m["own"] is not None and m["cur"] != "today":
+                assert m["own"] <= 0.4 * m["room"] + 4, ("a section is named before it fills the page", y, m)
+            if m["y"] >= m["max"] - 4:
+                break
+            y += step
+        assert len(seen) >= 4, seen
         assert not errors, errors
     finally:
         ctx.close()

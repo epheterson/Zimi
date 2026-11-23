@@ -98,6 +98,26 @@ def test_the_tiles_are_inside_under_hd(built):
     assert hd.article_count < 400
 
 
+def test_the_layer_list_says_whether_the_hd_craft_are_inside(built, tmp_path):
+    # Without them hd.json says nothing of craft, so the 3D view never asks for craft/index.json (a 404 on every open).
+    assert "craft" not in json.loads(_read(Archive(built["flavour"]), "hd/hd.json"))
+    craft = tmp_path / "craft"
+    craft.mkdir()
+    (craft / "index.json").write_text('{"models":{"voyager":{"file":"voyager.zcr2"}}}', encoding="utf-8")
+    (craft / "voyager.zcr2").write_bytes(b"ZCR2")
+    hd = Archive(
+        maxi.build(
+            built["tiles"], str(tmp_path / "out"), month="2026-11", craft_dir=str(craft)
+        )
+    )
+    man = json.loads(_read(hd, "hd/hd.json"))
+    assert man["craft"] is True and man["layers"]["earth/day"]["max"] == 2
+    assert (
+        json.loads(_read(hd, "hd/craft/index.json"))["models"]["voyager"]["file"]
+        == "voyager.zcr2"
+    )
+
+
 def test_the_standard_flavour_has_no_tiles(built):
     std = Archive(built["standard"])
     with pytest.raises(KeyError):
@@ -123,8 +143,9 @@ def test_a_source_without_a_layer_list_fails_the_build(tmp_path):
 def test_the_release_step_writes_the_manifest_zimi_reads(built, tmp_path, monkeypatch):
     from zimi import almanachd
 
-    maxi.main(["--tiles", built["tiles"], "--out", str(tmp_path), "--tag", "v1.15.4"])
-    path = tmp_path / (maxi.FILE_FMT % datetime.date.today().strftime("%Y-%m"))
+    # --month: the name the release job works out from what releases shipped (gh); given here, so no network.
+    maxi.main(["--tiles", built["tiles"], "--out", str(tmp_path), "--tag", "v1.15.4", "--month", "2026-11c", "--no-craft"])
+    path = tmp_path / (maxi.FILE_FMT % "2026-11c")
     raw = (tmp_path / "zimi_almanac_maxi.json").read_text(encoding="utf-8")
     man = json.loads(raw)
     assert set(man) == {"file", "size", "sha256", "tag"}
@@ -141,7 +162,7 @@ def test_the_release_step_writes_the_manifest_zimi_reads(built, tmp_path, monkey
 
 def test_the_tile_source_pin_names_the_immutable_input():
     pin = maxi.read_pin()
-    assert set(pin) == {"file", "size", "sha256", "tag"}
+    assert {"file", "size", "sha256", "tag"} <= set(pin) <= {"file", "size", "sha256", "tag", "chunks", "hd_size", "max_size"}
     assert (
         re.fullmatch(r"[0-9a-f]{64}", pin["sha256"])
         and pin["file"].endswith(".zim")
@@ -149,10 +170,17 @@ def test_the_tile_source_pin_names_the_immutable_input():
     )
 
 
-def test_a_cached_tile_source_that_matches_the_pin_is_used_without_the_network(tmp_path):
+def test_a_cached_tile_source_that_matches_the_pin_is_used_without_the_network(
+    tmp_path,
+):
     f = tmp_path / "tiles.zim"
     f.write_bytes(b"tiles")
-    pin = {"file": "tiles.zim", "size": 5, "sha256": hashlib.sha256(b"tiles").hexdigest(), "tag": "v0.0.0"}
+    pin = {
+        "file": "tiles.zim",
+        "size": 5,
+        "sha256": hashlib.sha256(b"tiles").hexdigest(),
+        "tag": "v0.0.0",
+    }
     assert maxi.fetch_tiles(str(tmp_path), pin) == str(f)
 
 
@@ -171,3 +199,54 @@ def test_the_release_builds_and_attaches_the_flavour_and_its_manifest():
     assert re.search(
         r"needs:\s*\[[^\]]*almanac-maxi", wf
     ), "the release waits for the flavour"
+
+
+def _craft_asset(tmp_path, members=None):
+    sys.path.insert(0, os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "scripts"))
+    import pack_almanac_craft as pack
+
+    folder = tmp_path / "folder"
+    folder.mkdir(exist_ok=True)
+    for name, data in (members or {"index.json": b'{"models": {}}', "psyche.zcr2": b"ZCR2"}).items():
+        (folder / name).write_bytes(data)
+    archive = tmp_path / "almanac_craft_2026-11.tar.gz"
+    return pack.pack(str(folder), str(archive)), archive
+
+
+def test_the_pinned_craft_asset_is_downloaded_checked_and_unpacked(tmp_path, monkeypatch):
+    sha, archive = _craft_asset(tmp_path)
+    pin = tmp_path / "almanac-craft.json"
+    pin.write_text(json.dumps({"file": archive.name, "size": archive.stat().st_size, "sha256": sha, "tag": "v1.16.0"}), encoding="utf-8")
+    seen = []
+    monkeypatch.setattr(maxi, "_download", lambda url, path, want: (seen.append((url, want)), str(archive))[1])
+    folder = maxi.fetch_craft(str(tmp_path / "cache"), str(pin))
+    assert sorted(os.listdir(folder)) == ["index.json", "psyche.zcr2"]
+    assert seen == [("https://github.com/epheterson/Zimi/releases/download/v1.16.0/" + archive.name, sha)]
+
+
+def test_no_craft_pin_means_a_flavour_without_the_hd_craft(tmp_path):
+    assert maxi.fetch_craft(str(tmp_path / "cache"), str(tmp_path / "none.json")) is None
+
+
+def test_a_release_without_a_craft_pin_stops(tmp_path):
+    with pytest.raises(SystemExit):
+        maxi.fetch_craft(str(tmp_path / "cache"), str(tmp_path / "none.json"), required=True)
+
+
+def test_the_craft_archive_is_reproducible_and_refuses_paths(tmp_path, monkeypatch):
+    sha1, archive = _craft_asset(tmp_path)
+    sha2, _ = _craft_asset(tmp_path)
+    assert sha1 == sha2
+    import io
+    import tarfile
+
+    bad = tmp_path / "bad.tar.gz"
+    with tarfile.open(bad, "w:gz") as t:
+        info = tarfile.TarInfo("../evil.zcr2")
+        info.size = 1
+        t.addfile(info, io.BytesIO(b"x"))
+    pin = tmp_path / "pin.json"
+    pin.write_text(json.dumps({"file": "bad.tar.gz", "size": 1, "sha256": "x", "tag": "v1"}), encoding="utf-8")
+    monkeypatch.setattr(maxi, "_download", lambda url, path, want: str(bad))
+    with pytest.raises(SystemExit):
+        maxi.fetch_craft(str(tmp_path / "cache"), str(pin))

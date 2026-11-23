@@ -21,12 +21,8 @@ import pytest
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, ROOT)
 
-GL_ARGS = [
-    "--use-angle=swiftshader",
-    "--enable-unsafe-swiftshader",
-    "--disable-accelerated-2d-canvas",
-    "--ignore-gpu-blocklist",
-]
+from browser_slots import WEBGL_ARGS
+GL_ARGS = WEBGL_ARGS + ['--disable-accelerated-2d-canvas']
 PHONE = {"width": 390, "height": 844}
 DESKTOP = {"width": 1440, "height": 900}
 PLACE = '{"lat":37.77,"lon":-122.42,"name":"San Francisco"}'
@@ -75,6 +71,16 @@ QIDS = {
     "ganymede": "Q3169",
     "callisto": "Q3134",
     "titan": "Q2565",
+    "vesta": "Q3030",
+    "mimas": "Q15034",
+    "enceladus": "Q3303",
+    "tethys": "Q15047",
+    "dione": "Q15040",
+    "rhea": "Q15050",
+    "iapetus": "Q17958",
+    "triton": "Q3359",
+    "charon": "Q6604",
+    "phobos": "Q7547",
 }
 # IAU north poles (RA, Dec, degrees, J2000): what the maps are placed by, and the axis drawn.
 POLES = {"earth": (0.0, 90.0), "uranus": (257.311, -15.175), "venus": (272.76, 67.16)}
@@ -102,6 +108,7 @@ def served(tmp_path_factory):
     yield "http://127.0.0.1:%d" % httpd.server_address[1]
     httpd.shutdown()
     srv.ZIM_DIR, srv.ZIMI_DATA_DIR = old
+    srv.load_cache(force=True)  # the library cache was built from the temporary folder
 
 
 def open_view(pg, served):
@@ -287,6 +294,32 @@ def test_axes_point_at_the_iau_pole_and_follow_the_orbits(page):
     assert page.evaluate("() => _ae.gl.axes.uranus.north.visible")
 
 
+
+def test_an_axis_is_drawn_about_its_body_so_float32_does_not_shake_it(page):
+    # Out at Mars a world position rounded to float32 snaps by about 1.5 km, more than Phobos's
+    # whole arrowhead: the arrow shook as the UFO moved near it. The buffer holds points about
+    # the body's centre (small numbers) and the line is placed at the centre in double precision.
+    assert axis_of(page, "mars")
+    got = page.evaluate(
+        """() => { var o = _ae.gl.axes.mars, a = Array.from(o.north.geometry.attributes.position.array.slice(0, 18));
+          return { big: Math.max.apply(null, a.map(Math.abs)), pos: o.north.position.toArray(), want: o.pos, r: _ae.gl.planets.mars.r || 1 }; }"""
+    )
+    assert got["big"] < 50, got  # Earth radii about the centre, not thousands out
+    assert max(abs(a - b) for a, b in zip(got["pos"], got["want"])) < 1e-9, got
+    page.evaluate("_aeSetOrbits(false)")
+
+def test_no_axis_stands_over_the_horizon_close_over_a_world(page):
+    # A craft a few dozen km over the Earth saw the axis and its arrowhead as three thin lines meeting above it: from
+    # within a world's sky its axis is not drawn; from orbit it is.
+    assert axis_of(page, "earth")
+    near = page.evaluate(
+        """() => { var cam = _ae.gl.camera, was = cam.position.clone(); cam.position.set(0, 1.02, 0.2); cam.updateMatrixWorld();
+          var keys = _aeAxisBodies(_ae.gl, _ae.scene).map(a => a.key); cam.position.copy(was); cam.updateMatrixWorld(); return keys; }"""
+    )
+    assert "earth" not in near, near
+    page.evaluate("_aeSetOrbits(false)")
+
+
 def test_the_sheet_opens_and_shuts(page):
     # Whatever an earlier test of this shared page left up (a sheet, a picked satellite or place) is put away first.
     page.evaluate(
@@ -307,7 +340,7 @@ def test_the_sheet_opens_and_shuts(page):
         "a clean view: no card, the sheet hidden until asked for",
         state,
     )
-    page.click("#ae-info-btn")
+    page.evaluate("() => document.getElementById('ae-info-btn').click()")   # (its button stays in the page, unseen: the name pill's sheet presses it)
     page.wait_for_function(
         "() => document.querySelector('#ae-info').classList.contains('in')"
     )
@@ -352,7 +385,7 @@ def test_the_sheet_opens_and_shuts(page):
     page.wait_for_function("() => !_ae.fly", timeout=60_000, polling=100)
     assert page.evaluate("_ae.info") == "jupiter"
     assert page.get_attribute("#ae-info-btn", "aria-expanded") == "true"
-    page.click("#ae-info-btn")
+    page.evaluate("() => document.getElementById('ae-info-btn').click()")   # (its button stays in the page, unseen: the name pill's sheet presses it)
     page.wait_for_function("() => !_ae.info")
 
 
@@ -374,7 +407,6 @@ def test_the_constants_list_every_quantity_a_sheet_shows(page):
     assert not problems, problems
     # And the pages are there: both tiles open with those rows, each with a source.
     for tile, want in (("k_bodies", "_aeRefBodiesRows"), ("k_poles", "_aeRefAxesRows")):
-        n = page.evaluate("(w) => window[w]().length", want)
         page.evaluate("(t) => _almRefOpen(t)", tile)
         page.wait_for_function(
             "(t) => window._tb && _tb.id === t && document.querySelectorAll('#tb-body .tb-consts tbody tr').length > 0",
@@ -384,6 +416,8 @@ def test_the_constants_list_every_quantity_a_sheet_shows(page):
         rows = page.evaluate(
             "() => [...document.querySelectorAll('#tb-body .tb-consts tbody tr')].map(r => [r.cells.length, r.querySelector('.tb-src').textContent.trim()])"
         )
+        # (a tile's rows are its own numbers plus its models)
+        n = page.evaluate("(t) => TB_CONST_ROWS[t]().length", tile)
         assert len(rows) == n and all(c == 3 and src for c, src in rows), (
             tile,
             len(rows),
@@ -444,7 +478,7 @@ def test_screenshots(served):
                         pg.screenshot(
                             path="%s/%s-%s-card-%s.png" % (SHOTS, name, label, body)
                         )
-                        pg.click("#ae-info-btn")
+                        pg.evaluate("() => document.getElementById('ae-info-btn').click()")   # (its button stays in the page, unseen: the name pill's sheet presses it)
                         pg.wait_for_timeout(700)
                         pg.screenshot(
                             path="%s/%s-%s-sheet-%s.png" % (SHOTS, name, label, body)
@@ -458,9 +492,10 @@ def test_the_iss_label_is_only_its_name(page):
     """The age of the orbital data is not written on the Earth: the status line and the station's sheet carry it."""
     page.evaluate("_aePreset('earth'); _ae.dirty = true; _aeUpdate(_aeDisplayMs()); _aeUpdateLabels()")
     assert page.evaluate("document.querySelector('#ae-lbl-iss .ae-label-sub')") is None
+    page.wait_for_function("() => !!_ae.issPos", timeout=60_000, polling=100)   # the shipped orbital snapshot puts the station in view
     rows = sheet(page, "iss")
-    if rows:   # the shipped orbital snapshot has put the station in view
-        assert "data" in rows and "Orbital" not in rows["data"] and re.search(r"\d{4}", rows["data"]), rows
+    assert rows, "the station's sheet has no rows"
+    assert "data" in rows and "Orbital" not in rows["data"] and re.search(r"\d{4}", rows["data"]), rows
 
 
 def test_the_body_is_framed_above_the_sheet(page):
@@ -471,7 +506,7 @@ def test_the_body_is_framed_above_the_sheet(page):
     rest = page.evaluate("() => _ae.infoShift")
     centre = "() => { _aeUpdate(_aeDisplayMs()); return _aeProject(_aeBodyPos('jupiter')).y; }"
     before = page.evaluate(centre)
-    page.click("#ae-info-btn")
+    page.evaluate("() => document.getElementById('ae-info-btn').click()")   # (its button stays in the page, unseen: the name pill's sheet presses it)
     page.wait_for_function("(r) => _ae.infoShift > r + 50 && " + settled, arg=rest, timeout=20_000, polling=100)
     top = page.evaluate("document.querySelector('#ae-info').getBoundingClientRect().top")
     after = page.evaluate(centre)
@@ -479,3 +514,36 @@ def test_the_body_is_framed_above_the_sheet(page):
     page.evaluate("_aeCloseInfo(false)")
     page.wait_for_function("(r) => Math.abs(_ae.infoShift - r) < 0.6", arg=rest, timeout=20_000, polling=100)
     assert page.evaluate(centre) == pytest.approx(before, abs=1)
+
+
+def test_the_info_cards_close_button_is_the_thing_a_finger_lands_on(page):
+    """The card's body (a masked scroller) painted over its X, so a tap on the X landed on the text and closed nothing."""
+    page.evaluate("_aeCloseInfo(false); _ae.selected = null; _ae.lm = null; _ae.place = null; _ae.pick = null; _aeRenderCard()")
+    page.evaluate("_aePreset('mars')")
+    page.wait_for_function("() => !_ae.fly && !document.querySelector('#ae-info-btn').hidden", timeout=60_000, polling=100)
+    page.evaluate("() => document.getElementById('ae-info-btn').click()")
+    page.wait_for_function("() => document.querySelector('#ae-info').classList.contains('in') && ['none', 'matrix(1, 0, 0, 1, 0, 0)'].includes(getComputedStyle(document.querySelector('#ae-info')).transform)", timeout=20_000)
+    top = page.evaluate("""() => { var r = document.getElementById('ae-info-x').getBoundingClientRect();
+      var e = document.elementFromPoint(r.left + r.width / 2, r.top + r.height / 2); return e && (e.id || e.className); }""")
+    assert top == "ae-info-x", top
+
+
+@pytest.mark.parametrize("size", [(1280, 800), (390, 844)])
+def test_the_info_card_rises_from_the_bottom_centred_and_an_outside_press_only_puts_it_away(page, size):
+    page.set_viewport_size({"width": size[0], "height": size[1]})
+    try:
+        page.evaluate("_aeCloseInfo(false); _ae.selected = null; _ae.lm = null; _ae.place = null; _ae.pick = null; _aeRenderCard()")
+        page.evaluate("_aePreset('mars')")
+        page.wait_for_function("() => !_ae.fly && !document.querySelector('#ae-info-btn').hidden", timeout=60_000, polling=100)
+        page.evaluate("() => document.getElementById('ae-info-btn').click()")
+        page.wait_for_function("() => document.querySelector('#ae-info').classList.contains('in') && ['none', 'matrix(1, 0, 0, 1, 0, 0)'].includes(getComputedStyle(document.querySelector('#ae-info')).transform)", timeout=20_000)
+        box = page.evaluate("() => { var r = document.getElementById('ae-info').getBoundingClientRect(), v = _ae.el.getBoundingClientRect(); return { l: r.left - v.left, r: v.right - r.right, w: r.width, bottom: v.bottom - r.bottom, vw: v.width }; }")
+        assert box["w"] <= 480 and abs(box["l"] - box["r"]) < 2 and box["bottom"] < 2, box   # from the bottom, centred, never pinned to a side
+        before = page.evaluate("() => [_ae.az, _ae.el_, _ae.dist, !!_ae.pick, !!_ae.selected, _ae.target]")
+        page.mouse.click(size[0] // 2, 120)   # outside the card, over the picture
+        page.wait_for_function("() => !_ae.info", timeout=5000)
+        page.wait_for_timeout(300)
+        after = page.evaluate("() => [_ae.az, _ae.el_, _ae.dist, !!_ae.pick, !!_ae.selected, _ae.target]")
+        assert after == before, ("the scene under the card did not get the press", before, after)
+    finally:
+        page.set_viewport_size({"width": 390, "height": 844})
