@@ -1,0 +1,642 @@
+// ── Almanac: the ground and the sky seen from it ──
+// The pictures of "Stand here" (almanac-stand.js): the sky of the body one stands on, its atmosphere computed on the
+// GPU from that body's own air (Rayleigh and dust or haze coefficients, scale heights, the Sun's real distance), the
+// stars and the Milky Way, the Sun and every body that is up, and the terrain (almanac-terrain.js) lit by all of it.
+// Everything is in a local frame in metres: x east, y north, z up, the origin on the ground at the viewer's feet,
+// which is why a camera 1.7 m above a planet does not lose its digits the way the orbit view's Earth radii would.
+// Atmospheres follow Hillaire 2020's single scattering (almanac-skygl.js has the Earth's full model for the live sky);
+// the bodies whose air is a thick haze (Venus, Titan) are lit as an overcast, the airless ones have no sky at all.
+
+var AE_ST_PI = '3.14159265';
+// The snow line over the equator and how it falls with latitude, the trees stopping a fixed way below it. 5000 m × cos(latitude)^1.5 gives 2,900 m at 46 N
+// (the Alps' climatic snow line is 2,700 to 3,100 m) and 1,770 m at 60 N; the earlier power of 2.2 put it at 2,250 m, and the Alps in June were one white sheet.
+var AE_ST_SNOW_LINE_M = AE_GROUND_REF.snowLineM, AE_ST_SNOW_LINE_POW = AE_GROUND_REF.snowLinePow, AE_ST_TREE_BELOW_M = AE_GROUND_REF.treeBelowM;
+var AE_ST_COVER_WOBBLE_M = 160, AE_ST_SLOPE_GAIN = 1.6;   // how far the lines wander, and the DEM's slopes made steeper (its cells smooth them)
+var AE_ST_GLARE = [0.3, 0.04];   // the glare round the Sun: its peak (a share of the Sun's light) and the angle (radians) where it has halved twice
+var AE_ST_FAR_HAZE = 0.55;   // the Earth's terrain 20 km and more away keeps this share of the air's in-scatter: a range 50 km off is a blue-grey shape against the sky, not erased by it
+var AE_ST_DISC_K_PER_E = 40;   // the exposure a lit disc is held under, over its sunlight: a mean lunar albedo (0.12) comes out about three quarters bright
+var AE_ST_SUN_DISC_GAIN = 6e4;     // the Sun's disc against the sky's glow: stays a distinct disc where thick dust dims and blues it (Mars at sunset)
+var AE_ST_FINE_SLOPE = 0.045;   // the ground's fine relief: its height over its own wavelength (about 3 degrees), at every scale
+var AE_ST_FILL = 0.12;   // a slope turned from the Sun keeps this share of the flat ground's light (backscatter off the regolith round it)
+var AE_ST_BACKSCATTER = 0.07, AE_ST_SURGE = 0.9, AE_ST_SURGE_WIDTH = 0.14;   // the share of the Sun a regolith shadow keeps; the opposition surge round the antisolar point (Apollo's heiligenschein)
+var AE_ST_ROCK_FADE_M = [8, 45];  // stones thin out with distance into plain ground (a pixel of them at range is noise, not stone)
+var AE_ST_STEPS_SKY = 30, AE_ST_STEPS_GROUND = 5, AE_ST_STEPS_SUN = 6;   // the air's march: the sky is drawn at half size, so it can afford many (fewer stripe the twilight where the shadow's edge crosses the air)
+var AE_ST_GAMMA_N = AE_GROUND_REF.gamma, AE_ST_GAMMA = AE_ST_GAMMA_N.toFixed(1);   // (the shaders' text, and the number for their twins in JS)
+var AE_ST_MAP_AVG_LOD = 4;   // the mip of the colour map that stands for the place's own colour once the map's texels would be blocks
+
+// The air of each body that has some. ray: Rayleigh scattering per km at the surface (red, green, blue) and its scale
+// height; mie: the dust or haze's extinction, single-scattering albedo and the forward lobe (g) per channel, its scale
+// height; ozone: absorption (the Earth's blue twilight); top: where the model ends (km). ms: how much light scattered
+// more than once is added to the single scattering (the sky is brighter than one bounce).
+// diffuse: a haze too thick for rays: the sky is one colour (radiance relative to the Sun's), sun: how much of the Sun's
+// light reaches the ground as direct light, frac: how much reaches it at all, vis: how far one sees (km).
+var AE_ST_ATMO = {
+  earth: { ray: [0.005802, 0.013558, 0.0331], hR: 8, mie: { ext: [0.008436, 0.008436, 0.008436], alb: [0.4737, 0.4737, 0.4737], g: [0.8, 0.8, 0.8], h: 1.2 }, ozone: [0.00065, 0.001881, 0.000085], top: 100, ms: 1.6 },
+  // Mars: a thin gas (a hundredth of the Earth's Rayleigh) and a standing haze of iron-rich dust. Blue is absorbed
+  // in the dust (butterscotch day) yet passes most freely along the Sun's own path and scatters furthest forward
+  // (the blue glow round a low Sun, the Sun itself a blue-white disc at sunset).
+  mars: { ray: [0.00009, 0.00021, 0.00051], hR: 11.1, mie: { ext: [AE_STAND_MARS_TAU / 11.1, AE_STAND_MARS_TAU / 11.1 * 0.88, AE_STAND_MARS_TAU / 11.1 * 0.714], alb: [0.99, 0.56, 0.28], g: [0.55, 0.62, 0.82], h: 11.1 }, ozone: [0, 0, 0], top: 90, ms: 1.2, gain: 1.8 },
+  // Pluto's faint blue haze, in layers high up; the sky is black but for a glow round the Sun near the horizon.
+  pluto: { ray: [0.0000004, 0.0000009, 0.0000022], hR: 50, mie: { ext: [0.00002, 0.00003, 0.000045], alb: [0.9, 0.95, 1], g: [0.7, 0.7, 0.7], h: 30 }, ozone: [0, 0, 0], top: 200, ms: 0.5 },
+  venus: { diffuse: { sky: [0.86, 0.55, 0.26], frac: 0.04, direct: 0.05, vis: AE_STAND_HAZE_VIS_KM.venus } },
+  titan: { diffuse: { sky: [0.78, 0.42, 0.12], frac: 0.1, direct: 0.04, vis: AE_STAND_HAZE_VIS_KM.titan, ghost: 0.04 } }
+};
+var AE_ST_NIGHT_FLOOR = AE_GROUND_REF.nightFloor;     // the faintest light the eye is set to (relative to the Sun at the Earth being 1)
+var AE_ST_GROUND_ALBEDO_REF = 0.3;  // the ground the exposure is set by
+var AE_ST_EXPOSURE_TARGET = AE_GROUND_REF.exposureTarget;    // 1 - exp(-L k) of the reference ground: about 0.65 on screen
+var AE_ST_SCATTER_GAIN = 2.0;       // scattered light over what one bounce gives (the air's other bounces, the ground's glow)
+var AE_ST_LUX_PER_UNIT = 1.3e5;     // the Sun at the Earth, lux
+var AE_ST_LM_DARK = 7.6, AE_ST_LM_PER_DECADE = 1.5, AE_ST_LM_MAX = 7.9, AE_ST_LM_MIN = -4.5, AE_ST_DARK_LUM = 1.7e-4;   // almanac-skygl.js SG_LM_*
+
+// The air in GLSL: the same numbers as uniforms, so one shader serves every body.
+var AE_ST_GLSL_ATMO = [
+  'uniform float uR, uRc, uH0, uTop, uAtmo;',                 // radius, ground sphere's radius, ground height (km), top, 1 when the body has rays
+  'uniform vec3 uRay, uMieExt, uMieAlb, uMieG, uOzone, uSunDir, uSunE;',
+  'uniform float uHR, uHM, uMs, uGainS;',
+  'const float PI = ' + AE_ST_PI + ';',
+  'float gJit = 0.5;',   // where in each step a sample is taken (a different place for each pixel: stripes become fine grain)
+  'float heightKm(vec3 p) { vec3 q = vec3(p.xy, p.z + uRc); return (dot(p, p) + 2.0 * p.z * uRc + uH0 * (uRc + uR)) / (length(q) + uR); }',
+  'vec3 sigmaExt(float h) { h = max(h, 0.0); return uRay * exp(-h / uHR) + uMieExt * exp(-h / uHM) + uOzone * max(0.0, 1.0 - abs(h - 25.0) / 15.0); }',
+  'float sphereFar(vec3 p, vec3 d, float Rs) { vec3 q = vec3(p.xy, p.z + uRc); float lq = length(q), c = (lq - Rs) * (lq + Rs), b = dot(q, d), D = b * b - c; return D < 0.0 ? -1.0 : -b + sqrt(D); }',
+  'float sphereNear(vec3 p, vec3 d, float Rs) { vec3 q = vec3(p.xy, p.z + uRc); float lq = length(q), c = (lq - Rs) * (lq + Rs), b = dot(q, d), D = b * b - c; return D < 0.0 ? -1.0 : -b - sqrt(D); }',
+  // The Sun's light at a point: nothing in the planet's shadow, else thinned by the air along the way up.
+  'vec3 sunTrans(vec3 p) {',
+  '  vec3 q = vec3(p.xy, p.z + uRc); float b = dot(q, uSunDir), lq = length(q), c = (lq - uRc) * (lq + uRc), D = b * b - c;',
+  '  if (b < 0.0 && D > 0.0 && -b - sqrt(D) > 0.01) return vec3(0.0);',
+  '  if (uAtmo < 0.5) return vec3(1.0);',
+  '  float Lt = sphereFar(p, uSunDir, uR + uTop); vec3 od = vec3(0.0); float tp = 0.0;',
+  '  for (int i = 0; i < ' + AE_ST_STEPS_SUN + '; i++) { float f = float(i + 1) / ' + AE_ST_STEPS_SUN + '.0, t = Lt * f * f, dt = t - tp; od += sigmaExt(heightKm(p + uSunDir * (tp + gJit * dt))) * dt; tp = t; }',
+  '  return exp(-od);',
+  '}',
+  // Where the ray o + t d is inside the air (t0..t1), ending at the ground if it meets it; false if it never is.
+  'bool airSpan(vec3 o, vec3 d, out float t0, out float t1) {',
+  '  float far = sphereFar(o, d, uR + uTop);',
+  '  if (far < 0.0) return false;',
+  '  t0 = max(sphereNear(o, d, uR + uTop), 0.0); t1 = far;',
+  '  float g = sphereNear(o, d, uRc);',
+  '  if (g > t0 && g < t1) t1 = g;',
+  '  return t1 > t0;',
+  '}'
+].join('\n');
+// The light a ray collects along ray o + t d (t from 0 to tmax) and what is left of what was behind it.
+function _aeStInscatterGlsl(name, steps) {
+  return [
+    'vec3 ' + name + '(vec3 o, vec3 d, float tmax, out vec3 T) {',
+    '  T = vec3(1.0); vec3 col = vec3(0.0);',
+    '  float cosS = dot(d, uSunDir), phR = 3.0 / (16.0 * PI) * (1.0 + cosS * cosS);',
+    '  vec3 g = uMieG, phM = (1.0 - g * g) / (4.0 * PI * pow(1.0 + g * g - 2.0 * g * cosS, vec3(1.5)));',
+    '  float tp = 0.0;',
+    '  for (int i = 0; i < ' + steps + '; i++) {',
+    '    float f = float(i + 1) / ' + steps + '.0, t = tmax * f * f, dt = t - tp;',
+    '    vec3 p = o + d * (tp + gJit * dt); float h = max(heightKm(p), 0.0);',
+    '    vec3 sR = uRay * exp(-h / uHR), sM = uMieExt * uMieAlb * exp(-h / uHM), ext = sigmaExt(h), stepT = exp(-ext * dt);',
+    '    vec3 sun = sunTrans(p) * uSunE;',
+    '    vec3 S = sun * (sR * phR + sM * phM) + sun * (sR + sM) * uMs * 0.0796;',
+    '    col += T * S * (vec3(1.0) - stepT) / max(ext, vec3(1e-9)) * ' + AE_ST_SCATTER_GAIN.toFixed(2) + ' * uGainS;',
+    '    T *= stepT; tp = t;',
+    '  }',
+    '  return col;',
+    '}'
+  ].join('\n');
+}
+var AE_ST_GLSL_TONE = 'vec3 tone(vec3 L, float k) { return pow(vec3(1.0) - exp(-L * k), vec3(1.0 / ' + AE_ST_GAMMA + ')); }';
+var AE_ST_GLSL_NOISE = [
+  'float hash31(vec3 p) { p = fract(p * vec3(0.1031, 0.1030, 0.0973)); p += dot(p, p.yzx + 33.33); return fract((p.x + p.y) * p.z); }',
+  'float vnoise(vec3 p) {',
+  '  vec3 i = floor(p), f = fract(p); f = f * f * (3.0 - 2.0 * f);',
+  '  return mix(mix(mix(hash31(i), hash31(i + vec3(1,0,0)), f.x), mix(hash31(i + vec3(0,1,0)), hash31(i + vec3(1,1,0)), f.x), f.y),',
+  '             mix(mix(hash31(i + vec3(0,0,1)), hash31(i + vec3(1,0,1)), f.x), mix(hash31(i + vec3(0,1,1)), hash31(i + vec3(1,1,1)), f.x), f.y), f.z) * 2.0 - 1.0;',
+  '}'
+].join('\n');
+
+// ── The sky ──
+// Drawn first, edge to edge. Looking down at the planet from above its air, the planet itself (the terrain) is drawn over
+// this; what is seen here is the air and the black beyond.
+var AE_ST_SKY_VERT = [
+  'varying vec2 vNdc;',
+  'void main() { vNdc = position.xy; gl_Position = vec4(position.xy, 0.9999, 1.0); }'
+].join('\n');
+// The Milky Way over the sky (its panorama by galactic longitude and latitude), in a fragment shader that has d, c and uMilky, uMw, uToGal.
+var AE_ST_GLSL_MILKY = [
+  '  if (uMw > 0.0) {',
+  '    vec3 g = uToGal * d; float l = atan(g.y, g.x), b = asin(clamp(g.z, -1.0, 1.0));',
+  '    c += texture2D(uMilky, vec2(0.5 - l / (2.0 * PI), 0.5 - b / PI)).rgb * uMw;',
+  '  }'
+].join('\n');
+// A per-pixel dither in 0..1 (interleaved gradient noise, Jimenez 2014) into gJit.
+var AE_ST_GLSL_JITTER = '  gJit = fract(52.9829189 * fract(dot(gl_FragCoord.xy, vec2(0.06711056, 0.00583715))));';
+// An equirectangular map's uv derivatives, unwrapped across the longitude seam (no one-pixel line where u jumps from 1 to 0).
+var AE_ST_GLSL_SEAM_GRAD = '  vec2 dx = dFdx(uv), dy = dFdy(uv); dx.x -= floor(dx.x + 0.5); dy.x -= floor(dy.x + 0.5);';
+var AE_ST_SKY_FRAG = [
+  'precision highp float;',
+  AE_ST_GLSL_ATMO, AE_ST_GLSL_TONE,
+  _aeStInscatterGlsl('inscatterSky', AE_ST_STEPS_SKY),
+  'uniform vec3 uCam, uFwd, uRight, uUp; uniform vec2 uTan; uniform float uK;',
+  'uniform float uDiffuse; uniform vec3 uDiffSky;',
+  'uniform sampler2D uMilky; uniform float uMw; uniform mat3 uToGal;',      // the Milky Way: its panorama, its strength, local -> galactic
+  'varying vec2 vNdc;',
+  'void main() {',
+  '  vec3 d = normalize(uFwd + uRight * vNdc.x * uTan.x + uUp * vNdc.y * uTan.y), L = vec3(0.0), T;',
+  '  if (uDiffuse > 0.5) { L = uDiffSky * (0.7 + 0.3 * smoothstep(-0.1, 0.5, d.z)); }',
+  '  else if (uAtmo > 0.5) {',
+  '    if (uCam.z < 10.0 && sphereNear(uCam, d, uRc) > 0.0 && length(d.xy) > 1e-4) {',
+  '      float rr = uRc / (uRc + max(uCam.z, 0.0)), sz = -sqrt(max(0.0, 1.0 - rr * rr)); d = vec3(normalize(d.xy) * sqrt(1.0 - sz * sz), sz);',
+  '    }',
+  '    float t0, t1; if (airSpan(uCam, d, t0, t1)) L = inscatterSky(uCam + d * t0, d, t1 - t0, T);',
+  '    float ga = acos(clamp(dot(d, uSunDir), -1.0, 1.0));',
+  '    L += sunTrans(uCam) * uSunE * (' + AE_ST_GLARE[0].toFixed(3) + ' / (1.0 + (ga / ' + AE_ST_GLARE[1].toFixed(3) + ') * (ga / ' + AE_ST_GLARE[1].toFixed(3) + ')));',   // the Sun's own glare: the eye's and the air's veil, a core that blinds and a wide brightening of the sky toward it
+  '  }',
+  '  vec3 c = tone(L, uK);',
+  AE_ST_GLSL_MILKY,
+  '  gl_FragColor = vec4(c, 1.0);',
+  '}'
+].join('\n');
+
+// ── Stars ──
+var AE_ST_STARS_VERT = [
+  'attribute float aMag; attribute vec3 aColor;',
+  'uniform mat3 uRot; uniform float uLim, uExtinct, uDpr, uStarScale;',
+  'varying vec3 vCol; varying float vA;',
+  'void main() {',
+  '  vec3 l = uRot * position; float s = max(l.z, 0.0), X = 1.0 / (s + 0.025 * exp(-11.0 * s));',
+  '  float m = aMag + uExtinct * X, d = uLim - m, f = clamp(d / 0.6, 0.0, 1.0);',
+  '  float vis = d <= 0.0 ? 0.0 : f * f * (3.0 - 2.0 * f) * min(1.0, 0.12 * pow(10.0, 0.2 * d));',
+  '  vCol = aColor; vA = vis;',
+  '  gl_PointSize = max(1.0, (1.1 + 0.35 * clamp(d, 0.0, 6.0)) * uDpr * uStarScale);',
+  '  gl_Position = vis <= 0.0 ? vec4(2.0, 2.0, 2.0, 1.0) : projectionMatrix * vec4(mat3(viewMatrix) * l * 10.0, 1.0);',   // a star too faint to show is clipped, not drawn and discarded
+  '}'
+].join('\n');
+// Objects other modules put in the sky (satellites, trains, rockets, plumes: _aeStandSkySource in almanac-stand.js): the stars' own
+// brightness rule (extinction by the air mass, hidden once the sky is brighter than they are), at a local direction, with a size.
+var AE_ST_SKYOBJ_VERT = [
+  'attribute float aMag, aScale; attribute vec3 aColor;',
+  'uniform float uLim, uExtinct, uDpr, uStarScale;',
+  'varying vec3 vCol; varying float vA;',
+  'void main() {',
+  '  vec3 l = position; float s = max(l.z, 0.0), X = 1.0 / (s + 0.025 * exp(-11.0 * s));',
+  '  float m = aMag + uExtinct * X, d = uLim - m, f = clamp(d / 0.6, 0.0, 1.0);',
+  '  float vis = d <= 0.0 || l.z < -0.02 ? 0.0 : f * f * (3.0 - 2.0 * f) * min(1.0, 0.12 * pow(10.0, 0.2 * d));',
+  '  vCol = aColor; vA = vis;',
+  '  gl_PointSize = max(1.0, (1.1 + 0.35 * clamp(d, 0.0, 6.0)) * uDpr * uStarScale * aScale);',
+  '  gl_Position = vis <= 0.0 ? vec4(2.0, 2.0, 2.0, 1.0) : projectionMatrix * vec4(mat3(viewMatrix) * l * 10.0, 1.0);',
+  '}'
+].join('\n');
+var AE_ST_SKYLINE_FRAG = [
+  'precision highp float; varying vec3 vCol; varying float vA;',
+  'void main() { gl_FragColor = vec4(vCol, vA * 0.7); }'
+].join('\n');
+// The sky from a provider (_aeStandAir in almanac-stand.js): the same triangle and tone, the radiance from the provider's own chunk.
+function _aeStSkyAirFrag(chunk) {
+  return [
+    'precision highp float;',
+    AE_ST_GLSL_ATMO, AE_ST_GLSL_TONE,
+    'uniform vec3 uCam, uFwd, uRight, uUp; uniform vec2 uTan; uniform float uK;',
+    'uniform sampler2D uMilky; uniform float uMw; uniform mat3 uToGal;',
+    'varying vec2 vNdc;',
+    chunk,
+    'void main() {',
+    '  vec3 d = normalize(uFwd + uRight * vNdc.x * uTan.x + uUp * vNdc.y * uTan.y);',
+    '  vec3 c = tone(oaSky(d), uK);',
+    AE_ST_GLSL_MILKY,
+    '  gl_FragColor = vec4(c, 1.0);',
+    '}'
+  ].join('\n');
+}
+// Trees (the Earth's, almanac-stand.js _aeStandTrees): dark cones lit and hazed as the ground is, so they read as trees at dusk.
+var AE_ST_TREE_VERT = [
+  'attribute vec3 aNrm, aTree;',
+  'varying vec3 vP, vN, vTree;',
+  'void main() { vP = position; vN = aNrm; vTree = aTree; gl_Position = projectionMatrix * viewMatrix * vec4(position, 1.0); }'
+].join('\n');
+function _aeStTreeFrag(albLines, uniforms) {
+  return [
+  'precision highp float;',
+  AE_ST_GLSL_ATMO, AE_ST_GLSL_TONE,
+  _aeStInscatterGlsl('inscatterGround', AE_ST_STEPS_GROUND),
+  'uniform vec3 uCam, uAmbient; uniform float uKg;' + uniforms,
+  'varying vec3 vP, vN, vTree;',
+  'void main() {',
+  AE_ST_GLSL_JITTER,
+  '  float dist = length(vP - uCam); vec3 V = (uCam - vP) / dist, N = normalize(vN);',
+  albLines,
+  '  vec3 sT = sunTrans(vP * 0.001) * uSunE;',
+  '  vec3 L = alb * (sT * max(dot(N, uSunDir), 0.0) / PI + uAmbient * (0.55 + 0.45 * N.z));',
+  '  if (uAtmo > 0.5) {',
+  '    vec3 o = uCam * 0.001, d = -V, Tt, ins; float t0, t1;',
+  '    if (airSpan(o, d, t0, t1)) { t1 = min(t1, dist * 0.001); if (t1 > t0) { ins = inscatterGround(o + d * t0, d, t1 - t0, Tt); L = L * Tt + ins; } }',
+  '  }',
+  '  gl_FragColor = vec4(tone(L, uKg), 1.0);',
+  '}'
+  ].join('\n');
+}
+var AE_ST_TREE_FRAG = _aeStTreeFrag([
+  '  vec3 alb = vTree.z > 3.5 ? vec3(0.2, 0.19, 0.1) : vTree.z < 0.5 ? vec3(0.026, 0.05, 0.03) : vTree.z < 1.5 ? vec3(0.03, 0.05, 0.026) : vTree.z < 2.5 ? vec3(0.05, 0.09, 0.035) : vec3(0.04, 0.028, 0.02);',
+  '  alb *= (0.8 + 0.4 * vTree.y) * (0.6 + 0.4 * min(vTree.x, 1.0));'   // each tree its own shade, darker below, paler at the tips
+].join('\n'), '');
+// Grass: blades in tufts, the ground's own colour (uGrassAlb) darker at the root and paler dry at the tip, swaying a little (uSway: 0 under reduced motion).
+var AE_ST_GRASS_VERT = [
+  'attribute vec3 aNrm, aTree; uniform float uTime, uSway;',
+  'varying vec3 vP, vN, vTree;',
+  'void main() {',
+  '  vec3 p = position; float s = uSway * aTree.x * aTree.x * 0.16, ph = uTime * 1.9 + position.x * 0.41 + position.y * 0.33 + aTree.y * 6.28;',
+  '  p.x += s * sin(ph); p.y += s * 0.6 * sin(ph * 0.8 + 1.3);',
+  '  vP = p; vN = aNrm; vTree = aTree; gl_Position = projectionMatrix * viewMatrix * vec4(p, 1.0);',
+  '}'
+].join('\n');
+var AE_ST_GRASS_FRAG = _aeStTreeFrag([
+  '  vec3 alb = uGrassAlb * (0.85 + 0.5 * vTree.y) * (0.75 + 0.45 * min(vTree.x, 1.0)); alb = mix(alb, alb * vec3(1.6, 1.45, 0.8), smoothstep(0.4, 1.0, vTree.x) * (0.5 + 0.5 * vTree.y));'
+].join('\n'), ' uniform vec3 uGrassAlb;');
+var AE_ST_STARS_FRAG = [
+  'precision highp float; varying vec3 vCol; varying float vA;',
+  'void main() { vec2 c = gl_PointCoord - 0.5; float a = vA * (1.0 - smoothstep(0.15, 0.5, length(c))); if (a < 0.003) discard; gl_FragColor = vec4(vCol, a); }'
+].join('\n');
+
+// ── The Sun and the other bodies that are up ──
+// A quad on the sky round the body's direction, drawn as a lit disc (a phase if it is a sphere lit from the side) with the
+// light thinned by the air along its line of sight; below a pixel in size it is a point of the star's kind, from its
+// magnitude. The Sun adds its own glow.
+var AE_ST_BODY_VERT = [
+  'uniform vec3 uDir, uRight, uUp; uniform float uHalf;',
+  'varying vec2 vUv;',
+  'void main() {',
+  '  vUv = position.xy; vec3 l = normalize(uDir + (uRight * position.x + uUp * position.y) * uHalf);',
+  '  gl_Position = projectionMatrix * vec4(mat3(viewMatrix) * l * 10.0, 1.0);',
+  '}'
+].join('\n');
+// A sky object with an angular size (a twilight rocket plume: a sunlit cloud tens of degrees long): a soft billboard in angular units, long along its track.
+var AE_ST_BOARD_FRAG = [
+  'precision highp float; uniform vec2 uAxis, uSize, uSunTan; uniform vec3 uCol, uColBase; uniform float uLum, uHalf, uSeed; varying vec2 vUv;',
+  'float h2(vec2 p) { return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453); }',
+  'float n2(vec2 p) { vec2 i = floor(p), f = fract(p); f = f * f * (3.0 - 2.0 * f); return mix(mix(h2(i), h2(i + vec2(1, 0)), f.x), mix(h2(i + vec2(0, 1)), h2(i + vec2(1, 1)), f.x), f.y); }',
+  // A twilight rocket plume: a small very bright core at the rocket's end (+axis), then a fan that widens and thins along the track behind it, a narrow head and a broad translucent bell,
+  // its edges broken by noise; blue-white where it is lit, going pale gold and pink toward the tail and the Sun's side. Never white but at the core.
+  'void main() {',
+  '  vec2 q = vUv * uHalf, perp = vec2(-uAxis.y, uAxis.x);',
+  '  float u = dot(q, uAxis) / uSize.x, v = dot(q, perp) / uSize.y;',          // u: -1 the tail .. +1 the head; v: across, in the fan's own half-widths
+  '  float t = clamp((u + 1.0) * 0.5, 0.0, 1.0);',
+  '  if (u < -1.05 || u > 1.05) discard;',
+  '  float env = 0.08 + 0.92 * pow(sin(min((1.0 - t) / 0.8, 1.0) * 1.5708), 0.6);',                                // the fan's half-width: narrow at the head, broad behind
+  '  vec2 np = vec2(u * 3.2 + uSeed * 9.0, v * 2.2);',
+  '  float brk = (n2(np) - 0.5) * 0.7 + (n2(np * 2.7 + 5.0) - 0.5) * 0.35;',      // noise-broken edges and the soft banding of a real plume
+  '  float vv = abs(v) / env + brk * (0.25 + 0.6 * (1.0 - t));',
+  '  float across = pow(max(1.0 - vv, 0.0), 1.3);',
+  '  float tail = smoothstep(0.0, 0.28, t);',                                      // the tail end dissolves
+  '  float fan = across * tail * (0.28 + 0.72 * pow(t, 0.9)) * (0.85 + 0.3 * n2(np * 1.3 + 11.0));',
+  '  vec2 hd = vec2((u - 0.98) * uSize.x, v * uSize.y) / (uSize.y * 0.11);',   // the core: tiny and round, at the head
+  '  float core = exp(-dot(hd, hd) * 1.4);',
+  '  float sunSide = clamp(dot(vec2(-uAxis.y, uAxis.x) * sign(v), uSunTan) * 0.5 + 0.5, 0.0, 1.0);',
+  '  float warm = clamp((1.0 - t) * 0.85 + (sunSide - 0.5) * 0.5 * (1.0 - t) + 0.12, 0.0, 1.0);',
+  '  vec3 c = mix(uCol, uColBase, warm);',
+  '  float a = clamp(fan * 0.8, 0.0, 0.8) + core * 0.75;',
+  '  if (a <= 0.003) discard;',
+  '  gl_FragColor = vec4(mix(c * 0.92, vec3(1.0), clamp(core * 0.8, 0.0, 1.0)), clamp(a * uLum, 0.0, 1.0));',   // additive blending multiplies the colour by the alpha itself
+  '}'
+].join('\n');
+// The Moon's dark disc in a total eclipse: near black with a trace of earthshine, over the sky's glow.
+var AE_ST_OCC_FRAG = [
+  'precision highp float; uniform float uHalf, uRho, uPix, uDark; varying vec2 vUv;',
+  'void main() {',
+  '  float a = length(vUv * uHalf), cov = 1.0 - smoothstep(uRho - max(uPix * 0.75, 1e-7), uRho + max(uPix * 0.75, 1e-7), a);',
+  '  if (cov <= 0.002) discard;',
+  '  gl_FragColor = vec4(0.012, 0.014, 0.019, cov * uDark);',
+  '}'
+].join('\n');
+var AE_ST_BODY_FRAG = [
+  'precision highp float;', AE_ST_GLSL_TONE,
+  'uniform vec3 uDir, uRight, uUp, uSunFrom, uTint, uTrans; uniform float uHalf, uRho, uPix, uE, uK, uEmit, uVis, uGlow, uSkyLit;',
+  'uniform sampler2D uMap; uniform float uMapped, uGrey, uMapGain, uCorona, uSeed, uPointScale; uniform vec3 uOcc; uniform mat3 uBody;',                    // the body's own map, and local -> body-fixed
+  'uniform sampler2D uRingMap; uniform float uRings, uRp; uniform vec3 uRingN, uCen; uniform vec2 uRing;',    // Saturn's rings: plane, centre and size (km)
+  'varying vec2 vUv;',
+  'const float PI = ' + AE_ST_PI + ';',
+  // The colour of the disc at a point of it (n: the unit normal toward the sky).
+  'vec3 discAlbedo(vec3 n) {',
+  '  if (uMapped < 0.5) return uTint;',
+  '  vec3 nb = uBody * n; vec2 uv = vec2(atan(nb.y, nb.x) / (2.0 * PI) + 0.5, asin(clamp(nb.z, -1.0, 1.0)) / PI + 0.5);',
+  AE_ST_GLSL_SEAM_GRAD,
+  '  vec3 m = textureGrad(uMap, uv, dx, dy).rgb; if (uGrey > 0.5) m = vec3(m.r);',
+  '  return pow(m, vec3(' + AE_ST_GAMMA + ')) * uMapGain;',
+  '}',
+  'void main() {',
+  '  vec2 o = vUv * uHalf; float a = length(o);',                    // radians from the body's centre
+  '  vec3 col = vec3(0.0); float alpha = 0.0;',
+  '  float edge = max(uPix * 0.75, 1e-7);',
+  '  bool disc = uEmit > 0.5 || uRho > uPix * 1.2;',
+  '  float R = uEmit > 0.5 ? max(uRho, uPix * 0.8) : uRho;',               // the Sun is at least a pixel, its light kept
+  '  float cov = 0.0;',
+  '  if (disc) {',
+  '    cov = 1.0 - smoothstep(R - edge, R + edge, a);',
+  '    if (cov > 0.0) {',
+  '      vec2 q = o / R; float r2 = min(dot(q, q), 1.0);',
+  '      vec3 n = uRight * q.x + uUp * q.y - uDir * sqrt(1.0 - r2);',
+  '      if (uEmit > 0.5) {',
+  '        float limb = 1.0 - 0.45 * (1.0 - sqrt(1.0 - r2)), kept = (uRho * uRho) / (R * R);',
+  '        col = tone(uTrans * (' + AE_ST_SUN_DISC_GAIN.toExponential(2) + ' * uE * limb * kept), uK);',
+  '        if (uOcc.z > 0.0) col *= smoothstep(uOcc.z - edge, uOcc.z + edge, length(o - uOcc.xy));',   // the Moon in front: its disc takes the Sun's, a crescent is what is left
+  '      } else {',
+  '        float lam = smoothstep(-0.02, 0.1, dot(n, uSunFrom)) * max(dot(n, uSunFrom), 0.0);',
+  '        col = tone(discAlbedo(n) * uE * lam / PI * uTrans, min(uK, ' + AE_ST_DISC_K_PER_E.toFixed(1) + ' / max(uE, 1e-12)));',   // a lit disc is exposed for itself: the dark-adapted night exposure would blow the Moon out white, maria and all
+  '      }',
+  '      alpha = cov;',
+  '    }',
+  '  } else {',
+  '    float s = max(uPix * 1.4, uRho * 1.2) * uPointScale; float g = exp(-pow(a / s, 2.0) * 1.6);',
+  '    col = uTint * mix(vec3(1.0), uTrans / max(max(uTrans.r, uTrans.g), max(uTrans.b, 1e-6)), 0.7); alpha = g * uVis;',
+  '  }',
+  // Rings: the plane through the planet's centre, its profile by radius, lit by the Sun and dark in the planet's shadow,
+  // behind the planet's disc where the planet is nearer along the ray.
+  '  if (uRings > 0.5) {',
+  '    vec3 d = normalize(uDir + (uRight * vUv.x + uUp * vUv.y) * uHalf); float dn = dot(d, uRingN);',
+  '    if (abs(dn) > 1e-5) {',
+  '      float t = dot(uCen, uRingN) / dn;',
+  '      if (t > 0.0) {',
+  '        vec3 P = d * t; float rr = length(P - uCen), u = (rr - uRing.x) / (uRing.y - uRing.x);',
+  '        if (u > 0.0 && u < 1.0) {',
+  '          vec4 rm = texture2D(uRingMap, vec2(u, 0.5));',
+  '          float tb = dot(uCen, d), disc2 = tb * tb - dot(uCen, uCen) + uRp * uRp;',
+  '          bool front = disc2 <= 0.0 || t < tb - sqrt(disc2);',
+  '          if (front && rm.a > 0.0) {',
+  '            vec3 L = uSunFrom; float b = dot(uCen - P, L), miss = length(uCen - P - L * b);',
+  '            float shade = (b > 0.0 && miss < uRp) ? 0.08 : 1.0, side = step(0.0, dot(uRingN, L) * dot(uRingN, -d));',
+  '            float lit = mix(0.35, 1.0, side) * max(abs(dot(uRingN, L)), 0.12);',
+  '            vec3 rc = tone(rm.rgb * uE * lit * shade * 0.5 * uTrans, uK);',
+  '            col = mix(col, rc, rm.a); alpha = max(alpha, rm.a);',
+  '          }',
+  '        }',
+  '      }',
+  '    }',
+  '  }',
+  // The corona: a ring round the Moon's black disc, pearly white at the edge, thinning to nothing at 3.4 radii (almanac-sky.js _skyPaintCorona).
+  '  if (uCorona > 0.0 && uRho > 0.0) {',
+  '    float x = a / uRho, t = (x - 0.98) / (3.4 - 0.98);',
+  // Radial: a thin bright ring hugging the limb, a steep fall (r^-2.5 and beyond), fine streamers along the radius, longer near the Sun's equator (the
+  // sprite's horizontal), and small pink prominences ON the limb. Seeded by the day: the same eclipse is the same corona.
+  '    float phi = atan(o.y, o.x);',
+  '    if (t > 0.0 && t < 1.0) {',
+  '      float streak = 0.0;',
+  '      for (int i = 0; i < 28; i++) {',
+  '        float fi = float(i), h1 = fract(sin((uSeed * 91.7 + fi) * 12.9898) * 43758.5453), h2 = fract(sin((uSeed * 53.1 + fi) * 78.233) * 24634.6345), h3 = fract(sin((uSeed * 17.3 + fi) * 39.425) * 51375.2154);',
+  '        float dp = abs(mod(phi - h1 * 6.2832 + 3.1416, 6.2832) - 3.1416), sg = 0.025 + 0.035 * h2;',
+  '        float ln = (0.45 + 1.1 * h3) * (0.65 + 0.9 * pow(abs(cos(h1 * 6.2832)), 2.0));',
+  '        streak += (0.25 + 0.6 * h3) * exp(-dp * dp / (2.0 * sg * sg)) * exp(-(x - 1.0) / ln);',
+  '      }',
+  '      float ring = 0.55 * exp(-pow((x - 1.0) / 0.03, 2.0));',
+  '      float w = 0.85 * pow(0.98 / x, 2.6) + ring + 0.3 * streak * smoothstep(1.02, 1.2, x);',
+  '      w *= 1.0 - smoothstep(2.6, 3.4, x);',
+  '      vec3 cc = mix(vec3(250.0, 246.0, 236.0), vec3(235.0, 236.0, 244.0), clamp(t * 1.6, 0.0, 1.0)) / 255.0;',
+  '      col += cc * w * uCorona; alpha = max(alpha, clamp(w, 0.0, 1.0) * uCorona);',
+  '    }',
+  '    for (int b = 0; b < 4; b++) {',
+  '      float fb = float(b), ang = 6.2832 * fract(sin((uSeed * 37.1 + fb) * 12.9898) * 43758.5453), sz = 0.035 + 0.04 * fract(sin((uSeed * 11.3 + fb) * 78.233) * 24634.6345);',
+  '      float d = length(o / uRho - vec2(cos(ang), sin(ang)) * (1.0 + sz * 0.4)), bead = smoothstep(sz, sz * 0.35, d);',
+  '      col += vec3(0.95, 0.32, 0.45) * bead * uCorona; alpha = max(alpha, bead * uCorona);',
+  '    }',
+  '  }',
+  '  if (uGlow > 0.0) {',
+  '    float h = uRho * 1.0, s = a / max(h, 1e-6);',
+  '    float glow = uGlow / (1.0 + s * s * 0.5) * uSkyLit;',
+  '    col += uTint * mix(vec3(1.0), uTrans / max(max(uTrans.r, uTrans.g), max(uTrans.b, 1e-6)), 0.8) * glow; alpha = max(alpha, min(1.0, glow));',
+  '  }',
+  '  if (alpha <= 0.002) discard;',
+  '  gl_FragColor = vec4(col, alpha);',
+  '}'
+].join('\n');
+
+// ── The ground ──
+// The small sky stretched over the screen: device pixels over the screen's size.
+var AE_ST_COPY_FRAG = 'precision highp float; uniform sampler2D tMs; uniform float uAlpha; varying vec2 vNdc; void main() { gl_FragColor = vec4(texture2D(tMs, vNdc * 0.5 + 0.5).rgb, uAlpha); }';
+var AE_ST_BLIT_FRAG = [
+  'precision highp float;',
+  'uniform sampler2D tSky; uniform vec2 uRes, uTexel;',
+  // The small sky stretched, with a blur of its own size (four taps half a texel off): the march's jitter averages out to a smooth sky.
+  'void main() {',
+  '  vec2 uv = gl_FragCoord.xy / uRes, o = uTexel * 0.5;',
+  '  vec3 c = texture2D(tSky, uv + vec2(o.x, o.y)).rgb + texture2D(tSky, uv + vec2(-o.x, o.y)).rgb + texture2D(tSky, uv + vec2(o.x, -o.y)).rgb + texture2D(tSky, uv + vec2(-o.x, -o.y)).rgb;',
+  '  gl_FragColor = vec4(c * 0.25, 1.0);',
+  '}'
+].join('\n');
+var AE_ST_GROUND_VERT = [
+  'attribute vec3 aDir; attribute vec3 aNrm; attribute float aH; attribute float aSea; attribute float aShade;',
+  'varying vec3 vP, vN, vDir; varying float vH, vSea, vShade;',
+  'void main() {',
+  '  vP = position; vN = aNrm; vDir = aDir; vH = aH; vSea = aSea; vShade = aShade;',
+  '  gl_Position = projectionMatrix * viewMatrix * vec4(position, 1.0);',
+  '}'
+].join('\n');
+var AE_ST_GROUND_FRAG = [
+  'precision highp float;',
+  AE_ST_GLSL_ATMO, AE_ST_GLSL_TONE, AE_ST_GLSL_NOISE,
+  _aeStInscatterGlsl('inscatterGround', AE_ST_STEPS_GROUND),
+  'uniform vec3 uCam; uniform float uKg, uPixAng, uTime;',
+  'uniform sampler2D uMap; uniform float uMapped, uGrey, uMapW; uniform vec2 uPlaceUv; uniform vec3 uBase, uGain;',
+  'uniform vec3 uAmbient, uSkyHor, uSkyZen, uE2, uDir2;',
+  'uniform vec3 uMatch;',
+  'uniform sampler2D uHdFar, uHdNear; uniform vec4 uHdFarWin, uHdNearWin; uniform float uHd;',   // Almanac HD's tiles round the place, as two local pictures (almanac-standhost.js _aeRigHd): each window is its middle (uv) and its half-size
+  // A local picture's colour at a place of the map, and how much of it counts there (it fades out over the last tenth of its window).
+  'vec4 hdAt(sampler2D pic, vec4 win, vec2 uv, vec2 dx, vec2 dy) {',
+  '  vec2 q = uv - win.xy; q.x -= floor(q.x + 0.5); q /= win.zw;',
+  '  float w = 1.0 - smoothstep(0.9, 1.0, max(abs(q.x), abs(q.y)));',
+  '  return w > 0.0 ? vec4(textureGrad(pic, q * 0.5 + 0.5, dx / (2.0 * win.zw), dy / (2.0 * win.zw)).rgb, w) : vec4(0.0);',
+  '}',   // what the finished colour is multiplied by: a flown ground comes in at the globe's own colour of the place (almanac-standhost.js _aeRigMatch)
+  'uniform float uGrass, uTundra, uCanopy; uniform float uLommel, uRough, uRock, uDetail, uCover, uDiffuse, uVis, uDirect; uniform vec3 uDiffSky;',
+  'varying vec3 vP, vN, vDir; varying float vH, vSea, vShade;',
+  // Rock, fractal bumps and mottling at the scales a pixel can show, all fixed to the ground (the camera never moves on it). Each octave is two
+  // lattices at different angles (turned again from one octave to the next): one lattice's cells, flat at their corners, showed as squares under a grazing Sun.
+  'float fine(vec3 p, float foot) {',
+  '  float h = 0.0;',
+  '  for (int i = 0; i < 7; i++) {',
+  '    float s = 0.05 * pow(3.1, float(i)), w = 1.0 - smoothstep(0.08, 0.35, 2.2 * foot / s);',
+  '    if (w > 0.0) { float a = 0.83 * float(i), ca = cos(a), sa = sin(a), cb = 0.7071 * (ca - sa), sb = 0.7071 * (sa + ca); vec3 q = vec3(ca * p.x - sa * p.y, sa * p.x + ca * p.y, p.z) / s + float(i) * 7.3, r = vec3(cb * p.x - sb * p.y, sb * p.x + cb * p.y, p.z + 3.1 * s) / s + float(i) * 3.7; h += 0.7071 * (vnoise(q) + vnoise(r)) * ' + AE_ST_FINE_SLOPE.toFixed(3) + ' * s * w; }',
+  '  }',
+  '  return h * uRough;',
+  '}',
+  // Stones in three sizes, each an irregular lump of its own shape that is darker or paler than the ground: returns the height
+  // (metres) and the brightness they change the ground by. Every stone near the point adds to it (the nearest alone cut a
+  // stone in half where it met a bigger one), the outline is wobbled by noise so none is a circle, the profile is soft where it
+  // meets the ground (a steep hemisphere lit from the side drew half-moons), and the larger classes are rarer.
+  'vec2 rocks(vec3 p, float foot) {',
+  '  if (uRock < 0.02) return vec2(0.0);',   // ground with next to no stones (the Earth's) skips the search
+  '  float h = 0.0, shade = 0.0;',
+  '  for (int k = 0; k < 3; k++) {',
+  '    float s = k == 0 ? 0.13 : (k == 1 ? 0.5 : 1.9), w = 1.0 - smoothstep(0.1, 0.4, 2.5 * foot / s), rare = k == 0 ? 1.0 : (k == 1 ? 0.45 : 0.2);',
+  '    if (w <= 0.0) continue;',
+  '    vec3 c = floor(p / s), f = fract(p / s);',
+  '    for (int dx = -1; dx <= 1; dx++) for (int dy = -1; dy <= 1; dy++) {',
+  '      vec3 g = vec3(float(dx), float(dy), float(k)), id = c + g; float present = step(hash31(id + 3.1), uRock * rare);',
+  '      if (present < 0.5) continue;',
+  '      vec3 pos = g - vec3(0.0, 0.0, float(k)) + vec3(hash31(id), hash31(id + 1.7), 0.0) - f;',
+  '      float lump = 0.6 + 0.8 * hash31(id + 5.3), rad = 0.16 + 0.22 * hash31(id + 9.2);',
+  '      pos.x *= lump; float wob = 0.65 + 0.7 * vnoise(vec3(pos.xy * 9.0, hash31(id + 2.2) * 40.0));',
+  '      float dd = length(pos.xy) / max(rad * wob, 1e-4);',
+  '      if (dd < 1.0) { float dome = 1.0 - dd * dd; float tone = hash31(id + 13.7); h += rad * s * 0.45 * dome * dome * w; shade += (tone - 0.5) * 0.45 * w * dome; }',
+  '    }',
+  '  }',
+  '  return vec2(h, shade);',
+  '}',
+  'void main() {',
+  AE_ST_GLSL_JITTER,
+  '  float dist = length(vP - uCam); vec3 V = (uCam - vP) / dist;',
+  '  vec3 N = normalize(vN), upF = normalize(vec3(vP.xy, vP.z + uRc * 1000.0));',
+  '  float foot = dist * uPixAng;',
+  '  vec2 uv = vec2(atan(vDir.y, vDir.x) / (2.0 * PI) + 0.5, asin(clamp(vDir.z, -1.0, 1.0)) / PI + 0.5);',
+  '  vec3 map = uBase;',
+  AE_ST_GLSL_SEAM_GRAD,
+  '  if (uMapped > 0.5) { map = textureGrad(uMap, uv, dx, dy).rgb; if (uGrey > 0.5) map = vec3(map.r); }',
+  '  if (uHd > 0.5) { vec4 far = hdAt(uHdFar, uHdFarWin, uv, dx, dy), near = hdAt(uHdNear, uHdNearWin, uv, dx, dy); map = mix(mix(map, far.rgb, far.a), near.rgb, near.a); }',
+  '  if (uMapped > 0.5 && uMapW < 1.0) { vec3 avg = textureLod(uMap, uPlaceUv, ' + AE_ST_MAP_AVG_LOD.toFixed(1) + ').rgb; if (uGrey > 0.5) avg = vec3(avg.r); map = mix(avg, map, uMapW); }',
+  '  vec3 alb = pow(map, vec3(' + AE_ST_GAMMA + ')) * uGain;',
+  '  float mott = 0.0, wm = 1.0;',
+  '  for (int i = 0; i < 4; i++) { float s = 0.4 * pow(4.0, float(i)); wm = 1.0 - smoothstep(0.1, 0.4, 3.0 * foot / s); if (wm > 0.0) mott += vnoise(vP / s + 31.0 * float(i)) * 0.18 * wm; }',
+  '  alb *= (1.0 + mott);',
+  // Living ground (the Earth's): grain at the scales a pixel shows, from blades to tufts to patches, its hue following the land's own class
+  // (grass leans green, dry ground and sand lighter, rock and snow keep their tone).
+  '  vec2 rr = vec2(0.0, 1.0), tt = vec2(1.0, 0.0);',   // the grain's axes are the ground's own (north, east), like every other layer: turning the view turns all of it as one (the view's heading used to set them, so the grain swam against the mottle)
+  '  if (uDetail > 0.5 && vSea < 0.5) {',
+  '    float gr = 0.0, grass = smoothstep(0.0, 0.07, map.g - max(map.r, map.b));',
+  '    for (int i = 0; i < 3; i++) { float s = 0.2 * pow(5.0, float(i)), wg = 1.0 - smoothstep(0.3, 1.0, 2.5 * foot / s); if (wg > 0.0) gr += vnoise(vP / s + 17.0 * float(i)) * wg * 0.5; }',
+  '    alb *= clamp(1.0 + gr * 0.55, 0.7, 1.3);',
+  '    alb.g *= 1.0 + 0.3 * gr * grass; alb.r *= 1.0 - 0.18 * gr * grass;',
+  // Underfoot: blades and tussocks as fine noise stretched along the line of sight (as grass is seen across a field), sharp at the
+  // feet and gone where a pixel would hold several of them, so it softens with distance as the Moon's stones do.
+  '    float across = dot(vP.xy, tt), along = dot(vP.xy, rr), bl = 0.0;',
+  '    for (int i = 0; i < 4; i++) { float s = 0.03 * pow(3.0, float(i)), wb = 1.0 - smoothstep(0.5, 2.0, 2.5 * foot / s); if (wb > 0.0) bl += (vnoise(vec3(across / s, along / (s * (i < 2 ? 1.5 : 1.1)), 41.0 + float(i) * 5.0)) ) * wb * (0.9 - 0.15 * float(i)); }',
+  '    float tuft = smoothstep(0.1, 0.6, vnoise(vP / 0.42 + 9.0)) * (1.0 - smoothstep(0.5, 2.0, 2.5 * foot / 0.42));',
+  '    alb *= clamp(1.0 + bl * 0.5 - tuft * 0.12 * grass, 0.6, 1.25);',
+  '  }',
+  // Grass cells (the land-cover grid's): a dry season's Blue Marble is tan, but the ground is still grass: its brightness kept, its hue pulled green where the map is not.
+  '  if (uDetail > 0.5 && vSea < 0.5 && uGrass > 0.0) {',
+  '    float lg = min(dot(alb, vec3(0.3, 0.59, 0.11)), 0.2), dull = 1.0 - smoothstep(0.0, 0.06, alb.g - max(alb.r, alb.b));',
+  '    alb = mix(alb, vec3(0.72, 1.0, 0.42) * lg * 0.7, uGrass * (0.55 + 0.4 * dull));',
+  '  }',
+  // Tundra: low, dull, no green: the map's brightness kept in a brown-olive.
+  '  if (uDetail > 0.5 && vSea < 0.5 && uTundra > 0.0) {',
+  '    float lt = min(dot(alb, vec3(0.3, 0.59, 0.11)), 0.17);',
+  '    alb = mix(alb, vec3(0.62, 0.52, 0.36) * lt * 0.85, uTundra * 0.7);',
+  '  }',
+  // Ground cover by height, slope and latitude (the Earth's): snow above the snow line, bare rock on steep ground and above the
+  // trees, the Blue Marble's own tint elsewhere; the lines wander with a slow noise so no height is a ruled edge.
+  '  if (uCover > 0.5 && vSea < 0.5) {',
+  '    float lat = asin(clamp(vDir.z, -1.0, 1.0)), sl = ' + AE_ST_SNOW_LINE_M.toFixed(1) + ' * pow(max(cos(lat), 0.0), ' + AE_ST_SNOW_LINE_POW.toFixed(2) + ');',
+  '    float wob = vnoise(vP * 0.0007 + 3.7) * ' + AE_ST_COVER_WOBBLE_M.toFixed(1) + ', hh = vH + wob;',
+  '    float slope = clamp(sqrt(max(0.0, 1.0 - pow(dot(normalize(vN), upF), 2.0))) * ' + AE_ST_SLOPE_GAIN.toFixed(2) + ', 0.0, 1.0);',
+  '    float snow = smoothstep(sl - 120.0, sl + 120.0, hh) * (1.0 - smoothstep(0.55, 0.9, slope));',
+  '    float rock = max(smoothstep(0.35, 0.65, slope), smoothstep(sl - ' + AE_ST_TREE_BELOW_M.toFixed(1) + ', sl, hh)) * (1.0 - snow);',
+  '    alb = mix(alb, vec3(0.17, 0.155, 0.14), rock * 0.85);',
+  '    // Scree where rock lies: pebbles in a hash lattice; sand ripples where the tint is pale and not green; snow that sparkles.',
+  '    float sw = 1.0 - smoothstep(0.1, 0.4, 2.5 * foot / 0.07), pebble = hash31(floor(vP / 0.07)) * sw;',
+  '    alb *= 1.0 + rock * (pebble - 0.5) * 0.9;',
+  '    float dry = smoothstep(0.35, 0.6, (map.r + map.g) * 0.5) * (1.0 - smoothstep(0.0, 0.05, map.g - max(map.r, map.b))) * (1.0 - rock) * (1.0 - snow);',
+  '    float rip = sin(dot(vP.xy, tt) / 0.11 + vnoise(vP / 1.3) * 5.0) * (1.0 - smoothstep(0.1, 0.4, 2.5 * foot / 0.11));',
+  '    alb *= 1.0 + dry * rip * 0.12;',
+  '    alb = mix(alb, vec3(0.78, 0.8, 0.84), snow);',
+  '    float sp = step(0.9985, hash31(floor(vP / 0.03))) * (1.0 - smoothstep(0.1, 0.5, 2.5 * foot / 0.03));',
+  '    alb += vec3(sp * snow * 1.6);',
+  '  }',
+  // Far off, woods and tree lines as a darker green in patches, the horizon's own texture (uCanopy: how wooded the class is).
+  '  if (uCanopy > 0.0 && vSea < 0.5 && uDetail > 0.5) {',
+  '    float dd = smoothstep(150.0, 500.0, dist) * (1.0 - smoothstep(12000.0, 40000.0, dist)), c1 = vnoise(vP / 70.0 + 5.0), c2 = vnoise(vP / 480.0 + 9.0), c3 = abs(vnoise(vP / 900.0 + 21.0));',
+  '    float tree = smoothstep(0.0, 0.45, c1 * 0.55 + c2 * 0.5 + (uCanopy - 0.5) * 0.9 - (uCanopy < 0.5 ? c3 * 0.0 : 0.0)) * (uCanopy < 0.5 ? smoothstep(0.1, 0.0, c3 - 0.05) + 0.25 * smoothstep(0.2, 0.7, c2) : 1.0);',
+  '    alb = mix(alb, vec3(0.03, 0.06, 0.026) * (0.7 + 0.6 * dot(alb, vec3(0.33))), clamp(dd * tree * min(1.0, uCanopy * 1.3 + 0.35), 0.0, 0.8));',
+  '  }',
+  '  vec2 rk = (vSea > 0.5 || dist > ' + AE_ST_ROCK_FADE_M[1].toFixed(1) + ') ? vec2(0.0) : rocks(vP, foot) * (1.0 - smoothstep(' + AE_ST_ROCK_FADE_M[0].toFixed(1) + ', ' + AE_ST_ROCK_FADE_M[1].toFixed(1) + ', dist)); float hf = vSea > 0.5 ? 0.0 : fine(vP, foot), hb = hf + rk.x; alb *= clamp(1.0 + 0.5 * rk.y, 0.5, 1.35);',
+  // The fine relief's slope is taken by stepping one pixel along the ground, not by the screen derivative: that one is the same for a
+  // 2 x 2 block of pixels, and under a grazing Sun it showed as squares. The stones' own relief keeps the screen derivative.
+  '  vec3 dpx = dFdx(vP), dpy = dFdy(vP); float hx = dFdx(rk.x), hy = dFdy(rk.x);',
+  '  if (vSea < 0.5 && uRough > 0.0) { hx += fine(vP + dpx, foot) - hf; hy += fine(vP + dpy, foot) - hf; }',
+  '  vec3 r1 = cross(dpy, N), r2 = cross(N, dpx); float det = dot(dpx, r1);',
+  '  vec3 gr = sign(det) * (hx * r1 + hy * r2) * smoothstep(0.03, 0.3, dot(N, V)), Nb = abs(det) * N + gr; if (dot(Nb, Nb) > 0.0) N = normalize(Nb);',
+  '  vec3 L;',
+  '  vec3 pk = vP * 0.001;',
+  '  if (vSea > 0.5) {',
+  '    vec3 Nw = normalize(N + 0.035 * vec3(vnoise(vec3(vP.xy * 0.9, uTime * 0.7)), vnoise(vec3(vP.xy * 0.9 + 17.0, uTime * 0.6)), 0.0));',
+  '    vec3 R = reflect(-V, Nw); float F = 0.02 + 0.98 * pow(1.0 - max(dot(V, Nw), 0.0), 5.0);',
+  '    vec3 sky = mix(uSkyHor, uSkyZen, pow(clamp(R.z, 0.0, 1.0), 0.5));',
+  '    vec3 sT = sunTrans(pk) * uSunE * vShade;',
+  '    vec3 deep = vec3(0.02, 0.06, 0.09) * (sT * max(dot(upF, uSunDir), 0.0) / PI * 0.4 + uAmbient);',
+  '    L = mix(deep, sky, F) + sT * pow(max(dot(R, uSunDir), 0.0), 1400.0) * 10.0;',
+  '  } else {',
+  '    float vis = uLommel > 0.5 ? max(vShade, ' + AE_ST_BACKSCATTER.toFixed(2) + ') : vShade;',   // a shadow on regolith is lit by the ground around it
+  '    vec3 sT = sunTrans(pk) * uSunE * vis * smoothstep(-0.03, 0.02, dot(upF, uSunDir));',   // a Sun under the horizon lights no slope, however it leans
+  '    float ndl = dot(N, uSunDir), mu0 = max(ndl, 0.0), mu = max(dot(N, V), 0.03);',
+  '    float lam = uLommel > 0.5 ? 2.0 * mu0 / (mu0 + mu) : mu0;',
+  '    float surge = uLommel > 0.5 ? 1.0 + ' + AE_ST_SURGE.toFixed(2) + ' * exp(-acos(clamp(dot(uSunDir, V), -1.0, 1.0)) / ' + AE_ST_SURGE_WIDTH.toFixed(2) + ') : 1.0;',
+  '    float fill = uLommel > 0.5 ? ' + AE_ST_FILL.toFixed(2) + ' * max(dot(upF, uSunDir), 0.0) * (1.0 - mu0) : 0.0;',
+  '    L = alb * (sT * (lam + fill) * surge / PI + uAmbient * (0.55 + 0.45 * dot(N, upF)) + uE2 * max(dot(N, uDir2), 0.0) / PI);',
+  '  }',
+  '  if (uDiffuse > 0.5) { float T = exp(-dist * 0.001 / uVis); L = L * T + uDiffSky * (1.0 - T); }',
+  '  else if (uAtmo > 0.5) {',
+  '    vec3 o = uCam * 0.001, d = -V, Tt, ins; float t0, t1;',
+  '    if (airSpan(o, d, t0, t1)) { t1 = min(t1, dist * 0.001); if (t1 > t0) { ins = inscatterGround(o + d * t0, d, t1 - t0, Tt); ins *= mix(1.0, ' + AE_ST_FAR_HAZE.toFixed(2) + ', smoothstep(5000.0, 20000.0, dist) * uDetail); L = L * Tt + ins; } }',
+  '  }',
+  '  gl_FragColor = vec4(tone(L, uKg) * uMatch, 1.0);',
+  '}'
+].join('\n');
+
+// ── CPU twins ──
+// The same air in JS, for what the shaders do not hand back: how much a body's light is thinned on its way down
+// (so the Sun is red at the horizon), the sky's light overhead (the exposure, how many stars show, the ambient on the
+// ground). Optical depth of a ray from height h km (above the body's mean radius) at the sine of its elevation mu.
+function _aeStSigma(a, h) {
+  h = Math.max(h, 0);
+  var m = a.mie, oz = Math.max(0, 1 - Math.abs(h - 25) / 15), out = [];
+  for (var k = 0; k < 3; k++) out.push(a.ray[k] * Math.exp(-h / a.hR) + m.ext[k] * Math.exp(-h / m.h) + a.ozone[k] * oz);
+  return out;
+}
+// The optical depth (per channel) of the ray from a point at height h km in the direction whose elevation sine is mu
+// (from the local horizontal; negative points down), up to the top of the air; null if the planet is in the way.
+function _aeStOdUp(a, R, h, mu) {
+  var r = R + h, Rt = R + a.top, c = mu;   // c: cosine from the vertical = elevation sine
+  if (c < 0 && r * r * (1 - c * c) < R * R) return null;
+  var tTop = -r * c + Math.sqrt(Math.max(0, r * r * c * c + Rt * Rt - r * r)), od = [0, 0, 0], tp = 0, n = 10;
+  for (var i = 0; i < n; i++) {
+    var f = (i + 1) / n, t = tTop * f * f, dt = t - tp, tm = tp + dt / 2;
+    var rr = Math.sqrt(r * r + 2 * r * tm * c + tm * tm), s = _aeStSigma(a, rr - R);
+    for (var k = 0; k < 3; k++) od[k] += s[k] * dt;
+    tp = t;
+  }
+  return od;
+}
+// The light a ray collects from the viewer (camKm above the ground at the foot, planet centre straight below at the ground sphere's
+// radius R + h0): the GLSL inscatter in double precision, per unit of the Sun's irradiance. d and sunDir are unit vectors in the
+// local frame (east, north, up); tmax of null runs to the top of the air.
+function _aeStInscatter(a, R, h0, camKm, d, sunDir, tmax) {
+  var Rc = R + h0, Rt = R + a.top, o = [0, 0, camKm];
+  function dot(u, v) { return u[0] * v[0] + u[1] * v[1] + u[2] * v[2]; }
+  function sunTrans(p) {
+    var q = [p[0], p[1], p[2] + Rc], b = dot(q, sunDir), lq = Math.sqrt(dot(q, q)), c = (lq - Rc) * (lq + Rc), D = b * b - c;
+    if (b < 0 && D > 0 && -b - Math.sqrt(D) > 0.01) return [0, 0, 0];
+    var Dt = b * b - (lq - Rt) * (lq + Rt), Lt = -b + Math.sqrt(Math.max(0, Dt)), od = [0, 0, 0], tp = 0, n = 5;
+    for (var i = 0; i < n; i++) {
+      var f = (i + 1) / n, t = Lt * f * f, dt = t - tp, tm = tp + dt / 2;
+      var pp = [q[0] + sunDir[0] * tm, q[1] + sunDir[1] * tm, q[2] + sunDir[2] * tm], s = _aeStSigma(a, Math.sqrt(dot(pp, pp)) - R);
+      for (var k = 0; k < 3; k++) od[k] += s[k] * dt;
+      tp = t;
+    }
+    return od.map(function (x) { return Math.exp(-x); });
+  }
+  var qo = [o[0], o[1], o[2] + Rc], bo = dot(qo, d), lo = Math.sqrt(dot(qo, qo));
+  var Dtop = bo * bo - (lo - Rt) * (lo + Rt);
+  if (Dtop < 0) return [0, 0, 0];
+  var t0 = Math.max(0, -bo - Math.sqrt(Dtop)), t1 = -bo + Math.sqrt(Dtop), Dg = bo * bo - (lo - Rc) * (lo + Rc);
+  if (Dg > 0) { var tg = -bo - Math.sqrt(Dg); if (tg > t0 && tg < t1) t1 = tg; }
+  if (tmax != null) t1 = Math.min(t1, tmax);
+  if (t1 <= t0) return [0, 0, 0];
+  var span = t1 - t0, cosS = dot(d, sunDir), phR = 3 / (16 * Math.PI) * (1 + cosS * cosS), out = [0, 0, 0], T = [1, 1, 1], tp = 0, n = 14;
+  for (var i = 0; i < n; i++) {
+    var f = (i + 1) / n, t = span * f * f, dt = t - tp, tm = t0 + tp + dt / 2;
+    var p = [o[0] + d[0] * tm, o[1] + d[1] * tm, o[2] + d[2] * tm], hh = Math.max(Math.sqrt(dot([p[0], p[1], p[2] + Rc], [p[0], p[1], p[2] + Rc])) - R, 0);
+    var sg = _aeStSigma(a, hh), sun = sunTrans(p);
+    for (var k = 0; k < 3; k++) {
+      var g = a.mie.g[k], phM = (1 - g * g) / (4 * Math.PI * Math.pow(1 + g * g - 2 * g * cosS, 1.5));
+      var sR = a.ray[k] * Math.exp(-hh / a.hR), sM = a.mie.ext[k] * a.mie.alb[k] * Math.exp(-hh / a.mie.h);
+      var S = sun[k] * (sR * phR + sM * phM) + sun[k] * (sR + sM) * a.ms * 0.0796, step = Math.exp(-sg[k] * dt);
+      out[k] += T[k] * S * (1 - step) / Math.max(sg[k], 1e-9) * AE_ST_SCATTER_GAIN * (a.gain || 1);
+      T[k] *= step;
+    }
+    tp = t;
+  }
+  return out;
+}
+// The sky overhead for the Sun at elevation sine sunMu (the sun's bearing does not matter straight up).
+function _aeStZenith(a, R, h, sunMu) {
+  return _aeStInscatter(a, R, h, 0, [0, 0, 1], [Math.sqrt(1 - sunMu * sunMu), 0, sunMu], null);
+}
