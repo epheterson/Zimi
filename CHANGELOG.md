@@ -13,9 +13,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 **Zimi**
 
-- Home fits any screen from phone to 4K, and every tile, row and card has one menu.
-- The Docker image is under 1 GB, with the browser and video tools as add-ons you add once.
-- The Catalog adds Kiwix's community ZIMs, and split ZIMs, big PDFs and EPUBs open.
+- Kiwix's community ZIMs are in the Catalog, in a Community category of their own (#139).
+- Home fits any screen, phone to 4K, in one to four columns, and every tile, row and card has one menu (#158).
+- More ZIMs open: split ZIMs, big PDFs and EPUBs, and books with no main page.
+- A smaller Docker image, under 1 GB: the browser and video tools are add-ons you add once.
 
 **Games**
 
@@ -27,6 +28,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 - Fly a UFO between the worlds and set it down on their ground.
 - Tap any world, from the Sun out to Pluto, and the 3D view flies you there in one move.
 - Drive the Moon buggy or a Mars rover across the real landing sites, and replay Apollo 11, Perseverance and Voyager.
+
+Thanks to @tripplehelix for asking for the community ZIMs (#139), and to @eroyee for the notes on Home's layout, light laptops and Five Letters (#158, #157, #156).
 
 ### Zimi
 
