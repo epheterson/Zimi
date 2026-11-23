@@ -7,7 +7,7 @@ settings, and the Create page at the moment a capture finishes with its two
 pictures (live beside packaged). They go stale every release; this retakes
 them all the same way, so a refresh is one command and not an afternoon.
 
-    python3 scripts/readme_shots.py --base http://127.0.0.1:8931 --out screenshots/
+    python3 scripts/readme_shots.py --base http://127.0.0.1:8931 --out docs/screenshots/
 
 Point --base at a server whose library has a few real ZIMs (Wikipedia for
 the article shots) and management open (ZIMI_MANAGE_OPEN=1 on a scratch

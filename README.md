@@ -36,31 +36,31 @@ Use as much as you need:
 
 | Homepage | Search Results |
 |----------|---------------|
-| ![Homepage](screenshots/homepage.png) | ![Search](screenshots/search.png) |
+| ![Homepage](docs/screenshots/homepage.png) | ![Search](docs/screenshots/search.png) |
 
 | Almanac | Solar system |
 |---------|--------------|
-| ![Almanac](screenshots/almanac.png) | ![Solar system](screenshots/solar-system.png) |
+| ![Almanac](docs/screenshots/almanac.png) | ![Solar system](docs/screenshots/solar-system.png) |
 
 | Games | ZimCity |
 |-------|---------|
-| ![Games](screenshots/games.png) | ![ZimCity](screenshots/zimcity.png) |
+| ![Games](docs/screenshots/games.png) | ![ZimCity](docs/screenshots/zimcity.png) |
 
 | Zimipedia | Bookshelf |
 |-----------|-----------|
-| ![Zimipedia](screenshots/zimipedia.png) | ![Bookshelf](screenshots/bookshelf.png) |
+| ![Zimipedia](docs/screenshots/zimipedia.png) | ![Bookshelf](docs/screenshots/bookshelf.png) |
 
 | Maps | ZimiTube |
 |------|----------|
-| ![Maps](screenshots/maps.png) | ![ZimiTube](screenshots/zimitube.png) |
+| ![Maps](docs/screenshots/maps.png) | ![ZimiTube](docs/screenshots/zimitube.png) |
 
 | Reddot | Catalog |
 |--------|---------|
-| ![Reddot](screenshots/reddot.png) | ![Catalog](screenshots/browse-library.png) |
+| ![Reddot](docs/screenshots/reddot.png) | ![Catalog](docs/screenshots/browse-library.png) |
 
 | Sharing | Make a ZIM |
 |---------|------------|
-| ![Sharing](screenshots/sharing.png) | ![Create](screenshots/create.png) |
+| ![Sharing](docs/screenshots/sharing.png) | ![Create](docs/screenshots/create.png) |
 
 ## Install
 
@@ -133,11 +133,11 @@ zimi-mcp /path/to/zims
 
 ## Contributing
 
-Issues and ideas are welcome, and every one gets answered. See [CONTRIBUTING.md](CONTRIBUTING.md); security reports go privately per [SECURITY.md](SECURITY.md).
+Issues and ideas are welcome, and every one gets answered. See [CONTRIBUTING.md](.github/CONTRIBUTING.md); security reports go privately per [SECURITY.md](.github/SECURITY.md).
 
 ## License
 
-[GPL-3.0-or-later](LICENSE), like the Kiwix and openZIM libraries it builds on; 1.13.3 and earlier were MIT. Desktop and Docker builds bundle [libtorrent-rasterbar](https://libtorrent.org/) (BSD-3-Clause), see [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).
+[GPL-3.0-or-later](LICENSE), like the Kiwix and openZIM libraries it builds on; 1.13.3 and earlier were MIT. Desktop and Docker builds bundle [libtorrent-rasterbar](https://libtorrent.org/) (BSD-3-Clause), see [THIRD_PARTY_NOTICES.md](docs/THIRD_PARTY_NOTICES.md).
 
 ---
 

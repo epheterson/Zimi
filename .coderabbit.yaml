@@ -40,7 +40,7 @@ reviews:
     - "!zimi/static/pdfjs/**"
     - "!zimi/static/temml/**"
     - "!zimi/static/golden-record/**"
-    - "!screenshots/**"
+    - "!docs/screenshots/**"
     - "!**/*.min.js"
     - "!**/*.{png,jpg,jpeg,gif,svg,webp,ico,icns,woff2,ttf,wasm,bin,gz,tar,torrent,zim,source,meta4}"
     # Vendored or generated games assets: Simon Tatham's puzzles (wasm, js,
