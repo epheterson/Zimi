@@ -124,7 +124,11 @@ def test_the_games_about_page_links_only_to_pages_that_exist():
     with open(os.path.join(games, "about.html"), encoding="utf-8") as f:
         html = f.read()
     html = zimcheck.NON_MARKUP_RE.sub("", html)
+    checked = []
     for ref in dict.fromkeys(zimcheck.HREF_RE.findall(html)):
         target = zimcheck._resolve("about.html", ref)
         if target and not target.startswith(("about.html", "{")):
             assert os.path.isfile(os.path.join(games, target)), ref
+            checked.append(target)
+    assert checked, "the page has links to check (the loop must not pass by finding none)"
+    assert "puzzles/doc/index.html" in checked or any(t.startswith("puzzles/doc") for t in checked), checked

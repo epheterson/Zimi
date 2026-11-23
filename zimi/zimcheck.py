@@ -246,7 +246,8 @@ def _walk(archive, links):
 
 def check(path, quick=False):
     """Every finding for the ZIM at ``path``; an empty list is a clean bill.
-    Any chunk of a split book (name.zimab...) checks the whole book."""
+    Any chunk of a split book (name.zimab...) checks the whole book. For `zimi check`,
+    which is a process of its own with no server threads: it takes no ``_zim_lock``."""
     from zimi import zimparts
 
     try:
