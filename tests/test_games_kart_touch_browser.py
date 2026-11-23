@@ -53,3 +53,25 @@ def test_no_kart_behind_you_is_drawn_over_yours(served, browser):
     assert any(mine for mine, _ in got["shown"]), "your own kart is shown"
     assert all(d >= -4 for _, d in got["shown"]), got
     ctx.close()
+
+
+def test_two_player_pads_are_big_enough_and_on_screen(served, browser):
+    """Two players on one phone: each side's four buttons are at least 44px both ways, inside the screen, and none overlaps another."""
+    ctx = browser.new_context(viewport=VIEW, has_touch=True, is_mobile=True)
+    page = ctx.new_page()
+    page.goto("%s/kart.html?debug" % served)
+    page.locator(".ar-sheet-actions .gs-primary").first.wait_for()
+    page.evaluate("() => { [...document.querySelectorAll('.ar-sheet button')].filter(b => b.textContent.trim() === '2').forEach(b => b.click()); }")
+    page.locator(".ar-sheet-actions .gs-primary").first.tap()
+    page.wait_for_function("() => window.__kart && __kart.g.race && __kart.g.race.karts.length === 8")
+    boxes = page.evaluate(
+        """() => [...document.querySelectorAll('.kt-pad[data-p] .kt-btn')].filter(b => b.offsetWidth).map(b => { const r = b.getBoundingClientRect();
+          return { p: b.closest('.kt-pad').dataset.p, l: r.left, t: r.top, r: r.right, b: r.bottom, w: r.width, h: r.height }; })"""
+    )
+    assert len(boxes) == 8, boxes
+    assert all(x["w"] >= 44 and x["h"] >= 44 for x in boxes), boxes
+    assert all(x["l"] >= 0 and x["r"] <= VIEW["width"] and x["t"] >= 0 and x["b"] <= VIEW["height"] for x in boxes), boxes
+    for i, a in enumerate(boxes):
+        for c in boxes[i + 1:]:
+            assert a["r"] <= c["l"] + 0.5 or c["r"] <= a["l"] + 0.5 or a["b"] <= c["t"] + 0.5 or c["b"] <= a["t"] + 0.5, (a, c)
+    ctx.close()

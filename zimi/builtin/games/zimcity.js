@@ -222,11 +222,11 @@ function strip() {
   $('cy-when').textContent = T('city.when', { date: dateWords(), people: T('city.people', { n: people() }) });
   goalStrip();
 }
-// Whether the bank will last: what the last budget left (taxes less the full cost of roads, fire and police) against the
-// years the city has to last, a scenario's to its judging.
+// Whether the bank will last: what the year looks like now (taxes less the full cost of roads, fire and police, from the
+// census as it stands) against the years the city has to last, a scenario's to its judging.
 function outlook() {
-  var b = city.sim.budget;
-  return { funds: b.totalFunds, flow: b.cashFlow, horizon: city.scenario ? Math.max(LOW_RUNWAY_YEARS, city.scenario.judgeIn / Scen.TICKS_PER_YEAR) : LOW_RUNWAY_YEARS };
+  var b = city.sim.budget, sim = city.sim;
+  return { funds: b.totalFunds, flow: b.liveFlow(sim._gameLevel, sim._census), horizon: city.scenario ? Math.max(LOW_RUNWAY_YEARS, city.scenario.judgeIn / Scen.TICKS_PER_YEAR) : LOW_RUNWAY_YEARS };
 }
 // A scenario's goal stays on screen under the strip, with where the city stands and the time left; it wraps rather than cuts.
 var goalEl = $('cy-goal');
@@ -766,8 +766,18 @@ function awaySheet(r) {
 
 // ── kept cities: up to five, beside the one in progress ──
 var KEPT_KEY = 'zimi.zimcity.kept', KEPT_MAX = 5;
-function kept() { try { var v = JSON.parse(localStorage.getItem(KEPT_KEY)); return Array.isArray(v) ? v : []; } catch (e) { return []; } }
+// Each kept city has an id, so a sheet left open (or a second window) acts on that city and not on whatever now sits at its
+// position; a list from before ids gets them the first time it is read.
+function newKeptId() { return Date.now().toString(36) + Math.floor(Math.random() * 1e9).toString(36); }
+function kept() {
+  var v;
+  try { v = JSON.parse(localStorage.getItem(KEPT_KEY)); } catch (e) { return []; }
+  if (!Array.isArray(v)) return [];
+  if (v.some(function (k) { return !k.id; })) { v.forEach(function (k) { if (!k.id) k.id = newKeptId(); }); putKept(v); }
+  return v;
+}
 function putKept(list) { try { localStorage.setItem(KEPT_KEY, JSON.stringify(list)); return true; } catch (e) { return false; } }
+function keptIndex(l, id) { for (var i = 0; i < l.length; i++) if (l[i].id === id) return i; return -1; }
 var KEPT_NAME_MAX = 24;
 // A kept city has a name: the one it has (a scenario's, a ready-made city's, or one given before), else "City n" with the
 // first n no kept city uses.
@@ -780,7 +790,7 @@ function nameFor(l) {
 function card(l) {
   var dt = city.sim.getDate(), name = nameFor(l || kept());
   city.name = name;
-  return { at: Date.now(), name: name, month: dt.month, year: dt.year, people: people(), funds: city.sim.budget.totalFunds, data: pack() };
+  return { id: newKeptId(), at: Date.now(), name: name, month: dt.month, year: dt.year, people: people(), funds: city.sim.budget.totalFunds, data: pack() };
 }
 var cities = {
   list: kept, max: KEPT_MAX,
@@ -792,17 +802,17 @@ var cities = {
     city.name = was;   // not kept: the city does not carry a number the list never held
     return false;
   },
-  remove: function (i) { var l = kept(); l.splice(i, 1); putKept(l); },
+  remove: function (id) { var l = kept(), i = keptIndex(l, id); if (i < 0) return; l.splice(i, 1); putKept(l); },
   // The player's name for a kept city (an empty one keeps the old); the city it holds carries it when opened.
-  rename: function (i, name) {
-    var l = kept(), k = l[i], n = String(name || '').trim().slice(0, KEPT_NAME_MAX);
+  rename: function (id, name) {
+    var l = kept(), k = l[keptIndex(l, id)], n = String(name || '').trim().slice(0, KEPT_NAME_MAX);
     if (!k || !n) return k ? k.name : '';
     k.name = k.data.name = n;
     return putKept(l) ? n : false;   // false: the new name could not be kept
   },
   // Opening a kept city puts the one in progress in its place (when anything has been built), so nothing is lost.
-  open: function (i) {
-    var l = kept(), want = l[i], was = city.name;
+  open: function (id) {
+    var l = kept(), i = keptIndex(l, id), want = l[i], was = city.name;
     if (!want) return;
     if (city.built) l[i] = card(l.filter(function (k, j) { return j !== i; })); else l.splice(i, 1);
     if (!putKept(l)) { city.name = was; say(T('city.k.failed'), true); return; }   // the city in progress could not be put in the list: it stays

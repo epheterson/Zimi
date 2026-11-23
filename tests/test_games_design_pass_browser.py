@@ -65,8 +65,8 @@ def test_every_daily_tile_is_the_same_size_with_its_name_on_one_line(site, brows
 
 
 def test_the_daily_row_leads_only_the_unfiltered_shelf(site, browser):  # noqa: F811
-    """Eric: the Daily row "appears in filtered views as the first thing (ie when not needed)". With a type or a room chosen
-    it steps aside; back on All it returns."""
+    """The Daily row "appears in filtered views as the first thing (ie when not needed)". With a type chosen it steps aside;
+    in a room it keeps the room's games; back on All it returns."""
     ctx, page = _shelf(browser, site)
     assert page.locator(".ar-daily").is_visible()
     page.locator(".sh-nav .sh-chip:not(.sh-chip-all):visible").first.click()
@@ -74,7 +74,8 @@ def test_the_daily_row_leads_only_the_unfiltered_shelf(site, browser):  # noqa: 
     page.click(".sh-chip-all")
     assert page.locator(".ar-daily").is_visible()
     page.select_option(".sh-room-sel", "kids")
-    assert page.locator(".ar-daily").is_hidden()
+    # A room keeps the Daily row for its own games (Memory, Echo) rather than hiding it.
+    assert page.locator(".ar-daily a.ar-game:visible").count() == 2
     page.select_option(".sh-room-sel", "all")
     assert page.locator(".ar-daily").is_visible()
     ctx.close()
@@ -93,7 +94,7 @@ def test_every_section_header_follows_one_rule_and_all_types_is_quiet(
                    allBg: getComputedStyle(all).backgroundColor, otherBg: getComputedStyle(other).backgroundColor };
         }""")
         assert got["n"] == 3 and len(set(got["heads"])) == 1, got
-        assert got["pressed"] == "true" and got["allBg"] == got["otherBg"], got
+        assert got["pressed"] == "true" and got["allBg"] != got["otherBg"], got  # chosen, All types is amber like any chosen chip (602b6475f)
         ctx.close()
 
 

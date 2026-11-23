@@ -586,7 +586,10 @@
   // buttons shrink from a full touch target to BID_H_MIN to make room, and an auction that is still too long for what is left
   // shows its latest calls (never less than AUCTION_H_MIN tall).
   var BID_H_MAX = 44, BID_H_MIN = 32, BID_ROWS = 6, BOX_CHROME = 42, AUCTION_H_MIN = 72;
-  function boxHeight(rowH) { return rowH * BID_ROWS + BOX_CHROME; }
+  // A short table (a phone on its side) has no height for six rows: the bids lie fourteen to a row (two suits a row) across a wider box, three rows and the calls.
+  var WIDE_COLS = 14, BIDS = 35;
+  function bidRows(wide) { return wide ? Math.ceil(BIDS / WIDE_COLS) + 1 : BID_ROWS; }
+  function boxHeight(rowH, wide) { return rowH * bidRows(wide) + BOX_CHROME; }
   var suitSpan = function (den) { return Z.h('span', { class: den === 1 || den === 2 ? 'br-red' : '', text: DEN_LABEL[den] }); };
   function callNode(call, cls) {
     var p = parseCall(call);
@@ -644,13 +647,15 @@
       boxSig = sig;
       boxEl.textContent = '';
       boxEl.hidden = !mine;
+      Z.pageEls().table.classList.toggle('br-bidding', mine);   // the hands' card counts (above everything) would sit on the bids
       auctionEl.style.maxHeight = '';
       if (!mine) return;
       // What is left between the auction's top and the box's bottom edge (both in the table's own coordinates).
-      var room = g.statusY - BOX_GAP - (shown ? parseFloat(auctionEl.style.top) + BOX_GAP : 0), rowH = BID_H_MAX;
-      while (rowH > BID_H_MIN && boxHeight(rowH) + natural > room) rowH -= 2;
-      if (shown && boxHeight(rowH) + natural > room) {
-        auctionEl.style.maxHeight = Math.max(room - boxHeight(rowH), AUCTION_H_MIN) + 'px';
+      var wide = !!g.short, room = g.statusY - BOX_GAP - (shown ? parseFloat(auctionEl.style.top) + BOX_GAP : 0), rowH = BID_H_MAX;
+      while (rowH > BID_H_MIN && boxHeight(rowH, wide) + natural > room) rowH -= 2;
+      boxEl.classList.toggle('br-wide-box', wide);
+      if (shown && boxHeight(rowH, wide) + natural > room) {
+        auctionEl.style.maxHeight = Math.max(room - boxHeight(rowH, wide), AUCTION_H_MIN) + 'px';
         auctionEl.scrollTop = auctionEl.scrollHeight;
       }
       boxEl.style.setProperty('--br-bid-h', rowH + 'px');

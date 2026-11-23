@@ -307,7 +307,7 @@
     t = tg.create({
       name: 'Belote', geo: geo, place: place, hud: hud, newGame: newGameNow, heightShare: 0.13,
       cascadeOrder: function (st) { return st.played.slice(0, 24).map(function (id) { return { id: id }; }); },
-      winLines: function (sec, st) { return handLines(st).concat([TX('cards.result.you', { a: st.scores[viewTeam()], b: st.scores[1 - viewTeam()] })]); },
+      winLines: function (sec, st) { return [TX('cards.result.you', { a: st.scores[viewTeam()], b: st.scores[1 - viewTeam()] })].concat(handLines(st)); },
       menuExtra: function () { return [T.choiceRow(TX('belote.playTo'), TARGET_KEY, TARGETS.map(function (n) { return { value: n, label: String(n) }; }), 501, function () {}), Z.h('p', { class: 'zc-note', text: TX('belote.targetNote') })]; },
       rules: TX('belote.rules')
     });

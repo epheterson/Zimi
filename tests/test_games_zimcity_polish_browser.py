@@ -79,9 +79,9 @@ def test_how_to_play_teaches_the_fingers_not_the_keyboard(browser, site):
     pg = phone(browser, site)
     pg.click(".gs-menu-btn")
     pg.click(".gs-tile >> text='How to play'")
-    card = pg.wait_for_selector("dl.gs-help")
+    card = pg.wait_for_selector(".gs-how")
     text = pg.evaluate(
-        "() => document.querySelector('dl.gs-help').parentElement.innerText"
+        "() => document.querySelector('.gs-how').parentElement.innerText"
     )
     assert "Arrow keys" not in text and "Keys" not in text, text
     assert "coal plant" in text

@@ -81,10 +81,11 @@ export function trial(city, name, tiles) {
 // Returns the tiles as they should be built: shifted by the same step when the first footprint had to move.
 export var NUDGE_REACH = 2;
 var BESIDE_ROAD_BONUS = 0.75;   // tiles of nudge a road beside the footprint is worth
-function fits(city, name, p) {
-  var r = trial(city, name, [p]);
+// Whether every footprint of the row fits (a row is one tile for a tap, several for a drawn-out line of buildings).
+function fits(city, name, row) {
+  var r = trial(city, name, row);
   drop(city, name);
-  return r.parts.length > 0 && r.parts[0][2];
+  return r.parts.length === row.length && r.parts.every(function (q) { return q[2]; });
 }
 function besideRoad(map, p, size) {
   var x0 = p[0] - 1, y0 = p[1] - 1;
@@ -94,16 +95,17 @@ function besideRoad(map, p, size) {
   return false;
 }
 export function nudge(city, name, tiles) {
-  if (!BUILDINGS[name] || !tiles.length || fits(city, name, tiles[0])) return tiles;
+  if (!BUILDINGS[name] || !tiles.length || fits(city, name, tiles)) return tiles;
   var at = tiles[0], size = sizeOf(name), best = null;
   for (var dy = -NUDGE_REACH; dy <= NUDGE_REACH; dy++) for (var dx = -NUDGE_REACH; dx <= NUDGE_REACH; dx++) {
     var p = [at[0] + dx, at[1] + dy], far = Math.hypot(dx, dy);
-    if (!(dx || dy) || far > NUDGE_REACH + 0.5 || !fits(city, name, p)) continue;
+    if (!(dx || dy) || far > NUDGE_REACH + 0.5 || !fits(city, name, shifted(tiles, dx, dy))) continue;
     var score = far - (besideRoad(city.map, p, size) ? BESIDE_ROAD_BONUS : 0);
     if (!best || score < best.score) best = { dx: dx, dy: dy, score: score };
   }
-  return best ? tiles.map(function (q) { return [q[0] + best.dx, q[1] + best.dy]; }) : tiles;
+  return best ? shifted(tiles, best.dx, best.dy) : tiles;
 }
+function shifted(tiles, dx, dy) { return tiles.map(function (q) { return [q[0] + dx, q[1] + dy]; }); }
 
 // The first thing in a building's footprint (centre `p`, `size` square, as the engine lays it) that is not bare ground:
 // a tile value, or null. A footprint centred on a finger beside a road overlaps the road, and the player is told so.

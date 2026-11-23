@@ -75,6 +75,9 @@
   var Play = root.ArcadePlay, $ = Play.$, T = Play.T;
   var FLIP_MS = 230, HOP_MS = 80, MAX_TILE = 62, GAP = 6, SIDE_PAD = 24, END_DELAY_MS = 500;       // each tile turns over 230 ms after the one before
   var STATE_KEY = 'zimi.games.fiveletters.state', STATS_KEY = 'zimi.games.fiveletters.stats', LANG_KEY = 'zimi.games.fiveletters.lang';
+  var HOW_KEY = 'zimi.games.fiveletters.how';
+  // The how-to-play examples: a guess, the colour of the one letter that matters (its place), and what it says.
+  var HOW = [['crane', 0, 'correct', 'fiveletters.how.correct'], ['slate', 2, 'present', 'fiveletters.how.present'], ['fluid', 4, 'absent', 'fiveletters.how.absent']];
   var ROWS = ['qwertyuiop', 'asdfghjkl', '#zxcvbnm<'];
   Play.applyTheme();
 
@@ -140,7 +143,7 @@
       tileEls.push(tiles); els.board.appendChild(row);
     }
     ZimiUtil.gridAria(els.board, [].concat.apply([], tileEls), LEN);
-    ROWS.forEach(function (letters) {
+    ROWS.forEach(function (letters, i) {
       var row = document.createElement('div'); row.className = 'fl-krow';
       letters.split('').forEach(function (ch) {
         var b = document.createElement('button'); b.type = 'button';
@@ -149,9 +152,12 @@
         else { b.className = 'fl-key'; b.textContent = ch; b.dataset.k = ch; keyEls[ch] = b; }
         row.appendChild(b);
       });
+      // The middle row is a key shorter: half a key of room at each end keeps its keys the size of the row above.
+      if (i === 1) { row.insertBefore(spacer(), row.firstChild); row.appendChild(spacer()); }
       els.keys.appendChild(row);
     });
   }
+  function spacer() { var g = document.createElement('span'); g.className = 'fl-kgap'; g.setAttribute('aria-hidden', 'true'); return g; }
   function layout() {
     var vw = document.documentElement.clientWidth, vh = window.innerHeight;
     var byWidth = Math.floor((vw - SIDE_PAD - GAP * (LEN - 1)) / LEN), byHeight = Math.floor((vh - 52 - 250 - GAP * (TRIES - 1)) / TRIES);
@@ -170,6 +176,30 @@
   function paintKeys() {
     var ks = keyStates(game.guesses, game.answer);
     Object.keys(keyEls).forEach(function (ch) { keyEls[ch].className = 'fl-key' + (ks[ch] ? ' ' + ks[ch] : ''); });
+  }
+  // How to play, in the shape every game's takes (shell.js helpList): one line, two bullets, then three example rows with
+  // real tiles, each naming the one letter that matters, and the one rule that confused a teacher. Shown once on a
+  // device, then behind "?".
+  function howRow(word, at, st, key) {
+    var row = document.createElement('div'); row.className = 'fl-row'; row.setAttribute('aria-hidden', 'true');
+    word.split('').forEach(function (ch, i) { var t = document.createElement('div'); t.className = 'fl-tile filled' + (i === at ? ' ' + st : ''); t.textContent = ch; row.appendChild(t); });
+    var cap = document.createElement('p'); cap.className = 'fl-how-cap';
+    cap.textContent = T(key, { letter: word[at].toUpperCase() });
+    return [row, cap];
+  }
+  function howExamples() {
+    var ex = document.createElement('div'); ex.className = 'fl-how';
+    HOW.forEach(function (h) {
+      var g = document.createElement('div'); g.className = 'fl-how-ex';
+      var r = howRow(h[0], h[1], h[2], h[3]); g.appendChild(r[0]); g.appendChild(r[1]); ex.appendChild(g);
+    });
+    var note = document.createElement('p'); note.className = 'fl-how-note'; note.textContent = T('fiveletters.how.note');
+    return [ex, note];
+  }
+  ZimiShell.game({ help: function () { return { examples: howExamples() }; } });
+  function showHow() {
+    Play.save(HOW_KEY, { seen: true });
+    ZimiShell.showHelp();
   }
   // The resting line says which word this is; a round that is over says how it went.
   function rest() {
@@ -425,6 +455,8 @@
       if (game.status !== 'playing') finish();
     }
   });
+  $('fl-help').addEventListener('click', showHow);
+  if (!Play.load(HOW_KEY, {}).seen) showHow();
   findLists();
   // A read-only window onto the live game, for the browser tests.
   root.__five = { get game() { return game; }, get list() { return cur; }, get busy() { return busy; } };

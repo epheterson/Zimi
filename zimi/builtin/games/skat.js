@@ -393,8 +393,8 @@
     }
     function gameOver() {
       var st = session.state, w = gameWinner(st.scores), me = seats.view(), hot = seats.hotseat();
-      var lines = resultLines(st).concat([w === me && !hot ? TX('skat.winYou', { n: st.scores[me] }) : w >= 0 ? TX('skat.winName', { name: who(w), n: st.scores[w] }) : TX('skat.tied')]);
-      if (w === me && !hot) session.win(st.scores[me]); else session.lose(w < 0 ? 'draw' : hot ? { name: who(w) } : '', lines, hot ? undefined : st.scores[me]);
+      var lines = [w === me && !hot ? TX('skat.winYou', { n: st.scores[me] }) : w >= 0 ? TX('skat.winName', { name: who(w), n: st.scores[w] }) : TX('skat.tied')].concat(resultLines(st));
+      if (w === me && !hot) session.win(st.scores[me]); else session.lose(w < 0 ? 'draw' : hot ? { name: who(w) } : '', lines, hot ? undefined : st.scores[me], true);
     }
     function bid(type) { var st = session.state; if (st.phase !== 'bid' || !mine(st.turn)) return; view.note = ''; session.commit(bidAct(st, st.turn, type)); drive(); }
     function pick(type) { var st = session.state; if (st.phase !== 'pick' || !mine(st.declarer)) return; view.sel = []; view.touched = false; session.commit(pickAct(st, st.declarer, type)); drive(); }
@@ -426,7 +426,7 @@
       name: 'Skat', geo: geo, place: place, hud: hud, newGame: newSeries, heightShare: 0.13,
       stat: function (sec, st) { return Z.fmtTime(sec) + ' · ' + st.scores[seats.view()]; },
       cascadeOrder: function (st) { return st.won[seats.view()].slice(0, 24).map(function (id) { return { id: id }; }); },
-      winLines: function (sec, st) { return resultLines(st).concat([TX('skat.winYou', { n: st.scores[seats.view()] })]); },
+      winLines: function (sec, st) { return [TX('skat.winYou', { n: st.scores[seats.view()] })].concat(resultLines(st)); },
       menuExtra: function () { return [T.choiceRow(TX('skat.deals'), ROUNDS_KEY, ROUND_CHOICES.map(function (n) { return { value: n, label: String(n) }; }), 6, function () {}), Z.h('p', { class: 'zc-note', text: TX('skat.lengthNote') })]; },
       rules: TX('skat.rules')
     });
