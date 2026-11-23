@@ -35,7 +35,7 @@ const ctx = {
   _userSession: null, document: { body: { dataset: {} } },
   _zimInfo: name => ctx.zimsCache.find(z => z.name === name) || null,
   // Zimi's own tiles: the ZIM's icon, its new-dot and the pet's peek are not what this file judges.
-  _ownIconHtml: (zim, glyph) => glyph, _appTileFootHtml: () => '', OWN_TILE_ICON_PX: 42, _petPeekSchedule() {}, _petPeek: null,
+  _ownIconHtml: (zim, glyph) => glyph, _appTileFootHtml: () => '', _appTileDotHtml: () => '', OWN_TILE_ICON_PX: 42, _petPeekSchedule() {}, _petPeek: null,
 };
 vm.createContext(ctx);
 vm.runInContext(require("./app_source.cjs").localeHelpers(src), ctx);
@@ -81,7 +81,7 @@ require('./apps_order_parts.cjs')(src, ctx);
 
 // ── the apps row ─────────────────────────────────────────────────────────
 const row = ctx._appsRowHtml();
-ok('one row holds the apps, each a tile like a source', /class="stats-grid apps-grid">/.test(row) && /maps-tile/.test(row) && /tube-tile/.test(row));
+ok('one row holds the apps, each a tile like a source', /class="stats-grid apps-grid pick-tiles">/.test(row) && /maps-tile/.test(row) && /tube-tile/.test(row));
 ok('the ZimiTube tile names the video ZIMs', /<span class="zt">ZimiTube<\/span>/.test(row) && /TED Talks – Technology/.test(row) && /href="#tube"/.test(row));
 ctx.zimsCache = ctx.zimsCache.filter(z => z.kind !== 'video');
 ok('no video ZIM: home leaves ZimiTube out, its tile still the door to the Video category', !/tube-tile/.test(ctx._appsRowHtml()) && /No videos yet/.test(ctx._tubeTileHtml()) && /_openCategory\(_APP_CATEGORY\.tube\)/.test(ctx._tubeTileHtml()));
@@ -170,7 +170,7 @@ ok('strings arrive in the hash, escaped on the way in', /<!--@apps\.js@-->/.test
 ok('leaving the player with a video playing docks it, and a tap brings it back', /function closePlayer\(silent\)/.test(page) && /dock-stage'\)\.appendChild\(v\)/.test(page) && /function undock\(\)/.test(page) && /function stopDock\(\)/.test(page) && /id="dock" hidden onclick="undock\(\)"/.test(page));
 ok('theater mode is remembered and picture in picture appears only where the browser has it', /zimitube_theater/.test(page) && /player\.theater/.test(page) && /function pipAvailable\(v\)/.test(page) && /webkitSetPresentationMode/.test(page) && /requestPictureInPicture/.test(page));
 ok('the page takes the shared sheet, which holds both themes', /<!--@apps\.css@-->/.test(page) && !/prefers-color-scheme/.test(page));
-for (const lang of fs.readdirSync(path.join(__dirname, '..', 'zimi', 'static', 'i18n'))) {
+for (const lang of fs.readdirSync(path.join(__dirname, '..', 'zimi', 'static', 'i18n')).filter(f => f.endsWith('.json'))) {
   const d = JSON.parse(fs.readFileSync(path.join(__dirname, '..', 'zimi', 'static', 'i18n', lang), 'utf8'));
   for (const k of ['tube', 'tube_search_placeholder', 'tube_videos', 'tube_sources', 'tube_more', 'tube_none', 'tube_empty', 'tube_up_next', 'tube_autoplay', 'tube_theater', 'tube_pip', 'tube_open_page', 'tube_sort_top', 'tube_no_media']) if (!d[k]) ok(k + ' in ' + lang, false);
   if (d.tube !== 'ZimiTube') ok('it is called ZimiTube in ' + lang, false);

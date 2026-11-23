@@ -162,7 +162,7 @@ ok('a Gutenberg page is known by its own record, an EPUB\'s chapters by theirs',
 ok('an EPUB\'s address, or a book of pages\' (zimi/bookpages.py), is a book\'s before it loads', /if \(m && \(\/\\\.epub\\\/\$\/i\.test\(m\[2\]\) \|\| m\[2\]\.indexOf\(_BOOK_PAGES_PREFIX\) === 0\)\) return true;/.test(src) && /var _BOOK_PAGES_PREFIX = '_zimi_book_\/';/.test(src));
 ok('a book has no <main>: Reader View reads its body', /if \(!main && _isBookDoc\(doc\)\) main = doc\.body;/.test(src) && /return !!main && \(main !== doc\.body \|\| _isBookDoc\(doc\)\);/.test(src));
 ok('a book keeps its contents list in Reader View', /_isBookDoc\(doc\) \? 'script,style,link,noscript' : _READER_VIEW_STRIP/.test(src));
-ok('a book opens in Reader View, and the e-reader is set up before anything measures it', /var _wantReader = _readerViewOn \|\| _readerAuto\(\) \|\| _bookDoc;/.test(src) && /if \(_bookDoc && _readerViewOn\) \{\n\s*try \{ _bookOn = _bookAttach\(frame\);/.test(src));
+ok('a book opens in Reader View, and the e-reader is set up before anything measures it', /var _wantReader = _readerViewOn \|\| _readerAuto\(\) \|\| _bookDoc \|\| _readerViewFromAddress;/.test(src) && /if \(_bookDoc && _readerViewOn\) \{\n\s*try \{ _bookOn = _bookAttach\(frame\);/.test(src));
 ok('Zimi\'s header is held away for a book, known from its address before it loads', /var _bookLoading = _bookUrl\(url\);\n\s*_bookChrome\(_bookLoading\);/.test(src) && /var held = _bookReading \|\| _pdfReading;[\s\S]{0,400}_chromeImmersive\(held\);/.test(src));
 // So is it for a PDF, from the viewer's address, and given back on close.
 ok('Zimi\'s header is held away while a PDF is read in Zimi\'s PDF reader', /_pdfChrome\(url\.startsWith\('\/static\/pdfjs\/'\)\);/.test(src) && /_pdfChrome\(_isPdfPage\(\)\);/.test(src) && /_bookChrome\(false\);\n\s*_pdfChrome\(false\);/.test(src));
@@ -209,7 +209,7 @@ ok('places are capped per app, the oldest dropped first (a Zimipedia article nev
 // ── the shell ───────────────────────────────────────────────────────────
 ok('the tile is one line in the apps row, like the others', /function _booksTileHtml\(\) \{\n\s*return _appTileHtml\('books', t\('books'\), _BOOKS_SVG, _installedBookZims\(\)/.test(src) && /_APP_TILES = \{[^}\n]*\bbooks: _booksTileHtml[,} ]/.test(src));
 ok('an app like the others: switched per server and per account by its name', /var APP_NAMES = \[[^\]]*'books'[^\]]*\];/.test(src));
-ok('it is the page Zimi owns, in the reader, at /#books', /_openHashApp\('books', replaceState, function\(\) \{ _booksOpen = true; return _BOOKS_PAGE \+ '#' \+ _booksStrings\(\); \}\)/.test(src) && /if \(location\.hash === '#books'\) \{ enterHome\(false\); openBooks\(true\); return; \}/.test(src));
+ok('it is the page Zimi owns, in the reader, at /#books (or /?books=<view> once a list or book is open, so a reload lands there)', /_openHashApp\('books', replaceState, function\(\) \{ _booksOpen = true; return _BOOKS_PAGE \+ '#' \+ _booksStrings\(view\); \}\)/.test(src) && /if \(location\.hash === '#books'\) \{ enterHome\(false\); openBooks\(true\); return; \}/.test(src) && /if \(params\.get\('books'\)\) \{ enterHome\(false\); openBooks\(true, params\.get\('books'\)\); return; \}/.test(src) && /view \? '\/\?books=' \+ encodeURIComponent\(view\) : '\/#books'/.test(src));
 ok('the shell hands the page its strings and the shelves\' names', /_appStrings\('books', \['books_shelf'/.test(src) && /lcc\[c\] = t\('books_lcc_' \+ c\);/.test(src));
 ok('typing and Enter in the box search inside the page', /\(_isWikiPage\(\) \? _wikiSearch : _booksSearch\)\(val\)/.test(src) && /if \(_isBooksPage\(\)\) \{ _booksSearch\(q\.value\.trim\(\)\); return; \}/.test(src) && /_appFrameCall\('booksSearch', val\)/.test(src));
 ok('the box says what it is for', /if \(_isBooksPage\(\)\) return t\('books_search_placeholder'\);/.test(src));
@@ -223,7 +223,7 @@ const need = ['books', 'books_view_unavailable', 'books_search_placeholder', 'bo
   'books_left_none', 'books_position', 'app_empty_books', 'apps_count_books_one', 'apps_count_books_other', 'bg_books', 'books_bce', 'books_bce_ce'];
 const pageKeys = (extract(src, /_appStrings\('books', \[[\s\S]*?\]/, 'keys').match(/'books_[a-z_]+'/g) || []).map(k => k.slice(1, -1));
 const lcc = JSON.parse(extract(src, /var _BOOKS_LCC = \[[\s\S]*?\];/, 'lcc').replace(/^var _BOOKS_LCC = /, '').replace(/;$/, '').replace(/'/g, '"'));
-for (const lang of fs.readdirSync(path.join(root, 'i18n'))) {
+for (const lang of fs.readdirSync(path.join(root, 'i18n')).filter(f => f.endsWith('.json'))) {
   const d = JSON.parse(fs.readFileSync(path.join(root, 'i18n', lang), 'utf8'));
   const missing = need.concat(pageKeys).concat(lcc.map(c => 'books_lcc_' + c)).filter(k => !d[k]);
   if (missing.length) ok('every string in ' + lang, false, missing.join(', '));
@@ -231,7 +231,7 @@ for (const lang of fs.readdirSync(path.join(root, 'i18n'))) {
   if (!/\{from\}/.test(d.books_bce) || !/\{to\}/.test(d.books_bce) || !/\{from\}[\s\S]*\{to\}/.test(d.books_bce_ce) || !/\{name\}/.test(d.books_more_by)) ok('the placeholders survive in ' + lang, false);
   if (Object.keys(d).filter(k => /^books|_books/.test(k)).some(k => /\u2014/.test(d[k]))) ok('no em dash in ' + lang, false);
 }
-ok('the strings are in all ten languages', fs.readdirSync(path.join(root, 'i18n')).length === 10);
+ok('the strings are in all ten languages', fs.readdirSync(path.join(root, 'i18n')).filter(f => f.endsWith('.json')).length === 10);
 // A finger on the reader's sheet and slider, and on any app's pill.
 ok('the reading sheet\'s choices, its close and the book\'s slider reach 44px on a finger',
   /@media \(pointer:coarse\)\{\.zb-seg button\{min-height:44px\}\.zb-x\{width:44px;height:44px\}\}/.test(src) && /@media \(pointer:coarse\)\{\.zb-scrub\{height:44px;/.test(src));

@@ -29,7 +29,7 @@ ok('an owned ZIM with a newer edition offers Update', has({ _installedDate: '202
 ok('the same date offers nothing', has({ _installedDate: '2026-03' }, newer) === false);
 ok('a ZIM in another program\'s folder never offers Update', has({ _installedDate: '2026-01', _installedExternal: 'Project NOMAD' }, newer) === false);
 ok('no download link offers nothing', has({ _installedDate: '2026-01' }, { date: '2026-03-01' }) === false);
-ok('the catalog row asks the function', /const hasUpdate = _catalogHasUpdate\(instVariant, updVariant\);/.test(src));
+ok('the catalog row asks the function', /const hasUpdate = !item\.own && _catalogHasUpdate\(instVariant, updVariant\);/.test(src));
 
 
 // The count sublines and the badge

@@ -79,6 +79,8 @@
   // visible first — CSS hides #main-view and shows the dark almanac shell
   // until almanac.js takes over and removes the class (_openAlmanacInner).
   if (/^#almanac(\?|$)/.test(location.hash)) el.classList.add('almanac-boot');
+  // A reload into the 3D view (#almanac?v=...): the page behind stays unseen until the view is up, so there is no Almanac home first.
+  if (/^#almanac\?(?:[^#]*&)?v=/.test(location.hash)) el.classList.add('alm-3d-boot');
   // Same contract for the Create page (#create): a URL you can send someone
   // has to LAND on that page, not show the library and then swap. The class
   // holds the library back until create.js takes over (_openCreateInner).
@@ -92,6 +94,39 @@
   window.addEventListener('pageshow', function(e){ if (e.persisted) apply(); });
 })();
 </script>
+<script>
+// The Almanac's files. Booting into it (#almanac) its stylesheet comes down beside app.js (the scripts, which are the
+// bigger part, start once app.js is in: they would slow it); app.js asks for the same addresses later and finds them on
+// the way or here. The scripts share a global scope, so they must run in order, and the Almanac opens only once the last one has run: async=false keeps that order
+// while all download at once, one round trip instead of six on a phone away from home.
+var _ALMANAC_CSS = '/static/almanac.css?v=3';
+var _CAPABILITY_JS = '/static/capability.js?v=47';   // one address for every loader (the Moon's and the Almanac's), so the file downloads once
+var _ALMANAC_MODULES = [
+  _CAPABILITY_JS,
+  '/static/almanac-links.js?v=45',
+  '/static/almanac-orrery.js?v=45',
+  '/static/almanac-sky.js?v=45',
+  '/static/almanac-skygl.js?v=45',
+  '/static/almanac-onesky.js?v=45',
+  '/static/zone-places.js?v=45',
+  '/static/almanac-skyfacts.js?v=45',
+  '/static/almanac-skyscene.js?v=45',
+  '/static/almanac.js?v=45'
+];
+function _almPreloadFiles(cssOnly) {
+  [[_ALMANAC_CSS, 'style']].concat(cssOnly ? [] : _ALMANAC_MODULES.map(function(src) { return [src, 'script']; })).forEach(function(f) {
+    var l = document.createElement('link');
+    l.rel = 'preload';
+    l.as = f[1];
+    l.href = f[0];
+    document.head.appendChild(l);
+  });
+}
+if (/^#almanac(\?|$)/.test(location.hash)) _almPreloadFiles(true);
+</script>
+<!--@tokens.css@-->
+<!--@zimifooter.css@-->
+<!--@zimifooter.js@-->
 <link rel="stylesheet" href="/static/app.css?v=1">
 </head>
 <body>
@@ -109,7 +144,7 @@
   <div id="history-trail"></div>
   <div class="topbar-search" role="search">
     <label for="q" class="sr-only" data-i18n="search">Search</label>
-    <input type="text" id="q" placeholder="Search everything..." data-i18n-placeholder="search_placeholder" autofocus aria-label="Search" data-i18n-aria="search" autocomplete="off" aria-autocomplete="list" aria-controls="suggest-dropdown">
+    <input type="text" id="q" placeholder="Search everything…" data-i18n-placeholder="search_placeholder" autofocus aria-label="Search" data-i18n-aria="search" autocomplete="off" aria-autocomplete="list" aria-controls="suggest-dropdown">
     <svg class="search-icon" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor"><circle cx="11" cy="11" r="8"/><path stroke-linecap="round" d="m21 21-4.3-4.3"/></svg>
     <button type="button" id="search-clear" class="search-clear" aria-label="Clear search" data-i18n-aria="clear_search" title="Clear search" data-i18n-title="clear_search" onclick="clearSearchInput()"><svg aria-hidden="true" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M6 6l12 12M18 6L6 18"/></svg></button>
     <!-- Examples of the search operators, in the UI's language. Shown only
@@ -128,7 +163,7 @@
   <!-- Create a ZIM. Home view only, and only for an admin — it writes to the
        library. updateTopbar() owns the visibility; it ships hidden so a
        non-admin never sees it flash during boot. -->
-  <a href="#" id="random-btn" class="random-btn" title="Random article (R)" data-i18n-title="random_article" aria-label="Random article" data-i18n-aria="random_article" onclick="randomArticle(event)"><span class="dice" aria-hidden="true">&#x1F3B2;</span></a>
+  <a href="#" id="random-btn" class="random-btn" title="Random article (R)" data-i18n-title="random_article" aria-label="Random article" data-i18n-aria="random_article" onclick="randomArticle(event)"><span class="dice" aria-hidden="true"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3.5" y="3.5" width="17" height="17" rx="4"/><circle cx="8.5" cy="8.5" r=".9" fill="currentColor"/><circle cx="15.5" cy="8.5" r=".9" fill="currentColor"/><circle cx="12" cy="12" r=".9" fill="currentColor"/><circle cx="8.5" cy="15.5" r=".9" fill="currentColor"/><circle cx="15.5" cy="15.5" r=".9" fill="currentColor"/></svg></span></a>
   <!-- Red night light, in the bar while the Field Guide is open (updateTopbar owns the visibility). -->
   <button type="button" id="night-btn" class="night-btn" style="display:none" aria-pressed="false" title="Red night light" data-i18n-title="fieldguide_red_night" aria-label="Red night light" data-i18n-aria="fieldguide_red_night" onclick="_nightToggle()"><svg aria-hidden="true" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8z"/></svg></button>
   <!-- History (the clock) and Saved (a list with a ribbon) are two panels. Off the
@@ -160,6 +195,19 @@
   <div id="reader-palette" class="reader-palette" role="dialog" aria-label="Reader View settings" data-i18n-aria="reader_view_settings"></div>
 
 </nav>
+<script>
+// The bar's first paint is the one Home settles on. Opening the address bare, the boot's own updateTopbar (a
+// moment later on a slow link) used to re-lay the bar out under the person's eyes: the search box shrank, the Saved
+// button and the search tips popped in, the logo moved six pixels, the placeholder changed twice. Say what Home's bar
+// is now, in the same four places updateTopbar says it; the boot overwrites them with the same values.
+(function(){
+  if (location.pathname !== '/' || location.search || location.hash) return;
+  document.body.classList.add('on-home');
+  document.querySelector('.topbar-search').classList.add('has-help');
+  document.getElementById('bm-panel-btn').style.display = 'flex';
+  if (window.innerWidth < 560) document.getElementById('q').placeholder = 'Search';
+})();
+</script>
 
 <div id="history-panel" class="history-panel"></div>
 
@@ -244,7 +292,7 @@
     <div id="output"></div>
   </div>
   <footer id="footer" class="footer" style="display:none">
-    <a href="https://github.com/epheterson/Zimi" target="_blank" rel="noopener" class="footer-brand">Zimi</a> <span id="footer-version"></span>&middot; <span data-i18n="powered_by">Powered by</span> <a href="https://kiwix.org" target="_blank" rel="noopener">Kiwix</a>
+    <a href="https://github.com/epheterson/Zimi" target="_blank" rel="noopener" class="footer-brand zimi-brand">Zimi</a> <span id="footer-version" class="footer-version"></span>&middot; <span data-i18n="powered_by">Powered by</span> <a href="https://kiwix.org" target="_blank" rel="noopener">Kiwix</a>
     <div class="footer-sub"><span class="kbd-hints"><kbd>/</kbd> <span data-i18n="kbd_search">Search</span> &middot; <kbd>R</kbd> <span data-i18n="kbd_random">Random</span> &middot; <kbd>B</kbd> <span data-i18n="kbd_bookmark">Bookmark</span> &middot; <kbd>H</kbd> <span data-i18n="kbd_history">History</span> &middot; <kbd>Esc</kbd> <span data-i18n="kbd_back">Back</span></span></div>
   </footer>
 </main>
@@ -257,7 +305,6 @@
 </div>
 <div id="almanac-view" class="almanac-view">
   <div class="almanac-content" id="almanac-content"></div>
-  <div id="alm-veil" class="alm-veil" role="status" hidden><span class="alm-veil-moon" aria-hidden="true"></span></div>
 </div>
 <!-- Create a ZIM (create.js, lazy-loaded on first open) — same shell shape as
      the Almanac: an empty surface the module renders into. -->
@@ -271,7 +318,7 @@
 <!-- Live region for toast notifications. Updated dynamically by _showToast(). -->
 <div id="a11y-toast-region" role="status" aria-live="polite" class="sr-only"></div>
 
-<script>var __ZIMI_CONFIG = {discoverStamp:'disc6',i18nHash:'0',bestAnswer:0,build:''};</script>
+<script>var __ZIMI_CONFIG = {discoverStamp:'disc6',i18nHash:'0',bestAnswer:0,build:'',assets:{}};</script>
 <script src="/static/app.js?v=1"></script>
 </body>
 </html>

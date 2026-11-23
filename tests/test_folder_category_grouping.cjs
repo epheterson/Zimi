@@ -45,7 +45,10 @@ vm.runInContext(
   // const at vm top level does not attach to the sandbox — rewrite to var.
   extract(/const OTHER_CAT = '__other__';/, 'OTHER_CAT').replace('const ', 'var ') + '\n' +
   extract(/var CREATED_CAT = '[^']*';/, 'CREATED_CAT') + '\n' +
+  extract(/const COMMUNITY_ICON_PATHS = .*;/, 'COMMUNITY_ICON_PATHS').replace('const ', 'var ') + '\n' +
+  extract(/const COMMUNITY_CAT = .*;/, 'COMMUNITY_CAT').replace('const ', 'var ') + '\n' +
   extract(/function _catIcon\(paths\) \{[\s\S]*?\n\}/, '_catIcon') + '\n' +
+  extract(/function communityIcon\(size\) \{[\s\S]*?\n\}/, 'communityIcon') + '\n' +
   extract(/const BROWSE_CATEGORIES = \[[\s\S]*?\n\];/, 'BROWSE_CATEGORIES').replace('const ', 'var ') + '\n' +
   extract(/const _CAT_TO_BROWSE_KEY = \{[\s\S]*?\n\};/, '_CAT_TO_BROWSE_KEY').replace('const ', 'var ') + '\n' +
   extract(/function _zimCat\(z\)\s*\{[\s\S]*?\n\}/, '_zimCat') + '\n' +

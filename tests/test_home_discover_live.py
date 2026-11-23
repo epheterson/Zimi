@@ -257,3 +257,45 @@ def test_discover_drawn_before_the_library_fills_in_when_it_arrives(served):
             assert pg.evaluate("() => window.__asked") == 2
         finally:
             br.close()
+
+
+def test_say_reads_the_language_from_the_zim_not_only_its_name(served):
+    """"I can't believe we lost the speak button on the
+    word of the day." The NAS serves its Wiktionary as wiktionary_en-simple and
+    its Wikiquote as plain wikiquote; Say read the language from the name alone,
+    matched neither, and drew no button. The ZIM's Language says it."""
+    from playwright.sync_api import sync_playwright
+
+    with sync_playwright() as pw:
+        br, pg = _phone(pw)
+        try:
+            pg.goto(served + "/")
+            pg.wait_for_function(READY, timeout=30000)
+            pg.wait_for_selector("#discover-row", state="attached")
+            pg.wait_for_function(
+                "() => document.querySelector('#discover-row .discover-card') && !document.querySelector('#discover-row .dc-loading')",
+                timeout=20000,
+            )
+            pg.wait_for_timeout(500)
+            got = pg.evaluate(
+                """() => {
+                  zimsCache.push({ name: 'wiktionary_en-simple', title: 'Wiktionary', main_path: 'index', language: 'eng' },
+                                 { name: 'wikiquote', title: 'Wikiquote', main_path: 'index', language: 'deu' },
+                                 { name: 'wiktionary_fr_all_nopic_2026-01', title: 'Wiktionnaire', main_path: 'index' });
+                  _rebuildZimsMap();
+                  const row = document.getElementById('discover-row');
+                  _renderDiscover(row, [
+                    { zim: 'wiktionary_en-simple', path: 'paintbrush', title: 'paintbrush', blurb: 'A brush for paint.' },
+                    { zim: 'wikiquote', path: 'Goethe', title: 'Goethe', blurb: '\\u201cMehr Licht!\\u201d', attribution: 'Goethe' },
+                    { zim: 'wiktionary_fr_all_nopic_2026-01', path: 'pinceau', title: 'pinceau', blurb: 'Outil.' }]);
+                  return [...row.querySelectorAll('.discover-card')].map(c => {
+                    const s = c.querySelector('.dc-say'); return [c.dataset.zim, s ? s.dataset.lang : null]; });
+                }"""
+            )
+            assert got == [
+                ["wiktionary_en-simple", "en"],
+                ["wikiquote", "de"],
+                ["wiktionary_fr_all_nopic_2026-01", "fr"],
+            ], got
+        finally:
+            br.close()

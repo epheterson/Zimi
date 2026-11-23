@@ -127,10 +127,10 @@ def test_chips_and_help_fit_a_phone(served, lang):
         assert help_.is_visible()
         assert pg.evaluate(_FIT) == []
 
-        # Typing: the "?" and the × side by side, neither on the words.
+        # Typing: the "?" steps aside so the × has the box's end to itself, and neither sits on the words.
         pg.locator("#q").tap()
         pg.locator("#q").fill(QUERY)
-        assert help_.is_visible() and pg.locator("#search-clear").is_visible()
+        assert not help_.is_visible() and pg.locator("#search-clear").is_visible()
         assert pg.evaluate(_FIT) == []
 
         # The search: one chip per operator, all on the screen.
@@ -173,11 +173,12 @@ def test_chips_and_help_fit_a_phone(served, lang):
         if lang == "he":
             assert "פאנל סולארי" in first
         assert pg.evaluate(_FIT) == []
-        examples.nth(1).tap()  # the exclusion
-        pg.wait_for_selector("#output .search-chips")
+        examples.nth(1).tap()  # the exclusion: its syntax goes into the box, to be sent
         assert pg.evaluate("document.getElementById('q').value") == pg.evaluate(
             "t('search_example_without')"
         )
+        pg.keyboard.press("Enter")
+        pg.wait_for_selector("#output .search-chips")
         assert pg.evaluate(_FIT) == []
 
         # The catalog: the same chips under its count, the same "?".
@@ -219,7 +220,8 @@ def test_chips_and_help_fit_a_phone(served, lang):
         assert pg.locator("#catalog-results .search-chip").count() == 2
         pg.evaluate("document.activeElement.blur()")
         assert pg.evaluate(_FIT) == []
-        pg.locator("#q").tap()
+        pg.locator("#q").fill("")   # the "?" waits while something is typed
+        pg.evaluate("document.activeElement.blur()")
         help_.tap()
         assert pg.locator("#suggest-dropdown .search-example").count() == 3
         assert pg.evaluate(_FIT) == []

@@ -142,7 +142,13 @@ def test_nothing_in_settings_or_manage_outgrows_its_card(served):
                 for i in range(pg.locator("#create-modes .create-chip").count()):
                     chip = pg.locator("#create-modes .create-chip").nth(i)
                     if chip.is_enabled():
-                        chip.click()
+                        try:
+                            chip.click(timeout=5000)
+                        except Exception:
+                            # A chip that needs the internet is turned off a moment after the picker opens (what is offline is read from the server).
+                            if chip.is_enabled():
+                                raise
+                            continue
                         check("create-%d" % i, "#create-picker")
                 pg.close()
             br.close()
