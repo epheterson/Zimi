@@ -6098,8 +6098,8 @@ function _applyLibraryViewInPlace(mode) {
       badge.textContent = tiles ? _langOwnName((z.language || '').toLowerCase().slice(0, 2)) : info.code;
     });
   });
-  Array.prototype.forEach.call(output.querySelectorAll('.lib-view-btn'), function(b, i) {
-    var on = (i === 1) === tiles;  // the list button comes first, the tiles button second
+  Array.prototype.forEach.call(output.querySelectorAll('.lib-view-btn'), function(b) {
+    var on = b.dataset.view === mode;
     b.classList.toggle('active', on);
     b.setAttribute('aria-pressed', String(on));
   });
@@ -6114,8 +6114,8 @@ function _libViewToggleHtml() {
   var listSvg = '<svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4"><line x1="5" y1="3.5" x2="14" y2="3.5"/><line x1="5" y1="8" x2="14" y2="8"/><line x1="5" y1="12.5" x2="14" y2="12.5"/><circle cx="2" cy="3.5" r="1"/><circle cx="2" cy="8" r="1"/><circle cx="2" cy="12.5" r="1"/></svg>';
   var gridSvg = '<svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4"><rect x="2" y="2" width="4.5" height="4.5" rx="1"/><rect x="9.5" y="2" width="4.5" height="4.5" rx="1"/><rect x="2" y="9.5" width="4.5" height="4.5" rx="1"/><rect x="9.5" y="9.5" width="4.5" height="4.5" rx="1"/></svg>';
   return '<span class="lib-view-toggle" role="group" aria-label="' + escAttr(t('library_view')) + '">' +
-    '<button class="lib-view-btn' + (view === 'list' ? ' active' : '') + '" aria-pressed="' + (view === 'list') + '" title="' + escAttr(t('view_list')) + '" aria-label="' + escAttr(t('view_list')) + '" onclick="event.stopPropagation();_setLibraryView(\'list\')">' + listSvg + '</button>' +
-    '<button class="lib-view-btn' + (view === 'tiles' ? ' active' : '') + '" aria-pressed="' + (view === 'tiles') + '" title="' + escAttr(t('view_tiles')) + '" aria-label="' + escAttr(t('view_tiles')) + '" onclick="event.stopPropagation();_setLibraryView(\'tiles\')">' + gridSvg + '</button>' +
+    '<button class="lib-view-btn' + (view === 'list' ? ' active' : '') + '" data-view="list" aria-pressed="' + (view === 'list') + '" title="' + escAttr(t('view_list')) + '" aria-label="' + escAttr(t('view_list')) + '" onclick="event.stopPropagation();_setLibraryView(\'list\')">' + listSvg + '</button>' +
+    '<button class="lib-view-btn' + (view === 'tiles' ? ' active' : '') + '" data-view="tiles" aria-pressed="' + (view === 'tiles') + '" title="' + escAttr(t('view_tiles')) + '" aria-label="' + escAttr(t('view_tiles')) + '" onclick="event.stopPropagation();_setLibraryView(\'tiles\')">' + gridSvg + '</button>' +
     '</span>';
 }
 
