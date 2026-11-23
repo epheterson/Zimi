@@ -66,6 +66,7 @@ async function enterManage(e, section) {
   // ?manage=<section>) wins, else a section a caller already staged in
   // _pendingMsSection (e.g. Reorder → preferences), else the last one used
   // this session, else Library. renderManage honors _pendingMsSection.
+  var _deep = e ? null : _manageDeepLink(); // a reload of /?manage&tab=...: read before the address is rewritten
   var _msTarget = _validMsSection(section) || _pendingMsSection || _lastMsSection() || 'library';
   _pendingMsSection = _msTarget;
   // Manage is reachable from the Create page's ⋯ menu. Create is a full-page
@@ -112,6 +113,7 @@ async function enterManage(e, section) {
   history.pushState({ mode: 'manage' }, '', _msSectionUrl(_msTarget));
   updateTopbar();
   renderManage();
+  if (_deep) _applyManageDeepLink(_deep);
   // Manage is now painted in #main-view — drop the cold-boot gate so it shows
   // (no-op on the normal in-SPA path, where the class was never set).
   document.documentElement.classList.remove('manage-boot');
@@ -244,9 +246,7 @@ function filterCatalogLang(lang) {
   manageLangFilter = (manageLangFilter === lang) ? null : lang;
   // Don't clear _catalogCache — catalog data doesn't change, only the filter does.
   // Clearing it forces a server re-fetch (which can be rate-limited by Kiwix OPDS).
-  if (_browseView === 'drilldown' && manageCategoryFilter) drillCategory(manageCategoryFilter);
-  else if (_browseView === 'search') { var v = q.value.trim(); if (v) browseCatalogFilter(v); else renderBrowseGallery(); }
-  else renderBrowseGallery();
+  _repaintCatalog();
   // Restore scroll position after re-render
   requestAnimationFrame(function() {
     var newScrollEl = document.getElementById('catalog-lang-scroll');
@@ -303,6 +303,7 @@ const _OPDS_CAT_MAP = {
 };
 
 function autoCategorize(item) {
+  if (item.source === 'community') return COMMUNITY_CAT;  // made by anyone: its own bucket, not Other
   const cat = (item.category || '').toLowerCase();
   const n = (item.name || '').toLowerCase();
   // 1. Map known OPDS categories (covers ~730 of 1074 items)
@@ -388,6 +389,10 @@ function _rerenderCatalogIfSafe() {
   // the just-landed case where the stale copy was shown.
   var sc = document.scrollingElement || document.documentElement;
   if ((sc && sc.scrollTop > 60) || results.scrollTop > 60) return;
+  _repaintCatalog();
+}
+// The catalog view on screen, drawn again from the cache.
+function _repaintCatalog() {
   if (_browseView === 'drilldown' && manageCategoryFilter) drillCategory(manageCategoryFilter);
   else if (_browseView === 'search') { var v = q.value.trim(); if (v) browseCatalogFilter(v); else renderBrowseGallery(); }
   else renderBrowseGallery();
@@ -456,7 +461,7 @@ async function _fetchCatalogItems() {
     for (const page of pages) items.push(...page);
   }
   for (const item of items) item.category = autoCategorize(item);
-  items.push(...await _loadOwnCatalogRows());
+  _mergeOwnCatalogRows(items, await _loadOwnCatalogRows());
   return {
     items: items,
     stale: !!data.stale,
@@ -932,6 +937,8 @@ function _enrichCatalogInstalled(items) {
   const tryMatch = (item, strict) => {
     // Build candidate prefixes to match installed filenames against.
     const prefixes = [item.name];
+    // Zimi's own ZIMs ride in the community catalog as zimi_mul_<x> and install as zimi_<x>.
+    if (item.name.startsWith(ZIMI_COMMUNITY_PREFIX)) prefixes.push('zimi_' + item.name.slice(ZIMI_COMMUNITY_PREFIX.length));
     if (item.download_url) {
       // Strip path, .meta4, .zim, and trailing _YYYY-MM date to get the
       // project's stable prefix as Kiwix actually filenames it.
@@ -1087,6 +1094,7 @@ function renderBrowseGallery() {
   _ensureCatalogHydrated(); // instant paint from the session cache when present
   _browseView = 'gallery';
   manageCategoryFilter = null;
+  _syncManageUrl();
   pillsBar.innerHTML = ''; pillsBar.style.display = 'none'; pillsBar.className = 'pills';
   _fitSearchPlaceholder(t('search_catalog'));
 
@@ -1126,9 +1134,10 @@ function renderBrowseGallery() {
     const MIN_BROWSE_CAT = 3;
     _mergedToOther = new Set();
     for (const cat of BROWSE_CATEGORIES) {
-      if (cat.key === 'other') continue;
+      // Community is where Zimi's own ZIMs are added back from: it stays its own card however few it holds.
+      if (cat.key === 'other' || cat.key === COMMUNITY_CAT) continue;
       const count = catCounts[cat.key] || 0;
-      if (count > 0 && count < MIN_BROWSE_CAT && cat.key !== OWN_CATALOG_CAT) {
+      if (count > 0 && count < MIN_BROWSE_CAT) {
         _mergedToOther.add(cat.key);
         catCounts['other'] = (catCounts['other'] || 0) + count;
         catInstalled['other'] = (catInstalled['other'] || 0) + (catInstalled[cat.key] || 0);
@@ -1300,6 +1309,7 @@ function drillCategory(catKey, namePrefix) {
   _ensureCatalogHydrated(); // instant paint from the session cache when present
   _browseView = 'drilldown';
   manageCategoryFilter = catKey;
+  _syncManageUrl();
   pillsBar.innerHTML = ''; pillsBar.style.display = 'none'; pillsBar.className = 'pills';
 
   const catMeta = BROWSE_CATEGORIES.find(c => c.key === catKey);
@@ -1390,6 +1400,7 @@ function browseCatalogFilter(query) {
   if (!results) return;
   _ensureCatalogHydrated(); // instant paint from the session cache when present
   _browseView = 'search';
+  _syncManageUrl();
   pillsBar.innerHTML = ''; pillsBar.style.display = 'none'; pillsBar.className = 'pills';
 
   if (!_catalogCache) {
@@ -1423,7 +1434,7 @@ function browseCatalogFilter(query) {
       ? (_RTL_LANGS.has(_currentLang) ? tH('back') + ' \u2192' : '\u2190 ' + tH('back'))
       : tH('back_to_catalog');
     let h = '<div class="browse-drilldown-header">' +
-      '<button class="browse-back" onclick="' + (manageCategoryFilter ? "drillCategory('" + escAttr(manageCategoryFilter) + "')" : 'renderBrowseGallery()') + '">' + back + '</button>' +
+      '<button class="browse-back" ' + (manageCategoryFilter ? 'data-cat="' + escAttr(manageCategoryFilter) + '" onclick="drillCategory(this.dataset.cat)"' : 'onclick="renderBrowseGallery()"') + '>' + back + '</button>' +
       '<span class="browse-drilldown-count">' + tPluralH('wiki_results', filtered.length) + '</span>' +
     '</div>' + searchChipsHtml(query, items);
     if (grouped.length) {
@@ -1517,6 +1528,7 @@ function groupVariants(items) {
   return Object.values(groups);
 }
 
+const ZIMI_COMMUNITY_PREFIX = 'zimi_mul_';
 // Flavor token from a ZIM filename or download URL — the client twin of
 // library.py's _detect_flavor. The token in the filename is the only flavor
 // signal the client and server share; the OPDS `flavour` field is unreliable
@@ -1553,6 +1565,8 @@ function _newestPerFlavor(list) {
 function variantLabel(url, siblingUrls) {
   if (!url) return '';
   const tok = _flavorToken(url);
+  // The Almanac's two builds are not Kiwix's video and no-video ones: the second carries the sharp HD tiles.
+  if (/(^|\/)zimi_mul_almanac_/.test(url)) return t(tok === 'maxi' ? 'flavor_hd' : 'flavor_standard');
   if (tok === 'maxi') return t('full');
   if (tok === 'nopic') return t('no_images');
   if (tok === 'mini') return t('mini');
@@ -1583,6 +1597,9 @@ function renderCatalogItem(group) {
   const metaTags = [];
   if (item.article_count) metaTags.push(fmtNum(item.article_count) + ' ' + t('articles'));
   if (item.date) metaTags.push(item.date);
+  // Kiwix's community library, from the openZIM project: a solid mark at the card's bottom left, in the actions row.
+  const communityBadge = item.source === 'community'
+    ? '<span class="community-corner" role="img" title="' + escAttr(t('catalog_community')) + '" aria-label="' + escAttr(t('catalog_community')) + '">' + communityIcon(16) + '</span>' : '';
   const sizes = variants.map(v => v.size_bytes).sort((a, b) => a - b);
   if (sizes.length > 1) {
     metaTags.push('<span title="' + escAttr(t('size_range_hint')) + '">' +
@@ -1616,7 +1633,8 @@ function renderCatalogItem(group) {
     // ALONGSIDE the existing one instead of replacing it (#50, echoes #16).
     const instTok = _flavorToken(instVariant._installedFile || '');
     const updVariant = variants.find(v => v.download_url && _flavorToken(v.download_url) === instTok) || instVariant;
-    const hasUpdate = _catalogHasUpdate(instVariant, updVariant);
+    // Zimi's own ZIMs come with the release: a newer community edition is not an update to them.
+    const hasUpdate = !item.own && _catalogHasUpdate(instVariant, updVariant);
     if (hasUpdate) {
       // Update available — show update button (same style as manage view)
       actionsHtml = '<button class="ci-update-btn" onclick="downloadZim(\'' + escAttr(updVariant.download_url) + '\', this, true)" title="' + escAttr(t('from_to_update', {from: instVariant._installedDate, to: updVariant.date})) + '">' +
@@ -1628,7 +1646,7 @@ function renderCatalogItem(group) {
       actionsHtml += _zimDeleteBtn(instVariant._installedFile, instVariant._installedExternal);
     }
   } else if (item.own) {
-    actionsHtml = '<button class="ci-add-btn" onclick="event.stopPropagation();_addOwnZim(\'' + escJs(item.name) + '\')">' + tH('add_own') + '</button>';
+    actionsHtml = '<button class="ci-add-btn" onclick="event.stopPropagation();_addOwnZim(\'' + escJs(_ownZimName(item.name)) + '\')">' + tH('add_own') + '</button>';
   } else {
     // Sibling URLs disambiguate colliding labels (unsuffixed vs maxi → both
     // "Full" without them, see variantLabel).
@@ -1668,7 +1686,7 @@ function renderCatalogItem(group) {
   const peerHtml = _peerHint(item);
   // Multi-select checkbox — only when there's something to download.
   let selectHtml = '';
-  if (!anyInstalled) {
+  if (!anyInstalled && !item.own) {   // a packaged ZIM is restored by its own Add button, never fetched from the community URL
     const dlVariants = variants.filter(v => v.download_url);
     if (dlVariants.length > 0) {
       const sorted = dlVariants.slice().sort((a, b) => _flavorOrder(b.download_url) - _flavorOrder(a.download_url));
@@ -1702,7 +1720,7 @@ function renderCatalogItem(group) {
       (hierarchyHtml ? '<div class="ci-hier">' + hierarchyHtml + '</div>' : '') +
     '</div>' +
     // Peer pill rides in the action row, directly left of the download button
-    '<div class="ci-actions">' + gearHtml + peerHtml + actionsHtml + '</div>' +
+    '<div class="ci-actions">' + communityBadge + gearHtml + peerHtml + actionsHtml + '</div>' +
   '</div>';
 }
 
@@ -1849,6 +1867,7 @@ function switchManageTab(tab) {
   }
   _syncSearchHelp();
   _renderSelectionBar();
+  _syncManageUrl();
 }
 
 // ── Collections tab ──
@@ -2243,7 +2262,7 @@ function _actRowHtml(r) {
     esc(_actActorLabel(actorKey)) + '</span>';
 
   return '<div class="catalog-item act-row"' +
-      (zim ? ' style="cursor:pointer" onclick="enterSource(\'' + escJs(zim.name) + '\',true)"' : '') + '>' +
+      (zim ? ' style="cursor:pointer" onclick="openZimOrApp(\'' + escJs(zim.name) + '\')"' : '') + '>' +
     '<div class="ci-icon act-icon">' + icon + '</div>' +
     '<div class="ci-info">' +
       '<div class="ci-title">' + esc(subject) + '</div>' +
@@ -2468,11 +2487,6 @@ function _renderManagePublicLocked() {
       '</div>' +
     '</div>';
 }
-function _fetchHasPw() {
-  return serverFetch('/manage/has-password', { credentials: 'same-origin' })
-    .then(function(r) { return r.json().then(function(j) { return { ok: r.ok, j: j }; }, function() { return { ok: r.ok, j: {} }; }); })
-    .catch(function() { return { ok: false, j: {} }; });
-}
 // The switch as the saved state draws it: where a failed save puts it back.
 function _setupRevert() {
   var req = document.getElementById('setup-req');
@@ -2527,7 +2541,7 @@ async function _setupSubmit(opts) {
   if (user && body.username) user.defaultValue = user.value;
   if (d.token) { _manageUser = body.username || 'admin'; _manageToken = d.token; _saveManageToken(d.token, true); }
   if (quiet) return true;
-  if (setup) { location.reload(); return true; }
+  if (setup) { _openAddonsStep(); return true; }
   var was = _manageAccess;
   _manageAccess = d.access || _manageAccess;
   _showToast(t('saved'));
@@ -2660,10 +2674,10 @@ async function renderManage() {
     // A repaint (a language arriving late, a refresh) keeps the catalog
     // search that is on screen rather than dropping back to the gallery.
     var _catalogQuery = _browseView === 'search' ? q.value.trim() : '';
-    if (manageCategoryFilter) {
+    if (_catalogQuery) {
+      browseCatalogFilter(_catalogQuery);   // inside its category when it was searched in one
+    } else if (manageCategoryFilter) {
       drillCategory(manageCategoryFilter);
-    } else if (_catalogQuery) {
-      browseCatalogFilter(_catalogQuery);
     } else {
       renderBrowseGallery();
     }
@@ -2737,7 +2751,49 @@ function _prefetchServerSettings() {
   _msPrime('/manage/hot');
   _msPrime('/manage/stats');
 }
-function _msSectionUrl(section) { return (!section || section === 'library') ? '/?manage' : '/?manage=' + section; }
+// Manage in the address, so a reload lands where you were:
+// /?manage=<section>&tab=<tab>&cat=<category>&lang=<code>&q=<text>
+// (lang= with no code is the language pill switched off; q is the box above the list.)
+function _msSectionUrl(section) {
+  var url = (!section || section === 'library') ? '/?manage' : '/?manage=' + section;
+  if (manageTab === 'settings') return url;
+  var parts = ['tab=' + encodeURIComponent(manageTab)];
+  if (manageTab === 'browse') {
+    if (manageCategoryFilter) parts.push('cat=' + encodeURIComponent(manageCategoryFilter));
+    parts.push('lang=' + encodeURIComponent(manageLangFilter || ''));
+  }
+  var text = (manageTab === 'browse' || manageTab === 'installed') && q ? q.value.trim() : '';
+  if (text) parts.push('q=' + encodeURIComponent(text));
+  return url + '&' + parts.join('&');
+}
+// Rewrite the address for the Manage view on screen (one history entry, as switchMs does).
+function _syncManageUrl() {
+  if (mode !== 'manage') return;
+  try { history.replaceState({ mode: 'manage' }, '', _msSectionUrl(_msSection)); } catch (e) {}
+}
+// What a /?manage... address says beyond its section, read before entering Manage rewrites it.
+function _manageDeepLink() {
+  var p = new URLSearchParams(location.search);
+  var tab = p.get('tab');
+  if (!p.has('manage') || ['installed', 'browse', 'downloads', 'collections', 'history', 'activity'].indexOf(tab) < 0) return null;
+  // Only a category the catalog knows comes back from an address (it ends up in a title and a back button).
+  var cat = p.get('cat') || '';
+  if (cat !== 'other' && !BROWSE_CATEGORIES.some(function(c) { return c.key === cat; })) cat = '';
+  return { tab: tab, cat: cat, lang: p.get('lang'), text: p.get('q') || '' };
+}
+function _applyManageDeepLink(deep) {
+  switchManageTab(deep.tab);
+  if (deep.tab === 'browse') {
+    if (deep.lang !== null) manageLangFilter = deep.lang || null;
+    if (deep.text) { q.value = deep.text; manageCategoryFilter = deep.cat || null; browseCatalogFilter(deep.text); }
+    else if (deep.cat) drillCategory(deep.cat);
+    else if (deep.lang !== null) renderBrowseGallery();
+  } else if (deep.tab === 'installed' && deep.text) {
+    q.value = deep.text;
+    renderInstalled(deep.text);
+  }
+  _syncManageUrl();
+}
 function _lastMsSection() {
   try { return _validMsSection(sessionStorage.getItem(SK.MANAGE_SECTION)); } catch (e) { return null; }
 }
@@ -2750,7 +2806,7 @@ function switchMs(section) {
   // the existing ?manage routing (see route()/enterManage).
   try { sessionStorage.setItem(SK.MANAGE_SECTION, section); } catch (e) {}
   if (mode === 'manage') {
-    try { history.replaceState({ mode: 'manage' }, '', _msSectionUrl(section)); } catch (e) {}
+    _syncManageUrl();
   }
   document.querySelectorAll('.ms-nav-item').forEach(function(b) {
     b.classList.toggle('active', b.dataset.ms === section);
@@ -2774,6 +2830,7 @@ function switchMs(section) {
     _renderUpdatesSummary();
     checkForUpdates();
     _renderAutoUpdateSection();
+    if (_manageStatusData) _renderOfflineReady(_OFFLINE_FOLD_OPTS);
   }
 }
 
@@ -3602,6 +3659,7 @@ var _creatorSort = { key: 'created_ts', dir: -1 };  // newest first by default
 // The by-type counts as amber chips, then a sortable table of everything Zimi
 // made. Client-side sort — the server sends the rows unsorted with every field
 // the header needs. Empty when nothing has been created here yet.
+var _DOWNLOAD_GLYPH = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3v12"/><path d="M7 11l5 5 5-5"/><path d="M5 21h14"/></svg>';
 function _creatorMadeHtml(d) {
   var counts = d.created_counts || {};
   var list = (d.created_list || []).slice();
@@ -3631,12 +3689,14 @@ function _creatorMadeHtml(d) {
       '<td>' + tH(_CREATOR_TYPE_KEYS[z.type] || 'zi_kind_zimi') + '</td>' +
       '<td class="cr-made-num">' + (z.size_bytes ? fmtBytes(z.size_bytes) : '') + '</td>' +
       '<td class="cr-made-num">' + (z.created_ts ? _relTime(z.created_ts) : '') + '</td>' +
+      '<td class="cr-made-act"><button type="button" class="ci-gear cr-made-dl" data-zim="' + escAttr(z.name) + '"' +
+        ' onclick="_downloadZimFile(this.dataset.zim)" title="' + escAttr(t('ctx_download_zim')) + '" aria-label="' + escAttr(t('ctx_download_zim')) + '">' + _DOWNLOAD_GLYPH + '</button></td>' +
     '</tr>';
   }).join('');
   return '<div class="cr-made-chips">' + chips + '</div>' +
     '<div class="cr-made-wrap"><table class="cr-made-table"><thead><tr>' +
       th('title', 'creator_col_name') + th('type', 'creator_col_type') +
-      th('size_bytes', 'creator_col_size') + th('created_ts', 'creator_col_when') +
+      th('size_bytes', 'creator_col_size') + th('created_ts', 'creator_col_when') + '<th></th>' +
     '</tr></thead><tbody>' + rows + '</tbody></table></div>';
 }
 
@@ -3937,11 +3997,15 @@ function _msLibraryHtml() {
     '<div class="ms-actions">' +
       '<button class="set-btn" onclick="manageImportZim()">' + tH('import_zim') + '</button>' +
       '<button id="refresh-cache-btn" class="set-btn" onclick="settingsRefreshCache()">' + tH('refresh_cache') + '</button>' +
-      '<button id="library-health-btn" class="set-btn" onclick="runLibraryHealth()">' + tH('library_health') + '</button>' +
+      _healthButtonsHtml() +
     '</div>' +
     '<div id="library-health-section" class="library-health"></div>' +
     '<div id="tmp-files-section"></div>' +
-    _msReorderHtml();
+    // Zimi's own pieces, last on the tab: one fold, one list (Offline Readiness), the add-ons inside it.
+    _offlineFoldHtml();
+  // A check started earlier (here, in another tab, before a reload) is
+  // still running on the server: show it rather than an idle button.
+  _resumeLibraryHealth();
   // Async-load tmp file info
   manageFetch('/manage/stats').catch(function() { return null; }).then(function(r) { return r && r.json(); }).then(function(s) {
     if (!s) return;
@@ -3964,41 +4028,106 @@ function _msLibraryHtml() {
 
 // ── Library health report ──
 var _healthPoll = null;
-function runLibraryHealth() {
-  var btn = document.getElementById('library-health-btn');
+// The deep check reads every byte of every book. Its estimate before it
+// starts assumes about this pace (a NAS's disks); once it runs, the
+// server's own pace (eta_seconds) takes over.
+var DEEP_CHECK_BYTES_PER_SEC = 100 * 1024 * 1024;
+// A deep check longer than this says how long and waits for a second tap.
+var DEEP_CHECK_CONFIRM_SECS = 10 * 60;
+var DEEP_CHECK_CONFIRM_MS = 6000;
+var HEALTH_POLL_MS = 600;
+function runLibraryHealth() { _startLibraryHealth({}); }
+function runDeepCheck(btn) {
+  if (btn.dataset.running) {
+    manageFetch('/manage/health-check', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ cancel: true }) })
+      .then(function() { _pollLibraryHealth(); }).catch(function() {});
+    return;
+  }
+  var bytes = (zimsCache || []).reduce(function(a, z) { return a + (z.size_bytes || 0); }, 0);
+  var secs = bytes / DEEP_CHECK_BYTES_PER_SEC;
+  if (secs > DEEP_CHECK_CONFIRM_SECS && !btn.classList.contains('confirming')) {
+    btn.classList.add('confirming');
+    btn.textContent = t('library_health_deep_start', { time: _fmtSpan(secs) });
+    setTimeout(function() {
+      if (!btn.classList.contains('confirming')) return;
+      btn.classList.remove('confirming');
+      btn.textContent = t('library_health_deep');
+    }, DEEP_CHECK_CONFIRM_MS);
+    return;
+  }
+  btn.classList.remove('confirming');
+  _startLibraryHealth({ deep: true });
+}
+function _startLibraryHealth(body) {
   var sec = document.getElementById('library-health-section');
-  if (btn) btn.disabled = true;
+  _healthButtons(body.deep ? 'deep' : 'quick');
   if (sec) sec.innerHTML = _loadingHtml('library_health_running');
-  manageFetch('/manage/health-check', { method: 'POST' })
+  manageFetch('/manage/health-check', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) })
     .then(function(r) { return r.json(); })
     .then(function() { _pollLibraryHealth(); })
     .catch(function() {
-      if (btn) btn.disabled = false;
+      _healthButtons(null);
       if (sec) sec.innerHTML = '<div class="mc-row"><span class="mc-value" style="color:var(--amber)">' + tH('library_health_failed') + '</span></div>';
     });
 }
+function _resumeLibraryHealth() {
+  manageFetch('/manage/health').then(function(r) { return r.json(); }).then(function(st) {
+    if (st && st.phase === 'running') _pollLibraryHealth();
+  }).catch(function() {});
+}
+// Which check is running ('quick', 'deep' or null): both buttons wait,
+// except the deep one, which becomes its own Cancel. Kept here so a pane
+// drawn again mid-check draws them that way too.
+var _healthRunning = null;
+function _healthButtonsHtml() {
+  var r = _healthRunning;
+  return '<button id="library-health-btn" class="set-btn" onclick="runLibraryHealth()"' + (r ? ' disabled' : '') + '>' + tH('library_health') + '</button>' +
+    '<button id="library-deep-btn" class="set-btn" onclick="runDeepCheck(this)"' +
+    (r === 'quick' ? ' disabled' : '') + (r === 'deep' ? ' data-running="1">' + tH('cancel') : '>' + tH('library_health_deep')) + '</button>';
+}
+function _healthButtons(running) {
+  _healthRunning = running;
+  var quick = document.getElementById('library-health-btn');
+  if (quick) quick.outerHTML = '';
+  var deep = document.getElementById('library-deep-btn');
+  if (deep) deep.outerHTML = _healthButtonsHtml();
+}
+function _deepProgressHtml(st) {
+  var line = t('library_health_progress', { done: _fmtBytes(st.bytes_done || 0), total: _fmtBytes(st.bytes_total || 0) });
+  var eta = st.eta_seconds != null ? _fmtEta(st.eta_seconds) : '';
+  return '<div class="mc-row health-deep-progress"><span class="mc-label">' + esc(st.current || '') + '</span>' +
+    '<span class="mc-value" style="color:var(--text2)">' + esc(line) + (eta ? ' · ' + esc(eta) : '') + '</span></div>';
+}
+var _healthPollFails = 0;
+var HEALTH_POLL_RETRIES = 5;   // failed status reads in a row, while a check is known to run, before the buttons give up
 function _pollLibraryHealth() {
   clearTimeout(_healthPoll);
   manageFetch('/manage/health').then(function(r) { return r.json(); }).then(function(st) {
+    _healthPollFails = 0;
     var sec = document.getElementById('library-health-section');
     if (!sec) return;
     if (st.phase === 'running') {
-      sec.innerHTML = _loadingHtml('library_health_running') +
+      _healthButtons(st.deep ? 'deep' : 'quick');
+      sec.innerHTML = _loadingHtml('library_health_running') + (st.deep ? _deepProgressHtml(st) :
         '<div class="mc-row"><span class="mc-value" style="color:var(--text2)">' +
-        t('library_health_progress', { done: st.done || 0, total: st.total || 0 }) + '</span></div>';
-      _healthPoll = setTimeout(_pollLibraryHealth, 600);
-    } else if (st.phase === 'done') {
-      _renderHealthReport(st);
-      var btn = document.getElementById('library-health-btn');
-      if (btn) btn.disabled = false;
-    } else {
+        t('library_health_progress', { done: st.done || 0, total: st.total || 0 }) + '</span></div>');
+      _healthPoll = setTimeout(_pollLibraryHealth, HEALTH_POLL_MS);
+      return;
+    }
+    _healthButtons(null);
+    // Stopped, the books read before the stop are still the report.
+    if (st.phase === 'done' || st.phase === 'cancelled') _renderHealthReport(st);
+    else {
       sec.innerHTML = '<div class="mc-row"><span class="mc-value" style="color:var(--amber)">' + tH('library_health_failed') + '</span></div>';
-      var b2 = document.getElementById('library-health-btn');
-      if (b2) b2.disabled = false;
     }
   }).catch(function() {
-    var b3 = document.getElementById('library-health-btn');
-    if (b3) b3.disabled = false;
+    // One failed read does not end a check the server is still running: keep its state (and Cancel), try again slower.
+    if (_healthRunning && ++_healthPollFails <= HEALTH_POLL_RETRIES) {
+      _healthPoll = setTimeout(_pollLibraryHealth, HEALTH_POLL_MS * (_healthPollFails + 1));
+      return;
+    }
+    _healthPollFails = 0;
+    _healthButtons(null);
   });
 }
 function _healthMark(status) {
@@ -4052,6 +4181,10 @@ function _renderHealthReport(st) {
   var summaryLine = s.warnings
     ? t('library_health_summary_warn', { healthy: s.healthy, warnings: s.warnings })
     : t('library_health_summary_ok', { total: s.total });
+  if (st.phase === 'cancelled') {
+    summaryLine = t('library_health_deep_stopped', { done: s.total, total: s.of }) +
+      (s.warnings ? ' · ' + summaryLine : '');
+  }
   if (s.torrent_files) summaryLine += ' · ' + t('health_torrent_files', { n: s.torrent_files });
   var rank = { warn: 0, ok: 1, info: 2 };  // warnings first, torrent-metadata last
   var rows = (st.report || []).slice().sort(function(a, b) {
@@ -4120,6 +4253,8 @@ function _cacheSegLabel(key) {
   return m[key] || key;
 }
 
+// "12 files, 3 MB" in the person's language (the same words the older-copies row uses).
+function _filesSum(count, bytes) { return esc(t('older_copies_sum', { n: fmtNum(count || 0), size: _fmtBytes(bytes || 0) })); }
 function _cacheBreakdownHtml(d) {
   // Sort segments largest→smallest so the bar reads high-to-low and the legend
   // order matches. Copy first — never mutate the fetched payload.
@@ -4203,6 +4338,8 @@ function _msPreferencesHtml() {
       on: _openInApps() && _openInAppsPossible(), disabled: !_openInAppsPossible(), onchange: '_setOpenInApps(this.checked)' },
       { id: 'ms-show-discover', title: tH('show_discover'), on: !_getStorageFlag(SK.HIDE_DISCOVER),
         onchange: '_setShowDiscover(this.checked)' }]) +
+    // Which categories Home shows, and in what order: how Home looks is a preference, not a library setting.
+    _msReorderHtml() +
 
     '<div class="ms-section-label">' + tH('ms_display_section') + '</div>' +
     '<div class="ms-theme-label">' + tH('app_theme') + '</div>' +
@@ -4389,8 +4526,9 @@ function _appUpdateCheckHtml(d) {
     return '<button type="button" class="app-theme-btn' + (on ? ' active' : '') + '" role="radio" aria-checked="' + on + '"' +
       (locked ? ' disabled' : '') + ' onclick="_appUpdateSetCheck(\'' + escAttr(m) + '\')"><span>' + tH(m === 'never' ? 'app_check_never' : 'alm_earth_sat_' + m) + '</span></button>';
   }).join('');
-  return '<div class="ms-theme-label">' + tH('app_update_check') + '</div>' +
-    '<div class="app-theme-seg" id="' + _APP_UPDATE_CHECK_ID + '" role="radiogroup" tabindex="-1" aria-label="' + escAttr(t('app_update_check')) + '" title="' + escAttr(t('app_update_check_hint')) + '">' + btns + '</div>' +
+  // The label on the left and the choice on the right, as the rows above and below it (Current version, Update delay).
+  return '<div class="mc-row mc-row-choice"><span class="mc-label">' + tH('app_update_check') + '</span>' +
+    '<div class="app-theme-seg mc-seg" id="' + _APP_UPDATE_CHECK_ID + '" role="radiogroup" tabindex="-1" aria-label="' + escAttr(t('app_update_check')) + '" title="' + escAttr(t('app_update_check_hint')) + '">' + btns + '</div></div>' +
     (locked ? '<div class="ms-hint">' + esc(t('env_controlled', { v: d.check_env || 'ZIMI_UPDATE_CHECK' })) + '</div>' : '');
 }
 var _APP_UPDATE_CHECK_ID = 'app-update-check';
@@ -4515,6 +4653,7 @@ var _NET_ID = 'ms-net';
 var _NET_CONTROLS = {
   update_check: _APP_UPDATE_CHECK_ID,
   voices: 'ms-voices',
+  addons: 'library',
   sharing: 'ms-mirror-status',
   auto_update: 'library'
 };
@@ -4576,6 +4715,360 @@ async function _renderNetSection() {
   var open = !!el.querySelector('details[open]');
   el.innerHTML = _netHtml(d);
   if (open) el.querySelector('details').open = true;
+}
+
+// ── Add-ons (addons.py) ──
+// What is fetched once, after setup, instead of riding in the image: one row each, an icon, a name, one line, its
+// size and Add. The same list is the second step of the first-run card and a block in Settings > Server. Rows are
+// painted from /manage/addons; while one installs the list polls once a second and the row shows its bar.
+var _ADDON_ICONS = {
+  browser: '<circle cx="12" cy="12" r="9"/><path d="M3 12h18M12 3c3 3.4 3 14.6 0 18M12 3c-3 3.4-3 14.6 0 18"/>',
+  singlefile: '<path d="M6 3h8l4 4v14H6z"/><path d="M14 3v4h4"/>',
+  video: '<rect x="3" y="5" width="18" height="14" rx="2"/><path d="M10 9l5 3-5 3z"/>',
+  warc2zim: '<path d="M4 8h16v12H4zM3 4h18v4H3zM10 12h4"/>',
+  voices: '<path d="M4 9v6h4l5 4V5L8 9zM16.5 8.5a5 5 0 010 7"/>',
+  reddit: '<circle cx="12" cy="13" r="7"/><circle cx="9" cy="12" r="1.2"/><circle cx="15" cy="12" r="1.2"/><path d="M9 16c1.7 1.2 4.3 1.2 6 0M12 6l1.5-3 3 1"/>',
+  almanac_hd: '<circle cx="12" cy="12" r="9"/><path d="M3 12h18M12 3c3 3.4 3 14.6 0 18M12 3c-3 3.4-3 14.6 0 18"/><circle cx="17" cy="7" r="1.5"/>',
+  ready: '<circle cx="12" cy="12" r="9"/><path d="M8 12.5l3 3 5-6"/>',
+  satellites: '<path d="M7 12l5-5 5 5-5 5zM12 7l4-4M5 19l3-3M16 8l3-1"/>',
+  maps: '<path d="M3 6l6-2 6 2 6-2v14l-6 2-6-2-6 2z"/><path d="M9 4v14M15 6v14"/>',
+  encyclopedia: '<path d="M5 4h11a3 3 0 013 3v13H8a3 3 0 01-3-3z"/><path d="M5 17a3 3 0 013-3h11M9 8h6"/>',
+  medicine: '<path d="M9 3h6v6h6v6h-6v6H9v-6H3V9h6z"/>',
+  howto: '<path d="M14.5 5.5a4 4 0 00-5 5L4 16l4 4 5.5-5.5a4 4 0 005-5l-2.5 2.5-2.5-.5-.5-2.5z"/>',
+  dictionary: '<path d="M4 5h6a2 2 0 012 2v13a2 2 0 00-2-2H4zM20 5h-6a2 2 0 00-2 2v13a2 2 0 012-2h6z"/>'
+};
+var _ADDONS_HOST_ID = 'ms-addons';
+var _addonsTimer = null;
+var _addonsOpts = null;
+var _addonsLast = null;
+function _addonProgress(p) {
+  return p.total ? Math.min(99, Math.round(100 * p.done / p.total)) : 0;
+}
+function _addonIconHtml(key) {
+  return '<span class="set-row-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">' + _ADDON_ICONS[key] + '</svg></span>';
+}
+var _ADDON_X = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"/></svg>';
+var _ADDON_GO = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 5l7 7-7 7"/></svg>';
+var _ADDON_TICK = '<svg class="addon-tick" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12.5l4.5 4.5L19 7.5"/></svg>';
+// Keys whose request is on its way: the row is disabled from the press, so a second press cannot start a second install.
+var _addonPending = {};
+// One row shape for every state: icon, text (title, one line, one state line), the action, and a bar slot that is
+// always there (empty when idle) so nothing moves when a state changes.
+function _addonState(a, st) {
+  var p = a.progress;
+  if (p && p.active) return p.cancelling ? 'cancelling' : (p.step === 'build' || p.step === 'check') ? 'installing' : 'downloading';
+  if (a.ready) return 'ready';
+  if (_addonPending[a.key]) return 'pending';
+  if (p && p.error && p.error !== 'cancelled') return 'failed';
+  return 'idle';
+}
+function _addonActHtml(a, st, state) {
+  var busy = st.addons.some(function(x) { return x.progress && x.progress.active; });
+  var btn = function(label, fn, dis, cls) {
+    return '<button class="lang-banner-btn' + (cls ? ' ' + cls : '') + '"' + (dis ? ' disabled' : '') + ' onclick="' + fn + '">' + label + '</button>';
+  };
+  var x = function(fn, dis, name) {
+    // A cancel that is on its way is a spinner, not a greyed cross: it reads as working, not as unavailable.
+    return '<button class="lang-banner-btn addon-x' + (state === 'cancelling' ? ' addon-x-working' : '') + '"' + (dis ? ' disabled' : '') + ' title="' + esc(name) + '" aria-label="' + esc(name) + '" onclick="' + fn + '">' + (state === 'cancelling' ? '<span class="spinner-inline"></span>' : _ADDON_X) + '</button>';
+  };
+  if (state === 'downloading' || state === 'installing' || state === 'cancelling') {
+    var lead = state === 'downloading' ? _addonProgress(a.progress) + '%' : state === 'installing' ? tH('addon_installing') : '…';
+    return '<span class="addon-act"><span class="addon-pct">' + lead + '</span>' + x('_addonCancel()', state === 'cancelling', t('cancel')) + '</span>';
+  }
+  if (state === 'ready') {
+    return '<span class="addon-act addon-ready">' + _ADDON_TICK + (a.own ? x('_addonRemove(\'' + a.key + '\')', !!_addonPending[a.key], t('addon_remove')) : '') + '</span>';
+  }
+  if (st.locked === 'offline' || !st.supported) return '';  // the line beside the name says why there is nothing to press
+  var blocked = busy || state === 'pending' || st.mode === 'never';
+  var go = '_addonInstall(\'' + a.key + '\')';
+  return '<span class="addon-act">' + (state === 'failed'
+    ? btn(tH('retry'), go, blocked)
+    : btn(tH('addon_add') + ' · ' + esc(fmtBytes(a.size)), go, blocked)) + '</span>';
+}
+// One line says where the add-on stands: here, not here and why, or what went wrong.
+function _addonStateHtml(a, st, state) {
+  // Busy states keep the line (bytes so far, or a blank one) so the row is as tall as in every other state.
+  if (state === 'downloading') return '<span class="share-row-desc addon-state">' + esc(fmtBytes(a.progress.done)) + ' / ' + esc(fmtBytes(a.progress.total)) + '</span>';
+  if (state === 'installing' || state === 'cancelling' || state === 'pending') return '<span class="share-row-desc addon-state">&nbsp;</span>';
+  if (state === 'failed') return '<span class="share-row-desc addon-state addon-failed">' + tH('addon_failed') + '</span>';
+  if (state === 'ready') return '<span class="share-row-desc addon-state">' + tH(a.own ? 'addon_state_added' : 'addon_state_builtin') + '</span>';
+  var why = st.locked === 'offline' ? 'offline' : !st.supported ? 'unsupported' : st.mode === 'never' ? 'never' : '';
+  return '<span class="share-row-desc addon-state addon-missing">' + tH('addon_not_here') + (why ? ' · ' + tH('addon_why_' + why) : '') + '</span>';
+}
+function _addonRowHtml(a, st) {
+  var state = _addonState(a, st), p = a.progress;
+  var needs = a.requires.length && !a.ready
+    ? '<span class="share-row-desc">' + tH('addon_needs', { name: a.requires.map(function(k) { return t('addon_' + k); }).join(', ') }) + '</span>' : '';
+  var pct = state === 'downloading' ? _addonProgress(p) : state === 'idle' || state === 'ready' || state === 'failed' ? 0 : state === 'pending' ? 0 : 100;
+  return '<div class="share-row set-row addon-row" data-addon="' + a.key + '" data-state="' + state + '">' + _addonIconHtml(a.key) +
+    '<span class="share-row-text"><span class="share-row-title">' + tH('addon_' + a.key) + '</span>' +
+    '<span class="share-row-desc">' + tH('addon_' + a.key + '_d') + '</span>' + _addonStateHtml(a, st, state) + needs + '</span>' +
+    _addonActHtml(a, st, state) +
+    '<div class="dl-progress addon-bar' + (state === 'installing' || state === 'cancelling' ? ' dl-indeterminate' : '') + '"' + (state === 'idle' || state === 'ready' || state === 'failed' || state === 'pending' ? ' aria-hidden="true"' : ' role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-valuenow="' + pct + '"') +
+    '><div class="dl-progress-bar" style="width:' + pct + '%"></div></div></div>';
+}
+function _addonsModeHtml(st) {
+  var opts = st.choices.map(function(m) { return { v: m, label: t('addon_mode_' + m) }; });
+  var note = st.locked ? (st.locked === 'offline' ? t('net_offline') : t('env_controlled', { v: st.env })) : '';
+  return _voiceFootSegHtml('addons-mode', 'addon_mode', opts, st.mode, '_addonsSetMode', !!st.locked) +
+    (note ? '<div class="ms-hint">' + esc(note) + '</div>' : '');
+}
+// opts.setup: the first-run step (only what is missing; no setting, no voices row, no remove).
+function _addonsListHtml(st, opts) {
+  var setup = !!(opts && opts.setup);
+  // The one list of add-ons, under Offline Readiness's other pieces: every one this install can have, with its state
+  // and the setting. (Voices are a piece of that list above, not a row here.)
+  var rows = st.addons.filter(function(a) { return !(a.absent && !a.ready) && (!setup || !a.ready); });
+  return rows.map(function(a) { return _addonRowHtml(a, st); }).join('') + (setup ? '' : _addonsModeHtml(st));
+}
+async function _addonsFetch(body) {
+  var res = await manageFetch('/manage/addons', body
+    ? { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) } : {});
+  var d = await res.json().catch(function() { return {}; });
+  if (!res.ok) throw new Error(d.error || 'failed');
+  return d;
+}
+// Paint into the host element and keep polling while one installs.
+async function _renderAddons(opts) {
+  _addonsOpts = opts;
+  var hostId = (opts && opts.host) || _ADDONS_HOST_ID;
+  var st = null;
+  try { st = await _addonsFetch(); } catch (e) {}
+  var host = document.getElementById(hostId);
+  if (!host) return st;
+  if (!st) {
+    host.innerHTML = '<div class="ms-hint">' + tH('net_unavailable') + ' <button class="lang-banner-btn" onclick="_renderAddons(_addonsOpts)">' + tH('retry') + '</button></div>';
+    return st;
+  }
+  // Offline says so, in the pane's own words; an install that gets no add-ons has no list to show, so no heading.
+  var offline = st.locked === 'offline';
+  var none = !offline && !st.supported;
+  _addonsLast = st;
+  host.hidden = none;
+  if (host.previousElementSibling && host.previousElementSibling.classList.contains('ms-section-label')) host.previousElementSibling.hidden = none;
+  host.innerHTML = (offline && opts && opts.setup ? '<div class="ms-hint">' + tH('net_offline') + '</div>' : '') + (st.supported || offline ? _addonsListHtml(st, opts) : '');
+  clearTimeout(_addonsTimer);
+  if (st.addons.some(function(a) { return a.progress && a.progress.active; })) {
+    _addonsTimer = setTimeout(function() { _renderAddons(opts); }, 1000);
+  }
+  return st;
+}
+// A refusal (another install runs, say) needs no toast of its own: the repaint shows where things really stand.
+async function _addonAct(key, body, toastOnError) {
+  if (key) {
+    if (_addonPending[key]) return;
+    _addonPending[key] = true;
+    _renderAddonsNow();
+  }
+  try { await _addonsFetch(body); } catch (e) { if (toastOnError) _showToast(t('addon_failed')); }
+  if (key) delete _addonPending[key];
+  _renderAddons(_addonsOpts);
+  // The fold's "n of m ready" counts the add-ons too.
+  if (document.getElementById((_offlineOpts && _offlineOpts.host) || _OFFLINE_HOST_ID)) _renderOfflineReady(_offlineOpts);
+}
+async function _renderAddonsNow() {
+  var st = _addonsLast;
+  var host = document.getElementById((_addonsOpts && _addonsOpts.host) || _ADDONS_HOST_ID);
+  if (st && host) host.innerHTML = _addonsListHtml(st, _addonsOpts);
+}
+function _addonInstall(key) { return _addonAct(key, { install: key }, false); }
+function _addonCancel() { return _addonAct('', { cancel: true }, false); }
+function _addonRemove(key) { return _addonAct(key, { remove: key }, false); }
+async function _addonsSetMode(mode) {
+  try { await _addonsFetch({ mode: mode }); } catch (e) { _showToast(t('env_controlled', { v: 'ZIMI_ADDONS' })); }
+  _renderAddons(_addonsOpts);
+}
+// ── Ready for offline (offline.py) ──
+// Everything that needs a download before Zimi works fully with no internet, in one list: each add-on, Almanac HD, a
+// voice, fresh satellite data and a map of where you are. What is here, what is missing and its size, with one Get
+// everything; offline, a missing piece says so once instead of failing. Painted in Settings > Server and as the
+// first-run step. Each Get goes to the piece's own endpoint (the row names it); nothing here is a second installer.
+var _OFFLINE_HOST_ID = 'ms-offline-ready';
+var OFFLINE_POLL_MS = 1500;
+var OFFLINE_GIVE_UP_POLLS = 4;  // a Get that is not coming and not here after this many looks has failed
+var _offlineData = null, _offlineGetting = '', _offlineTimer = null, _offlineOpts = null;
+function _offlineFetch() {
+  return manageFetch('/manage/offline-ready?lang=' + encodeURIComponent(_uiLangPrimary()))
+    .then(function(r) { return r.ok ? r.json() : null; }).catch(function() { return null; });
+}
+// The server answers every row, in order. First-run has no library to browse yet, so a "choose" row waits for Manage.
+function _offlineRows(d, opts) {
+  return (d.items || []).filter(function(r) { return !(r.choose && opts && opts.setup); });
+}
+// A container whose /config is not a volume loses settings, indexes and add-ons when it is replaced: told once, here and
+// under Storage (never a banner on every page). The link is the README's docker run line.
+var README_DOCKER_URL = 'https://github.com/epheterson/Zimi#install';
+function _configNoteHtml(d) {
+  if (!d || d.config_kept !== false) return '';
+  return '<div class="ms-hint offline-note config-note">' + tH('config_not_kept') + ' <a href="' + README_DOCKER_URL + '" target="_blank" rel="noopener">' + tH('config_not_kept_link') + '</a></div>';
+}
+function _paintConfigNote(d) {
+  var storage = document.getElementById('ms-config-note');
+  if (storage) storage.innerHTML = _configNoteHtml(d);
+}
+// Settings > Server's Storage card says it too; the answer rides with the readiness list.
+function _renderConfigNote() { return _offlineFetch().then(_paintConfigNote); }
+function _offlineTitle(r) {
+  if (r.id.indexOf('addon:') === 0) return t('addon_' + r.key);
+  return t(r.id === 'almanac_hd' ? 'net_almanac_hd' : r.id === 'voices' ? 'addon_voices' : 'offline_row_' + r.id);
+}
+function _offlineDesc(r) {
+  return r.id.indexOf('addon:') === 0 ? t('addon_' + r.key + '_d') : t('offline_d_' + r.id);
+}
+function _offlineWhy(r, offline) {
+  if (!r.why) return '';
+  return t(r.why === 'unavailable' || r.why === 'space' ? 'offline_why_' + r.why : 'addon_why_' + r.why);
+}
+// What can be fetched now: missing, with a request, and nothing in the way.
+function _offlineGettable(rows) {
+  return rows.filter(function(r) { return !r.here && r.get && !r.why && !r.busy; });
+}
+function _offlineRowHtml(r, d, getting) {
+  var icon = _addonIconHtml(r.id.indexOf('addon:') === 0 ? r.key : r.id);
+  var pct = r.busy && r.total ? Math.min(99, Math.round(100 * r.done / r.total)) : 0;
+  var state;
+  if (r.here) state = tH('offline_state_here');
+  else if (r.busy) state = tH('addon_offer_adding', { name: _offlineTitle(r), p: pct });
+  else {
+    // Offline is said once above the list, not on every row; any other reason is the row's own.
+    var missing = r.id === 'satellites' ? 'offline_state_stale' : r.choose ? 'offline_state_none' : 'addon_not_here';
+    state = tH(missing) + (r.bytes ? ' \u00b7 ' + esc(fmtBytes(r.bytes)) : '') + (r.note ? ' \u00b7 ' + esc(r.note) : r.why && !d.offline ? ' \u00b7 ' + esc(_offlineWhy(r)) : '');
+  }
+  var act = '';
+  if (r.choose && !r.here) {
+    act = '<button class="lang-banner-btn" onclick="_offlineChooseMap()">' + tH('offline_choose') + '</button>';
+  } else if (!r.here && r.get && !r.why && !r.busy) {
+    act = '<button class="lang-banner-btn"' + (getting ? ' disabled' : '') + ' onclick="_offlineGetRow(\'' + escAttr(r.id) + '\')">' + tH('addon_add') +
+      (r.bytes ? ' \u00b7 ' + esc(fmtBytes(r.bytes)) : '') + '</button>';
+  }
+  return '<div class="share-row set-row addon-row offline-row' + (r.here ? ' offline-here' : '') + '" data-offline="' + escAttr(r.id) + '">' + icon +
+    '<span class="share-row-text"><span class="share-row-title">' + esc(_offlineTitle(r)) + '</span>' +
+    '<span class="share-row-desc">' + esc(_offlineDesc(r)) + '</span>' +
+    '<span class="share-row-desc addon-state' + (r.here ? '' : ' addon-missing') + '">' + state + '</span></span>' +
+    (act ? '<span class="addon-act">' + act + '</span>' : '') +
+    (r.busy ? '<div class="dl-progress" role="progressbar" aria-valuemin="0" aria-valuemax="100"><div class="dl-progress-bar" style="width:' + pct + '%"></div></div>' : '') +
+    '</div>';
+}
+function _offlineSumText(rows) {
+  var n = rows.filter(function(r) { return r.here; }).length;
+  return tH(n < rows.length ? 'offline_ready_count' : 'offline_ready_all', { n: n, m: rows.length });
+}
+function _offlineHtml(d, opts) {
+  var rows = _offlineRows(d, opts), missing = rows.filter(function(r) { return !r.here; });
+  var gettable = _offlineGettable(rows), total = gettable.reduce(function(n, r) { return n + (r.bytes || 0); }, 0);
+  var head = opts && opts.fold ? '' : '<div class="ms-hint offline-sum">' + _offlineSumText(rows) + '</div>';
+  // Said once, here, rather than on every row: while Zimi is offline nothing missing can be fetched.
+  if (d.offline && missing.length) head += '<div class="ms-hint offline-note">' + tH('offline_ready_offline') + '</div>';
+  head += _configNoteHtml(d);
+  var all = '';
+  if (gettable.length || _offlineGetting) {  // while it works, its button stays and says which
+    all = '<div class="btn-row offline-all"><button type="button" class="set-btn primary" id="offline-get-all"' + (_offlineGetting ? ' disabled' : '') +
+      ' onclick="_offlineGetAll()">' + (_offlineGetting ? tH('offline_getting', { name: esc(_offlineGetting) }) : tH('offline_get_all', { size: esc(fmtBytes(total)) })) + '</button></div>';
+  }
+  // The add-ons are one list of their own below (_renderAddons, with their states and the setting): never twice.
+  var own = rows.filter(function(r) { return r.group !== 'addon'; });
+  return head + own.map(function(r) { return _offlineRowHtml(r, d, !!_offlineGetting); }).join('') + all;
+}
+// Paint into the host and keep looking while a piece is coming. ``opts.host`` / ``opts.setup`` as the add-ons list's.
+async function _renderOfflineReady(opts) {
+  _offlineOpts = opts || null;
+  var d = await _offlineFetch();
+  var host = document.getElementById((opts && opts.host) || _OFFLINE_HOST_ID);
+  if (!host) return d;
+  if (!d) { host.innerHTML = '<div class="ms-hint">' + tH('net_unavailable') + '</div>'; return d; }
+  _offlineData = d;
+  host.innerHTML = _offlineHtml(d, opts);
+  _offlineFoldSum(d, opts);
+  _paintConfigNote(d);
+  // The add-ons list under it, painted once; it keeps itself current while one installs.
+  var addons = document.getElementById(opts && opts.addonsHost || _ADDONS_HOST_ID);
+  if (addons && !addons.firstChild) _renderAddons(opts && opts.addonsHost ? { host: opts.addonsHost, setup: !!opts.setup } : undefined);
+  clearTimeout(_offlineTimer);
+  if (d.items.some(function(r) { return r.busy; })) _offlineTimer = setTimeout(function() { _renderOfflineReady(_offlineOpts); }, OFFLINE_POLL_MS);
+  return d;
+}
+// The Library pane's fold, first thing in it: one line, "3 of 8 ready" with a small mark while something is missing; tap
+// opens the list. Filled after the pane paints (one fetch, never on the way to it).
+var _OFFLINE_FOLD_OPTS = { host: _OFFLINE_HOST_ID, fold: true };
+function _offlineFoldSum(d, opts) {
+  var sum = document.getElementById('ms-offline-fold-sum');
+  if (!sum || !(opts && opts.fold)) return;
+  var rows = _offlineRows(d, opts);
+  sum.innerHTML = _offlineSumText(rows);
+  sum.closest('details').classList.toggle('offline-fold-missing', !rows.every(function(r) { return r.here; }));
+}
+function _offlineFoldHtml() {
+  return '<details class="offline-fold"><summary>' + _addonIconHtml('ready') + '<span class="offline-fold-title">' + tH('offline_ready_title') + '</span><span id="ms-offline-fold-sum" class="offline-fold-sum">\u2026</span><i class="offline-fold-dot" aria-hidden="true"></i><span class="offline-fold-chev">' + _ADDON_GO + '</span></summary>' +
+    '<div id="' + _OFFLINE_HOST_ID + '"></div><div id="' + _ADDONS_HOST_ID + '"></div></details>';
+}
+function _offlineChooseMap() {
+  switchManageTab('browse');
+  setTimeout(function() { drillCategory('maps'); }, 0);
+}
+var OFFLINE_READ_RETRIES = 3;  // failed status reads in a row, with the install under way, before its outcome is called unknown
+// One piece: ask its endpoint, then watch until it is here. False when it was refused or stopped coming; null when
+// it was started but the server stopped answering (it may still be installing: the caller must not start another).
+async function _offlineGetOne(row) {
+  try {
+    var r = await manageFetch(row.get.path, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(row.get.body || {}) });
+    if (!r.ok) return false;
+  } catch (e) { return false; }
+  var idle = 0, unread = 0;
+  for (;;) {
+    var d = await _offlineFetch();
+    if (!d) {
+      if (++unread > OFFLINE_READ_RETRIES) return null;
+      await new Promise(function(res) { setTimeout(res, OFFLINE_POLL_MS); });
+      continue;
+    }
+    unread = 0;
+    var now = d.items.filter(function(x) { return x.id === row.id; })[0];
+    if (!now) return false;
+    if (now.here) return true;
+    idle = now.busy ? 0 : idle + 1;
+    if (idle >= OFFLINE_GIVE_UP_POLLS) return false;
+    await new Promise(function(res) { setTimeout(res, OFFLINE_POLL_MS); });
+    _offlineData = d;
+    var host = document.getElementById((_offlineOpts && _offlineOpts.host) || _OFFLINE_HOST_ID);
+    if (host) host.innerHTML = _offlineHtml(d, _offlineOpts);
+  }
+}
+async function _offlineGetRow(id) {
+  var row = ((_offlineData && _offlineData.items) || []).filter(function(x) { return x.id === id; })[0];
+  if (!row || _offlineGetting) return;
+  _offlineGetting = _offlineTitle(row);
+  _renderOfflineReady(_offlineOpts);
+  var ok = await _offlineGetOne(row);
+  _offlineGetting = '';
+  if (!ok) _showToast(t('addon_failed'));
+  _renderOfflineReady(_offlineOpts);
+}
+// Everything missing that can be fetched, one after another (an install is one at a time on the server).
+async function _offlineGetAll() {
+  if (_offlineGetting) return;
+  var rows = _offlineGettable(_offlineRows(_offlineData || { items: [] }, _offlineOpts)), failed = 0;
+  for (var i = 0; i < rows.length; i++) {
+    _offlineGetting = _offlineTitle(rows[i]) + ' (' + (i + 1) + '/' + rows.length + ')';
+    _renderOfflineReady(_offlineOpts);
+    var got = await _offlineGetOne(rows[i]);
+    if (got === null) { failed++; break; }   // unknown: the next install waits for a fresh readiness list
+    if (!got) failed++;
+  }
+  _offlineGetting = '';
+  await _renderOfflineReady(_offlineOpts);
+  if (failed) _showToast(t('offline_some_failed', { n: failed }));
+}
+
+// First run, after who-can-manage: what else can be added right now. Nothing to offer (the host has it all, or
+// this install gets no add-ons) goes straight on. Done reloads into the library.
+async function _openAddonsStep() {
+  var d = await _offlineFetch();
+  if (!d || d.offline || !_offlineGettable(d.items).length) { location.reload(); return; }
+  var card = document.getElementById('setup-card');
+  card.innerHTML = '<h2>' + tH('offline_ready_title') + '</h2><p class="subtitle">' + tH('offline_ready_hint') + '</p>' +
+    '<div id="setup-addons"></div><div id="setup-addons-list"></div><div class="btn-row"><button class="btn-primary" onclick="location.reload()">' + tH('done') + '</button></div>';
+  document.getElementById('setup-overlay').classList.add('open');
+  _renderOfflineReady({ host: 'setup-addons', addonsHost: 'setup-addons-list', setup: true });
 }
 
 // The server-wide apps switch. The element is looked up after the fetch
@@ -4684,6 +5177,25 @@ async function _renderEnvSection() {
   '<div class="ms-hint">' + tH('env_hint') + '</div></details>';
 }
 
+// The debug log switch (zimi/debuglog.py): every open window hears it at once.
+async function _renderDebugLog() {
+  var d = null;
+  try { d = await _msFetch('/manage/debuglog'); } catch (e) {}
+  var el = document.getElementById('ms-debuglog');
+  if (!el || !d) return;
+  el.innerHTML = '<div class="share-row"><div class="share-row-text"><div class="share-row-dim"><div class="share-row-title">' + tH('debuglog_title') + '</div>' +
+    '<div class="share-row-desc">' + tH('debuglog_desc') + '</div>' +
+    (d.env_locked ? '<div class="share-row-desc share-row-locknote">' + tH('env_controlled', {v: 'ZIMI_DEBUG_LOG'}) + '</div>' : '') +
+    '</div></div><div class="share-row-right"><label class="switch"><input type="checkbox" role="switch" id="ms-debuglog-switch"' + (d.on ? ' checked' : '') + (d.env_locked ? ' disabled' : '') +
+    ' aria-label="' + escAttr(t('debuglog_title')) + '" onchange="_setDebugLog(this)"><span class="switch-slider"></span></label></div></div>';
+}
+async function _setDebugLog(box) {
+  try {
+    var r = await manageFetch('/manage/debuglog', {method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({on: box.checked})});
+    if (!r.ok) throw new Error('http ' + r.status);
+  } catch (e) { _showToast(t('save_failed')); box.checked = !box.checked; }
+}
+
 function _msServerHtml() {
   // Sharing is the star of v1.7 — it leads the Server pane. Render the
   // last-known rows immediately (stale toggles beat a blank slab that
@@ -4723,13 +5235,13 @@ function _msServerHtml() {
         '<button class="manage-btn-action" onclick="settingsSaveInline()" style="margin-inline-start:auto">' + tH('save') + '</button></div>' +
       '<div class="ms-hint">' + tH('restart_hint') + '</div>' +
       // Painted by _renderDesktopLan from the app's own config, not /manage.
-      '<div id="ms-lan"></div>' + _libFoldersSlot;
+      '<div id="ms-lan"></div>' + _libFoldersSlot + '<div id="ms-older"></div>';
     setTimeout(_renderDesktopLan, 0);
   } else {
     storageSec +=
       '<div class="ms-field"><label>' + tH('zim_folder') + '</label><input type="text" id="ms-zim-dir" dir="ltr" readonly value="' + escAttr(t('loading')) + '"></div>' +
       '<div class="ms-field"><label>' + tH('data_folder') + '</label><input type="text" id="ms-data-dir" dir="ltr" readonly value="' + escAttr(t('loading')) + '"></div>' +
-      '<div class="ms-hint">' + tH('configured_via_env') + '</div>' + _libFoldersSlot;
+      '<div class="ms-hint">' + tH('configured_via_env') + '</div><div id="ms-config-note"></div>' + _libFoldersSlot + '<div id="ms-older"></div>';
   }
 
   // The server's backup; My data, this browser's, is under Preferences.
@@ -4754,13 +5266,15 @@ function _msServerHtml() {
   // which of it happens without anyone asking.
   var netSec = '<div class="ms-section-label">' + tH('net_section') + '</div>' +
     '<div id="' + _NET_ID + '">' + tH('loading') + '</div>';
-
-  // Sharing, Downloads, Storage, My Data / Server Backups, App Updates, Hot
+  // Sharing, Downloads, Add-ons, App Updates, Storage, Server Backup, Hot
   // ZIMs + cache, the environment, and Internet use last. Who can manage
   // Zimi and the API token are under Access.
-  var h = [sharingSec, downloadsSec, storageSec, backupSec, updatesSec, hotSec, envSec, netSec].join(sep);
+  var debugSec = '<div id="ms-debuglog"></div>';
+  var h = [sharingSec, downloadsSec, updatesSec, storageSec, backupSec, hotSec, envSec, debugSec, netSec].join(sep);
   _renderEnvSection();
+  _renderDebugLog();
   _renderNetSection();
+  _renderConfigNote();
   // These populate elements by id, so they must run AFTER this HTML is in
   // the DOM — not mid-string. Deferring one tick also lets the cached
   // sharing rows paint first, so the section never flashes empty.
@@ -4772,6 +5286,7 @@ function _msServerHtml() {
     _renderDownloadSchedule();
     _renderLibFolders();
     _renderAppUpdate();
+    _tidyLoad(true);
   }, 0);
   _msFetch('/manage/cache-info').then(function(d) {
     var el = document.getElementById('ms-cache-info');
@@ -4779,15 +5294,18 @@ function _msServerHtml() {
     var c = d.caches;
     var sh = _cacheBreakdownHtml(d) +
       '<div class="mc-row"><span class="mc-label">' + tH('title_indexes') + '</span><span class="mc-value">' +
-      (c.title_indexes.count || 0) + ' files, ' + _fmtBytes(c.title_indexes.size_bytes) + '</span></div>' +
+      _filesSum(c.title_indexes.count, c.title_indexes.size_bytes) + '</span></div>' +
       '<div class="mc-row"><span class="mc-label">' + tH('qid_indexes') + '</span><span class="mc-value">' +
-      (c.qid_indexes.count || 0) + ' files, ' + _fmtBytes(c.qid_indexes.size_bytes) + '</span></div>' +
+      _filesSum(c.qid_indexes.count, c.qid_indexes.size_bytes) + '</span></div>' +
+      '<div class="mc-row"><span class="mc-label">' + tH('voice_cache') + '</span><span class="mc-value">' +
+      _filesSum(d.voice_cache ? d.voice_cache.count : 0, d.voice_cache ? d.voice_cache.size_bytes : 0) + '</span></div>' +
       '<div id="ms-bg-work" style="margin-top:10px"></div>' +
       '<div class="ms-cache-actions" style="display:flex;gap:6px;flex-wrap:wrap;margin-top:10px">' +
         '<button class="pill" onclick="_cacheAction(this,\'clear-search\')">' + tH('clear_search_cache') + '</button>' +
         '<button class="pill" onclick="_cacheAction(this,\'clear-suggest\')">' + tH('clear_suggest_cache') + '</button>' +
         '<button class="pill" onclick="_cacheAction(this,\'rebuild-title\')">' + tH('rebuild_title_indexes') + '</button>' +
         '<button class="pill" onclick="_cacheAction(this,\'rebuild-qid\')">' + tH('rebuild_qid_indexes') + '</button>' +
+        (d.voice_cache && d.voice_cache.size_bytes ? '<button class="pill" onclick="_cacheAction(this,\'clear-voices\')">' + tH('clear_voice_cache', { size: _fmtBytes(d.voice_cache.size_bytes) }) + '</button>' : '') +
         (d.catalog_copies && d.catalog_copies.size_bytes ? '<button class="pill" onclick="_cacheAction(this,\'purge-catalog\')">' + tH('clear_catalog_copies', { size: _fmtBytes(d.catalog_copies.size_bytes) }) + '</button>' : '') +
         '<span id="ms-cache-status" class="ms-hint" style="margin:0;align-self:center"></span>' +
       '</div>';
@@ -4797,10 +5315,10 @@ function _msServerHtml() {
   // Async fill from stats
   _msFetch('/manage/stats').then(function(s) {
     var el = document.getElementById('ms-zim-dir');
-    if (el && s.disk && s.disk.zim_dir) el.value = s.disk.zim_dir;
+    if (el && s.disk && s.disk.zim_dir) el.value = el.title = s.disk.zim_dir;
     else if (el) el.value = '(unknown)';
     var el2 = document.getElementById('ms-data-dir');
-    if (el2 && s.disk && s.disk.data_dir) el2.value = s.disk.data_dir;
+    if (el2 && s.disk && s.disk.data_dir) el2.value = el2.title = s.disk.data_dir;
     else if (el2) el2.value = '(unknown)';
     // For desktop, fill port
     var portEl = document.getElementById('ms-port');
@@ -5948,7 +6466,8 @@ async function _renderDownloadSchedule() {
 
   // Limits first (how many, how fast), then the nightly window with the
   // upload restriction that shares its times right under it.
-  el.innerHTML = maxRow + speedRow + toggle + lockNote + windowBlock + uploadRow;
+  // The upload restriction rides the window: offered only while the window is on (or it is already on, so it can be turned off).
+  el.innerHTML = maxRow + speedRow + toggle + lockNote + windowBlock + (enabled || uploadRestrict ? uploadRow : '');
 }
 
 async function _postDownloadSchedule(body) {
@@ -6009,18 +6528,12 @@ function _setBackupStatus(id, key) {
   if (el) el.textContent = key ? t(key) : '';
 }
 
-// An import's Merge data switch, on by default. Turned off, the file replaces
-// everything, and the row says so in red under its title.
-function _mergeRowHtml(id) {
-  return _switchRowsHtml([{ id: id, cls: 'merge-row', title: tH('backup_merge'), on: true,
-    desc: tH('backup_replace_warn'),
-    onchange: "this.closest('.set-row').classList.toggle('merge-off', !this.checked)" }]);
-}
-// Replace only when the switch is there and turned off: an import with no
-// pane open (an account restore) always merges.
-function _replaceChosen(id) {
-  var cb = document.getElementById(id);
-  return !!(cb && !cb.checked);
+// Merge or replace, asked when the data arrives (and only for an import the person started): true = replace,
+// false = merge, null = they backed out. An import with no pane open (an account restore) always merges.
+async function _askReplace(ask) {
+  if (!ask) return false;
+  var a = await _appConfirm(t('backup_merge_ask'), t('backup_merge_btn'), t('backup_replace'));
+  return a === true ? false : a === 'alt' ? true : null;
 }
 
 // ── Card markup ──
@@ -6039,7 +6552,7 @@ function _myDataCardHtml() {
   var signedIn = !!(_userSession && _userSession.name);
   var serverBtns = signedIn
     ? '<button class="pill" onclick="saveMyDataToServer()">' + tH('backup_save_server') + '</button>' +
-      '<button class="pill" onclick="restoreMyDataFromServer()">' + tH('backup_restore_server') + '</button>'
+      '<button class="pill" onclick="restoreMyDataFromServer(true)">' + tH('backup_restore_server') + '</button>'
     : '';
   // Signed-in named users get the account explanation (Save to server exists
   // for them); everyone else gets browser-local + file export only.
@@ -6053,7 +6566,6 @@ function _myDataCardHtml() {
       '<input type="file" id="ms-mydata-file" accept="application/json,.json" style="display:none" onchange="importMyDataFile(this)">' +
       '<span id="ms-mydata-status" class="ms-hint" style="margin:0;align-self:center"></span>' +
     '</div>' +
-    _mergeRowHtml('ms-mydata-merge') +
     '<div id="ms-mydata-result" class="ms-backup-import"></div>';
 }
 
@@ -6066,7 +6578,6 @@ function _serverBackupCardHtml() {
       '<input type="file" id="ms-server-file" accept="application/json,.json" style="display:none" onchange="importServerBackupFile(this)">' +
       '<span id="ms-server-status" class="ms-hint" style="margin:0;align-self:center"></span>' +
     '</div>' +
-    _mergeRowHtml('ms-server-merge') +
     '<div id="ms-server-import" class="ms-backup-import"></div>';
 }
 
@@ -6150,12 +6661,12 @@ function importMyDataFile(input) {
   var f = input.files && input.files[0];
   if (!f) return;
   var reader = new FileReader();
-  reader.onload = function() { _applyMyDataFile(reader.result); input.value = ''; };
+  reader.onload = function() { _applyMyDataFile(reader.result, true); input.value = ''; };
   reader.onerror = function() { _setBackupStatus('ms-mydata-status', 'backup_bad_file'); input.value = ''; };
   reader.readAsText(f);
 }
 
-function _applyMyDataFile(text) {
+async function _applyMyDataFile(text, ask) {
   var bundle;
   try { bundle = JSON.parse(text); } catch (e) { bundle = null; }
   if (!bundle || bundle.schema !== _BACKUP_SCHEMA) {
@@ -6167,7 +6678,9 @@ function _applyMyDataFile(text) {
     _setBackupStatus('ms-mydata-status', 'backup_wrong_card_server');
     return;
   }
-  var res = _applyBrowserData(bundle, _replaceChosen('ms-mydata-merge'));
+  var overwrite = await _askReplace(ask);
+  if (overwrite === null) return;
+  var res = _applyBrowserData(bundle, overwrite);
   _setBackupStatus('ms-mydata-status', 'backup_mydata_imported');
   _showMyDataResult(res);
 }
@@ -6189,7 +6702,9 @@ async function saveMyDataToServer() {
   } catch (e) { _setBackupStatus('ms-mydata-status', 'error'); }
 }
 
-async function restoreMyDataFromServer() {
+async function restoreMyDataFromServer(ask) {
+  var overwrite = await _askReplace(ask);
+  if (overwrite === null) return;
   _setBackupStatus('ms-mydata-status', 'working');
   var data;
   try {
@@ -6198,7 +6713,7 @@ async function restoreMyDataFromServer() {
     if (!res.ok) throw new Error('http ' + res.status);
     data = await res.json();
   } catch (e) { _setBackupStatus('ms-mydata-status', 'error'); return; }
-  var res2 = _applyBrowserData(data || {}, _replaceChosen('ms-mydata-merge'), true);
+  var res2 = _applyBrowserData(data || {}, overwrite, true);
   _setBackupStatus('ms-mydata-status', 'backup_restored_server');
   _showMyDataResult(res2);
 }
@@ -6240,7 +6755,7 @@ async function _previewServerBackup(text) {
   }
   _pendingServerBackup = bundle;
   _setBackupStatus('ms-server-status', 'working');
-  var overwrite = _replaceChosen('ms-server-merge');
+  var overwrite = false;  // the preview shows a merge; Replace is asked at Apply
   var srv = {};
   try {
     var res = await manageFetch('/manage/backup', {
@@ -6262,6 +6777,8 @@ function _renderServerBackupPreview(srv) {
   if (srv.collections) {
     lines.push(tH('backup_pv_collections', { added: srv.collections.col_added, replaced: srv.collections.col_replaced }));
     lines.push(tH('backup_pv_favorites', { added: srv.collections.fav_added, dupes: srv.collections.fav_dupes }));
+    // Replace is asked after this preview, which is a merge: say what Replace would take away.
+    if (srv.collections.col_dropped) lines.push(tH('backup_pv_replace_drops', { n: srv.collections.col_dropped }));
   }
   if (srv.layout && (srv.layout.over_added || srv.layout.over_changed)) {
     lines.push(tH('backup_pv_overrides', { added: srv.layout.over_added, changed: srv.layout.over_changed }));
@@ -6293,7 +6810,8 @@ function _serverBackupCancel() {
 async function _serverBackupApply() {
   var bundle = _pendingServerBackup;
   if (!bundle) return;
-  var overwrite = _replaceChosen('ms-server-merge');
+  var overwrite = await _askReplace(true);
+  if (overwrite === null) return;
   _setBackupStatus('ms-server-status', 'working');
   try {
     await manageFetch('/manage/backup', {
@@ -6374,7 +6892,7 @@ async function _cacheAction(btn, action) {
     const data = await res.json().catch(() => ({}));
     if (!res.ok) throw new Error(data.error || 'failed');
     if (status) status.textContent = data.status === 'started' ? t('rebuild_started') : t('cleared');
-    if (data.target === 'catalog') btn.remove();   // nothing left to clear until the catalog is fetched again
+    if (data.target === 'catalog' || data.target === 'voices') btn.remove();   // nothing left to clear until the catalog is fetched again
     // Rebuild kicks off background work — nudge the activity poller so
     // the topbar bar surfaces within ~250ms instead of waiting up to 30s
     // for the next idle-cadence poll.
@@ -6421,6 +6939,9 @@ async function toggleAutoUpdate() {
       body: JSON.stringify({enabled: enabled, frequency: enabled ? val : 'weekly'})
     });
   } catch(e) { /* ignore */ }
+  // The Installed rows show their opt-out only while auto-update is on.
+  if (_manageStatusData && _manageStatusData.auto_update) _manageStatusData.auto_update.enabled = enabled;
+  if (manageTab === 'installed') renderInstalled();
   // The summary line carries the auto-update timer glyph, so it restates
   // itself when the frequency changes. Through the single writer rather than
   // the hand-patch that used to live here: that copy rebuilt the row without
@@ -6539,9 +7060,61 @@ function _zimCardHtml(z, opts) {
   '</div>';
 }
 
+// What the library keeps beside what it lists (/manage/tidy): the Almanac's data as one row, and the older copies no name
+// serves. Read once per open of Manage, then drawn again where it is shown.
+var _tidy = null, _tidyAsked = false;
+function _tidyLoad(force) {
+  if (_tidyAsked && !force) return;
+  _tidyAsked = true;
+  _msFetch('/manage/tidy').then(function(d) {
+    _tidy = d;
+    if (manageTab === 'installed') renderInstalled();
+    _renderOlderCopies();
+  }).catch(function() { _tidyAsked = false; });
+}
+// The Almanac HD row: every pack and part of its data under one title, with sizes; chosen in the Almanac's settings. It
+// stands beside the Almanac, under its icon (`alm`, the Almanac's own row); the row opens to the files it is made of.
+function _almanacHdRowHtml(row, alm) {
+  var parts = row.packs.map(function(p) {
+    return '<div class="ci-hd-part"><span dir="ltr">' + esc(p.file) + '</span><span>' + esc(fmtSize(p.size_bytes / 1073741824)) + '</span></div>';
+  }).join('');
+  return '<details class="ci-hd-group"><summary>' + _zimCardHtml({ title: t('net_almanac_hd'), name: alm ? alm.name : '', has_icon: !!(alm && alm.has_icon) }, {
+    // Which size is installed (almanachd.py: HD or Maximum, one at a time), then its files and where it is chosen.
+    metaHtml: (row.kind ? '<span>' + esc(t('alm_hd_kind_' + row.kind)) + '</span> &middot; ' : '') + '<span>' + esc(t('lib_hd_meta', { n: fmtNum(row.packs.length), size: fmtSize(row.size_bytes / 1073741824) })) + '</span> &middot; <span>' + esc(t('lib_hd_where')) + '</span>'
+  }) + '</summary><div class="ci-hd-parts">' + parts + '</div></details>';
+}
+// Why a size of Almanac HD did not come in (almanachd.error), in the words the Almanac's gear uses: one line under the row.
+var _HD_ERR_KEYS = { missing: 'alm_hd_missing', checksum: 'alm_hd_err_damaged', disk: 'alm_hd_err_space', network: 'alm_hd_err_stopped', failed: 'alm_hd_err_stopped' };
+function _almanacHdErrorHtml() {
+  var e = _tidy && _tidy.almanac_hd_error;
+  if (!e) return '';
+  return '<div class="ci-hd-note" role="status">' + esc(t('net_almanac_hd') + ' \u00b7 ' + t('alm_hd_kind_' + e.kind) + ': ' + t(_HD_ERR_KEYS[e.reason] || _HD_ERR_KEYS.failed)) + '</div>';
+}
+// Manage > Storage: the files no name serves any more, each with what replaced it and the usual remove.
+function _renderOlderCopies() {
+  var el = document.getElementById('ms-older');
+  if (!el) return;
+  var older = (_tidy && _tidy.older) || [];
+  if (!older.length) { el.innerHTML = ''; return; }
+  // One line (the count and what they take) that opens to what they are and the files.
+  var total = older.reduce(function(n, o) { return n + (o.size_bytes || 0); }, 0);
+  el.innerHTML = '<details class="ms-older-details"><summary><span class="ms-older-title">' + tH('older_copies_title') + '</span> ' +
+    '<span class="ms-older-sum">' + esc(t('older_copies_sum', { n: fmtNum(older.length), size: _fmtBytes(total) })) + '</span></summary>' +
+    '<div class="ms-hint">' + tH('older_copies_hint') + '</div>' + older.map(function(o) {
+    return _zimCardHtml({ title: o.file, name: '' }, {
+      metaHtml: '<span>' + esc(fmtSize(o.size_bytes / 1073741824)) + '</span> &middot; <span>' + esc(t('older_copies_row', { file: o.replaced_by })) + '</span>',
+      actionsHtml: _zimDeleteBtn(o.file, false)
+    });
+  }).join('') + '</details>';
+}
+
 function renderInstalled(filterText) {
   const el = document.getElementById('manage-installed');
   if (!el) return;
+  // A redraw nobody gave a filter to (tidy data arriving, a status refresh) keeps the search that is on screen.
+  if (filterText === undefined && manageTab === 'installed' && q) filterText = q.value.trim();
+  _syncManageUrl();
+  _tidyLoad();
   const zims = zimsCache || [];
   // Same rule as home: only claim "nothing installed" when the server said so.
   if (!_libraryKnown) { el.innerHTML = _libraryUnavailableHtml(); _renderOfflineHome(); return; }
@@ -6581,17 +7154,21 @@ function renderInstalled(filterText) {
     catOrder.unshift('__updates__');
     groups['__updates__'] = pendingUpdates;
   }
+  // The Almanac HD row goes in the Almanac's group, after it, and is counted there; with no Almanac listed, in a group of its own.
+  const hdRow = _tidy && _tidy.almanac_hd && !installedParsed && !manageCategoryFilter && !manageLangFilter ? _tidy.almanac_hd : null;
+  const hdAlm = hdRow ? zims.find(z => z.name === _ALMANAC_ZIM && Object.values(groups).some(g => g.includes(z))) : null;
   let items_h = '';
   for (const cat of catOrder) {
     const items = groups[cat];
     if (!items || !items.length) continue;
     items.sort(cmpTitle);
+    const hdHere = !!hdAlm && items.includes(hdAlm);
     items_h += '<div class="manage-installed-group' + (cat === '__updates__' ? ' mig-updates' : '') + '">';
     const groupLabel = cat === '__updates__' ? t('updates_available_section') : _catDisplayName(cat);
     // Real-category headers are drop targets for the row DnD (#37) — data-cat
     // names the destination; the Updates pseudo-group is never a target.
     const dropAttr = cat === '__updates__' ? '' : ' data-cat="' + escAttr(cat) + '"';
-    items_h += '<div class="ci-section-label"' + dropAttr + '>' + _countedLabelHtml(groupLabel, items.length) + '</div>';
+    items_h += '<div class="ci-section-label"' + dropAttr + '>' + _countedLabelHtml(groupLabel, items.length + (hdHere ? 1 : 0)) + '</div>';
     for (const z of items) {
       const meta = [];
       const countHtml = _zimCountHtml(z);
@@ -6603,6 +7180,7 @@ function renderInstalled(filterText) {
       const dateStr = z.date ? (_isZimiExport(z) ? z.date : z.date.substring(0, 7)) : null;
       if (dateStr) meta.push(dateStr);
       if (z.unreadable) meta.push('<span class="ci-bad">' + esc(t('zim_unreadable_' + z.unreadable)) + '</span>');
+      if (z.missing_part) meta.push('<span class="ci-bad">' + esc(t('zim_missing_chunk', { file: z.missing_part })) + '</span>');
       if (z.also_in) meta.push('<span>' + esc(t('zim_also_in', { label: z.also_in })) + '</span>');
       if (z.via) meta.push('<span>' + esc(t('zim_via', { label: z.via })) + '</span>');
       // Flavor badge from filename. When catalog variants exist, the current
@@ -6645,12 +7223,15 @@ function renderInstalled(filterText) {
         extraClass: upd ? 'ci-has-update' : '',
         onclick: 'if(!event.target.closest(\'button\')&&!event.target.closest(\'.flavor-pill\')){enterSource(\'' + escJs(z.name) + '\',true)}',
         metaHtml: meta.map(function(m){return '<span>'+m+'</span>'}).join(' &middot; '),
-        actionsHtml: gearHtml + actionsHtml,
+        actionsHtml: _zimAutoUpdateBtn(z) + gearHtml + actionsHtml,
         dragZim: manageEnabled ? z.name : null,
       });
+      if (hdHere && z === hdAlm) items_h += _almanacHdRowHtml(hdRow, hdAlm) + _almanacHdErrorHtml();
     }
     items_h += '</div>';
   }
+  if (hdRow && !hdAlm) items_h += '<div class="manage-installed-group"><div class="ci-section-label">' + _countedLabelHtml(t('net_almanac_hd'), 1) + '</div>' + _almanacHdRowHtml(hdRow, null) + _almanacHdErrorHtml() + '</div>';
+  else if (!hdRow && !installedParsed && !manageCategoryFilter && !manageLangFilter && _tidy && _tidy.almanac_hd_error) items_h += '<div class="manage-installed-group">' + _almanacHdErrorHtml() + '</div>';
   if (!items_h) items_h = '<div class="empty"><p>' + tH('no_matching_zims') + '</p></div>';
 
   el.innerHTML = getInstalledPillsHtml() + items_h;
@@ -7041,6 +7622,7 @@ async function manageImportZim() {
   }
 }
 
+// Resolves true once the server has taken the download on, false when it did not (an error, a failed request).
 async function downloadZim(url, btn, isUpdate) {
   if (btn) { btn.disabled = true; btn.textContent = t('starting'); }
   try {
@@ -7054,7 +7636,7 @@ async function downloadZim(url, btn, isUpdate) {
       body: JSON.stringify({ url }),
     });
     const data = await res.json();
-    if (data.error) { if (btn) { btn.textContent = t('error'); btn.disabled = false; } return; }
+    if (data.error) { if (btn) { btn.textContent = t('error'); btn.disabled = false; } return false; }
     if (btn) {
       btn.dataset.dlUrl = url;
       btn.textContent = isUpdate ? t('updating') : t('downloading');
@@ -7072,24 +7654,39 @@ async function downloadZim(url, btn, isUpdate) {
     _showManageBadge(true, 1);
     refreshDownloads();
     if (window._nudgeActivityPoll) window._nudgeActivityPoll();
+    return true;
   } catch(e) {
     if (btn) { btn.textContent = t('error'); btn.disabled = false; }
+    return false;
   }
 }
 
 // ── Zimi's own ZIMs (the Almanac, Games) in the Catalog ──
 // Deleting one is an ordinary delete (the server records it as removed: the file is part of the
 // package and stays). The Catalog lists them from the package (/manage/own-zims), offline too,
-// as normal rows in the Zimi category; a removed one offers Add, instantly, with no download.
-var OWN_CATALOG_CAT = 'zimi';
+// in Community, where Kiwix's catalog lists them as zimi_mul_<x>; a removed one offers Add, instantly, with no
+// download: the copy that matches this release is the package's own, never the community's.
 async function _loadOwnCatalogRows() {
   try {
     var d = await (await manageFetch('/manage/own-zims')).json();
     return (d.zims || []).map(function(r) {
       return { name: r.name, title: r.title, summary: r.description, icon_url: r.icon, size_bytes: r.size_bytes,
-        article_count: r.entries, date: r.date, language: 'eng', category: OWN_CATALOG_CAT, own: true };
+        article_count: r.entries, date: r.date, language: 'eng', category: COMMUNITY_CAT, source: 'community', own: true };
     });
   } catch (e) { return []; }
+}
+// Each of Zimi's own ZIMs is its Community row, marked own (Add and no Update take the package's copy); one the
+// catalog does not list (offline, an older snapshot) joins Community as its own row.
+// The package's name for a catalog row: zimi_mul_games and zimi_games are both zimi_games.
+function _ownZimName(name) {
+  return name.indexOf(ZIMI_COMMUNITY_PREFIX) === 0 ? 'zimi_' + name.slice(ZIMI_COMMUNITY_PREFIX.length) : name;
+}
+function _mergeOwnCatalogRows(items, own) {
+  own.forEach(function(r) {
+    var listed = items.filter(function(it) { return _ownZimName(it.name) === r.name; });
+    if (!listed.length) { items.push(r); return; }
+    listed.forEach(function(it) { it.own = true; });
+  });
 }
 async function _addOwnZim(name) {
   try {
@@ -7116,6 +7713,32 @@ function _catalogHasUpdate(inst, upd) {
 }
 // A ZIM in a folder another program owns (Project NOMAD) is Zimi's to read and
 // not to delete: the row says whose it is where the delete button would be.
+// The auto-updater's per-ZIM opt-out, on the Installed row: pressed = this ZIM
+// updates itself. Only while auto-update is on, and only for a ZIM the updater
+// can reach (a dated catalog file Zimi owns). The state is the listing's own
+// `auto_update: false`, so no request of its own.
+var _AU_GLYPH = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 12a9 9 0 1 1-3-6.7"/><path d="M21 3v6h-6"/></svg>';
+function _zimAutoUpdateBtn(z) {
+  var au = _manageStatusData && _manageStatusData.auto_update;
+  if (!manageEnabled || z.external || !au || !au.enabled || !_DATED_ZIM_FILE_RE.test(z.file || '')) return '';
+  var on = z.auto_update !== false;
+  return '<button type="button" class="ci-gear ci-au' + (on ? '' : ' ci-au-off') + '" data-zim="' + escAttr(z.name) + '"' +
+    ' aria-pressed="' + on + '" onclick="event.stopPropagation();_toggleZimAutoUpdate(this.dataset.zim)"' +
+    ' title="' + escAttr(t('au_zim_toggle')) + '" aria-label="' + escAttr(t('au_zim_toggle')) + '">' + _AU_GLYPH + '</button>';
+}
+function _toggleZimAutoUpdate(name) {
+  var z = _zimInfo(name);
+  if (!z) return;
+  var skip = z.auto_update !== false;
+  manageFetch('/manage/auto-update-skip', {
+    method: 'POST', headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({zim: name, skip: skip})
+  }).then(function(res) {
+    if (!res.ok) return;
+    if (skip) z.auto_update = false; else delete z.auto_update;
+    renderInstalled();
+  });
+}
 function _zimDeleteBtn(file, external) {
   if (external) return '<button type="button" class="ci-installed-badge ci-from" data-label="' + escAttr(external) +
     '" onclick="event.stopPropagation();_ownedNote(this)">' + esc(t('in_folder', { label: external })) + '</button>';
@@ -7413,12 +8036,14 @@ function _pruneDlRates(dls) {
 function _fmtEta(seconds) {
   if (!isFinite(seconds) || seconds < 0) return '';
   if (seconds < 60) return t('dl_eta_under_minute');
+  return t('dl_eta_left', {time: _fmtSpan(seconds)});
+}
+// "4m", "1h 12m", "2d 3h": a minute or more, coarse on purpose.
+function _fmtSpan(seconds) {
   var m = Math.max(1, Math.round(seconds / 60));
-  var time;
-  if (m < 60) time = m + 'm';
-  else if (m < 24 * 60) time = Math.floor(m / 60) + 'h' + (m % 60 ? ' ' + (m % 60) + 'm' : '');
-  else time = Math.floor(m / 1440) + 'd' + (Math.floor((m % 1440) / 60) ? ' ' + Math.floor((m % 1440) / 60) + 'h' : '');
-  return t('dl_eta_left', {time: time});
+  if (m < 60) return m + 'm';
+  if (m < 24 * 60) return Math.floor(m / 60) + 'h' + (m % 60 ? ' ' + (m % 60) + 'm' : '');
+  return Math.floor(m / 1440) + 'd' + (Math.floor((m % 1440) / 60) ? ' ' + Math.floor((m % 1440) / 60) + 'h' : '');
 }
 
 async function refreshDownloads() {
@@ -7620,7 +8245,7 @@ async function _refreshDownloadsInner(useCache) {
         seedHtml += '<div class="dl-item dl-seed-item">' +
           '<div class="dl-row">' +
           '<span class="dl-seed-icon">' + _sourceIconHtml(zimName, 22) + '</span>' +
-          '<span class="dl-name dl-seed-link" onclick="enterSource(\'' + escAttr(escJs(zimName)) + '\', true)" title="' + escAttr(sName) + '">' + esc(sName) + '</span>' +
+          '<span class="dl-name dl-seed-link" onclick="openZimOrApp(\'' + escAttr(escJs(zimName)) + '\')" title="' + escAttr(sName) + '">' + esc(sName) + '</span>' +
           _dlLangBadge(zimName, (_zimInfo(zimName) || {}).language) +
           '<span class="dl-size">' + meta + '</span></div>' +
           '<div class="dl-seed-goal">' + esc(goalStr) +

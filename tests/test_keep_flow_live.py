@@ -439,7 +439,7 @@ def test_too_big_says_so_in_labels_and_offers_a_smaller_version(pw, world):
     br.close()
 
 
-def test_the_menu_is_in_groups_about_file_move_delete(pw, world):
+def test_the_menu_is_in_groups_open_file_random_delete(pw, world):
     br, ctx, pg = library(pw, world)
     open_menu(pg, ZIM)
     groups = pg.evaluate(
@@ -447,7 +447,9 @@ def test_the_menu_is_in_groups_about_file_move_delete(pw, world):
             if (e.classList.contains('ctx-sep')) out.push([]); else out[out.length - 1].push(e.innerText.trim().replace(/\\s+/g, ' ')); }
           return out; }"""
     )
-    assert groups[-4:] == [["About this ZIM"], ["Download ZIM file", "Keep offline", "Don’t auto-update this ZIM"], ["Move to… ›"], ["Delete"]], groups
+    # (No per-ZIM "Don't auto-update" item since a52963c1b.)
+    assert groups[-3:] == [["Download ZIM file", "Keep offline"], ["Random"], ["Delete"]], groups
+    assert groups[0][-2:] == ["Move to… ›", "About this ZIM"], groups
     shot(pg, "m-grouped-menu")
     ctx.close()
     br.close()

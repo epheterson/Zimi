@@ -9,8 +9,8 @@
 // (and the library it is from), find, and the rest under ⋯ (save, dark
 // pages, download, print). The bottom bar is where you are in it: contents
 // and pages, a slider of its pages, the page you are on, and how it fits.
-// Both step aside as you read down and come back on a tap or a scroll up,
-// as the book reader's do. pdf.js is driven through its event bus and its
+// Both stay up while you read and turn pages; only a tap in the middle puts
+// them away or brings them back. pdf.js is driven through its event bus and its
 // viewer's API, never patched: its toolbar and sidebar are put away (CSS),
 // its find, zoom, pinch, keys, links, print and download do the work.
 //
@@ -19,7 +19,6 @@
 // read}. The document opens there again, unless its address names a page.
 (function () {
   'use strict';
-  var BARS_HIDE = 24;          // px scrolled down (or up) before the bars leave (or come back)
   var SAVE_MS = 800;           // ms of rest on a page before it is kept
   // Share of the width at either side where a tap turns the page: a quarter,
   // leaving the middle half to show or hide the bars (Eric, 2026-10-05: "do we
@@ -63,7 +62,9 @@
     pdf_zoom_out: 'Zoom out', pdf_dark_pages: 'Dark pages', pdf_dark_in_red: 'Always on in Red', pdf_single_page: 'Single page', pdf_two_pages: 'Two pages', pdf_rotate: 'Rotate',
     pdf_about: 'About this PDF', pdf_keywords: 'Keywords', pdf_created: 'Created', pdf_modified: 'Modified',
     pdf_application: 'Application', pdf_producer: 'PDF producer', pdf_version: 'PDF version', pdf_page_size: 'Page size',
-    pdf_library: 'Library', books_author: 'Author', books_subject: 'Subject', zi_size: 'Size', zi_file: 'File', pdf_page: 'Page', pdf_failed: 'This PDF could not be opened.'
+    pdf_library: 'Library', books_author: 'Author', books_subject: 'Subject', zi_size: 'Size', zi_file: 'File', pdf_page: 'Page', pdf_failed: 'This PDF could not be opened.',
+    pdf_failed_body: 'The file is missing or damaged. The rest of the collection is fine.', pdf_failed_file: 'The file you asked for', pdf_failed_back: 'Back to the collection',
+    pdf_too_large: 'This PDF is too large to open here: it is stored compressed in its ZIM.'
   };
   function t(k, vars) {
     var s = '';
@@ -328,9 +329,6 @@
     });
     bus.on('pagechanging', function (e) {
       page = e.pageNumber; paint(); saveSoon();
-      // A page at a time has nothing to scroll: a page turned by hand is the
-      // reading that puts the bars away.
-      if (pageByPage() && Date.now() - handAt < HAND_MS) showBars(false);
     });
     bus.on('scalechanging', function (e) { preset = e.presetValue || ''; });
     bus.on('updatefindmatchescount', function (e) { paintCount(e.matchesCount, -1); });
@@ -344,9 +342,6 @@
       if (!s || s === 'Zimi' || s === fileName) setTitle(own || fileName);
     });
     watchLoad(0);
-    container.addEventListener('scroll', onScroll, { passive: true });
-    ['wheel', 'touchmove', 'pointerdown'].forEach(function (ev) { container.addEventListener(ev, byHand, { passive: true }); });
-    window.addEventListener('keydown', byHand, true);
     // pdf.js opens a document with its first page's top at the top of the
     // view, under the head: the room above it is there to be seen.
     var opened = false;
@@ -365,10 +360,18 @@
   function watchLoad(n) {
     var task = app.pdfLoadingTask;
     if (!task) { if (n < LOAD_WAIT_TRIES) setTimeout(function () { watchLoad(n + 1); }, LOAD_WAIT_MS); return; }
-    task.promise.catch(function () {
+    task.promise.catch(function (reason) {
+      // 413: over the size Zimi sends from a compressed cluster (http._send_entry_too_large): say why, not that it is damaged.
+      var tooBig = reason && reason.status === 413;
+      // The missing-page card the reader's other failures use: what, why,
+      // the file in a box, and the way back.
       var m = document.createElement('div');
       m.className = 'zp-msg';
-      m.textContent = t('pdf_failed');
+      m.innerHTML = '<main><h1>' + esc(t(tooBig ? 'pdf_too_large' : 'pdf_failed')) + '</h1>' + (tooBig ? '' : '<p>' + esc(t('pdf_failed_body')) + '</p>') +
+        '<span class="zp-msg-label">' + esc(t('pdf_failed_file')) + '</span>' +
+        '<code dir="ltr">' + esc(path || fileName) + '</code>' +
+        '<button type="button" class="zp-msg-back">' + esc(t('pdf_failed_back')) + '</button></main>';
+      m.querySelector('.zp-msg-back').addEventListener('click', function () { $('.zp-back').click(); });
       ui.appendChild(m);
       showBars(true);
     });
@@ -603,7 +606,6 @@
     if (Math.abs(dx) < SWIPE_PX || Math.abs(dx) < SWIPE_SLANT * Math.abs(dy)) return;
     pinchAt = Date.now();   // the swipe's own touch is not a tap on the page
     // Toward the start of the line is on: left in English, right in Hebrew.
-    byHand();
     step((dx < 0) === (uiDir() !== 'rtl') ? 1 : -1);
   }
   $('.zp-in').addEventListener('click', function () { if (app) app.pdfViewer.increaseScale(); });
@@ -643,22 +645,13 @@
   window.addEventListener('pagehide', function () { if (saveTimer) { clearTimeout(saveTimer); save(); } });
 
   // ── the bars come and go ──
-  // Only a scroll you make moves the bars: pdf.js's own (opening, a jump
-  // to a page, a match found) leaves them as they are.
-  var lastY = 0, pinchAt = 0, handAt = 0, HAND_MS = 1000;
-  function byHand() { handAt = Date.now(); }
+  // Only a tap in the middle moves the bars; scrolling, turning a page and
+  // jumping to one leave them as they are.
+  var pinchAt = 0;
   function barsShown() { return !html.classList.contains('zp-away'); }
   function showBars(on) {
     if (!on && (html.classList.contains('zp-finding') || openPanel)) return;
     html.classList.toggle('zp-away', !on);
-  }
-  function onScroll() {
-    var y = container.scrollTop;
-    if (Date.now() - handAt > HAND_MS) { lastY = y; return; }
-    var end = container.scrollHeight - container.clientHeight - 2;
-    if (y < BARS_HIDE || y >= end) { showBars(true); lastY = y; return; }
-    if (y - lastY > BARS_HIDE) { showBars(false); lastY = y; }
-    else if (lastY - y > BARS_HIDE) { showBars(true); lastY = y; }
   }
   function onTap(e) {
     if (e.defaultPrevented) return;   // a tap on a highlight: its bar, not the reader's
@@ -672,8 +665,8 @@
       var box = container.getBoundingClientRect();
       var rel = box.width ? (e.clientX - box.left) / box.width : 0.5;
       var on = uiDir() !== 'rtl' ? 1 : -1;
-      if (rel < TAP_EDGE) { byHand(); step(-on); return; }
-      if (rel > 1 - TAP_EDGE) { byHand(); step(on); return; }
+      if (rel < TAP_EDGE) { step(-on); return; }
+      if (rel > 1 - TAP_EDGE) { step(on); return; }
     }
     showBars(!barsShown());
   }
@@ -980,10 +973,10 @@
     if (!b) return;
     if (b.classList.contains('zp-x')) { closePanel(true); return; }
     if (b.hasAttribute('data-v')) { view = b.getAttribute('data-v'); renderSheet(); return; }
-    if (b.hasAttribute('data-p')) { closePanel(); goPage(Number(b.getAttribute('data-p'))); showBars(false); return; }
+    if (b.hasAttribute('data-p')) { closePanel(); goPage(Number(b.getAttribute('data-p'))); return; }
     var li = b.closest('li[data-i]'), it = li && outlineItem(li);
     // An entry that points at the web, not into the document, goes nowhere.
-    if (it && it.dest && app) { closePanel(); app.pdfLinkService.goToDestination(it.dest); showBars(false); }
+    if (it && it.dest && app) { closePanel(); app.pdfLinkService.goToDestination(it.dest); }
   });
   // ── highlights: Zimi's, as in an article or a book, not pdf.js's own
   // editors. Select text on a page and the shell's bar offers Highlight,
@@ -1023,7 +1016,6 @@
         // Told at once, as goPage does: a re-scale before pdf.js's next frame
         // (a resize, its own initial view) would put back the page it last saw.
         try { app.pdfViewer.update(); } catch (e) {}
-        showBars(false);
       }
     });
   }

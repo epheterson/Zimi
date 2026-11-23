@@ -7,22 +7,16 @@
    screen. */
 :root {
   color-scheme: light dark;
-  --bg: #f2efe9; --surface: #faf8f4; --surface2: #f3f0ea; --border: #e4dfd4;
-  --text: #26241f; --text2: #6a675e; --amber: #b5541c; --amber-glow: rgba(181,84,28,0.08);
   --green: #2f7d4f; --radius: 12px; --radius-s: 8px;
   --radius-menu: 10px; --shadow-popup: 0 8px 32px rgba(60, 50, 30, 0.16);
 }
 @media (prefers-color-scheme: dark) {
-  :root {
-    --bg: #17171a; --surface: #1f1f23; --surface2: #26262b; --border: #27272b;
-    --text: #e8e8ed; --text2: #8a8a94; --amber: #e0863a; --amber-glow: rgba(224,134,58,0.12); --green: #5cbf80;
-    --shadow-popup: 0 8px 32px rgba(0, 0, 0, 0.5);
-  }
+  :root { --green: #5cbf80; --shadow-popup: 0 8px 32px rgba(0, 0, 0, 0.5); }
 }
 /* Red night light (apps.js nightApply): deep red on black, the least of the screen's light. Every tier of
    text is at least 4.5:1 on every surface; pictures are turned to red monochrome. */
 :root.night-red { --bg: #000; --surface: #0d0000; --surface2: #160000; --border: #5c0e06; --text: #ff2a14; --text2: #f01a0a;
-  --amber: #ff2010; --amber-glow: rgba(255,32,16,0.16); --green: #f01a0a; --on-amber: #000; color-scheme: dark; }
+  --amber: #ff2010; --amber2: #f01a0a; --amber-glow: rgba(255,32,16,0.16); --green: #f01a0a; --on-amber: #000; color-scheme: dark; }
 :root.night-red { --red-picture: grayscale(1) brightness(.22) sepia(1) hue-rotate(-42deg) saturate(12); } /* linear, as app.css's */
 :root.night-red img, :root.night-red svg image { filter: var(--red-picture); }
 :root.night-red canvas:not([data-red]), :root.night-red video { filter: var(--red-picture); }
@@ -43,61 +37,63 @@ button { font: inherit; color: inherit; }
 .page { max-width: 1180px; margin: 0 auto; padding: 12px 16px 32px; }
 @media (max-width: 480px) { .page { padding: 8px 12px 28px; } }
 
-/* A row of chips: sources, tags, sorts. Scrolls sideways, never wraps. */
-.chips { display: flex; gap: 8px; overflow-x: auto; scrollbar-width: none; margin: 0 0 12px; padding: 2px 0; }
-.chips::-webkit-scrollbar { display: none; }
-.chip { flex: none; display: inline-flex; align-items: center; gap: 6px; padding: 6px 12px; border-radius: 18px; border: 1px solid var(--border); background: var(--surface); font-size: 13px; line-height: 1.2; cursor: pointer; white-space: nowrap; }
+/* A row of chips: sources, tags, sorts. Scrolls sideways, never wraps. A chip is the shell's pill (app.css .pill): the
+   same size and the same state, the chosen one filled amber. The shell's rules are copied into the Almanac ZIM, so this
+   restates them rather than sharing them. */
+.chips { display: flex; gap: 6px; overflow-x: auto; margin: 0 0 12px; padding: 2px 0; }
+.chip { flex: none; display: inline-flex; align-items: center; gap: 5px; box-sizing: border-box; min-height: 28px; padding: 6px 14px; border-radius: 20px; border: 1px solid var(--border); background: var(--surface); color: var(--text2); font-size: 12px; font-weight: 500; line-height: 1; cursor: pointer; white-space: nowrap; transition: color var(--dur-settle), background var(--dur-settle), border-color var(--dur-settle); }
+.chip:hover { border-color: var(--amber-border); color: var(--text); background: var(--amber-glow); }
 .chip img { width: 16px; height: 16px; border-radius: 4px; }
-.chip.tag { font-size: 12px; padding: 4px 10px; background: var(--surface2); }
+.chip.tag { padding: 4px 10px; background: var(--surface2); }
 /* After .tag: a chosen small chip is chosen, not grey on grey. */
-.chip.on { background: var(--text); color: var(--bg); border-color: var(--text); }
+.chip.on { background: linear-gradient(135deg, var(--amber), var(--amber2)); color: var(--on-amber); border-color: transparent; font-weight: var(--fw-strong); }
 .chip .n { opacity: .6; font-variant-numeric: tabular-nums; }
 
 /* A shelf: a heading with its icon and its way to everything, then rows. */
 .shelf { margin: 0 0 24px; }
 .shelf-h { display: flex; align-items: center; gap: 10px; margin: 0 0 8px; }
-.shelf-h img { width: 22px; height: 22px; border-radius: 6px; }
-.shelf-h h2 { font-size: 15px; margin: 0; font-weight: 700; flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--text); }
-.shelf-h .all { color: var(--amber); font-size: 12.5px; font-weight: 600; cursor: pointer; background: none; border: 0; padding: 4px 0; white-space: nowrap; }
+.shelf-h img { width: 22px; height: 22px; border-radius: var(--r-chip); }
+.shelf-h h2 { margin: 0; flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.shelf-h .all { color: var(--amber); font-size: 12.5px; font-weight: var(--fw-strong); cursor: pointer; background: none; border: 0; padding: 4px 0; white-space: nowrap; }
 
 /* A list's head: what this list is, how many, how far along, and its orders. */
 .head { display: flex; align-items: baseline; justify-content: space-between; gap: 8px 12px; flex-wrap: wrap; margin: 0 0 8px; }
-.head h2 { font-size: 16px; margin: 0; color: var(--text); }
-.head .n { color: var(--text2); font-size: 12px; font-weight: 400; font-variant-numeric: tabular-nums; }
+.head h2 { font-size: var(--fs-title); font-weight: var(--fw-strong); margin: 0; color: var(--text); }
+.head .n { color: var(--text2); font-size: 12px; font-weight: var(--fw-regular); font-variant-numeric: tabular-nums; }
 .sorts { display: inline-flex; gap: 6px; }
 
 /* A row in a list: a number on the left, the thing on the right. */
-.row { display: grid; grid-template-columns: 52px 1fr; gap: 12px; padding: 12px 0; border-top: 1px solid var(--border); cursor: pointer; }
+.row { display: grid; grid-template-columns: 52px 1fr; gap: var(--sp-3); padding: 12px 0; border-top: 1px solid var(--border); cursor: pointer; }
 .row:first-of-type { border-top: 0; }
-.row .stat { text-align: center; font-size: 11px; color: var(--text2); line-height: 1.25; padding-top: 2px; font-variant-numeric: tabular-nums; }
-.row .stat b { display: block; font-size: 15px; color: var(--text); font-weight: 600; }
-.row .stat .pill { margin: 6px auto 0; display: block; width: fit-content; padding: 2px 6px; border-radius: 6px; border: 1px solid var(--border); }
+.row .stat { text-align: center; font-size: var(--fs-caption); color: var(--text2); line-height: 1.25; padding-top: 2px; font-variant-numeric: tabular-nums; }
+.row .stat b { display: block; font-size: var(--fs-body); color: var(--text); font-weight: var(--fw-strong); }
+.row .stat .pill { margin: 6px auto 0; display: block; width: fit-content; padding: 2px 6px; border-radius: var(--r-chip); border: 1px solid var(--border); }
 .row .stat .pill.ok { background: var(--green); color: #fff; border-color: var(--green); }
-.row .t { font-weight: 600; font-size: 14.5px; line-height: 1.3; color: var(--text); }
-.row .ex { color: var(--text2); font-size: 13px; margin-top: 3px; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+.row .t { font-weight: var(--fw-strong); font-size: 14.5px; line-height: 1.3; color: var(--text); }
+.row .ex { color: var(--text2); font-size: var(--fs-small); margin-top: 3px; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
 .row .m { color: var(--text2); font-size: 12px; margin-top: 4px; display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
 .row .m img { width: 14px; height: 14px; border-radius: 4px; }
 /* Facts in a row's line, separated by a dot that belongs to the fact after
    it, so a wrapped line never ends in a separator. */
 .row .m .fact + .fact::before { content: '\B7'; margin-inline-end: 6px; }
 .tags { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
-.tg { font-size: 11.5px; padding: 2px 8px; border-radius: 6px; background: var(--amber-glow); color: var(--amber); cursor: pointer; }
-.fl { display: inline-block; font-size: 11px; padding: 1px 7px; border-radius: 6px; background: var(--amber-glow); color: var(--amber); }
+.tg { font-size: 11.5px; padding: 2px 8px; border-radius: var(--r-chip); background: var(--amber-glow); color: var(--amber); cursor: pointer; }
+.fl { display: inline-block; font-size: var(--fs-caption); padding: 1px 7px; border-radius: var(--r-chip); background: var(--amber-glow); color: var(--amber); }
 
 /* More, empty, back. */
 .more { display: block; margin: 20px auto 8px; padding: 9px 20px; border: 1px solid var(--border); border-radius: 20px; background: var(--surface); color: var(--text); cursor: pointer; }
 .more:hover { border-color: var(--amber); color: var(--amber); }
 .empty { color: var(--text2); text-align: center; padding: 48px 12px; line-height: 1.8; }
-.empty .door { color: var(--amber); font-weight: 600; }
+.empty .door { color: var(--amber); font-weight: var(--fw-strong); }
 /* Arrows point the way the text runs. */
 .chev::before { content: '\203A'; }
 [dir="rtl"] .chev::before { content: '\2039'; }
 
 /* A thing being read: its title, its line of facts, its body. */
-.item h1 { font-size: 20px; line-height: 1.3; margin: 0 0 6px; color: var(--text); }
-.item .who { color: var(--text2); font-size: 12.5px; margin: 0 0 14px; display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.item h1 { font-size: var(--fs-sheet); line-height: 1.3; margin: 0 0 6px; color: var(--text); }
+.item .who { color: var(--text2); font-size: 12.5px; margin: 0 0 14px; display: flex; align-items: center; gap: var(--sp-2); flex-wrap: wrap; }
 .item .who img { width: 18px; height: 18px; border-radius: 5px; }
-.item .who b { color: var(--text); font-weight: 600; }
+.item .who b { color: var(--text); font-weight: var(--fw-strong); }
 /* Content keeps its own direction inside a right-to-left shell: an English
    post under Hebrew chrome still reads left to right. */
 .prose, .item h1, .row .t, .row .ex { unicode-bidi: plaintext; }
@@ -108,14 +104,14 @@ button { font: inherit; color: inherit; }
 .prose pre { direction: ltr; text-align: left; }
 .prose { min-width: 0; overflow-wrap: anywhere; }
 .prose img, .prose video { max-width: 100%; height: auto; border-radius: var(--radius-s); }
-.prose pre { background: var(--surface2); padding: 10px 12px; border-radius: var(--radius-s); overflow-x: auto; font-size: 13px; }
-.prose code { background: var(--surface2); padding: 1px 4px; border-radius: 4px; font-size: 13px; }
+.prose pre { background: var(--surface2); padding: 10px 12px; border-radius: var(--radius-s); overflow-x: auto; font-size: var(--fs-small); }
+.prose code { background: var(--surface2); padding: 1px 4px; border-radius: 4px; font-size: var(--fs-small); }
 .prose pre code { background: none; padding: 0; }
 .prose blockquote { margin: 0; padding: 4px 12px; border-inline-start: 3px solid var(--border); color: var(--text2); }
 .prose table { border-collapse: collapse; max-width: 100%; display: block; overflow-x: auto; }
 .prose td, .prose th { border: 1px solid var(--border); padding: 4px 8px; }
-.section-h { font-size: 12px; color: var(--text2); text-transform: uppercase; letter-spacing: .06em; margin: 22px 0 6px; }
-.actions { display: flex; gap: 8px; flex-wrap: wrap; margin: 18px 0 0; }
+.section-h { margin: 22px 0 6px; }
+.actions { display: flex; gap: var(--sp-2); flex-wrap: wrap; margin: 18px 0 0; }
 /* Border-box, so the 44px a finger gets (below) is the pill's height, not
    44px of text inside its padding (Autoplay stood 60px tall beside Like). */
 .actions a, .actions button { display: inline-flex; align-items: center; gap: 6px; padding: 7px 12px; border-radius: 18px; border: 1px solid var(--border); background: var(--surface); color: var(--text); cursor: pointer; font-size: 12.5px; box-sizing: border-box; }
@@ -133,27 +129,23 @@ button { font: inherit; color: inherit; }
    them the first time. A part inside a heading's line takes the extra back
    with a negative margin, so the heading keeps its rhythm. */
 @media (pointer: coarse) {
-  .chip { min-height: 36px; }
-  .chip.tag { min-height: 32px; }
   .tg { padding: 5px 10px; }
   .shelf-h .all { padding: 13px 4px; margin-block: -9px; }
-  .actions a, .actions button { min-height: 44px; padding-inline: 16px; }
-  /* A chip is drawn smaller than a thumb; what takes the tap reaches 44px
-     (the pseudo-element hangs from inside the chip's 1px border, so 36px
-     needs 5px each way and 32px needs 7), and a row of chips keeps room for
-     that inside its scroll box (the extra padding given back by the margin). */
-  .chips { padding-block: 6px; margin-block: -4px 8px; }
+  .actions a, .actions button { min-height: var(--target); padding-inline: 16px; }
+  /* A chip is drawn smaller than a thumb; what takes the tap reaches 44px (the pseudo-element hangs from inside the
+     chip's 1px border), and a row of chips keeps room for that inside its scroll box (the extra padding given back by
+     the margin). */
+  .chips { padding-block: 8px; margin-block: -6px 6px; }
   .chip { position: relative; }
-  .chip::after { content: ''; position: absolute; inset: -5px 0; }
-  .chip.tag::after { inset: -7px 0; }
-  .more { min-height: 44px; }
+  .chip::after { content: ''; position: absolute; inset: calc(max(0px, 44px - 100%) / -2) 0; }
+  .more { min-height: var(--target); }
 }
 
 /* A menu, as the shell draws one (app.css #zim-ctx-menu, .ctx-item,
    .ctx-check): surface, hairline, 10px corners, the popup shadow; items a
    thumb's height, a tick column that mirrors in a right-to-left page. */
 .menu { position: absolute; z-index: 20; min-width: 180px; background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius-menu); box-shadow: var(--shadow-popup); padding: 4px 0; user-select: none; }
-.menu-item { display: flex; align-items: center; width: 100%; min-height: 44px; box-sizing: border-box; padding: 0 16px 0 10px; border: 0; background: none; font-size: 13px; color: var(--text); cursor: pointer; text-align: start; white-space: nowrap; }
+.menu-item { display: flex; align-items: center; width: 100%; min-height: var(--target); box-sizing: border-box; padding: 0 16px 0 10px; border: 0; background: none; font-size: var(--fs-small); color: var(--text); cursor: pointer; text-align: start; white-space: nowrap; }
 .menu-item:hover, .menu-item:focus-visible { background: var(--amber-glow); color: var(--amber); outline: none; }
 .menu-check { display: inline-block; width: 1.4em; flex: none; color: var(--amber); font-weight: 700; }
 .menu-sep { height: 1px; background: var(--border); margin: 4px 0; }
@@ -161,11 +153,11 @@ button { font: inherit; color: inherit; }
 .app-wait { margin: 12px 0; }
 /* The columns are the host grid's own (tube.html, wiki.html .grid; books.html .grid for covers), so nothing moves when the answer lands. */
 .app-wait-cards { display: grid; grid-template-columns: repeat(auto-fill, minmax(232px, 1fr)); gap: 14px; }
-@media (max-width: 480px) { .app-wait-cards { grid-template-columns: 1fr; gap: 12px; } }
+@media (max-width: 480px) { .app-wait-cards { grid-template-columns: 1fr; gap: var(--sp-3); } }
 .app-wait-covers .app-wait-cards { grid-template-columns: repeat(auto-fill, minmax(128px, 1fr)); gap: 22px 16px; }
 .app-wait-covers .app-wait-card i { aspect-ratio: 2 / 3; }
 @media (max-width: 480px) { .app-wait-covers .app-wait-cards { grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 18px 12px; } }
-.app-wait-card { display: flex; flex-direction: column; gap: 8px; padding: 0 0 12px; border-radius: var(--radius); background: var(--surface); border: 1px solid var(--border); overflow: hidden; animation: app-wait 1.6s ease-in-out infinite; }
+.app-wait-card { display: flex; flex-direction: column; gap: var(--sp-2); padding: 0 0 12px; border-radius: var(--radius); background: var(--surface); border: 1px solid var(--border); overflow: hidden; animation: app-wait 1.6s ease-in-out infinite; }
 .app-wait-card i { display: block; aspect-ratio: 16 / 9; background: var(--surface2); }
 .app-wait-card b { display: block; height: 10px; margin: 0 12px; border-radius: 5px; background: var(--surface2); }
 .app-wait-card b + b { width: 55%; }

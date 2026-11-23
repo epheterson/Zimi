@@ -541,7 +541,8 @@ def test_overwrite_from_a_file_holds_for_a_signed_in_account(served):
             "scope": "my-data",
             "saved": {"items": {"wiki\nA/C": _item("A/C", "C")}},
         }
-        take = "(t) => { if (!document.getElementById('ms-mydata-merge')) document.body.insertAdjacentHTML('beforeend', '<input type=checkbox id=ms-mydata-merge hidden>'); _applyMyDataFile(t); }"
+        # The person is asked merge or replace as the file comes in; they pick Replace.
+        take = "(t) => { _appConfirm = async () => 'alt'; return _applyMyDataFile(t, true); }"
         pg.evaluate(take, json.dumps(file))
         _flushed(pg)
         assert list(users.load_user_data("alice")["saved"]["items"]) == ["wiki\nA/C"]
