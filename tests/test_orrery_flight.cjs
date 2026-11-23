@@ -87,11 +87,10 @@ for (const fn of ['_dateToJD', '_jdToJulianCentury', '_solveKepler', '_orrDeepRa
                   '_parseHex', '_hexToRgba', '_lighten', '_darken']) {
   vm.runInContext(extractFn(almSrc, fn), S);
 }
-for (const v of ['_VOYAGERS', '_HELIO_TERMINATION_AU', '_HELIOPAUSE_AU', '_KUIPER_INNER_AU', '_ORBIT_VIS']) {
+for (const v of ['_VOYAGERS', '_HELIO_TERMINATION_AU', '_HELIOPAUSE_AU', '_KUIPER_INNER_AU']) {
   vm.runInContext(extractVar(almSrc, v), S);
 }
-const auToVis = extractFn(almSrc, '_auToVis');
-vm.runInContext(almSrc.slice(almSrc.indexOf('var _AU_VIS_X'), almSrc.indexOf(auToVis) + auToVis.length), S);
+vm.runInContext(extractFn(almSrc, '_solarSqueeze'), S);
 vm.runInContext(orrSrc, S);
 const run = (code) => vm.runInContext(code, S);
 

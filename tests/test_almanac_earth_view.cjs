@@ -68,8 +68,9 @@ const NULL_IDS = new Set(['almanac-orrery']);   // the orrery's canvas: not draw
 const byId = new Map();
 function fakeEl(id) {
   const el = {
-    id, hidden: false, textContent: '', innerHTML: '', className: '', style: {}, attrs: {}, listeners: {},
+    id, hidden: false, textContent: '', innerHTML: '', value: '', className: '', style: {}, attrs: {}, listeners: {},
     clientWidth: 390, clientHeight: 844, parentNode: null,
+    get children() { return el._kids || (el._kids = [0, 1, 2].map((n) => Object.assign(fakeEl(id + ':' + n), { hidden: true }))); },
     classList: {
       set: new Set(),
       add(c) { this.set.add(c); }, remove(c) { this.set.delete(c); },
@@ -80,8 +81,10 @@ function fakeEl(id) {
     appendChild(c) { c.parentNode = el; return c; },
     replaceChild(fresh, old) { fresh.parentNode = el; old.parentNode = null; if (old.id) byId.set(old.id, fresh); },
     cloneNode() { const c = fakeEl(el.id); c.className = el.className; c.attrs = Object.assign({}, el.attrs); return c; },
-    focus() {}, setPointerCapture() {}, getBoundingClientRect() { return { left: 0, top: 0 }; },
+    focus() {}, setPointerCapture() {}, getBoundingClientRect() { return { left: 0, top: 0 }; }, querySelectorAll() { return []; },
+    querySelector(sel) { const q = el._q || (el._q = {}); return q[sel] || (q[sel] = fakeEl(sel)); },
     removeAttribute(k) { delete this.attrs[k]; },
+    toggleAttribute(k, on) { if (on === undefined) on = !(k in this.attrs); if (on) this.attrs[k] = ''; else delete this.attrs[k]; return on; },
   };
   el.style = {
     setProperty(k, v) { this[k] = v; }, removeProperty(k) { delete this[k]; },
@@ -93,6 +96,7 @@ const document = {
   hidden: false,
   body: fakeEl('body'),
   head: fakeEl('head'),
+  documentElement: fakeEl('html'),
   getElementById(id) {
     if (NULL_IDS.has(id)) return null;
     if (!byId.has(id)) { const e = fakeEl(id); e.parentNode = root; byId.set(id, e); }
@@ -164,6 +168,7 @@ const S = {
   window: { devicePixelRatio: 3, addEventListener() {} },
   performance: { now: () => Date.now() },
   requestAnimationFrame: () => 1,
+  getComputedStyle: () => ({ flexDirection: 'row', getPropertyValue: () => '' }),
   cancelAnimationFrame() {},
   setTimeout: (fn, ms) => { timers.push({ fn, ms }); return timers.length; },
   clearTimeout() {},
@@ -171,6 +176,7 @@ const S = {
   navigator: { onLine: true },
 };
 vm.createContext(S);
+S._almAsset = (p) => p;   // app.js: a /static address with its version; here, as it is
 vm.runInContext(require("./sk.cjs")(), S);   // app.js SK, loaded before every Almanac file
 vm.runInContext(
   'var JD_UNIX_EPOCH = 2440587.5, JD_J2000 = 2451545.0, MS_PER_DAY = 86400000, JULIAN_CENTURY = 36525;' +
@@ -182,12 +188,13 @@ vm.runInContext(
   'function _almBackToToday() { _almSettled.push(null); _almFocus = null; } function _almHeroLiveStop() {}' +
   // And the one clock's rate: recorded where the view asks for it, with the stops the page has.
   'var _almRate = 1, _almRates = []; function _almClockSetRate(r) { _almRates.push(r); _almRate = r; }' +
-  'function _almClockHtml(v) { return "<div class=\\"alm-clock\\" data-v=\\"" + v + "\\"></div>"; } function _almClockPaint() {}' +
+  'function _almClockHtml(v) { return "<div class=\\"alm-clock\\" data-v=\\"" + v + "\\"></div>"; } function _almClockPaint() {} function _almPinHtml(c, a, k, l) { return "<div class=\\"alm-pin" + c + "\\"" + a + "><div" + k + ">" + _almClockHtml("pin") + "</div>" + l + "</div>"; }' +
   'function _almClockHaltRaf() {} function _almEdEnd() {} function _almRunToStop() {} function _almLinkStop() {} var _almClockStale = false, _almClockRunning = false;' +
   'var _almRevealing = false, _almRevealTimer = 0, _almShownJobs = [];', S)
 for (const fn of ['_dateToJD', '_almEsc', '_jdnToGregorian', '_cnDeltaTdays',
-                  '_almanacTeardown', '_almVeilCancel', '_almFocusInstant']) vm.runInContext(extractFn(almSrc, fn), S);
+                  '_almanacTeardown', '_almFirstOpenCancel', '_almFocusInstant']) vm.runInContext(extractFn(almSrc, fn), S);
 vm.runInContext(extractFn(read('app.js'), '_smoothstep'), S);
+vm.runInContext(extractFn(read('app.js'), '_rawGet'), S);
 // The shared angle and Moon-orientation helpers the view borrows from the
 // Almanac's other files (one global scope in the browser).
 vm.runInContext(extractFn(read('almanac-sky.js'), '_angleDelta'), S);
@@ -251,8 +258,8 @@ const run = (code) => vm.runInContext(code, S);
     run('_aeNow()');
     check(S._almFocus === null && run('_orreryRockets.length') === 0 && run('_orreryAutoTransit') === false && run('_aeFocusSet()') === false,
       'Now brings the page and the orrery (its rides) back to now');
-    check(/_almClockHtml\('foot'\)/.test(read('almanac-earth.js')) && !/data-ae-speed|_aeRunClock|_aeAdoptOrreryClock|_aeSetSpeed/.test(read('almanac-earth.js')),
-      'the view\'s foot is the shared clock; its chips, its own speed and its own run of the clock are gone');
+    check(/_almPinHtml\(/.test(read('almanac-earth.js')) && !/_almClockHtml\('foot'\)/.test(read('almanac-earth.js')) && !/data-ae-speed|_aeRunClock|_aeAdoptOrreryClock|_aeSetSpeed/.test(read('almanac-earth.js')),
+      'the view\'s top strip is the page\'s pinned strip with the shared clock; its chips, its own speed and its own run of the clock are gone');
     check(/function _orreryClockTouched\(\) \{\s*_orreryScenery = false;/.test(fs.readFileSync(path.join(STATIC, 'almanac-orrery.js'), 'utf8')),
       'the first touch of the clock ends the orrery\'s opening spin');
     // One orrery loop: a second start took over nothing and ran beside the
@@ -331,6 +338,15 @@ const run = (code) => vm.runInContext(code, S);
   {
     const r1 = run('_ae.gl.renderer');
     check(r1.opts.antialias === false, 'at a 3x screen (drawn at 2x) there is no multisampling');
+    {
+      // An Apple GPU multisamples a view that begins at 2x: the governor may step it down to 1x later, and the choice cannot be made again.
+      const had = S.ZimiCap, gpu = (name) => { S.ZimiCap = { signals: () => ({ renderer: name }) }; };
+      gpu('Apple GPU');
+      check(run('_aeMsaa(2)') === true && run('_aeMsaa(3)') === false && run('_aeMsaa(1)') === true, 'an Apple GPU multisamples from 2x down, not at 3x');
+      gpu('Mali-G78');
+      check(run('_aeMsaa(2)') === false && run('_aeMsaa(1.5)') === true, 'any other GPU only under 2x, as before');
+      if (had === undefined) delete S.ZimiCap; else S.ZimiCap = had;
+    }
     run('_aeClose()');
     check(JSON.stringify(r1.lastSize()) === '[1,1,false]', 'closing the view shrinks its drawing buffer to one pixel');
     fetches.push(answer({}));
@@ -354,8 +370,8 @@ const run = (code) => vm.runInContext(code, S);
     check(run('_ae.gl') === null, 'and lets the scene go');
     check(held.size > 10 && disposed === held.size, 'every geometry and material is disposed (' + disposed + ' of ' + held.size + ')');
     check(maps.length === 3 && maps.every((x) => x.disposed), 'every map is disposed');
-    check(textures.some((x) => x.url === S.AE_TEX_MOON_HI) && textures.filter((x) => x.url === S.AE_TEX_MOON).every((x) => x.disposed),
-      'the Moon\'s 4096 map replaced its 1024 one, which was given back then');
+    check(!textures.some((x) => x.url === S.AE_TEX_MOON_HI) && textures.filter((x) => x.url === S.AE_TEX_MOON).every((x) => x.disposed),
+      'opened on the Earth the 4096 Moon map is not fetched (tests/test_almanac_lazy_open.cjs has its triggers), and the 1024 one is given back');
     check(r1.did('dispose') && r1.did('forceContextLoss'), 'the renderer is disposed and its context given back');
     const fresh = document.getElementById('ae-canvas');
     check(fresh !== oldCanvas && oldCanvas.parentNode === null, 'a fresh canvas replaces the one whose context is lost');
@@ -499,6 +515,8 @@ const run = (code) => vm.runInContext(code, S);
     check(panel.hidden === false && gear.getAttribute('aria-expanded') === 'true', 'the gear opens "Satellite data from the internet"');
     check(/value="ask" checked/.test(html) && !/disabled/.test(html), 'an admin sees Ask first chosen, and may change it');
     check(['alm_earth_sat_ask', 'alm_earth_sat_auto', 'alm_earth_sat_never'].every((k) => html.includes(k)), 'with all three choices');
+    check((html.match(/class="ae-set-ico"/g) || []).length === 3 && !/<small/.test(html), 'each a picture and a short label, the hints only in tooltips');
+    check(/title="[^"]*alm_earth_sat_auto_hint/.test(html), 'the longer words are the tooltip');
     const n0 = requests.length;
     fetches.push({ mode: 'auto', locked: null, choices: ['ask', 'auto', 'never'] });
     fetches.push(stale({ mode: 'auto', refreshing: true }));
@@ -512,8 +530,8 @@ const run = (code) => vm.runInContext(code, S);
 
     const panelFor = async (over) => { fetches.push(stale(over)); await reopen(); gear.onclick(); return body.innerHTML; };
     let h = await panelFor({ can_change: false });
-    check(/value="ask" checked/.test(h) && (h.match(/ disabled/g) || []).length === 3 && h.includes('alm_earth_sat_admin_only'),
-      'anyone else sees the choice read-only, and why');
+    check(!h.includes('ae-sat-mode') && !h.includes('alm_earth_sat_admin_only'),
+      'anyone else is not shown the satellite source choice at all (display rows only)');
     const n1 = requests.length;
     panel.onchange({ target: { name: 'ae-sat-mode', value: 'never' } });
     await flush();
@@ -610,7 +628,8 @@ const run = (code) => vm.runInContext(code, S);
     const shot = (from, to, w, h) => run('(function () {' +
       ' var W = _ae.w, H = _ae.h; _ae.w = ' + w + '; _ae.h = ' + h + ';' +
       ' _ae.fly = null; _ae.target = "' + from + '"; _ae.dist = _aeClampDist(_aeFitDist(AE_FIT_EARTH)); _ae.az = 0.3; _ae.el_ = 0.2;' +
-      ' _aePreset("' + to + '"); var f = _ae.fly; f.start = 0; _aeStepFly(' + S.AE_FLY_APPROACH_MS + ');' +
+      ' _aePreset("' + to + '"); var f = _ae.fly; f.start = 0; _aeStepFly(f.lead);' +   // (the shoulder is at the flight's lead, which a turn that is spread over longer stretches)
+
       ' var look = _aeFlyTargetPos(), off = _aeCameraOffset(_ae.az, _ae.el_, _ae.dist), pos = _aeAdd(look, off);' +
       ' var axis = _aeNorm(_aeSub(look, pos)), bodies = { earth: [[0, 0, 0], 1], moon: [_ae.scene.moon, AE_MOON_RADIUS_RE], sun: [_aeSunShown(_ae.scene), AE_SUN_SHOW_R] };' +
       ' function seen(n) { var d = _aeSub(bodies[n][0], pos); return { ang: _aeAngle(axis, d), rad: Math.asin(bodies[n][1] / _aeLen(d)), dir: _aeNorm(d) }; }' +
@@ -686,7 +705,7 @@ const run = (code) => vm.runInContext(code, S);
     }
     const done = ringsAt('moon', 'sun', S.AE_FLY_APPROACH_MS + run('(function(){ _ae.fly = null; _ae.target="moon"; _aePreset("sun"); var m = _ae.fly.ms + AE_FLY_TAIL_MS; _ae.fly = null; return m; })()') - 1);
     check(done.sun.hidden || done.sun.op < 0.05, 'the rings are gone once the camera has arrived');
-    check(run('_aeEaseInOut(0)') === 0 && run('_aeEaseInOut(1)') === 1 && Math.abs(run('_aeEaseInOut(0.5)') - 0.5) < 1e-12 && run('_aeEaseInOut(0.1)') < 0.1,
+    check(run('_aeSmoother(0)') === 0 && run('_aeSmoother(1)') === 1 && Math.abs(run('_aeSmoother(0.5)') - 0.5) < 1e-12 && run('_aeSmoother(0.1)') < 0.1,
       'a flight eases in and out');
     run('var _almReduceMotion = function () { return true; };');
     s = viewOf('earth', 'moon', 150);
