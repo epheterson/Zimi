@@ -5637,20 +5637,19 @@ function renderHome(filter) {
 
   // Preserve existing discover content to avoid flash (pop-in → disappear → reappear)
   // But invalidate if the language changed (cached HTML has baked-in translated strings)
-  var _prevDiscoverHtml = null;
-  var _prevDiscoverScroll = 0;
+  // The drawn Discover row itself is kept and moved into the new page, not copied as HTML: a copy re-creates every
+  // card's picture, and the row blinked while they decoded again (a switch between full and compact tiles, Back from a
+  // card). Only a row drawn for this library and language: one drawn while the list was still loading holds only Today.
+  var _keptDiscover = null, _prevDiscoverScroll = 0;
   if (_showDiscover) {
     var _prevRow = document.getElementById('discover-row');
-    // ...and only a row drawn for this library: one drawn while the list was
-    // still loading holds only Today, and reused it would stay that way.
     if (_prevRow && _prevRow.innerHTML && _prevRow.dataset.lang === _currentLang
         && _prevRow.dataset.lib === _discoverLibKey()) {
-      _prevDiscoverHtml = _prevRow.innerHTML;
-      // scrollLeft is a live DOM property, not serialized by innerHTML — capture
-      // it so the strip keeps its place across a home re-render (e.g. Back from
-      // an opened discover card) instead of snapping to the first card.
+      _keptDiscover = _prevRow;
+      // scrollLeft is not kept by a detached node in every browser: note it and give it back.
       var _prevScrollEl = _prevRow.querySelector('.discover-scroll');
       if (_prevScrollEl) _prevDiscoverScroll = _prevScrollEl.scrollLeft;
+      _prevRow.remove();
     }
   }
   output.innerHTML = h;
@@ -5661,15 +5660,12 @@ function renderHome(filter) {
   // no card should wait on that. A no-op once the map has arrived.
   _loadZimKinds();
   if (_showDiscover) {
-    if (_prevDiscoverHtml) {
-      // Restore cached discover DOM — avoid re-fetch flash
-      var newRow = document.getElementById('discover-row');
-      if (newRow) {
-        newRow.innerHTML = _prevDiscoverHtml; newRow.dataset.lang = _currentLang; newRow.dataset.lib = _discoverLibKey();
-        if (_prevDiscoverScroll) {
-          var _newScrollEl = newRow.querySelector('.discover-scroll');
-          if (_newScrollEl) _newScrollEl.scrollLeft = _prevDiscoverScroll;
-        }
+    var newRow = _keptDiscover && document.getElementById('discover-row');
+    if (newRow) {
+      newRow.replaceWith(_keptDiscover);
+      if (_prevDiscoverScroll) {
+        var _keptScrollEl = _keptDiscover.querySelector('.discover-scroll');
+        if (_keptScrollEl) _keptScrollEl.scrollLeft = _prevDiscoverScroll;
       }
     } else {
       _loadDiscover();
