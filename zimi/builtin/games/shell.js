@@ -226,6 +226,8 @@
   var kiwixJs = !!d && root.parent !== root && !inZimi() && String(root.location && root.location.pathname).indexOf('/content/') < 0;
   if (kiwixJs && d.documentElement.style) d.documentElement.style.setProperty('--host-bottom', KIWIX_JS_TOOLBAR_PX + 'px');
   Shell.kiwixJs = kiwixJs;
+  // kiwix-serve itself: it names a ZIM's pages /content/<zim>/ (Zimi's are /w/<zim>/), and has no Zimi routes either.
+  var kiwixServe = !!d && String(root.location && root.location.pathname).indexOf('/content/') >= 0;
 
   // kiwix-serve's viewer: this page in its #content_iframe under its own toolbar. The viewer sizes the frame to the window minus
   // the toolbar and 4px, and when the page inside scrolls it slides the toolbar away without sizing the frame again: a strip (4px,
@@ -377,7 +379,7 @@
   var serverDay = null;
   Shell.serverDay = function () {
     if (!serverDay) {
-      serverDay = (root.fetch && !kiwixJs ? root.fetch('/games-day', { cache: 'no-store' }).then(function (r) { return r.ok ? r.json() : null; }) : Promise.resolve(null))
+      serverDay = (root.fetch && !kiwixJs && !kiwixServe ? root.fetch('/games-day', { cache: 'no-store' }).then(function (r) { return r.ok ? r.json() : null; }) : Promise.resolve(null))
         .then(function (j) {
           if (!j || !isDay(j.day)) return deviceDay();
           if (typeof j.utcOffsetMin === 'number') { try { root.localStorage.setItem(OFFSET_KEY, String(j.utcOffsetMin)); } catch (e) { /* blocked */ } }
