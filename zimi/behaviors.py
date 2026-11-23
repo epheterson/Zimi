@@ -16,7 +16,7 @@ is the single thing our capture engines most obviously lack.
 so every build has it: Docker, desktop and pip. It is AGPL-3.0-or-later and
 Zimi is GPL-3.0-or-later; section 13 of both licences lets the two be combined.
 The file is the unmodified upstream release, whose source is at
-https://github.com/webrecorder/browsertrix-behaviors (THIRD_PARTY_NOTICES.md
+https://github.com/webrecorder/browsertrix-behaviors (docs/THIRD_PARTY_NOTICES.md
 has the pinned checksum). This code runs INSIDE the captured page rather than
 beside Zimi, so the fallback stays load-bearing: when no copy can be read the
 capture falls back to the plain scroll.

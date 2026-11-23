@@ -65,7 +65,7 @@ milkyway-v1.webp
   floor subtracted, resized to 2048x1024, WebP quality 90. Longitude runs to
   the left from the centre (l = 0 in the middle), latitude +90 at the top;
   almanac-skygl.js _sgGalUV is that map. Drawn behind the stars of the live
-  sky (almanac-sky.js). Credited in THIRD_PARTY_NOTICES.md.
+  sky (almanac-sky.js). Credited in docs/THIRD_PARTY_NOTICES.md.
 
 constellations-v1.json
   The 88 IAU constellations' figures and label places, packed by

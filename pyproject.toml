@@ -88,7 +88,7 @@ browser = ["playwright>=1.40"]
 # its data directory, the first time someone downloads a voice.
 voices = ["piper-tts>=1.8,<2", "kokoro-onnx>=0.6,<0.7", "misaki[zh]>=0.9.4,<0.10", "num2words>=0.5.14,<0.6"]
 # What the test suite needs beyond the package: pytest, and pytest-xdist so
-# `pytest -n auto` runs it in parallel (see CONTRIBUTING.md, Tests).
+# `pytest -n auto` runs it in parallel (see .github/CONTRIBUTING.md, Tests).
 test = ["pytest>=8", "pytest-xdist>=3.5", "pyflakes>=3"]
 all = ["PyMuPDF>=1.23.0,<2", "mcp>=1.30.0,<2.0", "libtorrent==2.0.*"]
 
@@ -128,8 +128,8 @@ zimi = [
 # Wikipedia interwiki links in the ZIMs on disk. Wikipedia's link graph drifts
 # over time, so failures there are signal about ZIM data, not code.
 # Run it explicitly with `pytest tests/test_article_languages.py` when needed.
-addopts = "--ignore=tests/test_article_languages.py"
-# tests_release/ is the pre-release gate (scripts/release-gate.sh): it boots
+addopts = "--ignore=tests/test_article_languages.py --ignore=tests/release"
+# tests/release/ is the pre-release gate (scripts/release-gate.sh): it boots
 # real servers and takes minutes, so a bare `pytest` must not pick it up.
 # Naming it explicitly still runs it.
 testpaths = ["tests"]

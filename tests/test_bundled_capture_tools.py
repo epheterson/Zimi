@@ -15,7 +15,7 @@ import zimi.behaviors as behaviors  # noqa: E402
 import zimi.importer as importer  # noqa: E402
 import zimi.server as _srv  # noqa: E402
 
-# The pin THIRD_PARTY_NOTICES.md states for the shipped, unmodified release.
+# The pin docs/THIRD_PARTY_NOTICES.md states for the shipped, unmodified release.
 BEHAVIORS_SHA256 = "82c60aae18588aa6c1a6e54d75887a72c970d840c54cb8b36eb9c9ccf946d7da"
 ASSET_DIR = os.path.join(REPO_ROOT, "zimi", "assets", "browsertrix-behaviors")
 
@@ -40,7 +40,7 @@ def test_bundled_behaviors_are_the_pinned_unmodified_release():
     assert pkg["license"] == "AGPL-3.0-or-later"
     with open(os.path.join(ASSET_DIR, "LICENSE.md"), encoding="utf-8") as f:
         assert "GNU AFFERO GENERAL PUBLIC LICENSE" in f.read()
-    with open(os.path.join(REPO_ROOT, "THIRD_PARTY_NOTICES.md"), encoding="utf-8") as f:
+    with open(os.path.join(REPO_ROOT, "docs", "THIRD_PARTY_NOTICES.md"), encoding="utf-8") as f:
         notices = f.read()
     assert BEHAVIORS_SHA256 in notices and "browsertrix-behaviors" in notices
 

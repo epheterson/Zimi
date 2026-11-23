@@ -21,7 +21,7 @@ Every NOAA tide prediction station (the United States and its territories):
 Harmonic constants change only when NOAA re-analyses a station (years apart)
 and the tidal datums only with a new National Tidal Datum Epoch, so this is
 run rarely, not every release. NOAA data is in the public domain (see
-THIRD_PARTY_NOTICES.md).
+docs/THIRD_PARTY_NOTICES.md).
 
 About 4,800 small requests to the CO-OPS metadata API, four at a time.
 
