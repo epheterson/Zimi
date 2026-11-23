@@ -2,6 +2,8 @@
 :root { --db-paper: var(--surface2); --db-ink: var(--ink); --db-slot: rgba(38, 36, 31, 0.16); --db-a: #4f76bd; --db-b: #d4693f; }
 @media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) { --db-paper: var(--surface2); --db-ink: var(--ink); --db-slot: rgba(232, 232, 237, 0.16); --db-a: #6f93d3; --db-b: #d97a52; } }
 :root[data-theme="dark"] { --db-paper: var(--surface2); --db-ink: var(--ink); --db-slot: rgba(232, 232, 237, 0.16); --db-a: #6f93d3; --db-b: #d97a52; }
+/* Red (games.css): this file's colours as red-on-black, by luminance. */
+:root.gs.night-red { --db-slot: rgba(233, 29, 15, 0.16); --db-a: #901209; --db-b: #921209; }
 
 .db-board { --bs: min(100vw - 24px, 100svh - 240px, 520px); }
 .db-paper { fill: var(--db-paper); stroke: var(--line); stroke-width: 1.5; }

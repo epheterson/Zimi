@@ -4,8 +4,7 @@
 .rc-target .rc-from { color: var(--ink2); }
 .rc-arrow { color: var(--ink3); }
 .rc-to { color: var(--accent); }
-.rc-trail { display: flex; align-items: center; gap: 6px; width: 100%; min-height: 32px; overflow-x: auto; white-space: nowrap; scrollbar-width: none; }
-.rc-trail::-webkit-scrollbar { display: none; }
+.rc-trail { display: flex; align-items: center; gap: 6px; width: 100%; min-height: 32px; overflow-x: auto; white-space: nowrap; }
 .rc-chip { flex: none; padding: 3px 10px; border: 1px solid var(--line); border-radius: 999px; background: var(--surface2); font-size: var(--fs-small); color: var(--ink2); }
 .rc-chip.here { border-color: var(--accent); color: var(--ink); font-weight: 600; }
 .rc-sep { flex: none; color: var(--ink3); }

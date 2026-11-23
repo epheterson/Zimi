@@ -6,6 +6,8 @@
   :root:not([data-theme="light"]) { --su-peer: #232328; --su-bad-bg: rgba(236, 107, 92, 0.2); }
 }
 :root[data-theme="dark"] { --su-peer: #232328; --su-bad-bg: rgba(236, 107, 92, 0.2); }
+/* Red (games.css): this file's colours as red-on-black, by luminance. */
+:root.gs.night-red { --su-peer: #240402; --su-bad-bg: rgba(144, 18, 9, 0.2); }
 
 .su-board { display: grid; grid-template-columns: repeat(9, 1fr); width: var(--side, 360px); height: var(--side, 360px); user-select: none; -webkit-user-select: none; touch-action: manipulation; }
 .su-c { position: relative; display: grid; place-items: center; min-width: 0; border: 0 solid var(--line); border-width: 0 1px 1px 0; font: 500 calc(var(--side, 360px) / 9 * 0.56)/1 var(--font); font-variant-numeric: tabular-nums; cursor: pointer; }
