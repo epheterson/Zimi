@@ -22,6 +22,12 @@ services:
     # not the fix: zimi/subproc.py is what stops a cancelled capture leaving a
     # browser running. Without both, a NAS ran up 20 zombies in 21 hours.
     init: true
+    # A ceiling, so a cold start's index builds (one child at a time, about 300 MB each beside the
+    # server's own ~350 MB) cannot take a small NAS down with them. Zimi's builders read what is
+    # free under this limit and wait while it is tight. Raise it on a host with room.
+    mem_limit: 2g
+    # Time to stop a build child and flush what the server is writing before Docker kills it.
+    stop_grace_period: 30s
 
     # Bridge networking, deliberately, unlike the development compose.
     #

@@ -1275,6 +1275,9 @@ def _loadavg_throttle(threshold_ratio=0.8, max_sleep=2.0):
     """
     if os.environ.get("ZIMI_INDEX_THROTTLE", "1") == "0":
         return
+    from zimi import subproc
+
+    subproc.wait_for_memory()
     try:
         load_5min = os.getloadavg()[1]
     except (AttributeError, OSError):
@@ -1327,10 +1330,26 @@ def _build_index_isolated(
     unless the build says otherwise: a build that reads every entry pays per
     entry, one that reads a file per video pays per video. A frozen desktop
     build has no `python -m` to start, and builds in this process."""
+    from zimi import subproc
+
     if min_entries is None:
         min_entries = _ISOLATE_BUILD_MIN_ENTRIES
-    if getattr(sys, "frozen", False) or _zim_entry_count(zim_name) < min_entries:
-        return build_fn(zim_name, zim_path)
+    with _build_gate:
+        # Free memory first: a build over a tight host is the one that gets the container killed.
+        subproc.wait_for_memory()
+        if subproc.stopping.is_set():
+            raise RuntimeError(f"{kind} index build skipped: the server is stopping")
+        if getattr(sys, "frozen", False) or _zim_entry_count(zim_name) < min_entries:
+            return build_fn(zim_name, zim_path)
+        return _run_build_child(kind, zim_name, zim_path, close_fn)
+
+
+# One disk-heavy builder at a time, whatever it builds: titles, Q-IDs, details, places and documents used to queue
+# only behind their own kind, so after a reboot five kinds read the same disk at once.
+_build_gate = threading.RLock()
+
+
+def _run_build_child(kind, zim_name, zim_path, close_fn):
     from zimi import subproc
 
     cmd = [
@@ -4673,10 +4692,13 @@ _CHILD_NICE = 19
 
 
 def _yield_to_the_server():
+    from zimi import subproc
+
     try:
         os.nice(_CHILD_NICE)
     except (AttributeError, OSError):
         pass  # Windows has no nice; the build still runs, at normal priority
+    subproc.idle_io()   # nice orders the CPU only; this puts its reads behind everyone else's
 
 
 def _build_index_child_main(kind, data_dir, zim_name, zim_path):

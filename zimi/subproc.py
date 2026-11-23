@@ -23,16 +23,22 @@ So: start every child in a group of its own, and stop the group. Two functions,
 used by both runners, so there is one answer to "how does a child die here".
 """
 
+import atexit
+import ctypes
 import logging
 import os
+import platform
 import shutil
 import signal
 import subprocess
 import sys
+import threading
+import time
+import weakref
 
 log = logging.getLogger(__name__)
 
-__all__ = ["popen", "run", "external_env", "stop"]
+__all__ = ["popen", "run", "external_env", "stop", "stop_all", "idle_io", "wait_for_memory", "stopping"]
 
 # How long a child gets to leave politely before it is killed. Generous enough
 # for warc2zim to close a ZIM it is midway through writing, short enough that
@@ -156,7 +162,133 @@ def popen(cmd, **kwargs):
         )
     else:
         kwargs.setdefault("start_new_session", True)
-    return subprocess.Popen(cmd, **_for_program(cmd, kwargs))
+    proc = subprocess.Popen(cmd, **_for_program(cmd, kwargs))
+    try:
+        _live.add(proc)
+    except TypeError:
+        pass   # a test double that is no process
+    return proc
+
+
+# Every child popen started and nobody has reaped yet. A child lives in a group of its own, so the group the server
+# belongs to going away (docker stop, systemd) does not reach it: stop_all, at exit, does.
+_live = weakref.WeakSet()
+# Set when the server is told to stop, so a background builder waiting on the machine gives up instead of sleeping on.
+stopping = threading.Event()
+_STOP_ALL_GRACE = 5.0
+
+
+def stop_all(grace=_STOP_ALL_GRACE):
+    """End every child still running, as one group ask and one wait, then reap each. Runs at exit (SIGTERM goes through
+    sys.exit), so a stop during a cold start leaves no builder child behind. Never raises."""
+    stopping.set()
+    procs = [p for p in list(_live) if p.poll() is None]
+    for p in procs:
+        terminate(p)
+    deadline = time.monotonic() + grace
+    for p in procs:
+        try:
+            p.wait(timeout=max(0.0, deadline - time.monotonic()))
+        except Exception:
+            pass
+    for p in procs:
+        stop(p, grace=0.1)
+
+
+atexit.register(stop_all)
+
+
+# ---------------------------------------------------------------------------
+# Being a good guest: idle disk priority and a memory floor for background builds
+# ---------------------------------------------------------------------------
+
+_IOPRIO_CLASS_IDLE = 3
+_IOPRIO_CLASS_SHIFT = 13
+_IOPRIO_WHO_PROCESS = 1   # with who 0: the calling thread
+_IOPRIO_SET_SYSCALL = {"x86_64": 251, "aarch64": 30, "arm64": 30, "i386": 289, "i686": 289, "armv7l": 314}
+_IOPOL_TYPE_DISK = 0
+_IOPOL_SCOPE_THREAD = 1
+_IOPOL_THROTTLE = 3
+
+
+def idle_io():
+    """Put the calling thread (a builder child's only thread, or the server's startup worker) at the lowest disk
+    priority: on Linux the idle I/O class, on macOS the throttled disk policy. ``nice`` only orders CPU, and on a
+    spinning array a nice-19 scan still queues its reads ahead of a page someone opened. True when the system took it;
+    the idle class is silently ignored by an I/O scheduler that has no classes (mq-deadline, none), which is the
+    kernel's answer and not ours to see."""
+    try:
+        if sys.platform.startswith("linux"):
+            number = _IOPRIO_SET_SYSCALL.get(platform.machine())
+            if number is None:
+                return False
+            libc = ctypes.CDLL(None, use_errno=True)
+            value = _IOPRIO_CLASS_IDLE << _IOPRIO_CLASS_SHIFT
+            return libc.syscall(number, _IOPRIO_WHO_PROCESS, 0, value) == 0
+        if sys.platform == "darwin":
+            libc = ctypes.CDLL(None, use_errno=True)
+            return libc.setiopolicy_np(_IOPOL_TYPE_DISK, _IOPOL_SCOPE_THREAD, _IOPOL_THROTTLE) == 0
+    except Exception:
+        pass
+    return False
+
+
+def _read_int(path):
+    try:
+        with open(path) as f:
+            text = f.read().strip()
+        return None if text == "max" else int(text)
+    except (OSError, ValueError):
+        return None
+
+
+def available_mb():
+    """Memory this process tree may still use, in MB: what the machine reports free (reclaimable cache counted), or what
+    its container limit leaves, whichever is less. None where neither can be read (macOS, Windows): no floor then."""
+    found = []
+    try:
+        with open("/proc/meminfo") as f:
+            for line in f:
+                if line.startswith("MemAvailable:"):
+                    found.append(int(line.split()[1]) // 1024)
+                    break
+    except (OSError, ValueError, IndexError):
+        pass
+    for limit_file, used_file in (
+        ("/sys/fs/cgroup/memory.max", "/sys/fs/cgroup/memory.current"),
+        ("/sys/fs/cgroup/memory/memory.limit_in_bytes", "/sys/fs/cgroup/memory/memory.usage_in_bytes"),
+    ):
+        limit, used = _read_int(limit_file), _read_int(used_file)
+        if limit is not None and used is not None and limit < (1 << 50):
+            found.append(max(0, limit - used) // (1024 * 1024))
+            break
+    return min(found) if found else None
+
+
+MIN_FREE_MB = 300          # a Q-ID or title build child peaks near 300 MB: do not start one below this
+MEMORY_WAIT_MAX_S = 300.0  # one wait gives up after this, so a host that stays tight still gets its builds, slowly
+_MEMORY_POLL_S = 2.0
+
+
+def wait_for_memory(floor_mb=None, max_wait=MEMORY_WAIT_MAX_S, probe=None):
+    """Sleep until at least ``floor_mb`` is free (``ZIMI_BUILD_MIN_FREE_MB``, else ``MIN_FREE_MB``), the wait is spent, or
+    the server is stopping. True when memory is fine, False when it gave up. ``ZIMI_BUILD_MIN_FREE_MB=0`` turns it off."""
+    if floor_mb is None:
+        try:
+            floor_mb = int(os.environ.get("ZIMI_BUILD_MIN_FREE_MB", MIN_FREE_MB))
+        except ValueError:
+            floor_mb = MIN_FREE_MB
+    if floor_mb <= 0:
+        return True
+    probe = probe or available_mb
+    deadline = time.monotonic() + max_wait
+    while True:
+        free = probe()
+        if free is None or free >= floor_mb:
+            return True
+        if stopping.is_set() or time.monotonic() >= deadline:
+            return False
+        stopping.wait(min(_MEMORY_POLL_S, max(0.0, deadline - time.monotonic())))
 
 
 def run(cmd, **kwargs):

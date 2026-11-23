@@ -900,19 +900,58 @@ def _apply_qid_flags(flags):
         _persist_qid_flags(flags)
 
 
-def _build_all_qid_indexes():
+def _build_all_qid_indexes(first_use=False):
     """Build Q-ID indexes for small Wikipedia ZIMs and detect has_qids for all ZIMs.
 
     Serialized via _build_all_qid_lock — startup worker, post-download
     triggers (library.py), and manual rebuilds (manage.py) all funnel
     through here. Late callers wait, then run with a fresh zim list so
     a download that landed during the wait gets picked up.
+
+    ``first_use``: the boot pass. It still flags which ZIMs carry Q-IDs and keeps an index that already exists up to
+    date, but a ZIM that never had one waits for ``request_qid_index``, the first translation asked of it. A scan of a
+    whole Wikipedia is read-bound work nobody is waiting on at boot, and on a library of 90 ZIMs of which ten are read it
+    was most of the cold start.
     """
     with _build_all_qid_lock:
-        _build_all_qid_indexes_inner()
+        _build_all_qid_indexes_inner(first_use=first_use)
 
 
-def _build_all_qid_indexes_inner():
+_qid_requested = set()
+_qid_requested_lock = threading.Lock()
+
+
+def request_qid_index(zim_name):
+    """The first ask for a translation of an article in ``zim_name``: if the ZIM has no Q-ID index and is one that gets
+    a full scan, build it in the background, once. Cheap when there is nothing to do (two dict reads), so it sits on
+    the translation path. The answer to this ask comes from the on-demand cache as before; the next ones from the index."""
+    if _qid_has_index(zim_name):
+        return
+    with _qid_requested_lock:
+        if zim_name in _qid_requested:
+            return
+        _qid_requested.add(zim_name)
+    zims = _srv.get_zim_files()
+    path = zims.get(zim_name)
+    if path is None or _zim_project_name(zim_name) != "wikipedia":
+        return
+    entries = next((z.get("entries", 0) for z in (_srv._zim_list_cache or []) if z.get("name") == zim_name), 0)
+    if not isinstance(entries, int) or entries > _QID_FULL_SCAN_MAX_ENTRIES:
+        return
+
+    def _build():
+        with _build_all_qid_lock:
+            try:
+                if not _qid_index_is_current(zim_name, path):
+                    _build_index_isolated("qids", zim_name, path, _build_qid_index, _qid_index_built_elsewhere)
+                    _apply_qid_flags({zim_name: True})
+            except Exception as e:
+                log.warning("Q-ID index build failed for %s: %s", zim_name, e)
+
+    threading.Thread(target=_build, name=f"qid-first-use-{zim_name}", daemon=True).start()
+
+
+def _build_all_qid_indexes_inner(first_use=False):
     """Build Q-ID indexes for small Wikipedia ZIMs and detect has_qids for all ZIMs.
 
     Phase 1: Full-scan small Wikipedia ZIMs (< 200K entries) to build SQLite indexes.
@@ -939,6 +978,8 @@ def _build_all_qid_indexes_inner():
             continue
         if _qid_index_is_current(name, path):
             current += 1
+        elif first_use and not os.path.exists(_qid_index_path(name)):
+            continue   # never built: waits for its first use (request_qid_index)
         else:
             need_build.append((name, path))
 
@@ -1349,6 +1390,7 @@ def get_article_languages(zim_name, article_path, qid=_QID_UNKNOWN):
     archive = _srv.get_archive(zim_name)
     if archive is None:
         return {"languages": []}
+    request_qid_index(zim_name)
 
     # Single-page docs (devdocs): 'index#anchor' is entry 'index' + a fragment.
     # Drop the fragment so translation lookups target the real base entry.

@@ -6302,6 +6302,10 @@ def warm_indexes():
     # phases in order on one daemon thread — peak memory at startup is one
     # Archive handle plus one SQLite tmp instead of N×5 mmaps.
     def _startup_worker():
+        # Everything this thread reads is for later, so its disk reads queue behind anyone's.
+        from zimi import subproc as _subproc
+
+        _subproc.idle_io()
         # Phase 1: build/refresh title indexes (one Archive open at a time).
         try:
             _build_all_title_indexes()
@@ -6351,7 +6355,8 @@ def warm_indexes():
 
         # Phase 2: build/refresh Q-ID indexes (one Archive open at a time).
         try:
-            _build_all_qid_indexes()
+            # A ZIM nobody has asked a translation of yet gets its Q-ID index at that first ask, not at boot.
+            _build_all_qid_indexes(first_use=True)
         except Exception as e:
             log.warning("Q-ID index build phase failed: %s", e)
 
