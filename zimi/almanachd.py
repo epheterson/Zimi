@@ -386,23 +386,26 @@ def superseded():
     return out
 
 
-#: The files of each size in the library's own folder, by name: HD is the flavour (and 1.15.3's tiles-only ZIM and the 1.16
-#: development parts), Maximum is its book or chunks. The Almanac's own ZIM (zimi_almanac_<month>) matches neither.
-_KIND_FILES = {
-    "hd": re.compile(r"^zimi_almanac_(?:maxi|hd(?:_(?:%s))?)_\d{4}-\d{2}[a-z]?\.zim$" % "|".join(PARTS)),
-    "max": re.compile(r"^zimi_almanac_ultra_\d{4}-\d{2}[a-z]?\.zim(?:[a-z]{2})?$"),
-}
+#: Maximum's files in the library's own folder, by name: its book or its chunks. HD is not matched by name: it is the one
+#: file the library reads (see files()), so an older month's copy and the 1.16 development parts never count as it.
+_MAX_FILES = re.compile(r"^zimi_almanac_ultra_\d{4}-\d{2}[a-z]?\.zim(?:[a-z]{2})?$")
 
 
 def files(kind):
-    """The paths in the library folder that make up a size, every copy of it (an older month's too)."""
+    """The paths that make up a size as it is now: HD is the one flavour file the library reads (1.15.3's tile ZIM when
+    that is all there is), Maximum is its book or chunks. Never the superseded development set or an older month's copy
+    (superseded() and Manage > Storage list those); the Almanac's own ZIM matches neither."""
     from zimi import server as _srv
 
+    if kind == "hd":
+        have = _have()
+        path = have.get(NAME) or have.get(LEGACY_NAME)
+        return [path] if path and os.path.isfile(path) else []
     out = []
     try:
         with os.scandir(_srv.ZIM_DIR) as it:
             for e in it:
-                if _KIND_FILES[kind].match(e.name) and e.is_file(follow_symlinks=False):
+                if _MAX_FILES.match(e.name) and e.is_file(follow_symlinks=False):
                     out.append(e.path)
     except OSError:
         pass

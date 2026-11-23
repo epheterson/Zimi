@@ -298,6 +298,29 @@ def test_the_development_set_is_still_read_and_left_as_older_copies(lib, prefs):
     assert row["kind"] == "hd" and [p["file"] for p in row["packs"]] == [HD_FILE]
 
 
+def test_each_size_counts_only_its_own_current_files(lib):
+    """HD is the one flavour file in use; the development set beside it (parts, an older flavour) is not part of it.
+    Maximum is the sum of its chunks."""
+    d = lib["dir"]
+    for old in (
+        "zimi_almanac_maxi_2026-11b.zim",
+        "zimi_almanac_hd_earth_2026-11b.zim",
+        "zimi_almanac_hd_mars_2026-11b.zim",
+        "zimi_almanac_hd_mercury_2026-11b.zim",
+        "zimi_almanac_hd_moon_2026-11b.zim",
+    ):
+        build_fixture_zim(os.path.join(d, old))
+    hd = build_fixture_zim(os.path.join(d, HD_FILE))
+    for name, n in ((MAX_FILE + "aa", 5000), (MAX_FILE + "ab", 3000)):
+        with open(os.path.join(d, name), "wb") as f:
+            f.write(b"x" * n)
+    lib["scan"]()
+    assert [os.path.basename(p) for p in almanachd.files("hd")] == [HD_FILE]
+    assert almanachd.disk_bytes("hd") == os.path.getsize(hd)
+    assert almanachd.disk_bytes("max") == 8000
+    assert almanachd.status()["sizes"] == {"hd": os.path.getsize(hd), "max": 8000}
+
+
 def test_a_chunk_resumes_after_a_restart_still_checked():
     chunk = MAX["chunks"][1]
     item = {
