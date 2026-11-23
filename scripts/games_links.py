@@ -82,7 +82,7 @@ ABOUT = """<!doctype html>
   <section id="ab-credit" hidden>
     <h2>Credit</h2>
     <p>This puzzle is part of Simon Tatham’s Portable Puzzle Collection, copyright 2004–2024 Simon Tatham and many contributors, under the MIT licence. ZimiGames adds the page around it and runs it unchanged.</p>
-    <p><a id="ab-licence" href="puzzles/LICENCE">The licence</a> · <a id="ab-manual" href="puzzles/doc/">The manual page</a></p>
+    <p><a id="ab-licence" href="puzzles/LICENCE">The licence</a> · <a id="ab-manual" href="puzzles/doc/common.html">The manual page</a></p>
   </section>
   <section id="ab-art" hidden>
     <h2>Credit</h2>

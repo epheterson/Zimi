@@ -258,6 +258,7 @@
   // aimed, then played: the first touch rings it, a second touch on the same place plays it, a touch elsewhere moves the
   // ring. Places of 30 px and more (Morris's are 35 on a 360 px phone, Backgammon's 40) take one tap.
   var AIM_BELOW_PX = 30;
+  var GAP_REACH_PX = 14;   // how far from a place a press in the gap still means it
   function overlay(host, W, H, pts, onPick, cls, cols) {
     var btns = [], touched = false, aimed = null;
     function aim(b) {
@@ -281,6 +282,16 @@
       });
       b.addEventListener('focus', function () { btns.forEach(function (o) { o.tabIndex = o === b ? 0 : -1; }); });
       host.appendChild(b); btns.push(b);
+    });
+    // A press in the gap between two places (or beside the outermost) is the nearest one's, within a finger's reach.
+    host.addEventListener('click', function (e) {
+      if (!e.isTrusted || e.target.closest('button, a, input, select')) return;
+      var best = null, bd = GAP_REACH_PX + 1;
+      btns.forEach(function (b) {
+        var r = b.getBoundingClientRect(), dx = Math.max(r.left - e.clientX, 0, e.clientX - r.right), dy = Math.max(r.top - e.clientY, 0, e.clientY - r.bottom), d = Math.hypot(dx, dy);
+        if (d < bd) { bd = d; best = b; }
+      });
+      if (best) best.dispatchEvent(new MouseEvent('click', { bubbles: true, detail: e.detail || 1 }));
     });
     if (cols) root.ZimiUtil.gridAria(host, btns, cols);   // a square lattice reads as a grid of rows
     host.addEventListener('keydown', function (e) {

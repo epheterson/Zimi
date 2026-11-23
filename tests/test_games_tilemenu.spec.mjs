@@ -113,7 +113,7 @@ test('How to play and About show on the shelf as sheets, without opening the gam
   await expect(menu).toBeVisible();
   await menu.getByRole('menuitem', { name: 'How to play' }).click();
   await expect(frame.locator('.ar-sheet-card h2')).toHaveText('Checkers');
-  await expect(frame.locator('.ar-sheet-card .gs-help dt').first()).toHaveText('Goal');
+  await expect(frame.locator('.ar-sheet-card .gs-how-line')).toBeVisible();   // How to play's one line, then its bullets
   await frame.locator('.ar-sheet-card').getByRole('button', { name: 'Close' }).click();
   await tile.first().click({ button: 'right' });
   await menu.getByRole('menuitem', { name: 'About this game' }).click();

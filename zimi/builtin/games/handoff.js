@@ -16,7 +16,7 @@
 (function (root) {
   'use strict';
   var PREFIX = 'zimi.games.', NAMES_KEY = PREFIX + 'players', MAX_NAME = 14;
-  var COMPASS = { 2: ['south', 'north'], 3: ['south', 'west', 'east'], 4: ['south', 'west', 'north', 'east'] };
+  var COMPASS = { 2: ['south', 'north'], 3: ['south', 'west', 'east'], 4: ['south', 'west', 'north', 'east'], 5: ['south', 'west', 'northwest', 'northeast', 'east'] };
   // Every visible string goes through ZimiText (text.js, which shell.js loads); the pure naming rules fall back to English where there is none.
   var T = function (key, vars) { return root.ZimiText ? root.ZimiText.T(key, vars) : key; };
   var POINTS = { south: 'South', west: 'West', north: 'North', east: 'East' };
@@ -87,6 +87,7 @@
   function create(cfg) {
     var n = cfg.seats, kinds = cleanKinds((read(PREFIX + cfg.id + '.seats', {}) || {}).kinds, n), names = loadNames(Math.max(n, 4));
     var S = { n: n, viewer: -1, covering: false };
+    var chosen = kinds.slice();   // what the Players rows show and save; kinds (the live game's seats) takes it at the next deal
 
     S.kinds = function () { return kinds.slice(); };
     S.person = function (seat) { return kinds[seat] === 'person'; };
@@ -103,7 +104,11 @@
     // "You" is spoken to the viewer only; a sentence about someone else uses their name.
     S.isYou = function (seat) { return !S.hotseat() && kinds[seat] === 'person'; };
     S.needsCover = function (seat) { return needsCover(kinds, S.viewer, seat); };
-    S.setKind = function (seat, kind) { kinds = cleanKinds(kinds.map(function (k, i) { return i === seat ? kind : k; }), n); write(PREFIX + cfg.id + '.seats', { kinds: kinds }); };
+    function save(seat, kind) { chosen = cleanKinds(chosen.map(function (k, i) { return i === seat ? kind : k; }), n); write(PREFIX + cfg.id + '.seats', { kinds: chosen }); }
+    // A game's own setup: the seat changes now.
+    S.setKind = function (seat, kind) { save(seat, kind); kinds = chosen.slice(); };
+    // The Players rows: remembered at once, taking effect at the next deal, so a hand in play keeps its seats and its turn.
+    S.chooseKind = function (seat, kind) { save(seat, kind); };
     S.setName = function (seat, text) { names[seat] = cleanName(text, seat); write(NAMES_KEY, names); };
 
     // The handoff. It cannot be dismissed with Escape or a click outside: only the button shows the cards.
@@ -138,6 +143,7 @@
     // A fresh deal or game: nobody has seen it. With several people the first person-to-move's
     // screen comes up first (or the first person if a computer opens); with one person, no handoff.
     S.begin = function (done, first) {
+      kinds = chosen.slice();
       S.covering = false;
       var old = root.document && root.document.querySelector && root.document.querySelector('.zs-cover');
       if (old) old.remove();
@@ -156,9 +162,9 @@
       var box = el('div', 'zs-seats gs-seats'), rows = [];
       box.appendChild(el('h3', 'gs-subhead', T('seats.players')));
       function refresh() {
-        var multi = S.hotseat();
+        var multi = peopleOf(chosen).length >= 2;
         rows.forEach(function (r, i) {
-          var isP = kinds[i] === 'person';
+          var isP = chosen[i] === 'person';
           Array.prototype.forEach.call(r.seg.children, function (b) { b.setAttribute('aria-pressed', String((b.dataset.kind === 'person') === isP)); });
           r.input.hidden = !(isP && multi);
         });
@@ -169,7 +175,7 @@
         seg.setAttribute('role', 'group'); seg.setAttribute('aria-label', T('seats.is', { seat: opts.labels ? opts.labels[i] : T('seats.seatN', { n: i + 1 }) }));
         [['cpu', opts.cpuLabel || (n === 2 ? ZIMI : T('cards.computer'))], ['person', T('seats.person')]].forEach(function (k) {
           var b = el('button', 'ar-btn', k[1]); b.type = 'button'; b.dataset.kind = k[0];
-          b.addEventListener('click', function () { S.setKind(i, k[0]); refresh(); if (onChange) onChange(); });
+          b.addEventListener('click', function () { S.chooseKind(i, k[0]); refresh(); if (onChange) onChange(); });
           seg.appendChild(b);
         });
         input.type = 'text'; input.maxLength = MAX_NAME; input.value = names[i]; input.setAttribute('aria-label', T('seats.nameFor', { n: i + 1 }));

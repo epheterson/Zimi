@@ -88,5 +88,5 @@ def test_a_daily_link_on_the_shelf_opens_the_daily_inside_zimi(zimi):
         )
         shelf.click("#daily-link")
         game = _game_frame(page, "/w/zimi_games/sudoku.html")
-        assert game.url.endswith("sudoku.html?daily=" + DAY)
+        assert game.url.split("#")[0].endswith("sudoku.html?daily=" + DAY)
         b.close()
