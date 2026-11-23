@@ -67,7 +67,7 @@ if [ "$run_checks" = 1 ] || [ "$checks_only" = 1 ]; then
 fi
 if [ "$checks_only" = 1 ]; then exit $checks_status; fi
 
-"$PYTHON" -m pytest tests_release/ \
+"$PYTHON" -m pytest tests/release/ \
   -p no:cacheprovider \
   --tb=short \
   -q \

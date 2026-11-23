@@ -22,7 +22,7 @@ no Q-ID, as a real article is.
 import os
 import sys
 
-_REPO_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+_REPO_ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 sys.path.insert(0, _REPO_ROOT)
 
 from tests.conftest_zim import _Article, build_fixture_zim  # noqa: E402
