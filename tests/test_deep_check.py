@@ -155,11 +155,24 @@ class TestDeepRun(_Lib):
 
     def test_a_running_check_says_which_book_and_how_long_is_left(self):
         self._big()
-        health.start_check(deep=True)
-        self.assertTrue(_wait(lambda: health.get_state().get("bytes_done", 0) > 0))
-        st = health.get_state()
-        self.assertTrue(st["current"])
-        self.assertGreaterEqual(st["eta_seconds"], 0)
+        real = health._count_bytes
+        hold = threading.Event()
+
+        def held(n):
+            real(n)
+            hold.wait(10)  # the worker waits here, mid-check, until the assertions are read
+
+        health._count_bytes = held
+        try:
+            health.start_check(deep=True)
+            self.assertTrue(_wait(lambda: health.get_state().get("bytes_done", 0) > 0))
+            st = health.get_state()
+            self.assertEqual(st["phase"], "running", "read while the worker is still inside the check")
+            self.assertTrue(st["current"])
+            self.assertGreaterEqual(st["eta_seconds"], 0)
+        finally:
+            hold.set()
+            health._count_bytes = real
 
 
 class TestRoute(_Lib):
