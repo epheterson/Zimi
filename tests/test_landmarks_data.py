@@ -15,6 +15,8 @@ import re
 
 import pytest
 
+from scripts.i18n_split import words
+
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 EARTH_DIR = os.path.join(ROOT, "zimi", "static", "earth")
 BODIES = [
@@ -125,10 +127,7 @@ def test_one_small_file_with_every_body_and_its_sources(data):
 
 
 def test_every_kind_is_one_the_cards_can_name(data):
-    with open(
-        os.path.join(ROOT, "zimi", "static", "i18n", "en.json"), encoding="utf-8"
-    ) as f:
-        en = json.load(f)
+    en = words("en")
     js = open(
         os.path.join(ROOT, "zimi", "static", "almanac-earth.js"), encoding="utf-8"
     ).read()
@@ -203,7 +202,9 @@ def _patch(a, lat, lon, half=3):
 
 
 def test_places_sit_on_their_own_maps(data):
-    np = pytest.importorskip("numpy")   # CI's test jobs install it; the desktop build's suite has none
+    np = pytest.importorskip(
+        "numpy"
+    )  # CI's test jobs install it; the desktop build's suite has none
     Image = pytest.importorskip("PIL.Image")
     for body, name, kind in ON_THE_MAP:
         a = np.asarray(
@@ -252,3 +253,124 @@ def test_earth_places_are_on_land_in_the_blue_marble(data):
     # An island or two (Tanegashima) is under a pixel of this map; the same places mirrored are half in the sea.
     assert here >= len(places) - 3, (here, len(places))
     assert mirrored <= len(places) * 0.7, (mirrored, len(places))
+
+
+# ── The Earth's natural and human features (landmarks-earth-v1.json, scripts/build_landmarks_earth.py) ──
+EARTH_FEATURE_FIELDS = [
+    "name",
+    "lat",
+    "lon",
+    "kind",
+    "qid",
+    "size_km",
+    "src",
+    "fame",
+    "rank",
+]
+EARTH_LANGS = ["ar", "de", "es", "fr", "he", "hi", "pt", "ru", "zh"]
+EARTH_MAX_BYTES = 150_000  # compressed: the rows and the names of one language, fetched when the Earth's landmarks are on
+DEDUPE_KM = 20.0
+
+
+@pytest.fixture(scope="module")
+def earth_features():
+    with open(
+        os.path.join(EARTH_DIR, "landmarks-earth-v1.json"), encoding="utf-8"
+    ) as f:
+        return json.load(f)
+
+
+def _km(a, b):
+    import math
+
+    dlat = a[1] - b[1]
+    dlon = _lon_gap(a[2], b[2]) * math.cos(math.radians((a[1] + b[1]) / 2))
+    return math.hypot(dlat, dlon) * 111.195
+
+
+def test_earth_features_every_row_has_a_kind_a_rank_and_a_place(earth_features):
+    assert earth_features["fields"] == EARTH_FEATURE_FIELDS
+    js = open(
+        os.path.join(ROOT, "zimi", "static", "almanac-earth.js"), encoding="utf-8"
+    ).read()
+    kinds = set(
+        re.findall(
+            r"(\w+):", re.search(r"var AE_LM_KINDS = \{(.*?)\};", js, re.S).group(1)
+        )
+    )
+    rows = earth_features["earth"]
+    assert 2000 <= len(rows) <= 6000, len(rows)
+    for r in rows:
+        assert len(r) == 9, r
+        name, lat, lon, kind, qid, size, src, fame, rank = r
+        assert name and kind in kinds, r
+        assert -90 <= lat <= 90 and -180 <= lon <= 180, r
+        assert re.fullmatch(r"Q\d+", qid) or qid == "", r
+        assert size >= 0 and src == 0 and fame >= 0, r
+        assert 0 <= rank <= 6, r
+    assert earth_features["sources"] and "Natural Earth" in earth_features["sources"][0]
+    # Every kind a person looks for on a globe is there.
+    have = {r[3] for r in rows}
+    assert {
+        "range",
+        "mons",
+        "river",
+        "lake",
+        "sea",
+        "ocean",
+        "desert",
+        "island",
+        "cape",
+        "city",
+    } <= have, have
+
+
+def test_earth_features_no_name_twice_within_20_km_and_none_the_hand_list_has(
+    earth_features, data
+):
+    rows = earth_features["earth"]
+    by_name = {}
+    for r in rows:
+        by_name.setdefault(r[0].lower(), []).append(r)
+    for name, same in by_name.items():
+        for i, a in enumerate(same):
+            for b in same[i + 1 :]:
+                assert _km(a, b) >= DEDUPE_KM, (a, b)
+    mine = {r[0].lower() for r in data["earth"]}
+    assert not mine & set(by_name), mine & set(by_name)
+    assert not {r[4] for r in data["earth"] if r[4]} & {r[4] for r in rows if r[4]}
+
+
+def test_earth_features_some_places_are_where_they_are(earth_features):
+    rows = {r[0]: r for r in earth_features["earth"]}
+    for name, lat, lon, tol in [
+        ("Los Angeles", 34.05, -118.24, 0.3),
+        ("Paris", 48.86, 2.35, 0.3),
+        ("Tokyo", 35.69, 139.69, 0.3),
+        ("Lake Superior", 47.7, -87.5, 1.5),
+        ("Mediterranean Sea", 35.0, 18.0, 4.0),
+    ]:
+        r = rows[name]
+        assert abs(r[1] - lat) <= tol and _lon_gap(r[2], lon) <= tol, (name, r)
+    for name in ["Alps", "Sahara", "Nile", "Himalaya", "Andes", "Pacific Ocean"]:
+        assert any(n.startswith(name) or n == name for n in rows), name
+
+
+def test_earth_features_are_small_and_named_in_nine_languages(earth_features):
+    import gzip
+
+    rows = earth_features["earth"]
+    rows_gz = len(
+        gzip.compress(
+            open(os.path.join(EARTH_DIR, "landmarks-earth-v1.json"), "rb").read()
+        )
+    )
+    for lang in EARTH_LANGS:
+        path = os.path.join(EARTH_DIR, "landmarks-earth-names-%s-v1.json" % lang)
+        raw = open(path, "rb").read()
+        names = json.loads(raw)
+        assert len(names) == len(rows) and all(isinstance(n, str) for n in names), lang
+        assert sum(1 for n in names if n) > 1000, lang
+        assert rows_gz + len(gzip.compress(raw)) < EARTH_MAX_BYTES, lang
+        # A name in the reader's language differs from the English one (the file leaves "" where it does not).
+        assert all(n != r[0] for n, r in zip(names, rows)), lang

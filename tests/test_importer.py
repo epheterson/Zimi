@@ -373,3 +373,56 @@ def test_a_cancel_stops_a_silent_command_without_waiting_for_its_next_line():
     with pytest.raises(RuntimeError, match="cancelled"):
         importer._run_stream([sys.executable, "-c", "import time; time.sleep(30)"], sink, heartbeat_s=0.4)
     assert time.monotonic() - started < 10
+
+
+def test_cairosvg_is_imported_lazily_so_a_machine_without_libcairo_still_runs_warc2zim(tmp_path):
+    """macOS without Homebrew's cairo and Windows without GTK died at the sidecar's first import (found on an Apple
+    silicon Mac): the import moves to the first SVG conversion, and the patch is idempotent."""
+    conv = tmp_path / "venv" / "lib" / "python3.14" / "site-packages" / "zimscraperlib" / "image"
+    conv.mkdir(parents=True)
+    (conv / "conversion.py").write_text(
+        "import io\n" + importer._CAIRO_IMPORT + "\n\ndef convert_svg2png():\n    cairosvg.svg2png()\n", encoding="utf-8"
+    )
+    say = []
+    assert importer._patch_lazy_cairosvg(str(tmp_path / "venv"), say.append) == "applied"
+    text = (conv / "conversion.py").read_text(encoding="utf-8")
+    assert importer._CAIRO_IMPORT not in text and "_LazyCairoSvg" in text
+    compile(text, "conversion.py", "exec")  # still a valid module
+    assert importer._patch_lazy_cairosvg(str(tmp_path / "venv"), say.append) == "applied" and say == [say[0]]
+    assert importer._patch_lazy_cairosvg(str(tmp_path / "nothing"), say.append) == "not found"
+
+
+def test_the_libmagic_stand_in_answers_what_warc2zim_asks():
+    ns = {}
+    exec(compile(importer._MAGIC_SHIM, "magic-shim", "exec"), ns)
+    ask = lambda data: ns["from_buffer"](data, mime=True)  # noqa: E731
+    assert ask(b"<!doctype html><html><body>x</body></html>") == "text/html"
+    assert ask(b"\x89PNG\r\n\x1a\n....") == "image/png"
+    assert ask(b"%PDF-1.7 ...") == "application/pdf"
+    assert ask(b'<?xml version="1.0"?><svg xmlns="http://www.w3.org/2000/svg"/>') == "image/svg+xml"
+    assert ask(b"plain words") == "text/plain"
+    assert ask(b"\x00\x01\xff\xfe") == "application/octet-stream"
+
+
+def test_a_sidecar_that_cannot_import_magic_gets_the_stand_in(tmp_path):
+    """python-magic dies at import without libmagic (Mac without Homebrew, Windows): the patch swaps in the shim,
+    leaves a working install alone, and is idempotent."""
+    import subprocess
+    import sys
+
+    venv = tmp_path / "venv"
+    subprocess.run([sys.executable, "-m", "venv", str(venv)], check=True)
+    # Windows lays a venv out as Lib/site-packages (and its file system matches "lib" to it too).
+    site = venv / "Lib" / "site-packages" if os.name == "nt" else next((venv / "lib").glob("python*/site-packages"))
+    (site / "magic").mkdir()
+    init = site / "magic" / "__init__.py"
+    init.write_text("raise ImportError('failed to find libmagic.  Check your installation')\n", encoding="utf-8")
+    say = []
+    assert importer._patch_magic_shim(str(venv), say.append) == "applied"
+    out = subprocess.run([importer._venv_bin(str(venv), "python"), "-c", "import magic; print(magic.from_buffer(b'%PDF-1', mime=True))"],
+                         capture_output=True, text=True)
+    assert out.stdout.strip() == "application/pdf", out.stderr
+    assert importer._patch_magic_shim(str(venv), say.append) == "applied" and len(say) == 1
+    init.write_text("def from_buffer(b, mime=False):\n    return 'real'\n", encoding="utf-8")  # libmagic present: left alone
+    assert importer._patch_magic_shim(str(venv), say.append) == "not needed"
+    assert "real" in init.read_text(encoding="utf-8")

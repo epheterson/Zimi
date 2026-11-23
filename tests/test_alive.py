@@ -1275,3 +1275,11 @@ def test_the_pages_own_body_survives_an_eviction():
 
     assert written == [("https://www.cnn.com/", b"<html>the real page</html>")]
     assert doc_bytes == len(b"<html>the real page</html>")
+
+
+def test_an_add_ons_install_makes_the_source_probe_look_again():
+    """The probe skips a source it already answered; after an install that answer (it said the helper was missing) is stale."""
+    with open(os.path.join(REPO_ROOT, "zimi", "static", "create.js"), encoding="utf-8") as fh:
+        js = fh.read()
+    assert "probe: function() { _createProbeSource(true); }" in js
+    assert "if (!force && _createBodyKey(body) === _createPreviewSource && _createPreview) return;" in js

@@ -5,7 +5,7 @@ checking anything is worse than no gate, because it is believed.
 
 Four of those turned up in a single day on the 1.9 branch:
 
-  * ``deploy.sh`` piped its build through ``tail -3``, so the pipeline's exit
+  * the NAS deploy script piped its build through ``tail -3``, so the pipeline's exit
     status was tail's. A Dockerfile that exited 127 still printed "NAS
     deployed" and left the old image running.
   * ``pytest --timeout=600`` with pytest-timeout absent is an argument error,
@@ -135,21 +135,6 @@ def test_the_shards_are_dealt_by_measured_seconds_and_unmeasured_modules_by_size
     assert conftest.weigh(sizes, {}) == sizes
     placed = conftest.shard_of(w, 2)
     assert placed["a.py"] != placed["b.py"] and placed["a.py"] != placed["c.py"], placed   # the 100 s module stands alone
-
-
-def test_deploy_does_not_hide_a_failed_build():
-    """`ssh nas "...build" | tail -3` reports tail's exit status. Every
-    "deploy=0" for a week meant only that tail ran."""
-    deploy = ROOT / "deploy.sh"
-    if not deploy.is_file():
-        pytest.skip("deploy.sh is not in this checkout")
-    body = deploy.read_text(encoding="utf-8")
-    if "| tail" not in body and "|tail" not in body:
-        return  # nothing piped, nothing to mask
-    assert "set -o pipefail" in body or "set -eo pipefail" in body, (
-        "deploy.sh pipes a build through tail without pipefail, so a failed "
-        "build reports success"
-    )
 
 
 def test_every_test_file_is_collectable():

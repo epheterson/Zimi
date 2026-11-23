@@ -74,11 +74,10 @@ def test_the_relief_smoothing_does_not_blend_one_pole_into_the_other(tmp_path):
 def test_a_new_elevation_map_does_not_meet_the_last_ones_normals():
     with open(os.path.join(SCRIPTS, "build_almanac_hd.py"), encoding="utf-8") as f:
         src = f.read()
-    assert 'moon-normals-v2-%d-%s.png" % (width, source_sha[:12])' in src
-    assert (
-        'albedo = manifest["layers"].get("moon/albedo")' in src
-        and "if a.inserts and albedo" in src
-    )
+    # Read without the layout a formatter chooses (it split "if a.inserts and albedo" over three lines).
+    flat = " ".join(src.replace("(", " ").replace(")", " ").split())
+    assert 'moon-normals-v2-%d-%s.png" % width, source_sha[:12]' in flat
+    assert 'albedo = manifest["layers"].get "moon/albedo"' in flat and "if a.inserts and albedo" in flat
 
 
 def test_a_landmarks_query_is_cached_under_what_it_asks(monkeypatch, tmp_path):

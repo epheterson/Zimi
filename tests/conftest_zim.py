@@ -316,6 +316,53 @@ def build_media_fixture_zim(path: str) -> str:
     return path
 
 
+def _cluster_offsets(path):
+    """Where each cluster starts in the ZIM at ``path``, from its header and
+    cluster pointer list (https://wiki.openzim.org/wiki/ZIM_file_format)."""
+    import struct
+
+    header = struct.Struct("<IHH16sIIQQQQIIQ")
+    with open(path, "rb") as f:
+        fields = header.unpack(f.read(header.size))
+        clusters, cluster_ptr = fields[5], fields[8]
+        f.seek(cluster_ptr)
+        return list(struct.unpack(f"<{clusters}Q", f.read(8 * clusters)))
+
+
+def split_fixture_zim(path, part_size, aligned=True):
+    """Cut the ZIM at ``path`` into ``path + 'aa'``, ``'ab'``... and remove
+    ``path``; return the chunk paths in order.
+
+    ``aligned`` cuts the way zim-tools' zimsplit does: only between clusters,
+    filling each chunk up to ``part_size`` (a cluster bigger than that gets a
+    chunk of its own). Not ``aligned`` cuts every ``part_size`` bytes, the way
+    coreutils' ``split -b`` does, wherever that lands."""
+    with open(path, "rb") as f:
+        data = f.read()
+    if aligned:
+        bounds = sorted(set([0, len(data)] + _cluster_offsets(path)))
+        cuts, start = [0], 0
+        for lo, hi in zip(bounds, bounds[1:]):
+            if lo > start and hi - start > part_size:
+                cuts.append(lo)
+                start = lo
+        cuts.append(len(data))
+    else:
+        cuts = list(range(0, len(data), part_size)) + [len(data)]
+    out = []
+    for i, (lo, hi) in enumerate(zip(cuts, cuts[1:])):
+        chunk = (
+            path
+            + "abcdefghijklmnopqrstuvwxyz"[i // 26]
+            + "abcdefghijklmnopqrstuvwxyz"[i % 26]
+        )
+        with open(chunk, "wb") as f:
+            f.write(data[lo:hi])
+        out.append(chunk)
+    os.remove(path)
+    return out
+
+
 def solid_png(width, height, color=(70, 120, 180)):
     """A solid-colour PNG of any size, written by hand: Pillow is optional
     for Zimi and not installed in CI's test job."""
@@ -332,3 +379,21 @@ def solid_png(width, height, color=(70, 120, 180)):
         + chunk(b"IDAT", zlib.compress(row * height))
         + chunk(b"IEND", b"")
     )
+
+
+def release_zim_handles():
+    """Let go of every ZIM the server holds open. Windows refuses to move or delete a file anyone has open, so a
+    test that changes files under a loaded library calls this first (the delete route does the same)."""
+    import gc
+
+    import zimi.server as srv
+
+    with srv._archive_lock:
+        srv._archive_pool.clear()
+    gc.collect()
+
+
+def remove_zim_file(path):
+    """Delete a ZIM the server may have open."""
+    release_zim_handles()
+    os.remove(path)

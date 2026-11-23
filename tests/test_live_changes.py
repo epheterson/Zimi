@@ -63,7 +63,7 @@ def test_a_place_from_before_a_restart_hears_everything_once():
     after = changes.resume_from("feedface.3")
     assert after == -1
     topics = {c["topic"] for c in _heard(after, "alice")}
-    assert topics == {"settings", "saved", "library"}
+    assert topics == {"settings", "saved", "library", "debuglog"}
     assert {c["topic"] for c in _heard(after, None)} == {"library"}, "a signed-out window has no account to read"
 
 
@@ -71,7 +71,7 @@ def test_a_stream_further_behind_than_the_log_hears_everything():
     start = changes.resume_from(None)
     for _ in range(changes._LOG_MAX + 5):
         changes.announce("settings", "bob")
-    assert {c["topic"] for c in _heard(start, "alice")} == {"settings", "saved", "library"}
+    assert {c["topic"] for c in _heard(start, "alice")} == {"settings", "saved", "library", "debuglog"}
 
 
 def test_one_change_said_once_however_often_it_was_announced():

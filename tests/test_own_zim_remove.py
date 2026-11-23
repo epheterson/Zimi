@@ -222,19 +222,21 @@ def test_remove_from_library_gone_from_home_add_from_catalog_back(served):
         _shot(pg, "6-home-after-remove")
         pg.reload()
         _tiles(pg, 1)  # and across a reload
-        # Catalog: Zimi is the last category (Eric, 2026-10-27); Games offers Add, Almanac reads Installed.
+        # Catalog: Zimi's own ZIMs are Community rows, no category of their own; Games offers Add,
+        # Almanac reads Installed.
         _manage(pg, "browse")
-        card = pg.locator(".browse-cat-card").last
+        card = pg.locator(".browse-cat-card", has=pg.locator(".bcc-name", has_text="Community"))
         card.wait_for(timeout=15000)
-        assert card.locator(".bcc-name").inner_text().strip() == "Zimi"
+        assert not pg.locator(".browse-cat-card .bcc-name", has_text="Zimi").count()
         _shot(pg, "7a-catalog-gallery")
         card.click()
-        games, almanac = pg.locator("[data-category=zimi]", has_text="Games"), pg.locator("[data-category=zimi]", has_text="Almanac")
+        games, almanac = pg.locator("[data-category=community]", has_text="Games"), pg.locator("[data-category=community]", has_text="Almanac")
         games.wait_for(timeout=15000)
         pg.get_by_role("button", name="you already have").click()  # the catalog's ordinary fold of what is installed
         almanac.wait_for()
         _shot(pg, "7b-catalog-zimi")
         assert games.locator(".ci-add-btn").inner_text().strip() == "Add"
+        assert games.locator(".ci-select").count() == 0  # a batch download would fetch the community copy, not restore this one
         assert almanac.locator(".ci-installed-badge").inner_text().strip() == "Installed"
         assert games.locator("img").count() == 1 and games.locator(".ci-summary").inner_text().strip()
         _shot(pg, "7-catalog-zimi-group")
@@ -314,6 +316,14 @@ def test_play_and_almanac_buttons_follow_their_zims_live(served):
         pg.locator("#game-play").click()
         pg.wait_for_function("() => _almanacOpen === true", timeout=15000)
         _shot(pg, "14-almanac-opened")
+        # Apollo 11: something the 3D view shows (a mission with its replay). The button opens the view on it.
+        _article(pg, served, "wikipedia_en_test", "Apollo_11.html")
+        _button(pg, True)
+        assert "Almanac" in pg.locator("#game-play").inner_text()
+        pg.locator("#game-play").click()
+        pg.wait_for_function("() => typeof _aeIsOpen !== 'undefined' && _aeIsOpen && !!(_ae && (_ae.mission || _aeLinkModePending))", timeout=60000)
+        _shot(pg, "14b-apollo11-mission")
+        pg.evaluate("() => { if (typeof _aeClose === 'function') _aeClose(); }")
         # Cat is neither a game nor in the sky.
         _article(pg, served, "wikipedia_en_test", "Cat.html")
         pg.wait_for_timeout(1500)

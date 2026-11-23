@@ -36,6 +36,7 @@ vm.runInContext([
   extract(/var _dlRates = \{\};/, '_dlRates'),
   extract(/var _DL_RATE_SMOOTHING = [^;]+;/, '_DL_RATE_SMOOTHING'),
   extract(/function _dlRecentRate\(dl, now\) \{[\s\S]*?\n\}/, '_dlRecentRate'),
+  extract(/function _fmtSpan\(seconds\) \{[\s\S]*?\n\}/, '_fmtSpan'),
   extract(/function _fmtEta\(seconds\) \{[\s\S]*?\n\}/, '_fmtEta'),
 ].join('\n'), ctx);
 

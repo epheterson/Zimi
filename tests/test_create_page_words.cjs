@@ -57,7 +57,7 @@ ok('...and the reason wraps rather than being cut', /white-space: normal/.test(w
 // The server's path and ZIMI_CREATE_ROOT behind a toggle.
 ok('the folder help names no path and no variable', !/\{dir\}|ZIMI_CREATE_ROOT/.test(en.create_folder_note));
 ok('...they are behind "Where is this folder?"', /<details class="create-where" id="create-folder-where"/.test(src) && /\{dir\}/.test(en.create_folder_where) && /ZIMI_CREATE_ROOT/.test(en.create_folder_where));
-for (const f of fs.readdirSync(path.join(root, 'i18n'))) {
+for (const f of fs.readdirSync(path.join(root, 'i18n')).filter(f => f.endsWith('.json'))) {
   const d = JSON.parse(fs.readFileSync(path.join(root, 'i18n', f), 'utf8'));
   const keys = ['create_folder_note', 'create_folder_where', 'create_folder_where_summary', 'create_offline_modes', 'create_offline_helper'];
   const bad = keys.filter((k) => !d[k] || (k === 'create_folder_note' && /\{dir\}|ZIMI_CREATE_ROOT/.test(d[k])));

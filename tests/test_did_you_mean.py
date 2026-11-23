@@ -577,6 +577,20 @@ class CorrectionTests(unittest.TestCase):
             _search._best_correction("water", vocab, freq_ratio=_search._DYM_FREQ_RATIO)
         )
 
+    def test_a_correctly_spelled_word_is_never_turned_into_another_word(self):
+        # "did" and "sight" are words; "mid" and "right" being commoner is no reason to correct them.
+        vocab = {"did": 300, "mid": 9000, "sight": 400, "right": 20000, "ray": 900, "charles": 800, "lose": 500, "his": 5000}
+        out = _search._did_you_mean(
+            "how did ray charles lose his sight", vocab, time.monotonic() + 1.0
+        )
+        self.assertIsNone(out)
+
+    def test_titles_that_hold_every_word_answer_the_query(self):
+        results = [{"title": "Ray Charles"}, {"title": "Sight (film)"}]
+        self.assertTrue(_search._titles_answer_query(results, "ray charles"))
+        self.assertFalse(_search._titles_answer_query(results, "ray sight lost"))
+        self.assertFalse(_search._titles_answer_query(results, "how did"))  # only stop words
+
     def test_no_freq_ratio_keeps_legacy_behavior(self):
         # Without freq_ratio, an in-vocab word is never touched.
         self.assertIsNone(_search._best_correction("python", self.vocab))

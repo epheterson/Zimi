@@ -54,6 +54,12 @@ CELESTRAK_GP_URL = "https://celestrak.org/NORAD/elements/gp.php"
 GPS_QUERY = {"GROUP": "gps-ops", "FORMAT": "json"}
 ISS_NORAD_ID = 25544
 ISS_QUERY = {"CATNR": str(ISS_NORAD_ID), "FORMAT": "json"}
+# The Earth-orbiting craft the view draws with their models: CelesTrak's "science" group holds both, so one request
+# answers for them. Hubble is low and round; Chandra's orbit is a long ellipse out to a third of the way to the Moon.
+HUBBLE_NORAD_ID = 20580
+CHANDRA_NORAD_ID = 25867
+CRAFT_NORAD_IDS = (HUBBLE_NORAD_ID, CHANDRA_NORAD_ID)
+CRAFT_QUERY = {"GROUP": "science", "FORMAT": "json"}
 SNAPSHOT_PATH = os.path.join(
     os.path.dirname(os.path.abspath(__file__)), "assets", "satellites-snapshot.json"
 )
@@ -94,9 +100,9 @@ OMM_NUMBER_FIELDS = (
     "MEAN_MOTION_DDOT",
 )
 # Plausible ranges: an Earth orbit, not a typo. Mean motion in revolutions a
-# day (a GPS satellite makes two, the ISS about 15.5).
+# day (Chandra makes 0.38, a GPS satellite two, the ISS about 15.5).
 _RANGES = {
-    "MEAN_MOTION": (0.5, 17.0),
+    "MEAN_MOTION": (0.2, 17.0),
     "ECCENTRICITY": (0.0, 0.99),
     "INCLINATION": (0.0, 180.0),
     "RA_OF_ASC_NODE": (0.0, 360.0),
@@ -196,9 +202,22 @@ def normalize_record(rec):
     return out
 
 
-def parse_payload(gps_list, iss_list, fetched_at):
-    """The payload the view reads, from CelesTrak's two answers. Raises
-    ValueError when the answers do not hold what they should."""
+def parse_craft(craft_list):
+    """The records of CRAFT_NORAD_IDS in an answer, each once, in that order ([] for an answer without them)."""
+    if not isinstance(craft_list, list):
+        return []
+    found = {}
+    for rec in craft_list:
+        rec = normalize_record(rec)
+        if rec and rec["NORAD_CAT_ID"] in CRAFT_NORAD_IDS:
+            found.setdefault(rec["NORAD_CAT_ID"], rec)
+    return [found[n] for n in CRAFT_NORAD_IDS if n in found]
+
+
+def parse_payload(gps_list, iss_list, fetched_at, craft_list=None):
+    """The payload the view reads, from CelesTrak's answers. Raises
+    ValueError when the answers do not hold what they should. The craft
+    (Hubble, Chandra) are optional: an answer without them leaves the list empty."""
     if not isinstance(gps_list, list) or not isinstance(iss_list, list):
         raise ValueError("expected lists")
     gps = [r for r in (normalize_record(x) for x in gps_list[:MAX_GPS]) if r]
@@ -214,6 +233,7 @@ def parse_payload(gps_list, iss_list, fetched_at):
         "fetched_at": fetched_at,
         "gps": gps,
         "iss": iss[0],
+        "craft": parse_craft(craft_list),
     }
 
 
@@ -228,8 +248,16 @@ def _get_json(query):
 
 
 def fetch_live():
-    """Both element sets from CelesTrak, as one payload. Raises on failure."""
-    return parse_payload(_get_json(GPS_QUERY), _get_json(ISS_QUERY), time.time())
+    """The element sets from CelesTrak, as one payload. The GPS and ISS
+    answers raise on failure; the telescopes' is best effort (the view keeps
+    the last it had for them)."""
+    gps, iss = _get_json(GPS_QUERY), _get_json(ISS_QUERY)
+    try:
+        craft = _get_json(CRAFT_QUERY)
+    except Exception as e:
+        log.info("Telescope elements not fetched: %s", e)
+        craft = None
+    return parse_payload(gps, iss, time.time(), craft)
 
 
 def _read_json(path):
@@ -266,6 +294,8 @@ def write_snapshot(path, payload):
     lines.append(f'  "fetched": {json.dumps(payload["fetched"])},')
     lines.append(f'  "fetched_at": {json.dumps(payload["fetched_at"])},')
     lines.append(f'  "iss": {json.dumps(payload["iss"], sort_keys=True)},')
+    craft = ",\n".join(f"    {json.dumps(r, sort_keys=True)}" for r in payload.get("craft") or [])
+    lines.append('  "craft": [' + ("\n" + craft + "\n  " if craft else "") + "],")
     lines.append('  "gps": [')
     rows = [f"    {json.dumps(r, sort_keys=True)}" for r in payload["gps"]]
     lines.append(",\n".join(rows))
@@ -295,7 +325,7 @@ def refresh():
     _memory = payload
     # A failed write logs itself and leaves the disk cache as it was.
     _srv._atomic_write_json(_cache_path(), payload)
-    log.info("Satellite elements refreshed: %d GPS + ISS", len(payload["gps"]))
+    log.info("Satellite elements refreshed: %d GPS + ISS + %d craft", len(payload["gps"]), len(payload["craft"]))
     return payload
 
 
@@ -334,11 +364,14 @@ def get(allow_refresh=True):
     refreshing = bool(
         allow_refresh and mode == UPDATE_AUTO and stale and _kick_refresh()
     )
+    # A fetch that missed the telescopes keeps the ones the snapshot shipped.
+    craft = (best.get("craft") if best else None) or (snap.get("craft") if snap else None) or []
     return {
         "source": source,
         "fetched": best.get("fetched") if best else None,
         "gps": best["gps"] if best else [],
         "iss": best["iss"] if best else None,
+        "craft": craft,
         "stale": stale,
         "refreshing": refreshing,
         "mode": mode,

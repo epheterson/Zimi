@@ -3,17 +3,9 @@
 The games' own German has the same rule (tests/test_games_batch2_browser.py).
 """
 
-import json
-import os
 import re
 
-I18N_DE = os.path.join(
-    os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
-    "zimi",
-    "static",
-    "i18n",
-    "de.json",
-)
+from scripts.i18n_split import words
 
 # The strings where "Sie"/"Ihr" is genuinely third person (they/it/their), each about a thing named in the same string.
 THIRD_PERSON_SIE = {
@@ -25,6 +17,7 @@ THIRD_PERSON_SIE = {
     "ref_d_sats_text",  # Sie = GPS-Satelliten und ISS
     "ref_h_sky_text",  # Ihre = der Himmelskörper
     "ref_h_stars_text",  # Ihre = der Sterne
+    "tb_scene_note",  # Ihre = der Wolken
     "saved_sync_behind",  # Sie = die Änderungen
     "streetzim_offline",  # Sie = die Regionen
     "wiki_note_mini",  # Sie = diese Kopie
@@ -38,8 +31,7 @@ MID_SENTENCE_CAPITAL = re.compile(
 
 
 def _de():
-    with open(I18N_DE, encoding="utf-8") as f:
-        return json.load(f)
+    return words("de")
 
 
 def test_german_ui_text_is_informal():

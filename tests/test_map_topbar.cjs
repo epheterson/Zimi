@@ -56,7 +56,7 @@ ok('the dice say "Random place" on a map', /t\(_isMapPage\(\) \? 'random_place' 
 const dice = extract(/async function randomArticle\(event\) \{[\s\S]*?\n\}/, 'randomArticle');
 ok('on a map the dice stay on this map', /randomScope = _isMapPage\(\) \|\| _isGamesZimOpen\(\) \? currentArticle\.zim : currentSource/.test(dice));
 ok('a place opens where it is', /openArticle\(data\.zim, data\.path, data\.title, data\.pos \? \{pos: data\.pos\} : undefined\)/.test(dice));
-for (const lang of fs.readdirSync(path.join(__dirname, '..', 'zimi', 'static', 'i18n'))) {
+for (const lang of fs.readdirSync(path.join(__dirname, '..', 'zimi', 'static', 'i18n')).filter(f => f.endsWith('.json'))) {
   const d = JSON.parse(fs.readFileSync(path.join(__dirname, '..', 'zimi', 'static', 'i18n', lang), 'utf8'));
   if (!d.random_place) ok('random_place in ' + lang, false);
 }

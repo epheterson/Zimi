@@ -512,9 +512,6 @@ test.describe('6 — Infrastructure', () => {
     expect(response.status()).not.toBe(500);
   });
 
-  test('6.3 — deploy.sh exists', async () => {
-    test.skip(true, 'Script-level check — manual verification');
-  });
 
   test('6.4 — import zimi works without ZIM_DIR', async () => {
     test.skip(true, 'Python import test — run locally');

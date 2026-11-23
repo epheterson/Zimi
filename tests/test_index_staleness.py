@@ -62,6 +62,15 @@ class IndexStalenessUUIDTests(unittest.TestCase):
                 )
             )
 
+    def test_a_new_zimi_version_alone_does_not_rebuild_an_index(self):
+        """An index is stale when its own schema changes or its ZIM does, never because Zimi was upgraded."""
+        self._build_db(schema_version=self.schema_version, zim_uuid="abc-123")
+        for version in ("1.15.4", "9.99.0"):
+            with mock.patch.object(_search._srv, "ZIMI_VERSION", version), self._patch_archive("abc-123"):
+                self.assertTrue(
+                    _search._index_is_current(self.db_path, self.zim_path, self.schema_version)
+                )
+
     def test_uuid_mismatch_not_current(self):
         self._build_db(schema_version=self.schema_version, zim_uuid="old-uuid")
         with self._patch_archive("new-uuid"):

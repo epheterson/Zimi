@@ -484,6 +484,17 @@ def test_nothing_inside_an_epub_is_trusted():
         epub.Book(_swap(fx.gutenberg_epub(), "OEBPS/content.opf", bomb))
 
 
+def test_an_epub_with_an_oversized_directory_is_refused_before_it_is_read(monkeypatch):
+    from zimi import epub
+
+    data = fx.gutenberg_epub()
+    assert epub.Book(data)  # its directory is small: read as before
+    monkeypatch.setattr(epub, "MAX_DIRECTORY_BYTES", 10)
+    monkeypatch.setattr(epub.zipfile, "ZipFile", lambda *a, **k: pytest.fail("the directory was read"))
+    with pytest.raises(epub.EpubError, match="directory too large"):
+        epub.Book(data)
+
+
 def _swap(data, name, text):
     import io
     import zipfile

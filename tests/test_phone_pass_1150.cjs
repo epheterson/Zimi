@@ -52,7 +52,7 @@ ok('nothing calls the old offline key', !/catalog_offline_note/.test(src));
 // 3. Capture, in every language, and no em dash in the strings added here.
 const dir = path.join(root, 'i18n');
 const newKeys = ['ms_creator', 'catalog_stale_note', 'delete_games_confirm'];
-for (const f of fs.readdirSync(dir)) {
+for (const f of fs.readdirSync(dir).filter(f => f.endsWith('.json'))) {
   const d = JSON.parse(fs.readFileSync(path.join(dir, f), 'utf8'));
   ok(f + ': the Creator tab is renamed', f === 'en.json' ? d.ms_creator === 'Capture' : d.ms_creator !== 'Creator' && !!d.ms_creator);
   ok(f + ': new strings have no em dash', newKeys.every((k) => d[k] && !/—/.test(d[k])));
@@ -72,10 +72,15 @@ ok('Home\'s own-app tiles wear the line glyphs', !/_ownIconHtml\(_GAMES_ZIM, _GA
 ok('the count line carries no recency dots', !/_recencyDotsHtml/.test(src) && !/statsHtml = _recency/.test(src));
 
 // 7. Zimi's category goes last, a monochrome mark.
-const cats = vm.runInNewContext(extract(/function _catIcon\(paths\) \{[\s\S]*?\n\}/, '_catIcon') + '\n' +
+const cats = vm.runInNewContext(
+  extract(/const COMMUNITY_ICON_PATHS = .*;/, 'COMMUNITY_ICON_PATHS').replace(/^const /, 'var ') + '\n' +
+  extract(/const COMMUNITY_CAT = .*;/, 'COMMUNITY_CAT').replace(/^const /, 'var ') + '\n' +
+  extract(/function communityIcon\(size\) \{[\s\S]*?\n\}/, 'communityIcon') + '\n' +
+  extract(/function _catIcon\(paths\) \{[\s\S]*?\n\}/, '_catIcon') + '\n' +
   extract(/const BROWSE_CATEGORIES = \[[\s\S]*?\n\];/, 'BROWSE_CATEGORIES').replace(/^const /, 'var ') + '\nBROWSE_CATEGORIES');
-ok('Zimi is the last category', cats[cats.length - 1].key === 'zimi', cats.map((c) => c.key).join(','));
-ok('its mark is a stroke in the category style', /stroke="currentColor"/.test(cats[cats.length - 1].icon) && !/<img|<image/.test(cats[cats.length - 1].icon));
+// Zimi's own ZIMs are Community rows now: no category of its own, and every category's mark is drawn, never an image.
+ok('there is no Zimi category', !cats.some((c) => c.key === 'zimi'), cats.map((c) => c.key).join(','));
+ok('every category mark is drawn, not an image', cats.every((c) => !/<img|<image/.test(c.icon)));
 
 // 8/9. A game's Menu toggles; its sheet veils Zimi's bar too.
 ok('a second tap on Menu closes the sheet', /what === 'menu' && _gameSheetOpen\(\)/.test(body('_gameDo')) && /closeMenu\(\)/.test(body('_gameDo')));

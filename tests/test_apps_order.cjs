@@ -58,6 +58,7 @@ vm.runInContext([
   'var _MAPS_SVG = "", _TUBE_PLAY_SVG = "", _EXCHANGE_SVG = "", _REDDOT_SVG = "", _WIKI_SVG = "", _BOOKS_SVG = "";',
   extract(/function _newestPer\(list, key\) \{[\s\S]*?\n\}/, '_newestPer'),
   'function _appTileFootHtml() { return ""; }',  // the tile foot (dot and the more button) is not under test here
+  'function _appTileDotHtml() { return ""; }',
   extract(/function _installedOfKind\(kind, key\) \{[\s\S]*?\n\}/, '_installedOfKind'),
   extract(/function _installedFor\(kind, app, key\) \{[\s\S]*?\n\}/, '_installedFor'),
   extract(/function _mapName\(z\) \{[\s\S]*?\n\}/, '_mapName'),
@@ -123,9 +124,9 @@ ok('ordering reads only the library list: no fetch, no disk', !/serverFetch|fetc
 
 // ── the heading, above the row, opens the Apps page ─────────────────────
 const row = vm.runInContext('_appsRowHtml()', ctx);
-ok('the Apps heading is a clickable section heading like the categories\', a link for the keyboard too', /^<div class="cat-heading clickable" role="link" tabindex="0" onclick="openAppsPage\(\)">Apps<\/div><div class="stats-grid apps-grid">/.test(row), row.slice(0, 120));
+ok('the Apps heading is a clickable section heading like the categories\', a link for the keyboard too', /^<div class="cat-heading clickable" role="link" tabindex="0" onclick="openAppsPage\(\)">Apps<\/div><div class="stats-grid apps-grid pick-tiles">/.test(row), row.slice(0, 120));
 ok('Enter or Space on a clickable section heading opens it', /document\.addEventListener\('keydown', function\(e\) \{\n\s*var h = e\.target;\n\s*if \(\(e\.key === 'Enter' \|\| e\.key === ' '\) && h && h\.classList && h\.classList\.contains\('cat-heading'\) && h\.classList\.contains\('clickable'\)\)/.test(src));
-ok('the order and view controls ride the first section heading, which is now the Apps heading above the row', /function _placeViewToggle\(\) \{[\s\S]*?output\.querySelector\('\.cat-heading'\)/.test(src) && src.indexOf('h += _appsRowHtml(true);') < src.indexOf("const favNames = (collectionsCache && collectionsCache.favorites)"));
+ok('the order and the list/grid view sit together on the first heading (the Apps when there is one), the Apps heading above the row', /_addHeadingControls\(heads\[0\], _libSortHtml\(\) \+ _libViewToggleHtml\(\)\);/.test(src) && src.indexOf('h += _appsRowHtml(true);') < src.indexOf("const favNames = (collectionsCache && collectionsCache.favorites)"));
 const saved = ctx.zimsCache;
 ctx.zimsCache = [];
 ok('an empty library: no app has anything inside, so home has no apps row', vm.runInContext('_appsRowHtml()', ctx) === '');
@@ -142,7 +143,7 @@ const appsPage = shown => vm.runInContext('_appsPageHtml', ctx)(shown)
   .replace(/<\/section>/g, '');
 let pageHtml = appsPage(all);
 const banner = vm.runInContext('_appSectionHtml', ctx)('books', 2, '<grid x>');
-ok('an app is a banner over its ZIMs, not one more card among them', /^<section class="app-section" data-app="books"><a class="stat-card app-tile app-banner books-tile"/.test(banner) && /<div class="detail">app_sources:2<\/div>/.test(banner) && /<\/a><grid x><\/section>$/.test(banner), banner);
+ok('an app is a banner over its ZIMs, not one more card among them', /^<section class="app-section" data-app="books"><a class="stat-card pick-tile app-tile app-banner books-tile"/.test(banner) && /<div class="detail">app_sources:2<\/div>/.test(banner) && /<\/a><grid x><\/section>$/.test(banner), banner);
 const sections = pageHtml.split('<lead ').slice(1);
 ok('one heading on top for the controls, no heading per app', /^<div class="cat-heading">Apps<\/div><lead /.test(pageHtml) && (pageHtml.match(/cat-heading/g) || []).length === 1, pageHtml.slice(0, 80));
 ok('one group per app, in the library\'s order, each led by the app\'s own tile', sections.length === 5 && /^books>/.test(sections[0]) && /^tube>/.test(sections[4]));

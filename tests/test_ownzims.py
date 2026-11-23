@@ -65,7 +65,7 @@ def test_zimigames_is_a_real_zim_any_reader_opens(full_home):
     assert server._zim_base_name(os.path.basename(path)) == "zimi_games", "served without the month"
     a = Archive(path)
     assert a.main_entry.get_item().path == "index.html"
-    assert a.get_metadata("Title").decode() == "Games · Zimi"
+    assert a.get_metadata("Title").decode() == "Zimi Games"
     assert a.get_metadata("Language").decode() == "eng"
     assert a.get_metadata("Creator").decode() == "Zimi"
     tags = a.get_metadata("Tags").decode().split(";")
@@ -210,22 +210,24 @@ def test_on_home_under_its_own_section_never_as_something_you_made(home):
 
 
 @pytest.mark.skipif(
-    not os.environ.get("CI") or sys.platform == "win32",
-    reason="CI only (a source edit need not rebuild the ZIMs until the pull request), and not on Windows, whose checkout may turn line ends into CRLF",
+    not os.environ.get("ZIMI_OWN_ZIMS_FRESH") or sys.platform == "win32",
+    reason="a release's check, not every pull request's (CI sets ZIMI_OWN_ZIMS_FRESH for a pull request to main, "
+    "scripts/release-gate.sh runs the same --check); and not on Windows, whose checkout may turn line ends into CRLF",
 )
 def test_the_committed_zims_are_built_from_the_source_as_it_is():
-    """A download, Kiwix and Zimi all get these bytes: a pull request whose
-    ZIMs are older than their source fails until python -m zimi.ownzims runs."""
+    """A download, Kiwix and Zimi all get these bytes: a release whose ZIMs are older than their source
+    fails until python -m zimi.ownzims runs. Pull requests into a topic or dev branch leave the ZIMs alone
+    (CI builds them from the source for its own tests), so a source edit costs no binary in the diff."""
     assert ownzims.main(["--check"]) == 0
 
 
 def test_display_title_drops_the_brand_suffix():
     from zimi import ownzims
     from zimi.server import _own_display_title
-    assert ownzims.display_title("Games \u00b7 Zimi") == "Games"
+    assert ownzims.display_title("Zimi Games") == "Games"
     assert ownzims.display_title("Wikipedia") == "Wikipedia"
-    assert _own_display_title("Almanac \u00b7 Zimi", "a;zimi:own") == "Almanac"
-    assert _own_display_title("Foo \u00b7 Zimi", "a;b") == "Foo \u00b7 Zimi"
+    assert _own_display_title("Zimi Almanac", "a;zimi:own") == "Almanac"
+    assert _own_display_title("Zimi Foo", "a;b") == "Zimi Foo"
 
 
 def test_articles_line_decides_what_random_and_search_can_land_on():
@@ -254,3 +256,31 @@ def test_the_built_own_zims_offer_only_real_pages_as_articles():
         a = Archive(ownzims.zim_path(own))
         seen = {a.get_random_entry().path for _ in range(600)}
         assert all(p.endswith(".html") and "/doc/" not in p for p in seen), (own.name, sorted(seen))
+
+
+def test_build_file_carries_zimis_version_and_the_year(monkeypatch):
+    from zimi import ownzims, zimwriter
+    from zimi.server import ZIMI_VERSION
+
+    seen = {}
+    monkeypatch.setattr(zimwriter, "make_asset_item", lambda path, mime, data: seen.update({path: data}) or path)
+
+    class Creator:
+        def add_item(self, item):
+            pass
+
+    ownzims.with_build_year()(Creator())
+    body = seen[ownzims.BUILD_FILE].decode()
+    assert "ZIMI_BUILT_VERSION = '%s'" % ZIMI_VERSION in body and "ZIMI_BUILT_YEAR" in body
+
+
+# A library knows a newer copy of the same book by its Name (ownzims.family_of, Kiwix's own library), so the committed
+# files keep the Names their first editions shipped with.
+SHIPPED_NAMES = {"zimi_games": "zimi_eng_games", "zimi_almanac": "zimi_eng_zimi_almanac"}
+
+
+@pytest.mark.parametrize("own", ownzims.OWN, ids=lambda o: o.name)
+def test_each_own_zim_keeps_the_name_it_first_shipped_with(own):
+    path = ownzims.zim_path(own)
+    assert path, "no committed %s" % own.name
+    assert Archive(path).get_metadata("Name").decode("utf-8") == SHIPPED_NAMES[own.name]

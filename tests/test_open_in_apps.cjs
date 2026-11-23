@@ -96,7 +96,7 @@ ok('search results and Discover cards take the route', /function _spaCardClick\(
 ok('a suggestion takes it too (a place keeps its own way to the map)', /if \(s\.pos\) openArticle\(s\.zim, s\.path, s\.title, \{pos: s\.pos, label: s\.label\}\); else _openResult\(s\.zim, s\.path, s\.title\);/.test(src));
 ok('Settings > Apps has the switch, under the apps', /id: 'ms-open-in-apps', title: tH\('open_in_apps'\), desc: tH\('open_in_apps_hint'\)/.test(src));
 ok('kept with the account\'s preferences (and in a backup)', /var _PREF_KEYS = \[[^\]]*SK\.OPEN_IN_APPS,/.test(src));
-for (const lang of fs.readdirSync(path.join(root, 'i18n'))) {
+for (const lang of fs.readdirSync(path.join(root, 'i18n')).filter(f => f.endsWith('.json'))) {
   const d = JSON.parse(fs.readFileSync(path.join(root, 'i18n', lang), 'utf8'));
   for (const k of ['open_in_apps', 'open_in_apps_hint']) {
     if (!d[k]) ok(k + ' in ' + lang, false);

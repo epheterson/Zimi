@@ -7,7 +7,6 @@ Dependencies: imports from zimi.server for core state (locks, pools, config).
 """
 
 import hashlib
-import json
 import logging
 import os
 import random as _random
@@ -30,7 +29,7 @@ from zimi.search import (
     _write_index_meta,
     pooled_db_use as _pooled_db_use,
 )
-from zimi.safety import loggable
+from zimi.safety import join_inside, loggable
 
 log = logging.getLogger("zimi")
 
@@ -218,7 +217,10 @@ def _qid_index_dir():
 
 
 def _qid_index_path(zim_name):
-    return os.path.join(_qid_index_dir(), f"{zim_name}.qid.db")
+    path = join_inside(_qid_index_dir(), f"{zim_name}.qid.db")
+    if path is None:
+        raise ValueError("not a library name")
+    return path
 
 
 def _qid_cache_path():
