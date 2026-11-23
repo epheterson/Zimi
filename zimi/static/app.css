@@ -615,6 +615,9 @@
 
   /* ── Stats bar ── */
   .stats-bar { text-align: center; padding: 12px 0; font-size: 14px; color: var(--text2); }
+  /* Empty until the library says what to count, and on the unscoped Home it stays empty: its 24px of padding sat
+     there through the load and the whole page jumped up when the library arrived. */
+  .stats-bar:empty, .pills:empty { display: none; }
   .stats-bar .num { color: var(--amber); font-weight: var(--fw-strong); }
   /* An app tile's dot (_freshDotHtml): solid amber, only when something inside is new or updated. */
   .rc-dot { display: inline-flex; align-items: center; gap: 5px; }

@@ -32,6 +32,7 @@ RECORD = r"""
   if (ld && !loadAt) loadAt = now;
   if (ld && !loadSeen && parseFloat(getComputedStyle(ld).opacity) > 0.05) loadSeen = now;
   const o = { ph: q && q.placeholder, logo: box('logo'), q: box('q'), help: box('search-help'), saved: box('bm-panel-btn'),
+    outTop: Math.round(d.getElementById('output').getBoundingClientRect().top),
     bg: getComputedStyle(d.body).backgroundColor, loadAt: Math.round(loadAt), loadSeen: Math.round(loadSeen) };
   const k = JSON.stringify(o); if (k !== last) { last = k; T.push(o); } }
  function loop() { snap(); requestAnimationFrame(loop); }
@@ -112,6 +113,8 @@ def test_home_boot_does_not_flash(served, kind, warm):
     keys = ("ph", "logo", "q", "help", "saved")
     shapes = {tuple(repr(f[k]) for k in keys) for f in tl}
     assert len(shapes) == 1, ("the bar changed after its first paint", [dict((k, f[k]) for k in keys) for f in tl])
+    # Where the page starts does not move when the library arrives (an empty counts bar once held 24px, then left).
+    assert len({f["outTop"] for f in tl}) == 1, ("the page jumped when the library arrived", sorted({f["outTop"] for f in tl}))
     # Dark before and after: no light frame while the scheme is dark.
     assert {f["bg"] for f in tl} == {"rgb(10, 10, 11)"}, {f["bg"] for f in tl}
     # A "Loading library" message is for a slow start: never on screen within half a second of appearing.
