@@ -16,6 +16,8 @@
   --t128: #f0a020; --t256: #f5a82a; --t512: #f7b440; --t1024: #f8c060; --t2048: #fad080; --tbig: #fce4b0;
   --tf-ink-dark: #e8e8ed; --tf-ink-light: #ffffff; --tf-ink-on-bright: #0a0a0b;
 }
+/* Red (games.css): this file's colours as red-on-black, by luminance. */
+:root.gs.night-red { --t2: #2f0603; --t4: #3b0704; --t8: #630c06; --t16: #710e07; --t32: #841108; --t64: #931209; --t128: #a9150b; --t256: #b1160b; --t512: #bb170c; --t1024: #c6190c; --t2048: #d31b0d; --tbig: #e51d0e; --tf-ink-dark: #e91d0f; --tf-ink-light: #ff2010; --tf-ink-on-bright: #0a0101; }
 
 .tf-board { position: relative; border: 1px solid var(--line); border-radius: var(--r-sheet); background: var(--surface2); touch-action: none; user-select: none; -webkit-user-select: none; }
 .tf-slot { position: absolute; left: 0; top: 0; width: var(--cell); height: var(--cell); border-radius: var(--r-chip); background: var(--cell-bg, var(--tile)); opacity: 0.55; }

@@ -13,6 +13,8 @@ from test_games_persist_browser import VIEW, browser, served  # noqa: E402,F401
 DAILY = "() => { const E = FiveLettersEngine; return E.dailyAnswer(E.makeWords(FIVE_ALLOWED, FIVE_ANSWERS), new Date()); }"
 # Stands in for the Dictionary link a Zimi with the app on would show: a link that counts its clicks.
 OFFER = """() => { const a = document.getElementById('fl-learn'); window.__learned = 0; a.href = '#learn'; a.hidden = false; a.addEventListener('click', e => { e.preventDefault(); window.__learned++; }); }"""
+# The how-to-play sheet opens by itself on a first visit; these tests are past it.
+SEEN_HOW = "localStorage.setItem('zimi.games.fiveletters.how', '{\"seen\":true}')"
 WON_ROW = "() => document.querySelectorAll('.fl-row')[0].querySelectorAll('.fl-tile')[2]"
 
 
@@ -24,6 +26,7 @@ def solve(page):
 
 def test_tapping_the_solved_row_follows_the_definition_link(served, browser):
     ctx = browser.new_context(viewport=VIEW, has_touch=True)
+    ctx.add_init_script(SEEN_HOW)
     page = ctx.new_page()
     page.goto("%s/fiveletters.html" % served)
     page.wait_for_selector(".fl-tile")
@@ -39,6 +42,7 @@ def test_tapping_the_solved_row_follows_the_definition_link(served, browser):
 
 def test_tapping_the_solved_row_does_nothing_without_a_definition(served, browser):
     ctx = browser.new_context(viewport=VIEW, has_touch=True)
+    ctx.add_init_script(SEEN_HOW)
     page = ctx.new_page()
     errors = []
     page.on("pageerror", lambda e: errors.append(str(e)))

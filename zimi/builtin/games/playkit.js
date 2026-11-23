@@ -61,7 +61,7 @@
     opener = document.activeElement;
     sheet.hidden = false;
     var f = sheet.querySelector(focusSel || 'button, input');
-    if (f) f.focus();
+    if (f) f.focus({ preventScroll: true });   // a tall sheet opens at its top: focus must not scroll its title away
   };
   Play.closeSheet = function (sheet) {
     sheet.hidden = true;
@@ -180,7 +180,7 @@
   Play.tone = function (freq, ms, gain) { if (window.ZimiShell && window.ZimiShell.tone) window.ZimiShell.tone(freq, ms, gain); };
   // A buzz for a hit (a number of ms or a pattern); phones that cannot buzz, and reduced motion, stay still.
   Play.haptic = function (pattern) {
-    try { if (navigator.vibrate && !Play.reducedMotion()) navigator.vibrate(pattern); } catch (e) { /* no haptics here */ }
+    try { if (navigator.vibrate && (!navigator.userActivation || navigator.userActivation.hasBeenActive) && !Play.reducedMotion()) navigator.vibrate(pattern); } catch (e) { /* no haptics here */ }
   };
 
   // Saved games (ZimiShell.persist): a state as plain JSON (functions such as a game's random source are dropped), and a
@@ -296,6 +296,7 @@
     return T('circuit.ord.' + (rule === 'one' || rule === 'two' || rule === 'few' ? rule : 'other'), { n: n });
   };
   Play.SYMBOL_COUNT = SYMBOLS.length;
+  Play.SYMBOL_PATHS = SYMBOLS;   // the drawings alone, in a 24 by 24 box, for a game that draws them into its own svg
   Play.symbolSVG = function (i, size) {
     return '<svg viewBox="0 0 24 24" width="' + size + '" height="' + size + '" aria-hidden="true" fill="currentColor" stroke="rgba(0,0,0,.55)" stroke-width="1.2" stroke-linejoin="round">' + SYMBOLS[i % SYMBOLS.length] + '</svg>';
   };

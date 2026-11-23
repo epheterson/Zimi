@@ -15,7 +15,7 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from test_games_persist_browser import VIEW, browser, served  # noqa: E402,F401
 
 DESKTOP = {"width": 1100, "height": 800}
-PIP_CLEAR_UNITS = 7   # of the face's 100-unit width, between the corner suit and the pip beside it
+BODY_CLEAR_UNITS = 20   # of the face's 100-unit width: paper between the index row and the body's suit (a fanned strip is index and paper)
 
 
 @pytest.fixture(params=[VIEW, DESKTOP], ids=["phone", "desktop"])
@@ -48,13 +48,16 @@ def test_a_foundation_place_is_exactly_a_card(page, served):
 
 def test_the_stock_and_waste_have_air(page, served):
     open_solitaire(page, served)
+    # A phone has the top row (foundations left, waste then stock right) over the columns; a wide table has stock over waste in a
+    # column left of the columns. Either way the stock and waste stand apart, and the columns clear the piles beside or above them.
     r = page.evaluate("""() => {
       const q = p => document.querySelector('[data-pile=' + p + ']').getBoundingClientRect();
       const card = document.querySelector('.zc-card:not(.zc-off)').getBoundingClientRect();
-      const t0 = q('t0'), stock = q('stock'), waste = q('waste');
-      return { below: t0.top - (stock.top + card.height), between: waste.left - (stock.left + card.width), cw: card.width };
+      const t0 = q('t0'), stock = q('stock'), waste = q('waste'), wide = Math.abs(stock.left - waste.left) < 1;
+      return wide ? { wide, below: t0.left - (stock.left + card.width), between: waste.top - (stock.top + card.height), cw: card.width }
+                  : { wide, below: t0.top - (stock.top + card.height), between: stock.left - waste.right, cw: card.width };
     }""")
-    assert r["below"] >= r["cw"] * 0.25, r   # the columns start a quarter of a card's height-share under the top row
+    assert r["below"] >= r["cw"] * (0.1 if r["wide"] else 0.25), r   # the columns start a quarter of a card under the top row (beside: a tenth)
     assert r["between"] >= r["cw"] * 0.1, r
 
 
@@ -68,27 +71,24 @@ def test_the_new_game_sheet_has_one_row_of_actions(page, served):
     assert cancel["x"] < start["x"] and start["width"] > cancel["width"]   # the quiet one first, the primary wide
 
 
-def test_a_card_index_stands_clear_of_its_pips(page, served):
+def test_a_card_body_stands_clear_of_its_index(page, served):
     open_solitaire(page, served)
-    worst = page.evaluate("""(clear) => {
+    worst = page.evaluate("""() => {
       const Z = window.ZimiCards, host = document.createElement('div');
       host.style.cssText = 'position:fixed;left:0;top:0;z-index:99;display:flex;flex-wrap:wrap;gap:8px;width:900px';
       document.body.appendChild(host);
       let worst = 1e9;
-      for (let s = 0; s < 4; s++) for (let r = 2; r <= 10; r++) {
+      for (let s = 0; s < 4; s++) for (let r = 1; r <= 10; r++) {
         const id = Z.make(r, s), d = document.createElement('div');
         d.className = 'zc-card'; d.style.cssText = 'position:relative;--cw:100px;width:100px;height:140px';
         d.innerHTML = '<div class="zc-face">' + Z.faceMarkup(id) + '</div>'; host.appendChild(d);
-        const suit = d.querySelector('.zc-idx-std').children[1].getBoundingClientRect(), box = d.getBoundingClientRect();
-        d.querySelectorAll('.zc-big > g').forEach(p => {
-          const b = p.getBoundingClientRect();
-          if (b.bottom > suit.top && b.top < suit.bottom && b.left > suit.right) worst = Math.min(worst, (b.left - suit.right) / box.width * 100);
-        });
+        const ix = d.querySelector('.zc-ix-row').getBoundingClientRect(), body = d.querySelector('.zc-body').getBoundingClientRect(), box = d.getBoundingClientRect();
+        worst = Math.min(worst, (body.top - ix.bottom) / box.width * 100);
       }
       host.remove();
       return worst;
-    }""", PIP_CLEAR_UNITS)
-    assert worst >= PIP_CLEAR_UNITS, worst
+    }""")
+    assert worst >= BODY_CLEAR_UNITS, worst
 
 
 @pytest.mark.parametrize("view", ["lobby", "index"])

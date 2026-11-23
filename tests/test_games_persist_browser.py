@@ -98,8 +98,18 @@ IDLE = {
 
 
 @pytest.fixture(scope="module")
-def served():
-    handler = functools.partial(http.server.SimpleHTTPRequestHandler, directory=GAMES)
+def served(tmp_path_factory):
+    """The Games as their ZIM is built: the folder plus Zimi's footer files and the build year (what ownzims adds)."""
+    import shutil
+
+    from zimi import almanacstage
+
+    folder = str(tmp_path_factory.mktemp("games"))
+    shutil.copytree(GAMES, folder, dirs_exist_ok=True)
+    almanacstage.copy_footer(folder)
+    with open(os.path.join(folder, "zimibuild.js"), "w") as f:
+        f.write("window.ZIMI_BUILT_YEAR = 2031;\n")
+    handler = functools.partial(http.server.SimpleHTTPRequestHandler, directory=folder)
     handler.log_message = lambda *a, **k: None
     srv = http.server.ThreadingHTTPServer(("127.0.0.1", 0), handler)
     threading.Thread(target=srv.serve_forever, daemon=True).start()
@@ -144,6 +154,7 @@ def leave(page, position):
 @pytest.mark.parametrize("page_name,move,position", ROWS, ids=[r[0] for r in ROWS])
 def test_leaving_and_returning_keeps_the_position(served, browser, page_name, move, position):
     ctx = browser.new_context(viewport=VIEW)
+    ctx.add_init_script("localStorage.setItem('zimi.games.fiveletters.how', '{\"seen\":true}')")   # Five Letters' how-to sheet opens by itself on a first visit
     page = ctx.new_page()
     url = "%s/%s.html" % (served, page_name)
     page.goto(url)

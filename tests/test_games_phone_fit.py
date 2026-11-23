@@ -16,7 +16,10 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from test_games_trick_fixtures import browser, served  # noqa: E402,F401
 from games_wait import game_ready, quiet  # noqa: E402
 
-GAMES = ["solitaire", "freecell", "spider", "golf", "pyramid", "tripeaks"]
+GAMES = [
+    "solitaire", "freecell", "spider", "golf", "pyramid", "tripeaks",
+    "yukon", "fortythieves", "canfield", "scorpion", "acesup", "accordion", "calculation", "beleaguered", "eightoff", "montecarlo",
+]
 
 MEASURE = """
 () => {

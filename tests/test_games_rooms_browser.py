@@ -4,7 +4,7 @@ Eric: "The top game pills area is so small. Can we make the compact and sort cho
 free up space? And that's actually two separate pill choosers side-by-side in that scrollable area that makes no sense."
 The room is a single pill at the start of the line (its list of rooms lying over it), the scroller holds only the types,
 and one small button at the end opens View and Order. One line at 360 and 390px, 44px targets, both views, light and
-dark; a room filters the shelf (the Daily row steps aside while one is chosen), and every choice is kept. Daily: Five Letters and Sudoku lead.
+dark; a room filters the shelf (every row keeps the room's games), and every choice is kept. Daily: Five Letters and Sudoku lead.
 
 Run: pytest tests/test_games_rooms_browser.py -v
 """
@@ -81,8 +81,9 @@ def test_a_room_filters_the_shelf_and_is_kept(site, browser, view):  # noqa: F81
     kids = page.evaluate(VISIBLE)
     assert kids and len(kids) < len(everything) and "memory.html" in kids and "chess.html" not in kids
     assert page.inner_text(".sh-room-now") == "Kids"
-    # With a room chosen the Daily row steps aside, so the room's games come first.
-    assert page.locator(".ar-daily").is_hidden()
+    # With a room chosen the Daily row keeps the room's games and no others (tests/test_games_rooms_theme_browser.py holds the rest).
+    daily = page.evaluate(DAILY)
+    assert daily and set(daily) <= set(kids), daily
     page.reload()
     page.wait_for_selector(".ar-daily a.ar-game", state="attached")
     assert page.inner_text(".sh-room-now") == "Kids", "the room was not kept"

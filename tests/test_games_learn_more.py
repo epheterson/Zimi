@@ -112,8 +112,13 @@ def shot(page, name):
         page.screenshot(path=os.path.join(SHOTS, name + ".png"))
 
 
+# Five Letters opens its how-to-play sheet by itself on a first visit; these tests are past it.
+SEEN_HOW = "localStorage.setItem('zimi.games.fiveletters.how', '{\"seen\":true}')"
+
+
 def open_game(browser, zimi, name, ctx=None):
     ctx = ctx or browser.new_context(viewport=VIEW, has_touch=True, is_mobile=True)
+    ctx.add_init_script(SEEN_HOW)
     page = ctx.new_page()
     errors = []
     # WebKit reports the Dictionary's "more words" fetch, cut off by leaving the page, as a page error though the page
@@ -131,7 +136,7 @@ def game(page, name):
         arg="/" + name,
         timeout=WAIT,
     )
-    frame = next(f for f in page.frames if f.url.split("?")[0].endswith("/" + name))
+    frame = next(f for f in page.frames if f.url.split("#")[0].split("?")[0].endswith("/" + name))
     frame.wait_for_function(
         "() => !!document.documentElement && document.documentElement.classList.contains('gs-ready')", timeout=WAIT
     )

@@ -7,6 +7,8 @@
 const path = require('path');
 globalThis.ZimiText = require(path.join(__dirname, '..', 'zimi', 'builtin', 'games', 'text.js'));
 globalThis.ZimiShell = require(path.join(__dirname, '..', 'zimi', 'builtin', 'games', 'shell.js'));   // the one hash
+const util = require(path.join(__dirname, '..', 'zimi', 'builtin', 'games', 'util.js'));
+globalThis.ZimiUtil = util.ZimiUtil;   // featuredPicks' seeded shuffle is the shared util.js generator
 const R = require(path.join(__dirname, '..', 'zimi', 'builtin', 'games', 'recent.js'));
 
 const days = process.argv.indexOf('--days');
@@ -89,6 +91,22 @@ check(R.snapSrc({ img: 'data:text/html;base64,AAAA' }) === '', 'snapSrc: no html
 check(/^data:image\/svg\+xml;charset=utf-8,%3Csvg/.test(R.snapSrc({ svg: '<svg xmlns="x"></svg>' })), 'snapSrc: an svg string becomes a data URL');
 check(R.snapSrc({ svg: '<script>alert(1)</script>' }) === '', 'snapSrc: a string that is not an svg');
 check(R.snapSrc(null) === '' && R.snapSrc({}) === '', 'snapSrc: nothing kept, nothing shown');
+
+// Featured: the day's fixed-size pick, deterministic for the day, different the next.
+const GAMES = require(path.join(__dirname, '..', 'zimi', 'builtin', 'games', 'games.json'));
+const feat = (rows, day) => R.featuredPicks(rows, day);
+check(feat(GAMES, '2026-11-04').length === R.newestCount(GAMES), 'featured row is the New row size');
+check(JSON.stringify(feat(GAMES, '2026-11-04')) === JSON.stringify(feat(GAMES, '2026-11-04')), 'same day, same row');
+check(JSON.stringify(feat(GAMES, '2026-11-04')) !== JSON.stringify(feat(GAMES, '2026-11-05')), 'another day, another row');
+check(feat(GAMES, '2026-11-04').every(p => !R.WORLD.includes(p)), 'never a World favorite');
+check(!R.WORLD.some(w => feat(GAMES, '2026-11-04').includes(w)), 'World row and Featured are disjoint');
+for (let d = 1; d <= 28; d++) {
+  const pick = feat(GAMES, '2026-12-' + String(d).padStart(2, '0'));
+  check(pick.length === R.newestCount(GAMES), 'every day keeps the New row size');
+  check(new Set(pick).size === pick.length, 'a day never repeats a game');
+}
+const seedStable = feat(GAMES, '2026-11-20');
+check(seedStable.every(p => GAMES.some(g => g.path === p)), 'featured paths come from games.json');
 
 if (failures) { console.log(failures + ' failed'); process.exit(1); }
 console.log('games recent: ok');

@@ -63,6 +63,12 @@ async function startFairy() {
     check(bad === 0 && positions > 500, 'janggi: our moves are Fairy-Stockfish\'s at ' + positions + ' positions of random games from every arrangement (' + bikjangs + ' in bikjang)');
   }
 
+  // Bikjang while in check (Cho's cannon checks over its own general): Fairy-Stockfish may pass, and so may we.
+  {
+    const pos = E.parseFen('3ak3r/9/9/p2p2pp1/6hc1/6h2/P5e1P/7CR/4K4/2rACA1E1 b');
+    check(E.inCheck(pos) && F.pick('janggi', E, pos, 'e10e10') === E.PASS, 'janggi: in bikjang the pass is on offer even in check');
+  }
+
   // 2. whole games against the engine
   {
     // Both sides think against a clock, so a loaded machine can end a game early: each game must reach 70 plies or a real end.

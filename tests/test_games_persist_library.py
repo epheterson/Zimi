@@ -132,6 +132,7 @@ def tap(page, locator):
 @pytest.mark.parametrize("name,ready,moves,position", ROWS, ids=[r[0].split(".")[0] for r in ROWS])
 def test_a_library_round_comes_back_as_it_was(served, browser, name, ready, moves, position, gone):
     ctx = browser.new_context(viewport=VIEW)
+    ctx.add_init_script("localStorage.setItem('zimi.games.fiveletters.how', '{\"seen\":true}')")   # Five Letters' how-to sheet opens by itself on a first visit
     page = ctx.new_page()
     url = "%s/%s" % (served, name)
     page.goto(url)

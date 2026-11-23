@@ -32,6 +32,7 @@ sys.path.insert(0, HERE)
 sys.path.insert(0, ROOT)
 from games_wait import wait_for_server, frames  # noqa: E402
 from zimi.libzimcompat import result_paths
+from browser_slots import WEBGL_ARGS
 
 GAMES = os.path.join(ROOT, "zimi", "builtin", "games")
 PHONE = {"width": 390, "height": 844}
@@ -73,14 +74,32 @@ def zimi(tmp_path_factory):
 
 
 @pytest.fixture(scope="module")
-def browser():
+def playwright_driver():
+    """One Playwright driver for the module: a second sync_playwright() started while the first is still open (the WebKit and the
+    Chromium fixtures each held one) fails with "Sync API inside the asyncio loop"."""
     with sync_playwright() as p:
-        try:
-            b = p.webkit.launch()
-        except Exception as e:
-            pytest.skip("WebKit is not installed: %s" % e)
-        yield b
-        b.close()
+        yield p
+
+
+@pytest.fixture(scope="module")
+def browser(playwright_driver):
+    try:
+        b = playwright_driver.webkit.launch()
+    except Exception as e:
+        pytest.skip("WebKit is not installed: %s" % e)
+    yield b
+    b.close()
+
+
+@pytest.fixture(scope="module")
+def chromium(playwright_driver):
+    """The Sky Detective checks need no WebKit quirk, so they run wherever Chromium does (CI has no WebKit)."""
+    try:
+        b = playwright_driver.chromium.launch(args=WEBGL_ARGS)
+    except Exception as e:
+        pytest.skip("Chromium is not installed: %s" % e)
+    yield b
+    b.close()
 
 
 def _open(browser, zimi, path, viewport=PHONE, scheme="dark", touch=True):
@@ -202,28 +221,36 @@ def test_the_games_zim_keeps_notices_out_of_its_articles_but_serves_the_licence(
 SKY_UP = "() => !!document.querySelector('.gamesky .alm-sky-host')"
 
 
-def test_sky_detective_study_sky_opens_from_a_deep_link(browser, zimi):
-    ctx, page, errors = _open(browser, zimi, "skydetective.html")
+def _study_sky(page, frame):
+    """The game opens on its intro; the Almanac's sky over it opens when asked (the Look button)."""
+    frame.locator("#sk-look").first.click(timeout=WAIT)
     page.wait_for_function(SKY_UP, timeout=WAIT)
+
+
+def test_sky_detective_study_sky_opens_from_a_deep_link(chromium, zimi):
+    ctx, page, errors = _open(chromium, zimi, "skydetective.html")
+    _study_sky(page, _frame(page))
     assert not errors, errors
     ctx.close()
 
 
-def test_sky_detective_study_sky_opens_from_the_shelf_inside_the_frame(browser, zimi):
-    ctx, page, _ = _open(browser, zimi, "index.html")
+def test_sky_detective_study_sky_opens_from_the_shelf_inside_the_frame(chromium, zimi):
+    ctx, page, _ = _open(chromium, zimi, "index.html")
     f = _frame(page)
     f.evaluate("location.href = 'skydetective.html'")
-    page.wait_for_function(SKY_UP, timeout=WAIT)
+    page.wait_for_function("() => document.getElementById('reader-frame').contentWindow.location.pathname.endsWith('/skydetective.html')", timeout=WAIT)
+    _study_sky(page, _frame(page))
     ctx.close()
 
 
-def test_sky_detective_is_heard_while_zimis_open_article_lags_the_frame(browser, zimi):
+def test_sky_detective_is_heard_while_zimis_open_article_lags_the_frame(chromium, zimi):
     """currentArticle trails the frame (a reload, Back, a link inside the frame): the page's own address decides."""
-    ctx, page, _ = _open(browser, zimi, "index.html")
+    ctx, page, _ = _open(chromium, zimi, "index.html")
     f = _frame(page)
     page.evaluate("currentArticle = { zim: 'wikipedia_en', path: 'Moon' }")
     f.evaluate("location.href = 'skydetective.html'")
-    page.wait_for_function(SKY_UP, timeout=WAIT)
+    page.wait_for_function("() => document.getElementById('reader-frame').contentWindow.location.pathname.endsWith('/skydetective.html')", timeout=WAIT)
+    _study_sky(page, _frame(page))
     ctx.close()
 
 
@@ -321,7 +348,7 @@ def test_a_family_opens_with_a_count_and_a_chevron(browser, zimi):
     tag = card.locator(".sh-fam-tag")
     n = len([r for r in _rows() if r["path"].startswith("puzzles/")])
     shelf_n = f.evaluate("() => document.querySelectorAll('.sh-fam:has(.sh-fam-card) a.ar-game').length")
-    assert tag.locator("b").inner_text() == str(int(tag.locator("b").inner_text())) and int(tag.locator("b").inner_text()) > 20 <= n
+    assert tag.locator("b").text_content() == str(int(tag.locator("b").text_content())) and int(tag.locator("b").text_content()) > 20 <= n
     assert tag.locator("svg").count() == 1 and card.get_attribute("aria-expanded") == "false"
     assert f.locator(".sh-fam-panel:visible").count() == 0
     card.click()
@@ -330,7 +357,7 @@ def test_a_family_opens_with_a_count_and_a_chevron(browser, zimi):
     assert f.locator(".sh-fam.sh-open .sh-fam-panel a.ar-game:visible").count() > 20
     card.click()
     assert card.get_attribute("aria-expanded") == "false"
-    assert shelf_n >= int(tag.locator("b").inner_text())
+    assert shelf_n >= int(tag.locator("b").text_content())
     ctx.close()
 
 
@@ -375,6 +402,6 @@ def test_a_games_surface_is_not_selectable_but_its_how_to_play_is(browser, zimi)
     assert sel == ["none", True], sel
     f.evaluate("[...document.querySelectorAll('.ar-bar button')].find(b => /Menu/.test(b.textContent)).click()")
     f.evaluate("[...document.querySelectorAll('.gs-sheet button')].find(b => /How to play/.test(b.textContent)).click()")
-    f.wait_for_selector(".gs-sheet dl.gs-help", state="visible", timeout=WAIT)
-    assert f.evaluate("() => getComputedStyle(document.querySelector('.gs-sheet dl.gs-help dd')).webkitUserSelect") == "text"
+    f.wait_for_selector(".gs-sheet .gs-how", state="visible", timeout=WAIT)
+    assert f.evaluate("() => getComputedStyle(document.querySelector('.gs-sheet .gs-how li')).webkitUserSelect") == "text"
     ctx.close()

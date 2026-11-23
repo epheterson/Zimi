@@ -231,7 +231,7 @@
     layout(); paintHud();
     els.credit.textContent = T('jigsaw.picture', { credit: pic.credit }) + (pic.note ? ' ' + pic.note : '');
     els.read.hidden = !pic.path;   // the picture's article, at hand while playing and on the end sheet
-    if (pic.path) Lib.articleLink(els.read, pic.zim, pic.path);
+    if (pic.path) { els.read.textContent = readLabel(pic); Lib.articleLink(els.read, pic.zim, pic.path); }
     if (!timer) timer = setInterval(function () { if (puzzle && puzzle.since && !puzzle.done) paintClock(); }, TICK_MS);
   }
 
@@ -281,6 +281,8 @@
     paintHud();
     if (solved(puzzle.pieces)) finish();
   }
+  // The article named on its button, so the end of a game says what it leads to.
+  function readLabel(pic) { return pic.title ? T('jigsaw.read_about', { title: pic.title }) : T('jigsaw.read'); }
   function finish() {
     pause(); puzzle.done = true; paintHud();
     els.area.classList.add('whole');   // the picture lifts and the seams fade
@@ -289,7 +291,7 @@
     if (newBest) { best[key] = ms; Play.save(BEST_KEY, best); }
     var more = [];
     if (puzzle.pic.path) {
-      var read = el('a', 'ar-btn'); read.textContent = T('jigsaw.read');
+      var read = el('a', 'ar-btn'); read.textContent = readLabel(puzzle.pic);
       more.push(Lib.articleLink(read, puzzle.pic.zim, puzzle.pic.path));
     }
     line.say(T('jigsaw.done'));

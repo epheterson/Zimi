@@ -295,7 +295,7 @@
     var hand = T.handCards(g, st.hands[V], function (id) { return { up: up, raise: sel.indexOf(id) >= 0, glow: sel.indexOf(id) >= 0, label: up ? Z.cardName(id) + (sel.indexOf(id) >= 0 ? TX('canasta.pickedSuffix') : '') : TX('cards.hidden') }; }, null);
     slots = slots.concat(hand.slots); cards = cards.concat(hand.cards);
     [1, 2, 3].forEach(function (r) { var seat = (V + r) % SEATS; if (st.hands[seat].length) cards = cards.concat(T.fan(g, r, st.hands[seat], false)); });
-    var n = st.table.length, avail = g.W - 2 * g.pad - g.cw, step = n > 1 ? Math.min(g.cw * 0.62, avail / (n - 1)) : 0, x0 = g.cx - (g.cw + (n - 1) * step) / 2;
+    var n = st.table.length, avail = g.W - 2 * g.pad - g.cw, step = n > 1 ? Math.min(g.cw * 0.62, avail / (n - 1)) : 0, width = g.cw + (n - 1) * step, x0 = g.short ? Math.max(g.pad, Math.min(g.midX - width / 2, g.W - g.pad - width)) : g.cx - width / 2;   // a short table keeps the middle for the tray of choices
     st.table.forEach(function (id, k) { cards.push({ id: id, pile: 'trick', idx: k, x: Math.round(x0 + k * step), y: Math.round(g.cy - g.ch / 2), up: true, dim: !st.top }); });
     return { height: m.H, slots: slots, cards: cards };
   }
@@ -344,8 +344,9 @@
           { label: TX('cards.pass'), disabled: !st.top, onclick: passTurn },
           { label: TX('cards.hint'), onclick: hint }
         ];
-        if (sel.length && why) out.lines = [{ text: why }];
-        else if (!sel.length && st.top && !game.legalPlays(st, V).length) out.lines = [{ text: TX('climb.nothingBeats') }];
+        // The reason a selection will not play is the status line's, as in the other games (not a line in the tray).
+        if (sel.length && why) out.text = why;
+        else if (!sel.length && st.top && !game.legalPlays(st, V).length) out.text = TX('climb.nothingBeats');
       } else out.text = played + TX('cards.thinking', { name: nm(st.turn) });
       return out;
     }

@@ -87,3 +87,14 @@ def test_a_games_own_button_is_a_tile_with_an_icon(browser, base):
     assert give.count() >= 1
     assert give.first.locator("svg.gs-icon").count() == 1
     c.close()
+
+
+@pytest.mark.parametrize("name", ["chess.html", "sudoku.html", "minesweeper.html"])
+def test_the_menu_has_no_sound_setting_until_sounds_ship(browser, base, name):
+    c, page = open_menu(browser, base, name, 390)
+    page.locator(".gs-sheet .gs-tile", has_text="Settings").click()
+    page.wait_for_selector(".gs-sheet .gs-row")
+    assert page.locator(".gs-sheet .gs-row").count() >= 2   # the pane is open, with its other rows
+    text = page.locator(".gs-sheet").inner_text().lower()
+    assert "sound" not in text, text
+    c.close()

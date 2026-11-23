@@ -4,6 +4,8 @@
 :root { --cy-res: #3f9a52; --cy-com: #3b6fc4; --cy-ind: #c9961a; --cy-ground: #cdbf98; }
 @media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) { --cy-res: #5cb46d; --cy-com: #6d93e0; --cy-ind: #e0b043; --cy-ground: #4d4738; } }
 :root[data-theme="dark"] { --cy-res: #5cb46d; --cy-com: #6d93e0; --cy-ind: #e0b043; --cy-ground: #4d4738; }
+/* Red (games.css): the three zones as three reds, light to dark; the canvas takes the shell's red picture filter. */
+:root.gs.night-red { --cy-res: #ff3a1e; --cy-com: #d01a0a; --cy-ind: #8a1006; --cy-ground: #1a0300; }
 
 body.cy-page { display: flex; flex-direction: column; height: 100%; height: 100dvh; overflow: hidden; padding-left: var(--safe-l); padding-right: var(--safe-r); box-sizing: border-box; }
 .cy-page .gm-about { display: none; }

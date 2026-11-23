@@ -5,6 +5,8 @@
   :root:not([data-theme="light"]) { --sk-floor: #2b2a2e; --sk-floor2: #26252a; --sk-wall: #5c5a55; --sk-wall-hi: #77746d; --sk-wall-lo: #3b3a36; --sk-crate: #a8703a; --sk-crate-hi: #c8925a; --sk-crate-lo: #6e4719; --sk-crate-on: #4c9b5e; --sk-crate-on-lo: #2a6a3a; --sk-goal: #ef6a60; --sk-me: #6a95c6; --sk-me-hi: #a4c4e6; }
 }
 :root[data-theme="dark"] { --sk-floor: #2b2a2e; --sk-floor2: #26252a; --sk-wall: #5c5a55; --sk-wall-hi: #77746d; --sk-wall-lo: #3b3a36; --sk-crate: #a8703a; --sk-crate-hi: #c8925a; --sk-crate-lo: #6e4719; --sk-crate-on: #4c9b5e; --sk-crate-on-lo: #2a6a3a; --sk-goal: #ef6a60; --sk-me: #6a95c6; --sk-me-hi: #a4c4e6; }
+/* Red (games.css): this file's colours as red-on-black, by luminance. */
+:root.gs.night-red { --sk-floor: #2b0503; --sk-floor2: #260502; --sk-wall: #5a0b06; --sk-wall-hi: #740f07; --sk-wall-lo: #3a0704; --sk-crate: #7b0f08; --sk-crate-hi: #9c140a; --sk-crate-lo: #4d0a05; --sk-crate-on: #7c1008; --sk-crate-on-lo: #510a05; --sk-goal: #911209; --sk-me: #8e1209; --sk-me-hi: #be180c; --sk-me-edge: #2a0503; --sk-eye: #240502; }
 
 .sk-board { --bs: min(100vw - 24px, 100svh - 330px, 520px); width: var(--bs); height: var(--bs); display: grid; place-items: center; touch-action: none; user-select: none; -webkit-user-select: none; }
 .sk-board:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
