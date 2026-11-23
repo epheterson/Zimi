@@ -1,0 +1,15 @@
+{
+ "id": "voyager1",
+ "name": "Voyager 1",
+ "zero": "1977-09-05T12:56:00Z",
+ "sources": {
+  "NSSDCA-V1": "NASA NSSDCA, Voyager 1 trajectory (1977-084A), nssdc.gsfc.nasa.gov/nmc/spacecraft/displayTrajectory.action?id=1977-084A",
+  "HZN": "JPL Horizons, spacecraft -31 (the flyby search in scripts/mission_probes.py)"
+ },
+ "notes": "NSSDCA does not say which time scale its trajectory table uses; at every encounter its times stand TT - UTC (50 to 56 s) after the closest approach in Horizons' UT vectors, so they are read as ephemeris time and turned to UTC here (TAI - UTC from IERS Bulletin C, TT = TAI + 32.184 s).",
+ "events": [
+  {"key": "launch", "kind": "zero", "t_utc": "1977-09-05T12:56:00", "src": "NSSDCA-V1"},
+  {"key": "jupiter", "kind": "flyby", "planet": "Jupiter", "t_tdb": "1979-03-05T12:05:26", "dist_km": 349100, "src": "NSSDCA-V1", "tol": {"s": 10, "dist_km": 1500}, "why": "4.89 Jupiter radii as published: rounding is 357 km either way."},
+  {"key": "saturn", "kind": "flyby", "planet": "Saturn", "t_tdb": "1980-11-12T23:46:30", "dist_km": 186400, "src": "NSSDCA-V1", "tol": {"s": 10, "dist_km": 2800}, "why": "3.09 Saturn radii as published (NSSDCA's 60,330 km radius); Horizons' vectors give 184,030 km, the 124,000 km over the cloud tops usually quoted."}
+ ]
+}

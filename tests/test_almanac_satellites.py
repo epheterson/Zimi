@@ -184,6 +184,7 @@ def test_nothing_here_is_an_honest_empty_answer(data_dir, monkeypatch):
         "fetched": None,
         "gps": [],
         "iss": None,
+        "craft": [],
         "stale": True,
         "refreshing": False,
         "mode": "ask",
@@ -504,7 +505,7 @@ def test_the_upstream_request_carries_nothing_about_the_viewer(data_dir, monkeyp
         len(payload["gps"]) == 1
         and payload["iss"]["NORAD_CAT_ID"] == satellites.ISS_NORAD_ID
     )
-    assert [r.host for r in seen] == ["celestrak.org", "celestrak.org"]
+    assert [r.host for r in seen] == ["celestrak.org"] * 3   # the GPS group, the ISS, the telescopes
     for r in seen:
         assert {k.lower() for k, _ in r.header_items()} == {"user-agent"}
         assert r.get_header("User-agent").startswith("Zimi/")
@@ -657,7 +658,7 @@ def test_a_get_under_automatically_still_refreshes(manage_env, monkeypatch):
                 break
             time.sleep(0.05)
     assert body["refreshing"] is True
-    assert len(seen) == 2, "one refresh is the GPS group and the ISS"
+    assert len(seen) == 3, "one refresh is the GPS group, the ISS and the telescopes"
 
 
 def test_get_fresh_data_is_a_post_only_an_admin_makes(manage_env, monkeypatch):
@@ -682,14 +683,14 @@ def test_get_fresh_data_is_a_post_only_an_admin_makes(manage_env, monkeypatch):
             "POST", "/manage/satellites/refresh", token="correct horse"
         )
         assert status == 200
-        assert len(seen) == 2, "one fetch: the GPS group and the ISS"
+        assert len(seen) == 3, "one fetch: the GPS group, the ISS and the telescopes"
         assert body["stale"] is False and body["source"] == "cache"
         assert body["gps"][0]["OBJECT_ID"] == "2018-109A"
         # Fresh now: pressed again, CelesTrak is asked nothing.
         status, _h, _b = call(
             "POST", "/manage/satellites/refresh", token="correct horse"
         )
-        assert status == 200 and len(seen) == 2
+        assert status == 200 and len(seen) == 3
 
 
 def test_with_no_admin_gate_the_host_may_ask(manage_env, monkeypatch):
@@ -702,7 +703,7 @@ def test_with_no_admin_gate_the_host_may_ask(manage_env, monkeypatch):
         _s, _h, body = call("GET", "/almanac-satellites")
         assert body["can_change"] is True
         status, _h, body = call("POST", "/manage/satellites/refresh")
-    assert status == 200 and len(seen) == 2 and body["stale"] is False
+    assert status == 200 and len(seen) == 3 and body["stale"] is False
 
 
 def test_management_off_means_nobody_may_change_it(manage_env, monkeypatch):
@@ -799,3 +800,55 @@ def test_the_satellites_are_kept_with_the_almanac():
     urls = _http._almanac_pack_urls()
     assert _http.SATELLITES_PATH in urls
     assert any(re.fullmatch(r"/static/earth/satellite-[\d.]+\.min\.js(\?v=\w+)?", u) for u in urls), urls
+
+
+# ── The telescopes with models (Hubble, Chandra) ────────────────────────────
+
+
+def _hubble():
+    return _omm(name="HST", norad=satellites.HUBBLE_NORAD_ID, MEAN_MOTION=15.32, INCLINATION=28.47, ECCENTRICITY=0.0002)
+
+
+def _chandra():
+    return _omm(name="CXO", norad=satellites.CHANDRA_NORAD_ID, MEAN_MOTION=0.378, INCLINATION=58.39, ECCENTRICITY=0.7597)
+
+
+def test_chandras_long_orbit_is_a_plausible_one():
+    rec = satellites.normalize_record(_chandra())
+    assert rec and rec["MEAN_MOTION"] == 0.378
+
+
+def test_the_telescopes_are_picked_out_of_the_science_group_in_order():
+    craft = satellites.parse_craft([_omm(), _chandra(), _hubble(), _hubble()])
+    assert [r["NORAD_CAT_ID"] for r in craft] == [satellites.HUBBLE_NORAD_ID, satellites.CHANDRA_NORAD_ID]
+    assert satellites.parse_craft({"error": "rate limited"}) == []
+    payload = satellites.parse_payload([_omm()], [_iss()], time.time(), [_hubble(), _chandra()])
+    assert len(payload["craft"]) == 2
+
+
+def test_a_fetch_without_the_telescopes_keeps_the_snapshots(data_dir):
+    now = time.time()
+    satellites.write_snapshot(
+        satellites.SNAPSHOT_PATH,
+        satellites.parse_payload([_omm()], [_iss()], now - 86400, [_hubble(), _chandra()]),
+    )
+    satellites._memory = satellites.parse_payload([_omm()], [_iss()], now)
+    got = satellites.get(allow_refresh=False)
+    assert got["source"] == "cache" and len(got["craft"]) == 2
+
+
+def test_the_science_group_failing_does_not_cost_the_gps_refresh(monkeypatch):
+    def answer(query):
+        if query.get("GROUP") == "science":
+            raise OSError("unreachable")
+        return [_iss()] if "CATNR" in query else [_omm()]
+
+    monkeypatch.setattr(satellites, "_get_json", answer)
+    payload = satellites.fetch_live()
+    assert payload["craft"] == [] and payload["iss"]["NORAD_CAT_ID"] == satellites.ISS_NORAD_ID
+
+
+def test_the_shipped_snapshot_carries_both_telescopes():
+    with open(satellites.SNAPSHOT_PATH) as f:
+        snap = json.load(f)
+    assert [r["NORAD_CAT_ID"] for r in snap["craft"]] == [satellites.HUBBLE_NORAD_ID, satellites.CHANDRA_NORAD_ID]

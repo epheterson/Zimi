@@ -1,0 +1,17 @@
+{
+ "id": "voyager2",
+ "name": "Voyager 2",
+ "zero": "1977-08-20T14:29:44Z",
+ "sources": {
+  "NSSDCA-V2": "NASA NSSDCA, Voyager 2 trajectory (1977-076A), nssdc.gsfc.nasa.gov/nmc/spacecraft/displayTrajectory.action?id=1977-076A",
+  "HZN": "JPL Horizons, spacecraft -32"
+ },
+ "notes": "NSSDCA does not say which time scale its trajectory table uses; at every encounter its times stand TT - UTC (50 to 56 s) after the closest approach in Horizons' UT vectors, so they are read as ephemeris time and turned to UTC here (TAI - UTC from IERS Bulletin C, TT = TAI + 32.184 s).",
+ "events": [
+  {"key": "launch", "kind": "zero", "t_utc": "1977-08-20T14:29:44", "src": "NSSDCA-V2"},
+  {"key": "jupiter", "kind": "flyby", "planet": "Jupiter", "t_tdb": "1979-07-09T22:29:51", "dist_km": 721800, "src": "NSSDCA-V2", "tol": {"s": 10, "dist_km": 1500}},
+  {"key": "saturn", "kind": "flyby", "planet": "Saturn", "t_tdb": "1981-08-26T03:24:57", "dist_km": 161100, "src": "NSSDCA-V2", "tol": {"s": 10, "dist_km": 1500}},
+  {"key": "uranus", "kind": "flyby", "planet": "Uranus", "t_tdb": "1986-01-24T17:59:47", "dist_km": 107100, "src": "NSSDCA-V2", "tol": {"s": 10, "dist_km": 500}},
+  {"key": "neptune", "kind": "flyby", "planet": "Neptune", "t_tdb": "1989-08-25T03:56:36", "dist_km": 29200, "src": "NSSDCA-V2", "tol": {"s": 10, "dist_km": 300}}
+ ]
+}
