@@ -2251,3 +2251,37 @@ def test_the_prolonged_sound_mark_stays_in_japanese():
     assert voices.speakable("コーヒー", "ja") == "コーヒー"
     assert voices.script_ok("コーヒー", "ja")
     assert voices.speakable("コーヒー", "en") is None
+
+
+def test_turning_the_cache_off_mid_synthesis_leaves_nothing_on_disk(piper, monkeypatch, tmp_path):
+    install("en-US")
+    monkeypatch.delenv(voices.CACHE_DIR_ENV, raising=False)
+    monkeypatch.setattr(voices, "_ram_cache_root", lambda: str(tmp_path / "ram"))
+    real = voices._synthesize
+
+    def off_meanwhile(engine, voice, text, out):
+        done = real(engine, voice, text, out)
+        monkeypatch.setattr(voices, "_cache_mb", 0)  # the setting changes after the word was made, before it is filed
+        return done
+
+    monkeypatch.setattr(voices, "_synthesize", off_meanwhile)
+    body = voices.speak("water", "en")
+    assert body and body[:4] == b"RIFF", "the word is still said"
+    assert not os.path.exists(voices._dir("cache")), "and the disk cache folder was not recreated"
+
+
+def test_cache_off_clears_the_override_root_and_keeps_nothing_without_a_ram_disk(data, monkeypatch, tmp_path):
+    ram = str(tmp_path / "ram")
+    monkeypatch.setenv(voices.CACHE_DIR_ENV, ram)
+    folder = voices._cache_dir("piper", "x")
+    os.makedirs(folder)
+    with open(os.path.join(folder, "a.wav"), "wb") as f:
+        f.write(b"x" * 10)
+    assert voices.set_cache_mb(0)
+    assert voices.cache_info()["count"] == 0, "what the override root held is gone"
+    monkeypatch.delenv(voices.CACHE_DIR_ENV)
+    monkeypatch.setattr(voices, "_has_ram_disk", lambda: False)
+    path = os.path.join(voices._cache_dir("piper", "x"), "b.wav")
+    assert voices._kept(path) is False, "off, and the temp folder is the disk: not kept"
+    voices.set_cache_mb(16)
+    assert voices._kept(os.path.join(voices._cache_dir("piper", "x"), "b.wav")) is True

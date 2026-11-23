@@ -423,12 +423,39 @@ def set_cache_mb(mb):
         _cache_mb = mb
     if mb == 0:
         shutil.rmtree(_dir("cache"), ignore_errors=True)
+        shutil.rmtree(_cache_root(), ignore_errors=True)  # the folder in use now (the override, the RAM one): nothing from before stays
     return True
+
+
+def _kept(path):
+    """Whether said audio at ``path`` may stay: it is under the cache root in use now,
+    and the cache is not off on a machine whose only scratch space is the disk."""
+    root = _cache_root() + os.sep
+    if not os.path.abspath(path).startswith(os.path.abspath(root)):
+        return False  # the setting changed while it was being said
+    return bool(cache_mb() or os.environ.get(CACHE_DIR_ENV) or _has_ram_disk())
+
+
+def _discard(path):
+    """Hand back what was said and leave nothing on disk (the cache turned off mid-synthesis)."""
+    body = _cached(path)
+    folder = os.path.dirname(path)
+    mine = [os.path.join(folder, n) for n in os.listdir(folder) if n.startswith(os.path.basename(path))] if os.path.isdir(folder) else []
+    for remove, target in [(os.remove, p) for p in mine] + [(os.rmdir, folder), (os.rmdir, os.path.dirname(folder))]:
+        try:
+            remove(target)  # the folders only while empty: a neighbour's files are never touched
+        except OSError:
+            pass
+    return body
+
+
+def _has_ram_disk():
+    return os.access("/dev/shm", os.W_OK)
 
 
 def _ram_cache_root():
     """A folder in memory where the OS has one (Linux's /dev/shm), else the temp folder."""
-    base = "/dev/shm" if os.access("/dev/shm", os.W_OK) else tempfile.gettempdir()
+    base = "/dev/shm" if _has_ram_disk() else tempfile.gettempdir()
     return os.path.join(base, "zimi-voices-%d" % os.getuid() if hasattr(os, "getuid") else "zimi-voices")
 
 
@@ -1931,7 +1958,10 @@ def speak(text, lang, accent="", engine=None, limit=TEXT_MAX, fetch=True):
                     raise Failed(engine)
                 if done != OK:
                     raise Busy("%s did not answer" % engine)
-                os.replace(tmp, path)
+                try:
+                    os.replace(tmp, path)
+                except FileNotFoundError:
+                    raise Busy("the cache was cleared meanwhile")  # Clear or "off" removed the folder under it
             finally:
                 if os.path.exists(tmp):
                     os.remove(tmp)
@@ -1939,6 +1969,8 @@ def speak(text, lang, accent="", engine=None, limit=TEXT_MAX, fetch=True):
             _synth_locks[engine].release()
     finally:
         slots.release()
+    if not _kept(path):
+        return _discard(path)
     _trim_cache()
     return _cached(path)
 
