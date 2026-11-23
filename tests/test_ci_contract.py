@@ -308,7 +308,7 @@ def test_the_mac_app_reports_the_release_version():
     update to offer. The spec reads pyproject.toml, as the other builds do."""
     import re as _re
 
-    spec = (ROOT / "desktop" / "zimi_desktop.spec").read_text(encoding="utf-8")
+    spec = (ROOT / "packaging" / "desktop" / "zimi_desktop.spec").read_text(encoding="utf-8")
     assert not _re.search(r"'CFBundle(Short)?Version(String)?':\s*'\d", spec), "a version is hard-coded in the spec"
     start = spec.index("def _app_version(")
     end = spec.index("\nAPP_VERSION", start)
@@ -473,6 +473,6 @@ def test_no_requirement_admits_a_pillow_with_known_holes():
     for name in ("pyproject.toml", "packaging/zimi-mcp/pyproject.toml"):
         text = (ROOT / name).read_text(encoding="utf-8")
         assert 'requires-python = ">=3.11,' in text, name
-    for name in ("requirements.txt", "desktop/requirements-desktop.txt"):
+    for name in ("requirements.txt", "packaging/desktop/requirements-desktop.txt"):
         pins = re.findall(r"(?im)^pillow\s*>=\s*([\d.]+)", (ROOT / name).read_text(encoding="utf-8"))
         assert pins and all(int(v.split(".")[0]) >= 13 for v in pins), (name, pins)

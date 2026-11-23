@@ -14,7 +14,7 @@ import xml.etree.ElementTree as ET
 import pytest
 
 REPO_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-DESKTOP_DIR = os.path.join(REPO_ROOT, "desktop")
+DESKTOP_DIR = os.path.join(REPO_ROOT, "packaging", "desktop")
 sys.path.insert(0, DESKTOP_DIR)
 
 import zimi_winsparkle as ws  # noqa: E402

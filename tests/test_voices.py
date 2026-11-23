@@ -906,11 +906,11 @@ def test_the_portable_spec_ships_the_helper_script_as_a_file():
     spec puts on disk: <bundle>/_internal/zimi/ is where the package's data files go."""
     root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
     spec = open(
-        os.path.join(root, "desktop", "zimi_portable.spec"), encoding="utf-8"
+        os.path.join(root, "packaging", "desktop", "zimi_portable.spec"), encoding="utf-8"
     ).read()
     assert "zimi/voicehelper.py'), 'zimi')" in spec
     assert os.path.isfile(os.path.join(root, "zimi", voices.HELPER_SCRIPT))
-    smoke = open(os.path.join(root, "ci", "smoke_portable.sh"), encoding="utf-8").read()
+    smoke = open(os.path.join(root, ".github", "ci", "smoke_portable.sh"), encoding="utf-8").read()
     assert "_internal/zimi/voicehelper.py" in smoke
 
 

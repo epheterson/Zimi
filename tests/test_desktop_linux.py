@@ -16,7 +16,7 @@ import pytest
 sys.path.insert(
     0,
     os.path.join(
-        os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "desktop"
+        os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "packaging", "desktop"
     ),
 )
 
@@ -205,7 +205,7 @@ def test_a_taken_port_falls_back_to_any_free_one(monkeypatch, tmp_path):
 
 def test_the_spec_bundles_webkits_typelibs_and_the_package_module():
     with open(
-        os.path.join(REPO, "desktop", "zimi_desktop.spec"), encoding="utf-8"
+        os.path.join(REPO, "packaging", "desktop", "zimi_desktop.spec"), encoding="utf-8"
     ) as f:
         spec = f.read()
     for name in (
@@ -264,12 +264,12 @@ def test_a_frozen_bundle_uses_the_hosts_platform_first():
 
 
 def test_the_spec_leaves_the_gtk_platform_to_the_host_on_linux():
-    with open(os.path.join(REPO, "desktop", "zimi_desktop.spec"), encoding="utf-8") as f:
+    with open(os.path.join(REPO, "packaging", "desktop", "zimi_desktop.spec"), encoding="utf-8") as f:
         spec = f.read()
     # One split for Zimi and the zimi-voice helper beside it.
     assert "a.binaries = _split_linux_binaries(a.binaries)" in spec and "return kept + fallback" in spec
     assert "'/site-packages/' in src" in spec and "gio_modules" in spec
-    with open(os.path.join(REPO, "linux", "AppRun"), encoding="utf-8") as f:
+    with open(os.path.join(REPO, "packaging", "linux", "AppRun"), encoding="utf-8") as f:
         apprun = f.read()
     assert "_internal/fallback" in apprun and "ldconfig -p" in apprun and 'exec "$HERE/Zimi" "$@"' in apprun
 

@@ -2,7 +2,7 @@
 games' source at runtime (gamelinks.py: games.json and the tile pictures),
 and nothing of the ~34 MB of source the ZIMs were built from. The wheel
 (pyproject package-data), the Docker image (.dockerignore) and the desktop
-builds (desktop/zimi_desktop.spec) must agree.
+builds (packaging/desktop/zimi_desktop.spec) must agree.
 
 Run: pytest tests/test_package_runtime_files.py -v
 """
@@ -72,7 +72,7 @@ def test_the_built_zims_ship_everywhere():
 
 
 def test_the_desktop_build_carries_the_same_files():
-    spec = (ROOT / "desktop" / "zimi_desktop.spec").read_text(encoding="utf-8")
+    spec = (ROOT / "packaging" / "desktop" / "zimi_desktop.spec").read_text(encoding="utf-8")
     assert "(os.path.join(REPO_ROOT, 'zimi/builtin'), 'zimi/builtin')" not in spec, "the whole folder"
     for piece in ("*.zim", "*.zim.source", "games/games.json", "games/thumbs", "games/puzzles/icons"):
         assert piece in spec, piece

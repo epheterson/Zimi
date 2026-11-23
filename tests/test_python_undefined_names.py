@@ -26,7 +26,7 @@ except ImportError:  # pragma: no cover
 
 #: What counts: a use with no binding. Unused imports and the like are style, not loss.
 _FATAL = ("UndefinedName", "UndefinedExport", "UndefinedLocal")
-_SCAN = ("zimi", "scripts", os.path.join("packaging", "zimi-mcp"), "desktop")
+_SCAN = ("zimi", "scripts", os.path.join("packaging", "zimi-mcp"), os.path.join("packaging", "desktop"))
 
 
 def _sources():
