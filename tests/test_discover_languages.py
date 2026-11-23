@@ -472,3 +472,86 @@ def test_a_chinese_lead_sentence_is_a_blurb():
     assert _extract_preview_blurb("<p>鄞州区是浙江省宁波市的一个市辖区。</p>") == (
         "鄞州区是浙江省宁波市的一个市辖区。"
     )
+
+
+def test_a_blurb_has_no_space_before_the_mark_after_a_link():
+    from zimi.previews import _extract_preview_blurb
+
+    page = (
+        '<p><i><a href="Baby_Grand">"Baby Grand"</a></i> is the fourth single off '
+        "<a href=\"Billy_Joel\">Billy Joel</a>'s album <i><a href=\"The_Bridge\">The Bridge</a></i>. "
+        'A duet with <a href="Ray_Charles">Ray Charles</a>, the song.</p>'
+    )
+    assert _extract_preview_blurb(page) == (
+        "\"Baby Grand\" is the fourth single off Billy Joel's album The Bridge. A duet with Ray Charles, the song."
+    )
+
+
+def _en_word(body, categories=""):
+    from zimi.previews import _extract_preview_wiktionary
+
+    html = (
+        '<body lang="en"><section><h2 id="English">English</h2><section>'
+        '<h3 id="Noun">Noun</h3><ol><li>%s</li></ol>%s</section></section></body>'
+    )
+    result = {}
+    _extract_preview_wiktionary(html % (body, categories), "wiktionary_en_all", result, "en", "word")
+    return result
+
+
+def _category(name):
+    return '<link rel="mw:PageProp/Category" href="./Category:%s#WORD"/>' % name
+
+
+@pytest.mark.parametrize(
+    "body, categories",
+    [
+        ("an act", _category("English_vulgarities")),
+        ("an act", _category("en:Sex")),
+        ("an act", _category("Termes_vulgaires_en_français")),
+        ("an act", _category("Вульгарные_выражения/ru")),
+        (
+            '<span class="ib-brac">(</span><span class="ib-content qualifier-content">'
+            '<span class="usage-label-sense"><span class="ib-content">offensive</span></span>'
+            "</span> an act",
+            "",
+        ),
+    ],
+)
+def test_a_word_the_wiki_files_as_crude_is_passed_over(body, categories):
+    got = _en_word(body, categories)
+    assert got.get("crude") is True and not got.get("blurb"), got
+
+
+def test_a_page_whose_config_lists_a_crude_category_is_passed_over():
+    # mwoffliner keeps categories only in the head's page config, outside the language section (Simple English Wiktionary's "oral sex")
+    head = '<script>RLCONF={"wgCategories":["Nouns","Multiword terms","Uncountable nouns","Sex"],"wgPageViewLanguage":"en"};</script>'
+    got = _en_word("a type of sex")
+    assert not got.get("crude")
+    from zimi.previews import _extract_preview_wiktionary
+
+    result = {}
+    html = head + '<body lang="en"><section><h2 id="English">English</h2><section><h3 id="Noun">Noun</h3><ol><li>a type of sex</li></ol></section></section></body>'
+    _extract_preview_wiktionary(html, "wiktionary_en-simple", result, "en", "word")
+    assert result.get("crude") is True, result
+    ok = {}
+    _extract_preview_wiktionary(html.replace('"Sex"', '"Places in Essex"'), "wiktionary_en-simple", ok, "en", "word")
+    assert not ok.get("crude"), ok
+
+
+def test_an_ordinary_word_is_not_crude():
+    got = _en_word("a thing", _category("English_lemmas") + _category("en:Colors"))
+    assert not got.get("crude") and got.get("blurb") == "a thing", got
+
+
+def test_the_card_passes_over_a_crude_word():
+    from zimi.http import _random_pick_verdict
+
+    assert _random_pick_verdict(
+        {"path": "A/x"},
+        {"thumbnail": None, "blurb": "a sense", "crude": True},
+        is_gutenberg=False,
+        is_wiktionary=True,
+        is_wikiquote=False,
+        require_thumb=True,
+    ) == "fallback"

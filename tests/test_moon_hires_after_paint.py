@@ -1,10 +1,10 @@
-"""The Moon's 4096 map waits for the first paint, then comes.
+"""The Moon's 2048 map waits for a disc that needs it and for the first paint; the 4096 one waits for the 3D Moon.
 
 app.js paints every Moon from the 54 KB map it fetches as it starts; the
-730 KB one is asked for only once the page has painted and gone idle, so it
-never competes with the first paint. Checked in a real browser against the
-paint timeline: the request starts after first-contentful-paint, and it does
-start, and a disc as wide as the hero is then drawn from it.
+200 KB one is asked for only by a disc wider than that map carries (the
+Almanac's hero), once the page has painted and gone idle, so it never
+competes with the first paint. Home's small Moon never asks for it. The 730 KB one is the 3D Moon's: a cold open of the Almanac
+does not move it. Checked in a real browser against the paint timeline.
 
 Run: pytest tests/test_moon_hires_after_paint.py -v
 """
@@ -17,6 +17,7 @@ import pytest
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
+MID = "earth/moon-2k-v1.webp"
 HI = "earth/moon-4k-v1.webp"
 LO = "earth/moon-v1.webp"
 
@@ -56,8 +57,25 @@ TIMELINE = """() => {
 }"""
 
 
-@pytest.mark.parametrize("path", ["/", "/#almanac"])
-def test_the_4096_map_is_asked_for_after_first_paint(served, path):
+def test_home_never_asks_for_the_2048_map(served):
+    from playwright.sync_api import sync_playwright
+
+    with sync_playwright() as pw:
+        br = pw.chromium.launch()
+        try:
+            pg = br.new_page(viewport={"width": 390, "height": 844}, device_scale_factor=3)
+            asked = []
+            pg.on("request", lambda r: asked.append(r.url))
+            pg.goto(served + "/", wait_until="load")
+            pg.wait_for_timeout(4000)
+            assert not [u for u in asked if MID in u or HI in u], asked
+            assert pg.evaluate("() => _moonMapWidthFor(144)") == 256
+        finally:
+            br.close()
+
+
+def test_the_2048_map_is_asked_for_after_first_paint(served):
+    path = "/#almanac"
     from playwright.sync_api import sync_playwright
 
     with sync_playwright() as pw:
@@ -69,14 +87,17 @@ def test_the_4096_map_is_asked_for_after_first_paint(served, path):
             asked = []
             pg.on("request", lambda r: asked.append(r.url))
             pg.goto(served + path, wait_until="load")
-            pg.wait_for_function("() => !!_MOON_TEX_HI", timeout=15000)
+            pg.wait_for_function("() => !!_MOON_TEX_MID", timeout=15000)
             tl = pg.evaluate(TIMELINE)
             assert tl["fcp"] is not None, tl
             assert LO in tl["at"] and tl["at"][LO] < tl["fcp"] + 1000, tl
             # Never before the first paint, and asked for after it.
-            assert HI in tl["at"], tl
-            assert tl["at"][HI] > tl["fcp"], tl
-            assert sum(HI in u for u in asked) == 1, asked
+            assert MID in tl["at"], tl
+            assert tl["at"][MID] > tl["fcp"], tl
+            assert sum(MID in u for u in asked) == 1, asked
+            # The 4096 map is not asked for by a page that never opens the 3D Moon.
+            pg.wait_for_timeout(3000)
+            assert not [u for u in asked if HI in u], asked
             # A disc the hero's size is drawn from it; the Today card's is not.
             assert pg.evaluate("() => _moonMapWidthFor(600)") == 2048
             assert pg.evaluate("() => _moonMapWidthFor(144)") == 256

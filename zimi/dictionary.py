@@ -1505,8 +1505,7 @@ def sample_words(lang="", rng=None):
     """A few random words from a Wiktionary in ``lang`` (else the largest):
     ``{"lang": its language, "words": [...]}``, words [] with none here.
     The page keeps them for the session."""
-    import random
-
+    from zimi import voices
     from zimi.search import random_entry
 
     rng = rng or random.Random()
@@ -1522,7 +1521,11 @@ def sample_words(lang="", rng=None):
         for _ in range(SAMPLE_TRIES if archive is not None else 0):
             hit = random_entry(archive, max_attempts=4, rng=rng)
             word = ((hit or {}).get("title") or "").strip()
-            if SAMPLE_WORD_RE.match(word) and word not in words:
+            if (
+                SAMPLE_WORD_RE.match(word)
+                and voices.script_ok(word, w["lang"])
+                and word not in words
+            ):
                 words.append(word)
                 if len(words) >= want:
                     break

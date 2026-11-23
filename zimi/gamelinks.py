@@ -22,6 +22,7 @@ import random
 import re
 import threading
 import time
+from urllib.parse import quote
 
 import zimi.server as _srv
 from zimi import ownzims
@@ -89,6 +90,80 @@ def almanac_qids():
     return _almanac_keys
 
 
+_EARTH_DATA = os.path.join(os.path.dirname(os.path.abspath(__file__)), "static", "earth")
+_ALMANAC_PLANET = re.compile(r"'planet:([a-z]+)':\s*\{\s*q:\s*'(Q\d+)'")
+_almanac_3d = None  # {qid: the 3D view's address for it}, read once
+
+
+def _earth_json(name):
+    try:
+        with open(os.path.join(_EARTH_DATA, name), encoding="utf-8") as f:
+            return json.load(f)
+    except (OSError, ValueError) as e:
+        log.warning("%s unreadable: %s", name, e)
+        return {}
+
+
+def almanac_3d_links():
+    """{Q-ID: the Almanac address (#almanac?...) that opens the 3D view on it}: a mission's replay, a spacecraft or a
+    landing (its row of Sent), a body, a landmark. Read once from the view's own data files (static/earth: their Q-IDs
+    are Wikidata's), so an article on any of them can offer the view, and nothing is built or probed per article.
+    Where two name one Q-ID the first kind here wins: a mission's replay, then the craft, then the body, then the
+    landmark."""
+    global _almanac_3d
+    if _almanac_3d is not None:
+        return _almanac_3d
+    out = {}
+    sent = _earth_json("sent-v1.json").get("objects", [])
+    by_id = {o.get("id", "").replace("-", ""): o for o in sent}
+    for mid, m in (_earth_json("missions-v1.json").get("missions") or {}).items():
+        o = by_id.get(mid)
+        if o and o.get("qid"):
+            body = (m.get("handoff") or {}).get("body") or (o.get("where") or {}).get("body") or "earth"
+            start = m.get("start") or 0
+            out.setdefault(o["qid"], "v=%s&m=mission&k=%s,%s,0,1" % (body, mid, ("%g" % start)))
+    for o in sent:
+        if o.get("qid"):
+            where = o.get("where") or {}
+            # The ISS is a view of its own (v=iss follows it); the rest open on their world, their row choosing the rest.
+            view = "iss" if where.get("iss") else where.get("body") or "earth"
+            out.setdefault(o["qid"], "v=%s&x=sent:%s" % (view, o["id"]))
+    try:
+        with open(_ALMANAC_LINKS_JS, encoding="utf-8") as f:
+            for body, qid in _ALMANAC_PLANET.findall(f.read()):
+                out.setdefault(qid, "v=%s" % body)
+    except OSError:
+        pass
+    for name in ("landmarks-v1.json", "landmarks-earth-v1.json"):
+        data = _earth_json(name)
+        fields = data.get("fields") or []
+        if "qid" not in fields:
+            continue
+        qi = fields.index("qid")
+        for body, rows_ in data.items():
+            if not isinstance(rows_, list) or body in ("fields", "sources"):
+                continue
+            for r in rows_:
+                if len(r) > qi and r[qi]:
+                    out.setdefault(r[qi], "v=%s&x=lm:%s:%s" % (body, body, quote(str(r[0]), safe="")))
+    _almanac_3d = out
+    return out
+
+
+def almanac_view(zim, path):
+    """The 3D view's address for the article at ``zim``/``path``, or None: its Q-ID (the reader's own lookup, which
+    learns it from the article when no index has it) against the view's closed set. Only for a request that may see
+    the article, and while the Almanac is in the library."""
+    if not almanac_here() or not _srv.zim_allowed(zim):
+        return None
+    links3d = almanac_3d_links()
+    qid = _srv._qid_lookup(zim, path)
+    if qid is None:
+        _srv._qid_passive_extract(zim, path)   # the article was just read: what its own page says
+        qid = _srv._qid_lookup(zim, path)
+    return links3d.get("Q%d" % qid) if qid is not None else None
+
+
 def rows():
     """games.json: [{qid, wiki, path, title, blurb}]."""
     global _rows
@@ -110,7 +185,7 @@ _SHELF_TOKEN = re.compile(
     re.S,
 )
 _shelf = None  # [(page, stem, English name, section id, family name)], read once
-_shelf_text = {}  # language -> {"game.x.title": ...}: only the keys the search reads
+_shelf_text = {}  # language -> {"game.x.title": ...}: only the keys the search and the card read
 
 
 def _games_file(rel):
@@ -159,7 +234,7 @@ def _shelf_words(lang):
         if text is None:
             return {}
         try:
-            words = {k: v for k, v in json.loads(text).items() if k.endswith(".title") or k.startswith("shelf.section.") or k.startswith("shelf.family.")}
+            words = {k: v for k, v in json.loads(text).items() if k.endswith((".title", ".why", ".blurb")) or k.startswith("shelf.section.") or k.startswith("shelf.family.")}
         except ValueError:
             pass
         _shelf_text[lang] = words
@@ -200,6 +275,7 @@ def warm():
     """Read what the answers are made of before a request needs it: games.json, the Almanac's closed set and each game's
     picture (all fixed files of the package). Called from the background pass."""
     almanac_qids()
+    almanac_3d_links()
     _shelf_tiles()
     for r in rows():
         thumbnail(r["path"])
@@ -360,7 +436,7 @@ def thumbnail(game_path):
     return found
 
 
-def random_card(exclude=None, served=False):
+def random_card(exclude=None, served=False, lang=None):
     """A random game from the shelf (games.json's pages, never about.html, a
     stylesheet or a script), in /random's shape, or None. ``exclude`` is the
     page being played: the dice move on to another game. ``served``: the caller
@@ -374,20 +450,24 @@ def random_card(exclude=None, served=False):
         if r["path"] not in seen and r["path"] != exclude:
             seen.add(r["path"])
             pages.append(r)
-    return _card(random.choice(pages)) if pages else None
+    return _card(random.choice(pages), lang) if pages else None
 
 
-def _card(g):
+def _card(g, lang=None):
+    """A game as a card, its name and line in `lang` where the games have them (English where they
+    do not: games.json is English only)."""
+    own = _shelf_words(lang) if lang and re.fullmatch(r"[a-z]{2,3}", lang) and lang != "en" else {}
+    key = "game." + g["path"][:-len(".html")].replace("/", ".") + "."
     return {
         "zim": _GAMES_ZIM,
         "path": g["path"],
-        "title": g["title"],
-        "blurb": g.get("why") or g.get("blurb"),
+        "title": own.get(key + "title") or g["title"],
+        "blurb": own.get(key + "why") or own.get(key + "blurb") or g.get("why") or g.get("blurb"),
         "thumbnail": thumbnail(g["path"]),
     }
 
 
-def day_card(day):
+def day_card(day, lang=None):
     """The game of the day as Discover's card, in /random's shape, or None
     (no such day, or the games ZIM is not here for this request)."""
     if not games_here():
@@ -395,4 +475,4 @@ def day_card(day):
     g = game_of_day(day)
     if not g:
         return None
-    return _card(g)
+    return _card(g, lang)

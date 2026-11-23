@@ -115,3 +115,16 @@ def test_cli_exit_code_and_report(tmp_path):
     assert ok.returncode == 0 and ": ok" in ok.stdout, ok.stdout + ok.stderr
     fail = run(bad)
     assert fail.returncode == 1 and "Creator is missing" in fail.stdout
+
+
+def test_the_games_about_page_links_only_to_pages_that_exist():
+    """zimi check found `puzzles/doc/` (a folder, in no ZIM) as the manual link's
+    default; it is a real page now, so a reader without scripts has no dead link."""
+    games = os.path.join(REPO_ROOT, "zimi", "builtin", "games")
+    with open(os.path.join(games, "about.html"), encoding="utf-8") as f:
+        html = f.read()
+    html = zimcheck.NON_MARKUP_RE.sub("", html)
+    for ref in dict.fromkeys(zimcheck.HREF_RE.findall(html)):
+        target = zimcheck._resolve("about.html", ref)
+        if target and not target.startswith(("about.html", "{")):
+            assert os.path.isfile(os.path.join(games, target)), ref

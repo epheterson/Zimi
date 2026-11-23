@@ -22,6 +22,7 @@ function check(ok, label) {
 
 const S = { Math, console };
 vm.createContext(S);
+S._almAsset = (p) => p;   // app.js: a /static address with its version; here, as it is
 vm.runInContext(require('./moon_model.cjs')(), S);
 const run = (code) => vm.runInContext(code, S);
 const near = (a, b, tol) => Math.abs(a - b) <= tol;

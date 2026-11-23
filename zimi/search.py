@@ -1944,6 +1944,8 @@ _DYM_FREQ_RATIO = 10  # an in-vocab word is only "corrected" when a candidate
 # is at least this many times more common — Norvig-style confidence that lets
 # us fix a typo that itself snuck into the vocab (e.g. a misspelled title)
 # without ever touching a genuinely common word.
+_DYM_TYPO_MAX_COUNT = 5  # ...and only a word this rare: a title typo is seen a handful of
+# times, while "did" or "sight" is seen thousands, however much commoner "mid" or "right" is.
 # Peak in-memory ceiling on distinct words held DURING the build (not the
 # size of what's persisted — see _VOCAB_MAX_PERSIST_WORDS). The whole library
 # holds ~6M distinct sampled tokens (measured), the vast majority count==1
@@ -2693,7 +2695,7 @@ def _best_correction(word, vocab, deadline=None, freq_ratio=None):
     if not word:
         return None
     own_count = vocab.get(word)
-    if own_count is not None and freq_ratio is None:
+    if own_count is not None and (freq_ratio is None or own_count > _DYM_TYPO_MAX_COUNT):
         return None
 
     def _pick(cands):
@@ -2778,6 +2780,18 @@ def _did_you_mean(query_str, vocab, deadline):
     if suggestion.strip().lower() == query_str.strip().lower():
         return None
     return suggestion
+
+
+def _titles_answer_query(results, query_str):
+    """Whether a result's title holds every word searched for: the query is already answered, so no spelling is in doubt."""
+    words = {
+        _ascii_fold(query_str[a:b]).lower() for a, b in _query.word_spans(query_str)
+    } - STOP_WORDS
+    if not words:
+        return False
+    return any(
+        all(w in _ascii_fold(r["title"]).lower() for w in words) for r in results
+    )
 
 
 def _maybe_did_you_mean(query_str):
@@ -3609,7 +3623,12 @@ def search_all(query_str, limit=5, filter_zim=None, fast=False, near_at=None):
     # title-word that only appears in a ZIM outside the user's allowlist — a
     # small but real cross-allowlist leak. Admin/anonymous/all-access
     # (current_allow() is None) keep the feature.
-    if not fast and len(deduped) < _DYM_MIN_RESULTS and _srv.current_allow() is None:
+    if (
+        not fast
+        and len(deduped) < _DYM_MIN_RESULTS
+        and _srv.current_allow() is None
+        and not _titles_answer_query(deduped, query_str)
+    ):
         suggestion = _maybe_did_you_mean(query_str)
         if suggestion:
             result["did_you_mean"] = suggestion
