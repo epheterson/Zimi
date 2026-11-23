@@ -21,10 +21,24 @@ def _imports(path):
 
 
 def test_the_hd_job_installs_what_the_build_imports():
-    third = {m for m in _imports(os.path.join(ROOT, "scripts", "build_almanac_hd.py")) if m not in STDLIB and m != "zimi"}
-    wf = open(os.path.join(ROOT, ".github", "workflows", "almanac-hd.yml"), encoding="utf-8").read()
+    scripts = os.path.join(ROOT, "scripts")
+    local = {
+        f[:-3] for f in os.listdir(scripts) if f.endswith(".py")
+    }  # build_terrain: this build's own module, whose imports count too
+    mods = set(_imports(os.path.join(scripts, "build_almanac_hd.py"))) | set(
+        _imports(os.path.join(scripts, "build_terrain.py"))
+    )
+    third = {m for m in mods if m not in STDLIB and m != "zimi" and m not in local}
+    wf = open(
+        os.path.join(ROOT, ".github", "workflows", "almanac-hd.yml"), encoding="utf-8"
+    ).read()
     installs = " ".join(re.findall(r"pip install ([^\n]+)", wf)).lower()
     if "-r requirements.txt" in installs:
-        installs += " " + open(os.path.join(ROOT, "requirements.txt"), encoding="utf-8").read().lower()
+        installs += (
+            " "
+            + open(os.path.join(ROOT, "requirements.txt"), encoding="utf-8")
+            .read()
+            .lower()
+        )
     missing = [m for m in sorted(third) if PIP_NAME.get(m, m).lower() not in installs]
     assert not missing, missing

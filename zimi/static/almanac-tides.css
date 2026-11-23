@@ -29,6 +29,7 @@
 .at-datum { stroke: var(--border); stroke-dasharray: 3 4; }
 .at-dot { stroke: var(--bg); stroke-width: 2; }
 .at-dot:not(.next) { opacity: 0.7; }
+.at-dot.at-yield { opacity: 0; }
 .at-dot.hi { fill: var(--at-water-line); }
 .at-dot.lo { fill: var(--text3); }
 .at-now { stroke: var(--amber); stroke-width: 1.5; }
@@ -55,7 +56,8 @@
 .at-m-bar { width: 72%; max-width: 10px; min-height: 2px; border-radius: 2px 2px 0 0; background: var(--at-water); opacity: 0.4; }
 .at-m-day:hover .at-m-bar, .at-m-day:focus-visible .at-m-bar { opacity: 0.9; }
 .at-m-day:focus-visible { outline: 2px solid var(--amber); outline-offset: 1px; border-radius: 3px; }
-.at-m-day.on .at-m-bar { background: var(--amber); opacity: 1; }
+.at-m-day.on .at-m-bar, .at-m-day.at-scrub .at-m-bar { background: var(--amber); opacity: 1; }
+.at-m-row { touch-action: none; }
 .at-m-n { height: 12px; font-size: 10px; line-height: 12px; font-variant-numeric: tabular-nums; white-space: nowrap; }
 .at-m-day.on .at-m-n { color: var(--amber); }
 

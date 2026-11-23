@@ -92,7 +92,7 @@ var ZimiGameSky = (function () {
     if (!AlmanacSkyView.mount(host, { lat: lat, lon: lon, name: '' })) { restore(); root.remove(); answer(false); return; }
     var credit = AlmanacSkyView.credit && AlmanacSkyView.credit();
     if (credit) root.appendChild(el('p', 'gamesky-credit', credit));
-    var view = { az: num(d.az, lat >= 0 ? 180 : 0), alt: num(d.alt, ALT_START), fov: num(d.fov, FOV_START) };
+    var view = { az: num(d.az, _osDefaultHeading(lat)), alt: num(d.alt, ALT_START), fov: num(d.fov, FOV_START) };
     var motion = null;   // the phone's reading while it drives the view: {sn, target, smooth, trim, raf, last, got, on, off, wait}
     function apply() {
       view.fov = Math.max(FOV_MIN, Math.min(FOV_MAX, view.fov)); view.alt = Math.max(-ALT_MAX, Math.min(ALT_MAX, view.alt));

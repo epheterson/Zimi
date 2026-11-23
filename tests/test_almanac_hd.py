@@ -7,6 +7,7 @@ import json
 import os
 import sys
 import time
+import urllib.error
 
 import pytest
 
@@ -22,10 +23,19 @@ REL = {
 }
 
 
+@pytest.fixture(autouse=True)
+def _fresh_queue_memory(monkeypatch):
+    """What an earlier test queued is not on its way in this one."""
+    monkeypatch.setattr(almanachd, "_just_queued", {})
+
+
 @pytest.fixture
 def hd(tmp_path, monkeypatch):
+    monkeypatch.setattr(almanachd, "ESTIMATE_FROM_VERSION", (0, 0, 0))   # these tests' version is built from the pin
     monkeypatch.setattr(almanachd, "release", lambda read=False: REL)
     monkeypatch.setattr(almanachd, "installed", lambda: False)
+    monkeypatch.setattr(almanachd, "present", lambda: None)  # not what an earlier test left in the library
+    monkeypatch.setattr(almanachd, "parts_present", lambda: {})
     monkeypatch.setattr(almanachd.POLICY, "_offline", lambda: False)
     monkeypatch.delenv(almanachd.ENV, raising=False)
     saved = {}
@@ -259,6 +269,7 @@ def manifest(monkeypatch):
         manage, "_write_app_update_prefs", lambda **kw: saved.update(kw)
     )
     monkeypatch.setattr(almanachd, "installed", lambda: False)
+    monkeypatch.setattr(almanachd, "ESTIMATE_FROM_VERSION", (0, 0, 0))
     monkeypatch.setattr(
         almanachd, "_manifest", {"rel": None, "tried": 0.0, "busy": False}
     )
@@ -267,8 +278,8 @@ def manifest(monkeypatch):
 
     def urlopen(req, timeout=None, context=None):
         asked.append(req.full_url)
-        if box["body"] is None:
-            raise OSError("404")
+        if box["body"] is None:   # the release has no such file: GitHub answers 404
+            raise urllib.error.HTTPError(req.full_url, 404, "Not Found", {}, None)
         return _Resp(box["body"])
 
     monkeypatch.setattr(almanachd.urllib.request, "urlopen", urlopen)
@@ -331,7 +342,9 @@ def test_yes_reads_the_manifest_of_its_own_versions_release_then_downloads_and_c
 
 def test_a_dev_build_with_no_release_manifest_fetches_nothing(manifest):
     assert almanachd.start() == (None, "unavailable")
-    assert almanachd.status()["offer"]["approx"] is True and len(manifest["asked"]) == 1
+    # Asked, and the release names none: the Almanac says so rather than offering a download that cannot come.
+    st = almanachd.status()
+    assert st["missing"] and st["offer"] is None and len(manifest["asked"]) == 1
 
 
 def test_a_manifest_for_another_version_or_a_strange_file_is_no_offer(manifest):
@@ -427,3 +440,59 @@ def test_a_finished_download_is_not_the_one_under_way(monkeypatch):
     assert almanachd._downloading() is None
     monkeypatch.setattr(library, "_active_downloads", {"d1": done, "d2": live})
     assert almanachd._downloading() is live
+def _part(name, size=900_000_000):
+    return {
+        "part": name,
+        "file": "zimi_almanac_hd_%s_2026-11.zim" % name,
+        "size": size,
+        "sha256": "cd" * 32,
+    }
+
+
+def _set(monkeypatch, rel, core=False, have=()):
+    monkeypatch.setattr(almanachd, "release", lambda read=False: rel)
+    monkeypatch.setattr(almanachd, "present", lambda: "zimi_almanac_maxi" if core else None)
+    monkeypatch.setattr(almanachd, "installed", lambda: core)
+    monkeypatch.setattr(almanachd, "parts_present", lambda: {p: "zimi_almanac_hd_%s" % p for p in have})
+    monkeypatch.setattr(almanachd, "_downloading_all", lambda: [])
+    monkeypatch.setattr(almanachd, "_installed_path", lambda name: "/lib/%s_2026-11.zim" % name)
+
+
+def test_hd_is_offered_first_and_fetched_alone(hd, monkeypatch):
+    rel = dict(REL, max={"file": "zimi_almanac_ultra_2026-11.zim", "size": 4_000_000_000, "sha256": "cd" * 32,
+                         "chunks": [{"file": "zimi_almanac_ultra_2026-11.zimaa", "size": 2_000_000_000, "sha256": "01" * 32},
+                                    {"file": "zimi_almanac_ultra_2026-11.zimab", "size": 2_000_000_000, "sha256": "02" * 32}]})
+    _set(monkeypatch, rel)
+    st = almanachd.status()
+    assert st["offer"]["size"] == REL["size"] and st["offers"]["max"]["size"] == 4_000_000_000
+    almanachd.start(None)
+    assert [q["filename"] for q in hd] == [REL["file"]]
+
+
+def test_every_part_is_a_data_pack_so_it_is_never_on_home_or_searched():
+    from zimi import server
+
+    for part in almanachd.PARTS:
+        assert almanachd.part_name(part) in server.DATA_PACKS, part
+
+
+def test_almanac_hd_tiles_and_lists_are_never_rate_limited():
+    from zimi import http
+
+    for path in (
+        "/w/zimi_almanac_maxi/hd/earth/day/7/12/33.webp",
+        "/w/zimi_almanac_maxi/hd/hd.json",
+        "/w/zimi_almanac_hd_moon/moon/albedo/9/401/220.webp",
+        "/w/zimi_almanac_hd_moon/hd.json",
+        "/w/zimi_almanac_hd/planets/mars/5/3/4.webp",
+        "/w/zimi_almanac_ultra/hd/planets/mars/7/3/4.webp",
+        "/w/zimi_almanac_ultra/hd/hd.json",
+    ):
+        assert http._rate_class(path)[0] is False, path
+    # An ordinary page's sub-resources, even the Almanac's own, stay on the content budget.
+    for path in (
+        "/w/zimi_almanac/static/x.webp",
+        "/w/wikipedia/A/Moon",
+        "/w/zimi_games/thumbs/a.webp",
+    ):
+        assert http._rate_class(path)[0] is True, path

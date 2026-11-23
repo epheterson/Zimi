@@ -768,6 +768,7 @@ var AT_LABEL_BESIDE_DX = 18;              // a floor trough's label stands this 
 var AT_LABEL_BELOW_DY = 16;               // a trough's label hangs this far under its dot
 var AT_SAME_TURN_MS = 10 * 60000;        // two searches find one turn this close together
 var AT_DOT_R = 3, AT_DOT_R_NEXT = 4.5;   // a turn's dot; the next turn's is larger
+var AT_NOW_DOT_R = 5;   // the clock's dot
 function _atCurveSvg(st, day, focus, next) {
   var pts = [], lo = 0, hi = (st.mhhw || (st.refrec && st.refrec.mhhw) || 0) / 1000;
   for (var t0 = day.start; t0 <= day.end; t0 += AT_CURVE_STEP_MS) {
@@ -836,9 +837,11 @@ function _atCurveSvg(st, day, focus, next) {
   var desc = day.turns.map(function(e) { return t(e.high ? 'alm_tide_high' : 'alm_tide_low') + ' ' + _atTime(e.t, day.tz) + ' ' + _atHeight(e.h); }).join(', ');
   var fx = Math.max(0, Math.min(W, X(focus))), fh = day.p.height(focus);
   var inDay = focus >= day.start && focus <= day.end;
+  // The line runs from the clock's dot down to the axis, so it never crosses a crest's time above the curve.
+  var fy = (isFinite(fh) ? Y(fh) : bot).toFixed(1);
   var nowLine = '<g id="at-now"' + (inDay ? '' : ' style="display:none"') + '>' +
-    '<line class="at-now" id="at-now-line" x1="' + fx.toFixed(1) + '" x2="' + fx.toFixed(1) + '" y1="' + (top / 2) + '" y2="' + bot + '"/>' +
-    '<circle class="at-now-dot" id="at-now-dot" cx="' + fx.toFixed(1) + '" cy="' + (isFinite(fh) ? Y(fh) : bot).toFixed(1) + '" r="5"/></g>';
+    '<line class="at-now" id="at-now-line" x1="' + fx.toFixed(1) + '" x2="' + fx.toFixed(1) + '" y1="' + fy + '" y2="' + bot + '"/>' +
+    '<circle class="at-now-dot" id="at-now-dot" cx="' + fx.toFixed(1) + '" cy="' + fy + '" r="' + AT_NOW_DOT_R + '"/></g>';
   return '<svg viewBox="0 0 ' + W + ' ' + H + '" height="' + H + '" role="img" aria-label="' + _almEsc(desc) + '">' +
     '<defs><linearGradient id="at-water" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="var(--at-water)" stop-opacity="0.42"/>' +
     '<stop offset="1" stop-color="var(--at-water)" stop-opacity="0.04"/></linearGradient></defs>' +
@@ -925,6 +928,45 @@ function _atGoDay(k) {
   if (!k) return;
   _almScrubSettle(new Date(_almFocusInstant().getTime() + k * AT_MS_DAY), { land: true });
 }
+
+// The month's bars are 12px wide, so none is a target of its own: a press and drag along the strip picks the day under
+// the finger (it lights and its date and range read out in the strip's title) and letting go goes there.
+var _atScrub = null;
+function _atScrubBar(row, x) {
+  var bars = row.querySelectorAll('.at-m-day'), r = row.getBoundingClientRect();
+  return bars[Math.min(bars.length - 1, Math.max(0, Math.floor((x - r.left) / r.width * bars.length)))];
+}
+function _atScrubTo(x) {
+  var bar = _atScrubBar(_atScrub.row, x);
+  if (bar === _atScrub.bar) return;
+  if (_atScrub.bar) _atScrub.bar.classList.remove('at-scrub');
+  _atScrub.bar = bar;
+  bar.classList.add('at-scrub');
+  _atScrub.title.textContent = bar.getAttribute('aria-label');
+}
+function _atScrubEnd(go) {
+  var s = _atScrub;
+  _atScrub = null;
+  if (!s) return;
+  if (s.bar) s.bar.classList.remove('at-scrub');
+  s.title.textContent = s.was;
+  if (go && s.bar) s.bar.click();
+}
+document.addEventListener('pointerdown', function(e) {
+  var row = e.target.closest && e.target.closest('.at-m-row');
+  if (!row || (e.pointerType === 'mouse' && e.button)) return;
+  var title = row.parentNode.querySelector('.at-sub');
+  _atScrub = { row: row, pid: e.pointerId, bar: null, title: title, was: title.textContent };
+  try { row.setPointerCapture(e.pointerId); } catch (err) { /* the pointer is already gone */ }
+  _atScrubTo(e.clientX);
+});
+document.addEventListener('pointermove', function(e) { if (_atScrub && e.pointerId === _atScrub.pid) _atScrubTo(e.clientX); });
+document.addEventListener('pointerup', function(e) { if (_atScrub && e.pointerId === _atScrub.pid) _atScrubEnd(true); });
+document.addEventListener('pointercancel', function(e) { if (_atScrub && e.pointerId === _atScrub.pid) _atScrubEnd(false); });
+// The click a press leaves behind is the scrub's already; a key's click (no pointer, detail 0) still goes to its bar.
+document.addEventListener('click', function(e) {
+  if (e.isTrusted && e.detail && e.target.closest && e.target.closest('.at-m-row')) { e.stopPropagation(); e.preventDefault(); }
+}, true);
 
 // ── Why: the Earth from above, and the water's two bulges ───────────────────
 // Seen from above the North Pole, the Sun off to the right, the Moon where its
@@ -1072,11 +1114,12 @@ function _atTravel(focus) {
   if (!c || !g) return;
   var inDay = ms >= c.start && ms <= c.end;
   g.style.display = inDay ? '' : 'none';
-  if (!inDay) return;
+  if (!inDay) return false;   // the clock has left the drawn day: the caller may draw the new one (almanac.js _almTravelLive)
   var x = c.X(ms).toFixed(1), h = c.p.height(ms);
   var line = _atEl('at-now-line'), dot = _atEl('at-now-dot');
   line.setAttribute('x1', x); line.setAttribute('x2', x);
   var y = isFinite(h) ? c.Y(h) : c.bot;
+  line.setAttribute('y1', y.toFixed(1));
   dot.setAttribute('cx', x); dot.setAttribute('cy', y.toFixed(1));
   _atYieldLabels(+x, y);
 }
@@ -1092,13 +1135,23 @@ function _atMeasureLabels(host) {
   svg.querySelectorAll('.at-turn-l, .at-turn-h').forEach(function(el) {
     try { var b = el.getBBox(); _at.labels.push({ el: el, x0: b.x, x1: b.x + b.width, y0: b.y, y1: b.y + b.height }); } catch (e) {}
   });
+  _at.dots = Array.from(svg.querySelectorAll('.at-dot')).map(function(el) {
+    return { el: el, x: +el.getAttribute('cx'), y: +el.getAttribute('cy'), r: +el.getAttribute('r') };
+  });
   var dot = _atEl('at-now-dot'), g = _atEl('at-now');
   if (dot && g && g.style.display !== 'none') _atYieldLabels(+dot.getAttribute('cx'), +dot.getAttribute('cy'));
 }
 function _atYieldLabels(x, y) {
+  // A time yields to the clock's dot, and to its line (which runs down from the dot to the axis): under a trough the line
+  // would cross the time written there.
   (_at.labels || []).forEach(function(l) {
-    var on = l.x0 < x + AT_YIELD_GAP && x - AT_YIELD_GAP < l.x1 && l.y0 < y + AT_YIELD_GAP && y - AT_YIELD_GAP < l.y1;
+    var on = l.x0 < x + AT_YIELD_GAP && x - AT_YIELD_GAP < l.x1 && l.y1 > y - AT_YIELD_GAP;
     if (l.on !== on) { l.on = on; l.el.classList.toggle('at-yield', on); }
+  });
+  // A turn's dot the clock's dot sits on is the same mark: it steps back rather than peep out from behind it.
+  (_at.dots || []).forEach(function(d) {
+    var on = Math.hypot(d.x - x, d.y - y) < d.r + AT_NOW_DOT_R;
+    if (d.on !== on) { d.on = on; d.el.classList.toggle('at-yield', on); }
   });
 }
 

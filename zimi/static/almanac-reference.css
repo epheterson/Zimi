@@ -24,15 +24,14 @@
   display: inline-flex; align-items: center; justify-content: center; width: 44px; min-height: 44px; padding: 0;
   border: 0; border-radius: 10px; background: none; color: var(--text2); font: inherit; cursor: pointer;
 }
-.tb-bar-end { display: inline-flex; align-items: center; }
+.tb-bar-end { display: inline-flex; align-items: center; margin-inline-end: calc(var(--tb-gutter) - 4px); }  /* the last button's box (the tinted square) ends on the content edge: the bar's own padding is 4 */
 .tb-back:hover, .tb-back:focus-visible { color: var(--amber); background: var(--amber-glow); }
 .tb-back:focus-visible, .tb-tab:focus-visible { outline: 2px solid var(--amber); outline-offset: -2px; }
 [dir="rtl"] .tb-chev { transform: scaleX(-1); }
 .tb-tabs {
-  display: flex; gap: 2px; overflow-x: auto; padding: 0 var(--tb-gutter); scrollbar-width: none;
+  display: flex; gap: 2px; overflow-x: auto; padding: 0 var(--tb-gutter);
   -webkit-overflow-scrolling: touch; scroll-padding-inline: var(--tb-gutter);
 }
-.tb-tabs::-webkit-scrollbar { display: none; }
 .tb-tab {
   flex: none; min-height: 40px; padding: 0 10px; border: 0; border-bottom: 2px solid transparent; background: none;
   color: var(--text2); font: inherit; font-size: 13px; white-space: nowrap; cursor: pointer;
@@ -134,6 +133,7 @@
 /* Constants: the name and the source wrap, the value and its unit stay whole. */
 .tb-consts th[scope="row"], .tb-consts .tb-src { white-space: normal; text-align: start; }
 .tb-consts .tb-src { font-size: 12px; color: var(--text2); min-width: 64px; }
+.tb-consts td.tb-prose { white-space: normal; text-align: start; min-width: 9em; overflow-wrap: anywhere; }
 .tb-consts thead th:last-child { text-align: start; }
 .tb-table td:has(> .tb-txt) { text-align: start; }
 .tb-mono { font-family: var(--tb-mono); font-size: 12px; }
@@ -183,7 +183,7 @@
 .tb-eqs > summary { padding: 10px 0; font-weight: 600; color: var(--text); cursor: pointer; }
 .tb-eq { margin: 4px 0 10px; break-inside: avoid; }
 .tb-eq-l { font-size: 11.5px; color: var(--text3); }
-.tb-eq-m { overflow-x: auto; overflow-y: hidden; padding: 2px 0; color: var(--text); scrollbar-width: thin; }
+.tb-eq-m { overflow-x: auto; overflow-y: hidden; padding: 2px 0; color: var(--text); }
 .tb-eq-m math { font-size: 15px; margin: 0; }
 .tb-eq-m math.tml-display { display: block math; width: max-content; min-width: 100%; text-align: start; }
 .tb-eq-src { font-size: 11.5px; white-space: pre-wrap; overflow-wrap: anywhere; color: var(--text2); }
@@ -236,9 +236,8 @@
 /* Segments: one of a few, the chosen one lifted. */
 .tk-seg {
   display: inline-flex; padding: 3px; gap: 2px; border-radius: 11px; background: var(--surface); border: 1px solid var(--border);
-  max-width: 100%; overflow-x: auto; scrollbar-width: none;
+  max-width: 100%; overflow-x: auto;
 }
-.tk-seg::-webkit-scrollbar { display: none; }
 .tb-controls > .tk-seg { display: flex; }
 .tb-controls > .tk-seg button { flex: 1 1 0; }
 .tk-seg button {
@@ -524,7 +523,7 @@
 @media print {
   html.alm-book-print #almanac-content > *:not(#alm-book) { display: none !important; }
   html.alm-book-print .alm-book { display: block !important; position: static !important; overflow: visible !important; }
-  .tb-book-foot { position: fixed; bottom: 0; inset-inline: 0; color: #333; font-size: 8pt; }
+  .tb-book-foot { position: fixed; bottom: -14mm; inset-inline: 0; color: #333; font-size: 8pt; }   /* in the page's bottom margin (18mm), not over the last row of the content */
 }
 /* Paper: an article link is no use on a page, so its dots do not print. */
 @media print {

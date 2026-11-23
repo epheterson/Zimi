@@ -51,11 +51,12 @@ const S = {
   matchMedia() { return { matches: false, addEventListener() {} }; }
 };
 vm.createContext(S);
+S._almAsset = (p) => p;   // app.js: a /static address with its version; here, as it is
 vm.runInContext(require("./sk.cjs")(), S);   // app.js SK, loaded before every Almanac file
 vm.runInContext('var _currentLang = "en"; function t(k) { return k; } var _almanacOpen = false;', S);
 vm.runInContext(fs.readFileSync(path.join(STATIC, 'almanac-orrery.js'), 'utf8'), S);
 vm.runInContext(require('./moon_model.cjs')(), S);
-for (const f of ['almanac.js', 'almanac-ephem.js', 'almanac-earth.js', 'almanac-navdata.js', 'almanac-reference.js']) {
+for (const f of ['almanac.js', 'almanac-vsop87.js', 'almanac-ephem.js', 'almanac-earth.js', 'almanac-navdata.js', 'almanac-reference.js']) {
   vm.runInContext(fs.readFileSync(path.join(STATIC, f), 'utf8'), S);
 }
 

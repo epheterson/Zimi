@@ -35,7 +35,8 @@ import pytest
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-GL_ARGS = ["--use-angle=swiftshader", "--enable-unsafe-swiftshader", "--disable-accelerated-2d-canvas"]
+from browser_slots import WEBGL_ARGS
+GL_ARGS = WEBGL_ARGS + ['--disable-accelerated-2d-canvas']
 VIEW = {"width": 390, "height": 844}
 SF = {"lat": 37.8063, "lon": -122.4659, "name": "San Francisco"}
 PENSACOLA = {"lat": 30.4044, "lon": -87.2112, "name": "Pensacola"}
@@ -136,7 +137,7 @@ def _top(pg, sel):
         (
             ".alm-about",
             "() => document.getElementById('almanac-rosetta').children.length > 0",
-            "**/static/rosetta/manifest.json",
+            "**/static/rosetta/manifest.json*",   # the URL carries a content hash query (4f16d22d7)
         ),
     ],
 )
@@ -294,20 +295,28 @@ def test_the_tide_follows_the_one_clock(browser, served):
             pg.evaluate("document.getElementById('at-now-line').getAttribute('x1')")
         )
         assert x1 > x0 + 10, (x0, x1)
-        # Five days on: the Moon has gone round.
-        pg.evaluate("_almTravelLive(new Date('2026-10-06T21:00:00Z'))")
+        # The frame drew nothing new within the day: the same section element.
+        assert pg.evaluate(
+            "document.querySelector('#almanac-place .at-section')._mark === 1"
+        )
+        # Five days on, as the clock sends it (its moment is the page's): the Moon has gone round, and the day left behind
+        # is drawn again as the new one while the clock still runs (tides could update before it stops).
+        pg.evaluate("_almFocus = new Date('2026-10-06T21:00:00Z'); _almTravelLive(_almFocus)")
         assert (
             pg.evaluate(
                 "document.getElementById('at-fig-moon').getAttribute('transform')"
             )
             != moon0
         )
-        # The day's line hides once the frame leaves the day drawn.
+        assert pg.evaluate("!document.querySelector('#almanac-place .at-section')._mark"), "the new day is drawn"
+        assert pg.evaluate("_at.curve.start <= _almFocus.getTime() && _almFocus.getTime() <= _at.curve.end")
+        assert pg.evaluate("document.getElementById('at-now').style.display") != "none"
+        # At the low level the tide's day waits for the clock to stop: the line hides, nothing is drawn again.
+        pg.evaluate("ZimiCap.set('light'); document.querySelector('#almanac-place .at-section')._mark = 2; _almTravelThrottleAt = {};"
+                    " _almFocus = new Date('2026-10-12T21:00:00Z'); _almTravelLive(_almFocus)")
+        assert pg.evaluate("document.querySelector('#almanac-place .at-section')._mark === 2")
         assert pg.evaluate("document.getElementById('at-now').style.display") == "none"
-        # The frames drew nothing new: the same section element.
-        assert pg.evaluate(
-            "document.querySelector('#almanac-place .at-section')._mark === 1"
-        )
+        pg.evaluate("ZimiCap.set('full')")
         # A bar is a day to go to: three days on, the same time of day.
         pg.evaluate("_almClockSetRate(0); _almScrubSettle(new Date('2026-10-01T19:00:00Z'))")
         pg.locator(".at-m-day").nth(14 + 3).click()

@@ -13,12 +13,8 @@ import pytest
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 SF = '{"lat":37.77,"lon":-122.42,"name":"San Francisco"}'
-GL_ARGS = [
-    "--use-angle=swiftshader",
-    "--enable-unsafe-swiftshader",
-    "--disable-accelerated-2d-canvas",
-    "--ignore-gpu-blocklist",
-]
+from browser_slots import WEBGL_ARGS
+GL_ARGS = WEBGL_ARGS + ['--disable-accelerated-2d-canvas']
 READY_MS = 180_000
 WRITE_WAIT_MS = 1200  # ALM_LINK_MS twice over, for a slow machine
 WRITE_WAIT_TIMEOUT_MS = 20_000  # a shared CI runner under swiftshader can be ten times slower than that
@@ -131,7 +127,7 @@ def test_the_moment_rate_scroll_and_3d_view_come_back_from_the_link(browser, ser
         pg.evaluate("() => _aePreset('mars')")
         pg.wait_for_function("() => _ae.target === 'mars' && !_ae.fly", timeout=60_000)
         pg.evaluate(
-            """() => { _ae.dist = _ae.dist * 0.5; _ae.az = _aeRad(40); _ae.el_ = _aeRad(-20);
+            """() => { _ae.dist = _ae.dist * 0.75; _ae.az = _aeRad(40); _ae.el_ = _aeRad(-20);
             _ae.pan = { t: 'mars', v: [0.05, -0.04, 0.02] }; _ae.preset = null; _ae.dirty = true; _aeKick(); }"""
         )
         want = pg.evaluate(
@@ -251,6 +247,9 @@ def test_nonsense_in_the_address_changes_nothing_and_breaks_nothing(
         assert pg.evaluate("() => _almanacOpen") is True
         r = pg.evaluate("() => _almRate")
         assert r == 1 or abs(r) <= 31557600, r
+        # A bad p= brought no place; a bad t= left the clock live or on a real instant, never an Invalid Date.
+        assert pg.evaluate("() => _almLinkPlace") is None
+        assert pg.evaluate("() => _almFocus === null || !isNaN(_almFocus.getTime())") is True
         assert not errors, errors
         if "v=mars" in bad:
             _view_ready(pg)
@@ -280,17 +279,5 @@ def test_a_link_to_the_station_or_a_probe_comes_back_there(browser, served, view
         ctx.close()
 
 
-def test_the_almanac_s_icon_in_the_header_closes_the_3d_view(browser, served):
-    """Over the Almanac, a tap on its icon in Zimi's header does what the back arrow does: the 3D view closes, the Almanac
-    stays."""
-    errors = []
-    ctx, pg = _open(browser, served, errors=errors)
-    try:
-        pg.wait_for_function("() => typeof openAlmanacEarth === 'function'", timeout=120_000)
-        pg.evaluate("() => openAlmanacEarth({ from: 'sky' })")
-        _view_ready(pg)
-        pg.click("#bc-icon")
-        pg.wait_for_function("() => !_aeIsOpen && _almanacOpen", timeout=10_000)
-        assert not errors, errors
-    finally:
-        ctx.close()
+# (No test for the header's Almanac icon closing the 3D view: since 6dad6206 the 3D view has no page bar, and its own
+# back circle is the way out, which the 3D tests drive by touch.)

@@ -22,6 +22,8 @@ const ROOT = path.join(__dirname, '..');
 const src = fs.readFileSync(path.join(ROOT, 'zimi', 'static', 'almanac-tides.js'), 'utf8');
 // In this context, not a fresh one: a contextified global makes every Math
 // call inside the synthesis loop many times slower.
+// The file also wires the page's pointer gestures; here there is no page, and only the maths is read.
+globalThis.document = { addEventListener() {} };
 const S = vm.runInThisContext('(function () {\n' + src + '\nreturn { TideMath: TideMath };\n})')();
 const TM = S.TideMath;
 const snap = JSON.parse(zlib.gunzipSync(fs.readFileSync(path.join(ROOT, 'zimi', 'assets', 'tides-snapshot.json.gz'))));

@@ -10,7 +10,8 @@
 <link rel="stylesheet" href="almanac.css">
 <script>document.documentElement.classList.add('js');</script>
 <script src="local.js"></script>
-<script src="zimihome.js"></script>
+<link rel="stylesheet" href="zimifooter.css">
+<script src="zimifooter.js"></script>
 <script src="zimibuild.js"></script>
 <style>
   /* The Almanac keeps its dark night-sky look in every reader. These are the
@@ -34,9 +35,6 @@
   .almanac-view:not(.open) { visibility: hidden; }
   .almanac-view.open { animation: almIn 0.15s ease; }
   @keyframes almIn { from { opacity: 0; } to { opacity: 1; } }
-  /* the veil's rules come from Zimi's app.css (shell.css); its turn and the reduced-motion rule are written here */
-  @keyframes almVeilTurn { to { transform: rotate(360deg); } }
-  @media (prefers-reduced-motion: reduce) { .alm-veil { transition: none; } .alm-veil-moon { animation: none; } }
   /* Without scripts (Kiwix JS in its restricted mode strips them) the page has nothing to draw: this line says why. */
   html.js .alm-nojs { display: none; }
   .alm-nojs { display: block; margin: 40vh auto 0; padding: 0 24px; max-width: 28em; font-size: 13px; color: var(--text2); text-align: center; }
@@ -44,14 +42,6 @@
   :root { --host-bottom: 0px; }
   .almanac-view { bottom: var(--host-bottom); }
   html .ae-spin-full, html .almanac-look, html .tk-pop.tk-sheet, html .tk-scrim, html .gr-lightbox { bottom: var(--host-bottom); }
-  /* The credit line (_almHomeLine) under the footer's own sentence, the page's last, in the Games' measure: 12px, the mark 13px on the digits beside the name. */
-  .alm-home { display: flex; justify-content: center; align-items: center; margin: 20px auto 0; font-size: 12px; line-height: 16px; color: var(--text2); font-variant-numeric: tabular-nums; }
-  /* The pebble is dark: on the night ground it gets the thin ring the Games give it in dark mode. */
-  .alm-home img { display: inline-block; width: 13px; height: 13px; vertical-align: -2.3px; margin-inline: 0 3px; --mark-ring: rgba(232, 232, 237, 0.28); filter: drop-shadow(1px 0 0 var(--mark-ring)) drop-shadow(-1px 0 0 var(--mark-ring)) drop-shadow(0 1px 0 var(--mark-ring)) drop-shadow(0 -1px 0 var(--mark-ring)); }
-  .alm-home img.alm-mark-end { margin-inline: 3px 0; }
-  .alm-home a { color: inherit; text-decoration: underline; text-decoration-color: rgba(138, 138, 148, 0.45); text-underline-offset: 2px; padding: 14px 12px; margin: -14px -12px; border-radius: 6px; }
-  .alm-home a:hover { color: var(--text); text-decoration-color: currentColor; }
-  .alm-home a:focus-visible { outline: 2px solid var(--amber); outline-offset: -13px; }
   .zimi-toast { position: fixed; bottom: 20px; left: 50%; transform: translateX(-50%); background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: 10px 16px; font-size: 13px; color: var(--text2); z-index: 300; box-shadow: 0 4px 16px rgba(0,0,0,0.3); }
 </style>
 </head>
@@ -60,9 +50,7 @@
 <!-- zimi-almanac: Zimi, reading this page, leaves its own pages alone (it clears fixed full-screen walls from captured sites). -->
 <div id="almanac-view" class="almanac-view zimi-almanac open">
   <div class="almanac-content" id="almanac-content"></div>
-  <!-- The veil (app.css, as shell.css) stands over the page until its first screen is drawn, and goes in one fade (almanac.js). -->
   <p class="alm-nojs">The Almanac needs scripts. In Kiwix JS, turn on ServiceWorker mode in Configuration.</p>
-  <div id="alm-veil" class="alm-veil" role="status"><span class="alm-veil-moon" aria-hidden="true"></span><span class="alm-veil-txt">Loading the Almanac&hellip;</span></div>
 </div>
 <div id="a11y-toast-region" role="status" aria-live="polite" class="sr-only"></div>
 <script>
@@ -181,12 +169,13 @@ window.addEventListener('storage', function(e) { if (e.key && typeof _almPrefsAp
 
 // The page's own files, in the order the Almanac needs them (they share one global scope).
 var ALMANAC_SCRIPTS = [
-  'almanac-links.js', 'almanac-orrery.js', 'almanac-sky.js', 'almanac-skygl.js',
-  'zone-places.js', 'almanac-skyfacts.js', 'almanac.js'
+  'capability.js', 'almanac-links.js', 'almanac-orrery.js', 'almanac-sky.js', 'almanac-skygl.js', 'almanac-onesky.js',
+  'zone-places.js', 'almanac-skyfacts.js', 'almanac-skyscene.js', 'almanac.js'
 ];
 // The 3D view's files come after the page is shown (almanac.js _almLoadEarth), not with it.
-var _ALM_EARTH_SRCS = ['almanac-ephem.js', 'almanac-earth.js'];
+var _ALM_EARTH_SRCS = ['almanac-vsop87.js', 'almanac-ephem.js', 'almanac-earth.js'];
 
+// All at once, run in order.
 function loadScripts(list) {
   return new Promise(function(resolve, reject) {
     list.forEach(function(src, i) {
@@ -202,16 +191,44 @@ function loadScripts(list) {
 
 (function() {
   // A language's strings, or null when they cannot be had (a missing file, a bad answer): English stands under it then.
-  function words(lang) { return fetch('i18n/' + lang + '.json').then(function(r) { return r.ok ? r.json() : null; }).catch(function() { return null; }); }
-  var strings = Promise.all([words('en'), _currentLang === 'en' ? null : words(_currentLang)]).then(function(got) {
+  // A server with few threads (kiwix-serve's four) can refuse or drop a request while it is busy with the page's scripts: that
+  // is asked again, twice, so a busy moment does not leave a French reader with an English page. A file that is not there (404) is final.
+  function words(lang, left) {
+    if (left === undefined) left = 2;
+    var again = function() { return left > 0 ? new Promise(function(r) { setTimeout(r, 400); }).then(function() { return words(lang, left - 1); }) : null; };
+    return fetch('i18n/' + lang + '.json').then(function(r) {
+      if (r.ok) return r.json();
+      return r.status === 404 ? null : again();
+    }).catch(again);
+  }
+  // Home's words and the Almanac's own (i18n/almanac/), one table each language.
+  function table(lang) {
+    return Promise.all([words(lang), words('almanac/' + lang)]).then(function(got) {
+      return got[0] || got[1] ? Object.assign({}, got[0], got[1]) : null;
+    });
+  }
+  var strings = Promise.all([table('en'), _currentLang === 'en' ? null : table(_currentLang)]).then(function(got) {
     _i18nFallback = got[0] || {};
     _i18n = got[1] || _i18nFallback;
   });
-  strings.then(function() { return loadScripts(['shell.js'].concat(ALMANAC_SCRIPTS)); }).then(function() {
+  // The page is there from the first moment: the shell (it holds the Moon's phase, the date's words) and the strings are
+  // all its first frame needs. The rest of the page's files come down beside them and are read after that frame has been
+  // painted (a megabyte of script is seconds of a phone's main thread), then the page is drawn over its first frame.
+  // The first frame's two requests (the strings, shell.js) are asked for before the other ten: a server with few threads
+  // (kiwix-serve's four) answers in the order it was asked, and the first frame must not stand behind the page's scripts.
+  var shell = loadScripts(['shell.js']);
+  ALMANAC_SCRIPTS.forEach(function(src) {
+    var l = document.createElement('link');
+    l.rel = 'preload'; l.as = 'script'; l.href = src;
+    document.head.appendChild(l);
+  });
+  Promise.all([strings, shell]).then(function() {
+    _almFirstFrame();
+    return _afterPaint();
+  }).then(function() { return loadScripts(ALMANAC_SCRIPTS); }).then(function() {
     _openAlmanacInner(true);
   }).catch(function(e) {
-    var el = document.getElementById('almanac-content'), veil = document.getElementById('alm-veil');
-    if (veil) veil.remove();
+    var el = document.getElementById('almanac-content');
     if (el) el.innerHTML = '<p style="margin:auto;padding:24px;text-align:center;color:var(--text2)">The Almanac could not start (' + _htmlEsc(e && e.message) + ').</p>';
     console.error(e);
   });

@@ -22,12 +22,8 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, os.path.dirname(HERE))
 sys.path.insert(0, HERE)
 
-GL_ARGS = [
-    "--use-angle=swiftshader",
-    "--enable-unsafe-swiftshader",
-    "--disable-accelerated-2d-canvas",
-    "--ignore-gpu-blocklist",
-]
+from browser_slots import WEBGL_ARGS
+GL_ARGS = WEBGL_ARGS + ['--disable-accelerated-2d-canvas']
 VIEW = {"width": 390, "height": 844}
 PLACE = '{"lat":37.77,"lon":-122.42,"name":"San Francisco"}'
 READY_MS = 240_000
@@ -144,8 +140,8 @@ def _open(browser, base, view=VIEW):
 
 
 def _type(pg, text):
-    pg.click("#ae-go-btn")
-    pg.wait_for_selector("#ae-go-q", state="visible")
+    pg.click("#ae-find")
+    pg.wait_for_selector("#ae-go", state="visible")
     pg.wait_for_function("() => !!_aeLm", timeout=60_000)
     pg.fill("#ae-go-q", text)
 
@@ -199,9 +195,9 @@ def test_go_to_a_town_flies_over_it_and_its_card_previews_its_article(library):
             rows = _rows(pg)
             # The larger Paris first, with where it is; the other after it.
             assert "France" in rows[0] and "Texas" in rows[1], rows
-            # The groups give way while something is typed.
-            assert pg.evaluate("document.getElementById('ae-go-groups').hidden")
-            pg.click("#ae-go-found .ae-go-row:nth-child(1)")
+            # No body answers to Paris: the bodies give way to the places.
+            assert pg.evaluate("document.getElementById('ae-go-groups').children.length") == 0
+            pg.click("#ae-go-found .ae-go-item:nth-child(1) .ae-go-row")
             _landed(pg)
             assert _camera_off_deg(pg, *PARIS) < MAX_OFF_DEG
             assert pg.evaluate("_ae.target") == "earth"
@@ -229,7 +225,7 @@ def test_go_to_a_town_flies_over_it_and_its_card_previews_its_article(library):
                 "() => document.querySelectorAll('#ae-go-found .ae-go-row').length >= 2",
                 timeout=30_000,
             )
-            pg.click("#ae-go-found .ae-go-row:nth-child(2)")
+            pg.click("#ae-go-found .ae-go-item:nth-child(2) .ae-go-row")
             _landed(pg)
             assert _camera_off_deg(pg, *TEXAS) < MAX_OFF_DEG
             pg.wait_for_function(
@@ -272,7 +268,9 @@ def test_a_landmark_is_offered_with_the_towns_and_its_card_links_its_article(lib
             br.close()
 
 
-def test_with_no_map_installed_the_landmarks_answer_and_nothing_else_is_said(no_map):
+def test_with_no_map_installed_the_landmarks_and_big_cities_answer_and_nothing_found_is_said(
+    no_map,
+):
     from playwright.sync_api import sync_playwright
 
     with sync_playwright() as pw:
@@ -284,15 +282,21 @@ def test_with_no_map_installed_the_landmarks_answer_and_nothing_else_is_said(no_
                 "() => document.querySelectorAll('#ae-go-found .ae-go-row').length > 0",
                 timeout=30_000,
             )
-            assert _rows(pg) == ["Mont Blanc"], _rows(pg)
-            # A town of a map: no answer, and no word about it (the sheet is the field and its rows).
+            # The landmark first, then the big cities the Almanac carries (its place picker's).
+            assert _rows(pg)[0] == "Mont Blanc" and "Montreal, Quebec, Canada" in _rows(
+                pg
+            ), _rows(pg)
             pg.fill("#ae-go-q", "Paris")
+            pg.wait_for_timeout(800)
+            assert _rows(pg) == ["Paris, France"], _rows(pg)
+            # Nothing by that name: one line says so.
+            pg.fill("#ae-go-q", "Qzxqzxq")
             pg.wait_for_timeout(800)
             assert _rows(pg) == []
             words = pg.evaluate(
-                "() => document.getElementById('ae-go').innerText.trim()"
+                "() => document.getElementById('ae-go-none').innerText.trim()"   # (the body also holds the pill row since 661848b48)
             )
-            assert words == "", words
+            assert words == pg.evaluate("t('no_results')"), words
             pg.fill("#ae-go-q", "Mont Blanc")
             pg.click("#ae-go-found .ae-go-row")
             _landed(pg)

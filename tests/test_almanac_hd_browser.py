@@ -2,7 +2,7 @@
 
 A small Almanac HD is built here (three levels of solid tiles), served by Zimi, and the Earth view is driven in
 headless Chromium at a phone's size. Without it the view asks for no tile and draws its one map; with it, far away
-it draws level 0, close in the deepest level over what is in sight only, and the body's one map steps aside.
+it draws level 0, close in the deepest level over what is in sight only, and the body's one map stays under them.
 
 Run: pytest tests/test_almanac_hd_browser.py -v
 """
@@ -16,22 +16,23 @@ import pytest
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-GL_ARGS = [
-    "--use-angle=swiftshader",
-    "--enable-unsafe-swiftshader",
-    "--disable-accelerated-2d-canvas",
-    "--ignore-gpu-blocklist",
-]
+from browser_slots import WEBGL_ARGS
+GL_ARGS = WEBGL_ARGS + ['--disable-accelerated-2d-canvas']
 VIEW = {"width": 390, "height": 844}
 PLACE = '{"lat":37.77,"lon":-122.42,"name":"San Francisco"}'
 READY_MS = 240_000
+# A wait for tiles under software GL: frames are the point of these. The view's flights are skipped (reduced motion), so no
+# wait depends on how fast frames come.
+WAIT_MS = 60_000
 INSERT = {"site": "apollo11", "lat": 0.67408, "lon": 23.47297, "z": 2, "x0": 4, "x1": 5, "y0": 0, "y1": 1}
 LEVELS = {"earth/day": 2, "earth/night": 1, "moon/albedo": 1, "moon/relief": 1}
 OFFER = {
     "installed": False,
+    "kind": None,
     "mode": "ask",
     "locked": None,
     "offer": {"file": "zimi_almanac_hd_2026-11.zim", "size": 312_000_000},
+    "offers": {"hd": {"size": 312_000_000}, "max": {"size": 4_820_000_000}},
     "downloading": None,
     "can_change": True,
 }
@@ -138,6 +139,7 @@ def _open_earth(browser, url, route_hd=None, base="/w/zimi_almanac_"):
         has_touch=True,
         is_mobile=True,
         service_workers="block",
+        reduced_motion="reduce",
     )
     ctx.add_init_script(
         "try { localStorage.setItem('zimi_almanac_place', %r); sessionStorage.setItem('zimi_almanac_location', %r);"
@@ -181,7 +183,7 @@ def _open_earth(browser, url, route_hd=None, base="/w/zimi_almanac_"):
 DRAWN = "() => _ae.gl.hd ? _ae.gl.hd.bodies[0].drawn.map(n => n.z) : null"
 
 
-def _settle(pg, js_true, ms=60_000):
+def _settle(pg, js_true, ms=WAIT_MS):
     pg.wait_for_function(
         "() => { _ae.dirty = true; _aeKick(); return (" + js_true + ")(); }",
         timeout=ms,
@@ -198,20 +200,22 @@ def test_tiles_by_view(browser, served):
             assert pg.evaluate("_ae.gl.hd") is None
             assert tiles == []
             assert pg.evaluate("_ae.gl.earth.material.visible") is True
-            assert pg.evaluate("AE_TARGETS.earth.min") == pytest.approx(1.12)
+            # The one base map sets the closest stop (_aeCloseStop: where its texels stay sharp), never nearer than the body's own limit.
+            assert pg.evaluate("AE_TARGETS.earth.floor") == pytest.approx(1.12)
+            assert pg.evaluate("AE_TARGETS.earth.min") == pytest.approx(pg.evaluate("Math.max(AE_TARGETS.earth.floor, _aeSharpMin('earth', _ae.gl))"))
             return
         # A data pack: served to the view, listed nowhere (Home, the library's grid).
         listed = pg.evaluate("() => fetch('/list').then(r => r.json()).then(l => (Array.isArray(l) ? l : l.zims).map(z => z.name))")
         assert not [n for n in listed if n.startswith("zimi_almanac_")], listed
         # Every tile came from where this library keeps them: inside the flavour's hd/, or the tiles-only ZIM's root.
         # The view is ready before its first tiles are asked for (hd.json is read after the satellites answer).
-        pg.wait_for_function("() => _ae.gl.hd && _ae.gl.hd.bodies[0].drawn.length > 0", timeout=60_000, polling=200)
+        pg.wait_for_function("() => _ae.gl.hd && _ae.gl.hd.bodies[0].drawn.length > 0", timeout=WAIT_MS, polling=200)
         assert tiles and all(base in u for u in tiles), (base, tiles[:3])
         # Far: level 0 covers the Earth, and its one map steps aside. Far enough that a level-0 tile covers no more
         # device pixels than it has (nearer, at 8 Earth radii and 2x, level 2 is the right choice, and the old check
         # passed only while level 2's tiles were still on their way), not so far the Earth is under 40 px and asks for
         # none. Worked out from the view's own numbers, the flight in done.
-        pg.wait_for_function("() => { _ae.dirty = true; _aeKick(); return !_ae.fly; }", timeout=60_000, polling=200)
+        pg.wait_for_function("() => { _ae.dirty = true; _aeKick(); return !_ae.fly; }", timeout=WAIT_MS, polling=200)
         far = pg.evaluate("""() => { var d = Math.PI * _aeFocalPx() * _ae.gl.dpr / (AE_HD_TILE_PX * AE_HD_SPLIT) + 2.5;
             _ae.dist = d; _ae.dirty = true; _aeKick(); return { dist: d, radiusPx: _aeFocalPx() / d }; }""")
         assert far["radiusPx"] > 40, far
@@ -221,7 +225,8 @@ def test_tiles_by_view(browser, served):
             + DRAWN
             + ")(); return d && d.length && d.every(z => z === 0); }",
         )
-        assert pg.evaluate("_ae.gl.earth.material.visible") is False
+        # The one map stays under the tiles, refused the pixels they cover (their mark in the stencil): never see-through.
+        assert pg.evaluate("(() => { var m = _ae.gl.earth.material, t = _ae.gl.hd.bodies[0].drawn[0].mesh; return m.visible && m.stencilWrite && m.stencilFunc === AE_THREE_NOT_EQUAL_STENCIL && t.material.stencilZPass === AE_THREE_REPLACE_STENCIL && t.material.stencilRef === m.stencilRef && t.renderOrder < _ae.gl.earth.renderOrder; })()") is True
         # The camera may come nearer with tiles to show it.
         assert pg.evaluate("AE_TARGETS.earth.min") < 1.1
         # Close in over one place: the deepest level, and only what is in sight.
@@ -271,10 +276,10 @@ def test_the_offer_line(browser, served):
         pg.wait_for_function(
             "() => !document.getElementById('ae-hd').hidden", timeout=20_000
         )
-        text = pg.inner_text("#ae-hd")
+        text = pg.evaluate("() => document.getElementById('ae-hd').textContent")
         assert "312" in text and "MB" in text, text
-        assert pg.is_visible("#ae-hd-get") and pg.is_visible("#ae-hd-later")
-        pg.click("#ae-hd-later")
+        pg.wait_for_function("() => /312/.test(_aeCapNow())", timeout=15_000)   # said in the caption slot once the first visit's hint has gone by
+        pg.evaluate("() => document.getElementById('ae-hd-later').click()")   # (its button stays in the page, unseen: the caption and the world sheet press it)
         assert pg.evaluate("document.getElementById('ae-hd').hidden")
         assert pg.evaluate("localStorage.getItem('zimi_alm_hd_later')") == "1"
     finally:
@@ -293,16 +298,44 @@ def test_the_gear_keeps_hd_after_not_now(browser, served, who):
     try:
         pg.wait_for_function("() => !!_ae.hdSt", timeout=20_000)
         if who == "admin":
-            pg.click("#ae-hd-later")
-        pg.click("#ae-gear")
+            pg.evaluate("() => document.getElementById('ae-hd-later').click()")
+        pg.evaluate("() => document.getElementById('ae-gear').click()")   # (its button stays in the page, unseen: the name pill's sheet presses it)
         row = pg.evaluate("() => { var r = document.querySelector('#ae-set-body .ae-set-hd'); return r ? r.innerText : null; }")
-        if who == "never":
-            assert row is None, row
+        if who in ("never", "viewer"):
+            assert row is None, row   # data and downloads are the owner's, in Manage: anyone else is shown the display rows only
         else:
-            assert row and "Sharper Earth, Moon and planets" in row and "312" in row, row
-            assert pg.evaluate("!!document.getElementById('ae-set-hd-get')") == (who == "admin"), row
-            if who == "viewer":
-                assert "runs this Zimi" in row, row
+            assert row and "Sharper Earth, Moon and planets" in row and "312" in row and "Maximum" in row, row
+            enabled = pg.evaluate("Array.prototype.filter.call(document.querySelectorAll('.ae-hd-kind'), r => !r.disabled).length")
+            assert enabled == (2 if who == "admin" else 0), row
+    finally:
+        ctx.close()
+
+
+def test_the_gear_offers_two_sizes_and_choosing_maximum_starts_it(browser, served):
+    """HD installed: the gear marks it and offers Maximum with its size; choosing it asks the server for Maximum."""
+    with_hd, url, base = served
+    if with_hd:
+        pytest.skip("the status is the routed one")
+    st = dict(OFFER, installed=True, kind="hd", offer=None, offers={"max": {"size": 4_820_000_000}})
+    ctx, pg, _tiles = _open_earth(browser, url, route_hd=st)
+    asked = []
+
+    def start(route):
+        asked.append(json.loads(route.request.post_data or "{}"))
+        route.fulfill(status=200, content_type="application/json", body=json.dumps(dict(st, can_change=True)))
+
+    pg.route("**/manage/almanac-hd", start)
+    try:
+        pg.wait_for_function("() => !!_ae.hdSt", timeout=20_000)
+        pg.evaluate("() => document.getElementById('ae-gear').click()")   # (its button stays in the page, unseen: the name pill's sheet presses it)
+        kinds = pg.evaluate("Array.prototype.map.call(document.querySelectorAll('.ae-hd-kind'), r => [r.value, r.checked, r.disabled])")
+        assert kinds == [["hd", True, False], ["max", False, False]], kinds
+        row = pg.inner_text("#ae-set-body .ae-set-hd")
+        assert "Installed" in row and "4.8" in row, row
+        pg.click(".ae-hd-kind[value=max]")
+        pg.wait_for_function("() => true")
+        pg.wait_for_timeout(500)
+        assert asked == [{"start": True, "kind": "max"}], asked
     finally:
         ctx.close()
 
@@ -324,7 +357,7 @@ def test_a_flavour_opened_alone_is_the_almanac_and_the_hd_one_draws_its_own_tile
         ownzims.write_zim(next(o for o in ownzims.OWN if o.name == "zimi_almanac"), str(tmp_path / "zims" / "zimi_almanac_2026-11.zim"))
         httpd = _serve(tmp_path, "without", fresh=False)
         page = "/w/zimi_almanac/index.html?raw=1"
-    ctx = browser.new_context(viewport=VIEW, device_scale_factor=2, has_touch=True, is_mobile=True, service_workers="block")
+    ctx = browser.new_context(viewport=VIEW, device_scale_factor=2, has_touch=True, is_mobile=True, service_workers="block", reduced_motion="reduce")
     ctx.add_init_script("try { localStorage.setItem('zimi_almanac_place', %r); } catch (e) {}" % PLACE)
     pg = ctx.new_page()
     reqs, errors = [], []
@@ -339,8 +372,8 @@ def test_a_flavour_opened_alone_is_the_almanac_and_the_hd_one_draws_its_own_tile
             pg.wait_for_timeout(2500)
             assert pg.evaluate("_ae.gl.hd") is None and not [u for u in reqs if "/hd/" in u and u.endswith(".webp")]
         else:
-            pg.wait_for_function("() => { _ae.dirty = true; _aeKick(); return !!_ae.gl.hd; }", timeout=60_000, polling=250)
-            pg.wait_for_function("() => { _ae.dirty = true; _aeKick(); return !_ae.fly; }", timeout=60_000, polling=200)
+            pg.wait_for_function("() => { _ae.dirty = true; _aeKick(); return !!_ae.gl.hd; }", timeout=WAIT_MS, polling=250)
+            pg.wait_for_function("() => { _ae.dirty = true; _aeKick(); return !_ae.fly; }", timeout=WAIT_MS, polling=200)
             pg.evaluate("_ae.dist = AE_TARGETS.earth.min; _ae.dirty = true; _aeKick()")
             _settle(pg, "() => { var d = (" + DRAWN + ")(); return d && d.length && d.every(z => z === 2); }")
             tiles = [u for u in reqs if u.endswith(".webp") and "/earth/day/" in u and "/hd/" in u]
@@ -351,3 +384,179 @@ def test_a_flavour_opened_alone_is_the_almanac_and_the_hd_one_draws_its_own_tile
         ctx.close()
         httpd.shutdown()
         srv.ZIM_DIR, srv.ZIMI_DATA_DIR = old
+def test_the_earth_opens_cold_with_the_hd_set_installed_and_is_not_black(
+    browser, tmp_path
+):
+    """The first frames have the camera at the body's centre. HD's closest-approach guard once took a latitude from
+    that (0/0 = NaN), the view's distance became NaN, the opening flight never ended and the Earth stayed black, only
+    with HD in the library. Every other test here opens with reduced motion or after a preset, which hides it: this one
+    opens the Earth cold, with the view's own flight, and reads what a person sees."""
+    import io
+
+    from PIL import Image
+
+    import zimi.server as srv
+
+    old = (srv.ZIM_DIR, srv.ZIMI_DATA_DIR)
+    httpd = _serve(tmp_path, "flavour")
+    ctx = browser.new_context(
+        viewport=VIEW,
+        device_scale_factor=2,
+        has_touch=True,
+        is_mobile=True,
+        service_workers="block",
+    )
+    ctx.add_init_script(
+        "try { localStorage.setItem('zimi_almanac_place', %r); sessionStorage.setItem('zimi_almanac_location', %r); } catch (e) {}"
+        % (PLACE, PLACE)
+    )
+    pg = ctx.new_page()
+    errors = []
+    pg.on("pageerror", lambda e: errors.append(str(e)))
+    try:
+        pg.goto(
+            "http://127.0.0.1:%d/#almanac" % httpd.server_address[1], wait_until="load"
+        )
+        pg.wait_for_function(
+            "() => typeof openAlmanacEarth === 'function' && typeof _aeLoadThree === 'function'",
+            timeout=120_000,
+        )
+        pg.evaluate("openAlmanacEarth({ target: 'earth' })")
+        pg.wait_for_function(
+            "() => typeof _aeReady === 'function' && _aeReady() && _aeIsOpen",
+            timeout=READY_MS,
+            polling=200,
+        )
+        pg.wait_for_function(
+            "() => _ae.gl.hd && _ae.gl.hd.bodies[0].drawn.length > 0",
+            timeout=WAIT_MS,
+            polling=200,
+        )
+        # The opening flight ends by itself, whatever the frame rate: no wait is raised to hide a distance that is not a number.
+        pg.wait_for_function(
+            "() => { _ae.dirty = true; _aeKick(); return !_ae.fly; }",
+            timeout=READY_MS,
+            polling=200,
+        )
+        state = pg.evaluate(
+            "() => ({ dist: _ae.dist, min: AE_TARGETS.earth.min, max: AE_TARGETS.earth.max, drawn: _ae.gl.hd.bodies[0].drawn.length })"
+        )
+        assert (
+            state["dist"] is not None and state["min"] is not None
+        ), state  # JSON turns NaN into null
+        assert pg.evaluate(
+            "isFinite(_ae.dist) && isFinite(AE_TARGETS.earth.min)"
+        ), state
+        pg.wait_for_timeout(1500)
+        shot = Image.open(io.BytesIO(pg.screenshot())).convert("RGB")
+        w, h = shot.size
+        box = shot.crop((w // 4, h // 3, 3 * w // 4, 2 * h // 3)).resize((50, 50))
+        lit = sum(1 for p in box.getdata() if max(p) > 25) / 2500
+        assert lit > 0.3, "the globe is black: %.0f%% of the middle is lit" % (
+            100 * lit
+        )
+        assert errors == []
+    finally:
+        ctx.close()
+        httpd.shutdown()
+        srv.ZIM_DIR, srv.ZIMI_DATA_DIR = old
+
+
+INSTALLED = dict(OFFER, installed=True, kind="hd", offer=None, offers={"max": {"size": 4_820_000_000}},
+                 sizes={"hd": 1_983_068_162}, absent={})
+
+
+def _remove_route(pg, after):
+    """Answers the gear's remove with ``after`` (the server's new state) and records what was asked."""
+    asked = []
+
+    def answer(route):
+        asked.append(json.loads(route.request.post_data or "{}"))
+        route.fulfill(status=200, content_type="application/json", body=json.dumps(dict(after, can_change=True, freed=1_983_068_162)))
+
+    pg.route("**/manage/almanac-hd", answer)
+    return asked
+
+
+def test_the_gear_says_the_space_a_size_takes_and_removing_it_asks_once(browser, served):
+    with_hd, url, base = served
+    if with_hd:
+        pytest.skip("the status is the routed one")
+    after = dict(OFFER, installed=False, kind=None, sizes={}, absent={})
+    ctx, pg, _tiles = _open_earth(browser, url, route_hd=INSTALLED)
+    asked = _remove_route(pg, after)
+    try:
+        pg.wait_for_function("() => !!_ae.hdSt", timeout=20_000)
+        pg.evaluate("() => document.getElementById('ae-gear').click()")   # (its button stays in the page, unseen: the name pill's sheet presses it)
+        row = pg.inner_text("#ae-set-body .ae-set-hd")
+        assert "Installed" in row and "2.0 GB" in row or "1.98 GB" in row or "1.9" in row, row
+        box = pg.locator(".ae-hd-rm").bounding_box()
+        assert box["height"] >= 44 and box["width"] >= 44, box
+        pg.click(".ae-hd-rm")
+        assert asked == []                                     # the first press only asks
+        assert "free" in pg.inner_text(".ae-hd-rm-yes")
+        pg.click(".ae-hd-rm-no")
+        assert asked == [] and pg.is_visible(".ae-hd-rm")      # Cancel puts it back
+        pg.click(".ae-hd-rm")
+        pg.click(".ae-hd-rm-yes")
+        pg.wait_for_timeout(600)
+        assert asked == [{"remove": True, "kind": "hd"}], asked
+        assert pg.locator(".ae-hd-rm").count() == 0            # nothing left to remove; the offer is there again
+        assert pg.evaluate("_ae.hdSt.installed") is False and pg.evaluate("localStorage.getItem('zimi_alm_hd_later')") == "0"
+    finally:
+        ctx.close()
+
+
+def test_a_viewer_who_may_not_download_may_not_remove(browser, served):
+    with_hd, url, base = served
+    if with_hd:
+        pytest.skip("the status is the routed one")
+    ctx, pg, _tiles = _open_earth(browser, url, route_hd=dict(INSTALLED, can_change=False))
+    try:
+        pg.wait_for_function("() => !!_ae.hdSt", timeout=20_000)
+        pg.evaluate("() => document.getElementById('ae-gear').click()")   # (its button stays in the page, unseen: the name pill's sheet presses it)
+        assert pg.locator("#ae-set-body .ae-set-hd").count() == 0 and pg.locator(".ae-hd-rm").count() == 0   # (the downloads are in Manage, for the owner)
+    finally:
+        ctx.close()
+
+
+def test_a_maximum_the_release_does_not_carry_is_said_in_the_gear(browser, served):
+    with_hd, url, base = served
+    if with_hd:
+        pytest.skip("the status is the routed one")
+    ctx, pg, _tiles = _open_earth(browser, url, route_hd=dict(INSTALLED, offers={}, absent={"max": "missing"}))
+    try:
+        pg.wait_for_function("() => !!_ae.hdSt", timeout=20_000)
+        pg.evaluate("() => document.getElementById('ae-gear').click()")   # (its button stays in the page, unseen: the name pill's sheet presses it)
+        kinds = pg.evaluate("Array.prototype.map.call(document.querySelectorAll('.ae-hd-kind'), r => [r.value, r.checked, r.disabled])")
+        assert kinds == [["hd", True, False], ["max", False, True]], kinds
+        assert "Not in this version" in pg.inner_text("#ae-set-body .ae-set-hd")
+    finally:
+        ctx.close()
+
+
+def test_removing_the_installed_size_puts_the_standard_maps_back_without_a_reload(browser, served):
+    with_hd, url, base = served
+    if not with_hd or base != "/w/zimi_almanac_maxi/hd/":
+        pytest.skip("needs the flavour's tiles installed")
+    after = dict(OFFER, installed=False, kind=None, sizes={}, absent={})
+    ctx, pg, tiles = _open_earth(browser, url, route_hd=dict(INSTALLED, base=base, parts={}), base=base)
+    asked = _remove_route(pg, after)
+    try:
+        pg.wait_for_function("() => _ae.gl.hd && _ae.gl.hd.bodies[0].drawn.length > 0", timeout=WAIT_MS, polling=200)
+        assert pg.evaluate("_ae.gl.earth.material.stencilWrite") is True   # the one map gives way to the tiles where they are
+        pg.evaluate("() => document.getElementById('ae-gear').click()")   # (its button stays in the page, unseen: the name pill's sheet presses it)
+        pg.click(".ae-hd-rm")
+        pg.click(".ae-hd-rm-yes")
+        pg.wait_for_function("() => !_ae.gl.hd", timeout=20_000)
+        assert asked == [{"remove": True, "kind": "hd"}]
+        assert pg.evaluate("_ae.hdInstalled") is False
+        assert pg.evaluate("_ae.gl.earth.material.visible && !_ae.gl.earth.material.stencilWrite") is True     # the one map again, all of it
+        # ...and the base map's own closest stop (sharp texels), not the HD tiles' nearer one.
+        _settle(pg, "() => AE_TARGETS.earth.min > AE_MIN_DIST_EARTH * 1.5")
+        assert pg.evaluate("AE_TARGETS.earth.min") == pytest.approx(pg.evaluate("Math.max(AE_TARGETS.earth.floor, _aeSharpMin('earth', _ae.gl))"))
+        seen = len(tiles)
+        pg.wait_for_timeout(1500)
+        assert len(tiles) == seen                                       # nothing asks for a tile any more
+    finally:
+        ctx.close()

@@ -20,6 +20,14 @@ function _jdToJulianCentury(JD) { return (JD - JD_J2000) / JULIAN_CENTURY; }
 // The sky's way in to pointing the phone at it (almanac-look.js, loaded on its first tap).
 var ALM_GEAR_SVG = '<svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z"/></svg>';
 // A phone tilted up, with a star over it: hold your phone up to the sky. The gear's weight and size.
+var ALM_STAND_SVG = '<svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="5.5" r="2.3"/><path d="M12 8.5v6M8.5 11.5l3.5-1 3.5 1M12 14.5l-2.5 5.5M12 14.5l2.5 5.5"/></svg>';   // Stand here (almanac-onesky.js _osStandHere)
+// The rim glyph (approved): the edge of a world across the diagonal and a dot, both amber: on the ground side going in, on the space side going out.
+// The 3D view's rim button and the sky sheet's "Open in 3D" row draw this one.
+var ALM_RIM_ARC = 'M6 20A14 14 0 0 1 20 6';
+// The glyph (approved, scratchpad ui2/approved C3a): the lit arc, a dim dot in space (6,6) and a dim dot on the ground (16,16), always both drawn,
+// and one lit dot that is where you are: in space at (6,6), on the ground at (16,16); the lit one moves between them (almanac-earth.js).
+function _almRimSvg(onGround) { return '<svg class="ae-tool-svg ae-rim-glyph' + (onGround ? ' ae-rim-ground' : '') + '" viewBox="0 0 24 24" aria-hidden="true"><path d="' + ALM_RIM_ARC + '"/><circle class="ae-rim-dim" cx="6" cy="6" r="2"/><circle class="ae-rim-dim" cx="16" cy="16" r="2"/><circle class="ae-rim-lit" cx="6" cy="6" r="2"/></svg>'; }
+var ALM_RIM_SVG = _almRimSvg(false);   // you are in space: the lit dot is the space one
 var ALM_LOOK_SVG = '<svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><g transform="rotate(-20 11.5 15)"><rect x="7" y="8.5" width="9" height="13" rx="2"/><path d="M10.5 18.5h2"/></g><path d="M18.5 2.5l.9 2.1 2.1.9-2.1.9-.9 2.1-.9-2.1-2.1-.9 2.1-.9z" fill="currentColor" stroke-width="1.2"/></svg>';
 var _ALM_PLACE_KEY = SK.ALMANAC_PLACE;
 var _ALM_LOC_KEY = SK.ALMANAC_LOC;
@@ -178,12 +186,19 @@ function _dayOfYear(date) {
   // 1900–1999, which turns Jan 1 of an ancient/typed year into a date ~2000
   // years off and makes day-of-year wildly negative. Reachable now that the
   // time machine travels to arbitrary years.
-  var start = new Date(0);
-  start.setFullYear(date.getFullYear(), 0, 1);
-  start.setHours(0, 0, 0, 0);
-  return Math.floor((date - start) / MS_PER_DAY) + 1;
+  // Counted between the two calendar days as UTC midnights, so a day that is 23 or 25 hours long (the clocks changing) is still one day
+  // (the local midnights' difference read the first hour after midnight as the day before, all summer).
+  var start = new Date(0), day = new Date(0);
+  start.setUTCFullYear(date.getFullYear(), 0, 1);
+  day.setUTCFullYear(date.getFullYear(), date.getMonth(), date.getDate());
+  return Math.round((day - start) / MS_PER_DAY) + 1;
 }
 
+// The day of the year with the hours in it (local noon = the whole day), so the Sun's declination drifts and does not step at midnight.
+function _dayOfYearFraction(date) {
+  var h = date.getHours() + date.getMinutes() / 60 + date.getSeconds() / 3600;
+  return _dayOfYear(date) + h / 24 - 0.5;
+}
 function _solarB(dayOfYear) { return (dayOfYear - 1) * 2 * Math.PI / 365; }
 
 function _solarDeclination(B) {
@@ -201,11 +216,7 @@ function _cancelAllRAF() {
   _almanacLoopsHeld = true;
   if (_almanacOrreryRAF) { cancelAnimationFrame(_almanacOrreryRAF); _almanacOrreryRAF = null; }
   _skyPause();
-  if (_tzClockRAF) { clearTimeout(_tzClockRAF); _tzClockRAF = null; }
-  // A tick whose timer already fired waits as a frame: cancel that too, or it
-  // restarts the clock under a view that paused it.
-  if (_tzClockFrame) { cancelAnimationFrame(_tzClockFrame); _tzClockFrame = null; }
-  _almTzHandPause();
+  _tzClockHalt();
 }
 function _resumeAllRAF() {
   _almanacLoopsHeld = false;
@@ -231,28 +242,43 @@ document.addEventListener('visibilitychange', function() {
 var _almReturnScroll = null;
 
 // ── First sight ──
-// A page that is built in front of the person is seen being built: a gradient where the sky will be, the Moon plain and
-// then not, cards arriving. So the first open is drawn behind a veil (app.js _almVeilUp: the dark page with a turning
-// crescent, up from the tap) and shown in one piece, once the first screen is genuinely on the canvases: the Moon, the
-// cards, the month and the sky's first real frame (almanac-sky.js settles it). Nothing else waits for it. A page that
-// is slow to settle is shown anyway after ALM_REVEAL_MAX_MS: never a veil that stays (12 s was a long spinner on a
-// phone coming back to its tab, Eric 2026-11-08). A page put back scrolled past the sky does not wait for it.
+// No veil, no spinner: the page is the page from the tap. app.js draws its first frame (_almFirstFrame: the date, the time, the
+// phase, the tiles with their labels, the sky's place) before this file has been read, and the open here draws the same
+// head over it in the same places. What would be seen being built is held where it is made, not behind a cover: the Moon's
+// disc is clear until its map is in and then fades in (body.alm-moon-wait), the sky keeps its size and the hour's colour
+// (_almSkyPreStyle) and is painted once, when it is the picture that stays (_almSkyHold; it fades in), the tiles are
+// worked out with the draw (_skyFactsPrimeHtml), the panels below come after the page is shown (the frame after the head).
 var ALM_REVEAL_MAX_MS = 5000;
 var ALM_PANELS_SETTLE_MS = 3200;      // after the page is shown, the panels under the calendar wait this long (or for a hand on the page)
 var ALM_EARTH_IDLE_MS = 6000;         // and the 3D view's files this long, then for a quiet moment
 var _almRevealing = false, _almRevealTimer = 0, _almShownAt = 0;   // _almShownAt: when the page was shown (0: not yet)
 var _almShownJobs = [];               // run when the page is shown: [fn]
-function _almVeilBegin() {
-  _almVeilUp();
+function _almFirstOpenBegin() {
   _almRevealing = true;
   _almShownAt = 0;
+  _almSkyHoldUntil = performance.now() + ALM_SKY_HOLD_MS;
   clearTimeout(_almRevealTimer);
   _almRevealTimer = setTimeout(_almReveal, ALM_REVEAL_MAX_MS);
 }
-// The sky (almanac-sky.js) has its first picture on the canvas: the next frame shows it, with the rest of the page.
-var ALM_MOON_WAIT_MS = 3000;   // the page is drawn without the Moon's map when it has not come by then (the disc is drawn again when it does)
-var ALM_FONT_WAIT_MS = 1500;   // the fonts the page asked for are waited for this long
+// The first sky is not painted until it is the picture that stays (almanac-sky.js _skyFirstSight): the GPU's, with its
+// stars and the Milky Way, or the Canvas 2D sky where there is no GPU. Until then the canvas shows the hour's colour in its
+// place. Held at most ALM_SKY_HOLD_MS: a sky that is slow is painted as it can be.
+var ALM_SKY_HOLD_MS = 5000, _almSkyHoldUntil = 0;
+function _almSkyHold() { return _almSkyHoldUntil > performance.now(); }
+// The sky is the picture that stays: it comes in over its place (almanac.css .alm-sky-in).
 function _almSkySettled() {
+  _almSkyHoldUntil = 0;
+  var cv = typeof _skyState !== 'undefined' && _skyState && _skyState.canvas, wrap = cv && cv.parentElement;
+  if (wrap && cv.style) {   // the hour's colour that stood in its place fades off the picture (almanac.css .alm-sky-in)
+    wrap.style.setProperty('--sky-pre', cv.style.getPropertyValue('--sky-pre') || 'none');
+    wrap.classList.add('alm-sky-in');
+    setTimeout(function () { wrap.classList.remove('alm-sky-in'); }, 600);
+  }
+}
+var ALM_MOON_WAIT_MS = 3000;   // the page is drawn without the Moon's map when it has not come by then (the disc is drawn again when it does)
+var ALM_FONT_WAIT_MS = 300;    // the fonts the page asked for are waited for this long (the page is drawn in the system's until they come)
+// The head is on the page: the next frame shows it. (The sky settling used to be the signal; it is the GPU's, seconds on a phone.)
+function _almHeadDrawn() {
   if (!_almRevealing) return;
   var show = function () { requestAnimationFrame(_almReveal); };   // the frame after the one that drew the sky
   if (!(document.fonts && document.fonts.ready)) { show(); return; }
@@ -265,7 +291,6 @@ function _almReveal() {
   _almRevealing = false;
   _almSeaPending = false;
   _almShownAt = performance.now();
-  _almVeilDown();
   if (typeof _skyKickDirty === 'function' && typeof _skyState !== 'undefined' && _skyState && !_skyState.settled) _skyKickDirty();   // shown at the cap with no picture yet: painted as it can be, now
   var jobs = _almShownJobs;
   _almShownJobs = [];
@@ -275,11 +300,20 @@ function _almReveal() {
 function _almWhenShown(fn) {
   if (_almRevealing) _almShownJobs.push(fn); else fn();
 }
-function _almVeilCancel() {
+// fn once the page is shown AND a frame of it has been painted: what is heavy (the GPU's shaders, the sky's first
+// picture) must not stand between the person and the page that is ready (at once, in the next task, when it already is).
+function _almAfterShown(fn) {
+  _almWhenShown(function () {
+    requestAnimationFrame(function () { setTimeout(function () { if (_almanacOpen) fn(); }, 0); });
+  });
+}
+function _almFirstOpenCancel() {
   clearTimeout(_almRevealTimer);
   _almRevealing = false;
   _almShownJobs = [];
-  if (typeof _almVeilDown === 'function') _almVeilDown(true);
+  _almSkyHoldUntil = 0;
+  if (typeof _almFirstFrameOff === 'function') _almFirstFrameOff();
+  if (document.body) document.body.classList.remove('alm-moon-wait');
 }
 
 // ── The 3D view's files ──
@@ -301,10 +335,22 @@ function _almLoadEarth() {
       document.head.appendChild(el);
     });
   });
-  _almEarthLoading.catch(function () {});
+  _almEarthLoading.then(function () {   // the sky's ISS waits on these files' satellite elements (_skyPollSatsTick)
+    if (typeof _skyState !== 'undefined' && _skyState && !_skyTimers.sats) _skyPollSats(0);
+  }, function () {});
   return _almEarthLoading;
 }
+// A device that asks to save data, or has little memory or few cores, does not fetch the 3D view's files ahead of the
+// tap: they come at the first thing that needs them.
+var ALM_LOW_MEMORY_GB = 2;
+var ALM_LOW_CORES = 2;
+function _almLowPower() {
+  if (typeof ZimiCap !== 'undefined') return ZimiCap.lowPower();   // the one decision (capability.js); the test below is for its absence
+  var n = navigator, c = n.connection;
+  return !!((c && c.saveData) || (n.deviceMemory && n.deviceMemory <= ALM_LOW_MEMORY_GB) || (n.hardwareConcurrency && n.hardwareConcurrency <= ALM_LOW_CORES));
+}
 function _almEarthLater() {
+  if (_almLowPower()) return;
   _almWhenShown(function () {
     setTimeout(function () {
       if (_almanacOpen) whenQuiet(function () { if (_almanacOpen) _almLoadEarth(); }, { key: 'alm-earth', priority: QUIET_PRI_PREPARE, maxWaitMs: ALM_PANELS_SETTLE_MS * 4 });
@@ -322,7 +368,8 @@ function _openAlmanacInner(replaceState) {
   document.body.classList.add('almanac-mode');
   // The reload-into-almanac boot gate (stamped by the head bootstrap before
   // first paint) has done its job once the real almanac chrome is up.
-  document.documentElement.classList.remove('almanac-boot');
+  document.documentElement.classList.remove('almanac-boot', 'alm-first');
+  setTimeout(function () { document.documentElement.classList.remove('alm-3d-boot'); }, 8000);   // never held longer than this, whatever the link did
   var url = location.pathname + location.search + (_almIsLinkHash(location.hash) ? location.hash : '#almanac');
   if (replaceState) history.replaceState({ mode: 'almanac' }, '', url);
   else history.pushState({ mode: 'almanac' }, '', url);
@@ -332,7 +379,9 @@ function _openAlmanacInner(replaceState) {
   if (window.AlmanacLinks) { window.AlmanacLinks.reset(); window.AlmanacLinks.bind(el); }
   var mv = document.getElementById('main-view');
   if (mv) mv.classList.add('hidden');
-  _setWindowTitle('Almanac');
+  _almPrevTitle = document.title;
+  document.title = ALM_DOC_TITLE;   // the tab, the window and the print-out are called Zimi Almanac
+  _setWindowTitle(ALM_DOC_TITLE);
   // Integrate with topbar like manage view
   if (typeof updateTopbar === 'function') updateTopbar();
   var qEl = document.getElementById('q');
@@ -344,22 +393,33 @@ function _openAlmanacInner(replaceState) {
   if (scroller && !_almReturning) scroller.scrollTop = 0;
   // A page opened afresh is veiled until it is drawn; one come back to (an article read and left) is drawn in place.
   var veiled = !_almReturning;
-  if (veiled) _almVeilBegin();
+  if (veiled) _almFirstOpenBegin();
   if (veiled && typeof _sgInit === 'function') {
-    // The GPU sky starts compiling, and its data coming, now: they run beside the page being built, not after it.
-    _sgInit();
-    if (typeof _sgPrefetch === 'function') { var loc0 = _getLocation(); _sgPrefetch(_sgWantsMilkyWay(_sunPosition(_almFocusInstant(), loc0.lat, loc0.lon).altitude)); }
+    // The GPU sky starts compiling, and its data coming, once the head is shown: beside the page, not before it.
+    _almAfterShown(function () {
+      _sgInit();
+      if (typeof _sgPrefetch === 'function') { var loc0 = _getLocation(); _sgPrefetch(_sgWantsMilkyWay(_sunPosition(_almFocusInstant(), loc0.lat, loc0.lon).altitude)); }
+    });
   }
-  // Drawn with the Moon's map in hand (app.js): a disc drawn grey and then again with its maria is seen changing.
+  // Drawn at once; the disc waits for the Moon's map under body.alm-moon-wait (clear, so it holds its place) and comes in
+  // over it, so the head is not held for a picture (app.js _moonTexThen).
   var draw = function () {
     if (!_almanacOpen) return;
+    if (veiled && typeof _moonTexReady !== 'undefined' && !_moonTexReady) {
+      document.body.classList.add('alm-moon-wait');
+      var clear = function () { document.body.classList.remove('alm-moon-wait'); };
+      _moonTexThen(clear);
+      setTimeout(clear, ALM_MOON_WAIT_MS);
+    }
     _renderAlmanacContent();
     var sc = document.getElementById('almanac-content');
     if (sc) sc.scrollTop = 0;
     if (link) _almLinkRestoreView(link); else _almLinkStart();
+    var disc = veiled && document.querySelector('#almanac-head .almanac-moon-sprite');
+    if (disc) { disc.classList.add('alm-in'); var glow = document.querySelector('#almanac-head .almanac-moon-glow'); if (glow) glow.classList.add('alm-in'); }   // the first frame's disc was clear: this one comes in over its place
+    _almHeadDrawn();
   };
-  var drawn = false, drawOnce = function () { if (!drawn) { drawn = true; draw(); } };
-  if (typeof _moonTexThen === 'function') { _moonTexThen(drawOnce); setTimeout(drawOnce, ALM_MOON_WAIT_MS); } else drawOnce();
+  draw();
   // Zimi's header is in place under the Almanac: nothing in it slides the
   // header, so one left away by the page before (an article scrolled on a
   // phone) would keep the Almanac's own header, its date, behind the bar.
@@ -371,9 +431,10 @@ function _openAlmanacInner(replaceState) {
 // history — the caller decides whether to strip the #almanac entry (a real
 // close) or preserve it (a deep-link suspend that Back should return to).
 function _almanacTeardown() {
+  if (typeof _almPrevTitle === 'string' && _almPrevTitle && typeof document !== 'undefined' && document.title === ALM_DOC_TITLE) { document.title = _almPrevTitle; if (typeof _setWindowTitle === 'function') _setWindowTitle(_almPrevTitle); }
   _almanacOpen = false;
   _almLinkStop();
-  _almVeilCancel();
+  _almFirstOpenCancel();
   if (typeof _chromeReset === 'function') _chromeReset();
   // Pointing the phone (almanac-look.js) lives on the Almanac and goes with it.
   if (typeof closeAlmanacLook === 'function') closeAlmanacLook(true);
@@ -421,7 +482,7 @@ function closeAlmanac() {
 // the same moment: #almanac?t=<epoch seconds>&r=<rate>&p=<lat>,<lon>&s=<scroll px>&v=<3D view>&c=<dist>,<az>,<el>&n=<x>,<y>,<z>&f=1.
 // Only what differs from a fresh open is written: real time at now writes no t or r, so a plain reload shows now. Written with
 // replaceState (one history entry, however far the person goes), read once, at the open that follows a load. The 3D view's part
-// is almanac-earth.js (_aeLinkParts, _aeLinkOpen).
+// is almanac-earth.js (_aeLinkParts, _aeLinkOpen), which also holds the table of what a link can open (m=<mode>&k=<its values>).
 var ALM_LINK_MS = 500;                  // how often the address is brought up to date
 var ALM_LINK_SCROLL_TRIES = 30, ALM_LINK_SCROLL_MS = 150;   // the page may still be growing when the scroll is put back
 var ALM_LINK_PLACE_SAME = 0.006;        // degrees: a link's place within this of the saved one is the saved one
@@ -436,7 +497,7 @@ function _almLinkParse(hash) {
   var q = hash.indexOf('?'), P = new URLSearchParams(q < 0 ? '' : hash.slice(q + 1));
   var num = function (k) { var v = P.get(k); return v !== null && v !== '' && isFinite(Number(v)) ? Number(v) : null; };
   return { t: num('t'), r: num('r'), p: _almLinkNums(P.get('p'), 2), s: Math.max(0, num('s') || 0),
-    v: P.get('v') || '', c: _almLinkNums(P.get('c'), 3), n: _almLinkNums(P.get('n'), 3), f: P.get('f') === '1' };
+    v: P.get('v') || '', c: _almLinkNums(P.get('c'), 3), n: _almLinkNums(P.get('n'), 3), f: P.get('f') === '1', m: P.get('m') || '', k: P.get('k') || '', x: P.get('x') || '' };
 }
 function _almLinkApplyClock(link) {
   if (link.p && _almValidLatLon(link.p[0], link.p[1])) {
@@ -453,6 +514,7 @@ function _almLinkApplyClock(link) {
 }
 // The part of the address that is the page's own: the scroll put back, and the 3D view opened where it was. The address
 // is not written until both are done, or the first write would replace what is yet to be read.
+var _almScrollWanted = false;          // the address's scroll is yet to be put back: the panels it scrolls to are not held back
 function _almLinkRestoreView(link) {
   var left = 1, done = function () { if (--left === 0 && _almanacOpen) _almLinkStart(); };
   var sc = document.getElementById('almanac-content');
@@ -460,12 +522,13 @@ function _almLinkRestoreView(link) {
   if (sc && link.s > 0) {
     left++;
     var tries = 0, stopped = false, kinds = ['wheel', 'touchstart', 'pointerdown', 'keydown'];
-    var stop = function () { stopped = true; kinds.forEach(function (k) { sc.removeEventListener(k, stop); }); };
+    _almScrollWanted = true;
+    var stop = function () { stopped = true; _almScrollWanted = false; kinds.forEach(function (k) { sc.removeEventListener(k, stop); }); };
     kinds.forEach(function (k) { sc.addEventListener(k, stop, { passive: true }); });
     (function put() {
       if (stopped || !_almanacOpen) { stop(); done(); return; }
       sc.scrollTop = link.s;
-      if (Math.abs(sc.scrollTop - link.s) <= 2 || ++tries >= ALM_LINK_SCROLL_TRIES) { stop(); _almRevealIfSkyAway(); done(); return; }
+      if (Math.abs(sc.scrollTop - link.s) <= 2 || ++tries >= ALM_LINK_SCROLL_TRIES) { stop(); done(); return; }
       setTimeout(put, ALM_LINK_SCROLL_MS);
     })();
   }
@@ -473,16 +536,9 @@ function _almLinkRestoreView(link) {
     left++;
     _almLoadEarth().then(function () {
       if (_almanacOpen && typeof _aeLinkOpen === 'function') _aeLinkOpen(link);
-    }).catch(function () {}).then(done);
+    }).catch(function () {}).then(function () { document.documentElement.classList.remove('alm-3d-boot'); done(); });   // (the view is up, or could not be: the page is shown)
   }
   done();
-}
-// The sky out of sight once the scroll is put back: the page is shown without its first frame.
-function _almRevealIfSkyAway() {
-  var cv = typeof _skyState !== 'undefined' && _skyState && _skyState.canvas;
-  if (!_almRevealing || !cv) return;
-  var r = cv.getBoundingClientRect();
-  if (r.bottom <= 0 || r.top >= window.innerHeight) _almSkySettled();
 }
 function _almLinkHash() {
   var parts = [], sc = document.getElementById('almanac-content');
@@ -497,7 +553,7 @@ function _almLinkHash() {
 function _almLinkWrite() {
   if (!_almanacOpen || !_almIsLinkHash(location.hash)) return;
   var h = _almLinkHash();
-  if (h === _almLinkLast) return;
+  if (h === _almLinkLast && h === location.hash) return;   // (the address can be put back by a history step, e.g. the view's close: it is then written again)
   _almLinkLast = h;
   try { history.replaceState(history.state, '', location.pathname + location.search + h); } catch (e) {}
 }
@@ -786,7 +842,8 @@ function _almClockParts(focus) {
   var deviceTz = _almDeviceTz();
   // A chosen place whose zone is not the device's: its time, and its name.
   var placeTz = loc.stored && locTz && locTz !== deviceTz ? locTz : null;
-  var displayTz = placeTz || deviceTz || locTz;
+  var over = typeof _almClockZone === 'function' ? _almClockZone() : null;   // the 3D view's Stand here: the time where one stands
+  var displayTz = (over && over.tz) || placeTz || deviceTz || locTz;
   var lang = (typeof _currentLang !== 'undefined') ? _currentLang : 'en';
   // Cached formatters (_tzFmt), not toLocale*String: this runs on every travel
   // frame, and each toLocale* call builds a fresh Intl.DateTimeFormat.
@@ -795,7 +852,7 @@ function _almClockParts(focus) {
     date: _tzFmt(displayTz, _almEraOpts(focus, { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric' })).format(focus),
     time: _tzFmt(displayTz, { hour: 'numeric', minute: '2-digit' }).format(focus),
     tz: _formatTimezone(lang, displayTz, focus),
-    place: placeTz ? (loc.name || '').split(',')[0].trim() : ''
+    place: over && over.tz ? '' : placeTz ? (loc.name || '').split(',')[0].trim() : ''
   };
 }
 
@@ -832,18 +889,6 @@ function _almHeadHtml(focus) {
   return html;
 }
 
-// One card in the hero readout grid. Every value node carries an id so the
-// per-frame travel updater can rewrite it in place instead of the whole grid.
-// opts: cardId (id on the card, for hiding it), hidden, valClass (colour
-// variant). Every tile is a label and one value, no tile taller than another.
-function _almHeadCard(lbl, valHtml, valId, opts) {
-  opts = opts || {};
-  return '<div class="alm-card"' + (opts.cardId ? ' id="' + opts.cardId + '"' : '') +
-    (opts.hidden ? ' hidden' : '') + '>' +
-    (lbl ? '<div class="alm-card-lbl">' + lbl + '</div>' : '') +
-    '<div class="alm-card-val' + (opts.valClass ? ' ' + opts.valClass : '') + '" id="' + valId + '">' +
-    valHtml + '</div></div>';
-}
 // Value markup for the next-full-moon card, shared by the full render and the
 // throttled travel refresh so the two can never disagree on format. The year
 // shows only when the full moon falls outside the focused year: a bare "Aug 27"
@@ -877,8 +922,7 @@ function _almSafePanel(fn, containerId) {
 }
 
 // Repaint every panel that describes a moment, in place, for the focused
-// instant. One thing deliberately stays out of it: the world clock (it is a
-// clock — it should always read now). The orrery follows the focus too (#48):
+// instant, the world clock with them. The orrery follows the focus too (#48):
 // its local speed/date controls only own the clock while the almanac is at
 // now — _orrerySyncToFocus below settles that precedence.
 function _almRepaintFocus() {
@@ -902,9 +946,8 @@ function _almRepaintFocus() {
   }
   _almPrevFocusTime = focus.getTime();
   _almSafePanel(function () { _renderSunMap(focus); }, 'almanac-sunmap');
-  // _renderSunMap re-seeds the world-clock grid off the date it's handed. That
-  // grid is a *clock* — it must keep reading now, not the focused instant.
-  _initTzClock(new Date());
+  // _renderSunMap re-seeds the world-clock grid off the date it's handed; the clocks read the focused instant too.
+  _initTzClock(focus);
   _almSafePanel(function () { _renderOnThisDay(focus); }, 'almanac-onthisday');
   _almSafePanel(function () { _renderTonightSky(focus); }, 'almanac-tonight');
   _almSafePanel(function () { _renderStarChart(focus); }, null);
@@ -984,17 +1027,33 @@ var ALM_CLOCK_SLOW_MAX_DT = 1000;
 var ALM_CLOCK_NOTE_MS = 5000;          // how long a line like "that time does not exist" stays
 var ALM_CLOCK_TAP_SMALL = 0.05;          // how much a part's width counts against it when two are equally near the finger
 var ALM_CLOCK_FLIP_MS = 900;          // AM/PM: the twelve hours run through, forward or back, in this long
+var ALM_SPD_FADE_MS = 180;            // the slider's ease in and out
 var ALM_SPD_LINGER_MS = 4000;         // the slider stays this long after the clock is back at now, at 1x, then rests
-var ALM_CLOCK_TAP_SLOP = 14;           // px: how far from a date part a tap still means it (the nearest part wins)
+var ALM_CLOCK_TAP_SLOP = 16;           // px: how far from a date part a tap still means it (the nearest part wins; 16 each side makes even a 13px part a 44px target)
 var ALM_CLOCK_MONTH_LEN = [31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31];
 
 var _almRate = 1;                      // simulated seconds per real second; 1 is real time, 0 paused, negative backwards
 var _almPausedRate = 1;                // what the play button resumes
+// The 3D view's vehicles and the one time bar. A vehicle never has a speed in it: the bar is the date, the time and the slider, in
+// every mode. While a hand steers, a vehicle may cap how far the slider's ends reach (_almStripCap: the ends are dimmed, not
+// removed), and a mission may put its own clock in the date's place (_almStripLead). _almStripRate reads the one rate.
+var _almStripCapRate = 0, _almStripLeadText = '', _almStripLeadSub = '';
+function _almStripCap(cap) { cap = cap > 0 ? cap : 0; if (cap === _almStripCapRate) return; _almStripCapRate = cap; _almClockPaint(); }
+// a mission's T+ in place of the date, and `sub` (the real instant it stands for, in UTC) in place of the time
+function _almStripLead(text, sub) { text = text || ''; sub = text ? sub || '' : ''; if (text === _almStripLeadText && sub === _almStripLeadSub) return; _almStripLeadText = text; _almStripLeadSub = sub; _almClockPaint(); }
+function _almStripRate() { return _almRate; }
+function _almStripClamp(r) { return _almStripCapRate && Math.abs(r) > _almStripCapRate ? (r < 0 ? -_almStripCapRate : _almStripCapRate) : r; }
 var _almClockRAF = 0, _almClockLast = 0, _almClockRunning = false, _almClockHeld = false, _almClockStale = false;
 
 function _almReduceMotion() {
   try { return window.matchMedia('(prefers-reduced-motion: reduce)').matches; }
   catch (e) { return false; }
+}
+// Motion nobody asked for (the sky's breeze, planes and meteors, the orrery spinning as scenery) waits for a tap where
+// motion is reduced, on a machine capability.js calls low, and once that motion's own paints proved slow (ZimiCap.still): a still picture costs a slow machine nothing while it is
+// looked at. Motion the person starts (a flight, a time-travel sweep) is reduced motion's call alone.
+function _almStill() {
+  return _almReduceMotion() || (typeof ZimiCap !== 'undefined' && ZimiCap.still());
 }
 
 // Build an instant from explicit parts. setFullYear (not the Date constructor) so years 0-99 and negative (BCE) years
@@ -1190,7 +1249,7 @@ function _almSpdHtml(ticks) {
 // and again at every tick.
 function _almClockHtml(v) {
   var head = v === 'head';
-  var now = '<button type="button" class="alm-ck-now" hidden title="' + _almEsc(t('alm_back_to_now')) + '">' + _almEsc(t('alm_now')) + '</button>';
+  var now = '<button type="button" class="alm-ck-now" hidden title="' + _almEsc(t('alm_back_to_now')) + '" aria-label="' + _almEsc(t('alm_back_to_now')) + '">' + _almEsc(t('alm_now')) + '</button>';
   var time = '<span class="alm-ck-t"' + (head ? ' id="almanac-head-time"' : '') + '></span><span class="alm-ck-z"></span>';
   return '<div class="alm-clock" data-v="' + v + '">' +
     (head ? '<div class="alm-ck-d" id="almanac-head-date"></div>' : '') +
@@ -1215,8 +1274,57 @@ function _almClockSegs(tz, focus, opts) {
 }
 var ALM_CK_DATE_LONG = { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric' };
 var ALM_CK_DATE_SHORT = { weekday: 'short', month: 'short', day: 'numeric', year: 'numeric' };
+var ALM_CK_DATE_RUNNING = { month: 'short', day: 'numeric', year: 'numeric' };   // ALM_CK_DATE_SHORT without the weekday, while the time runs
 var ALM_CK_TIME = { hour: 'numeric', minute: '2-digit' };
+// The 3D view's collapsed time chip (almanac-earth.js, .ae-pin without .ae-pin-open): the date as long as the chip has room for it, then the
+// time; off now or running, the rate with its direction (a pause mark when stopped) and Now. The date steps down to fit
+// (ALM_CK_CHIP_FITS, longest first: weekday, day, month and year; without the year; the day and month), the year coming back whenever it is not
+// this year; live, the last step is the time alone. At a day a second or faster the clock means nothing and is dropped, so the chip stays one line.
+var ALM_CK_CHIP_FITS = [{ weekday: 'short', month: 'short', day: 'numeric', year: 'numeric' }, { weekday: 'short', month: 'short', day: 'numeric' }, { month: 'short', day: 'numeric' }, null];
+var ALM_CK_FAST_RATE = 86400, ALM_CK_LINE_SLOP_PX = 4;
+var ALM_CK_ARROW = '<svg class="alm-ck-ar" width="10" height="10" viewBox="0 0 12 12" fill="currentColor" aria-hidden="true">';
+function _almChipRateHtml(rate) {
+  if (rate === 0) return '<svg class="alm-ck-ar" width="11" height="11" viewBox="0 0 12 12" fill="currentColor" role="img" aria-label="' + _almEsc(t('alm_chip_paused')) + '"><rect x="2" y="1.5" width="3" height="9" rx="1"/><rect x="7" y="1.5" width="3" height="9" rx="1"/></svg>';
+  return ALM_CK_ARROW + (rate > 0 ? '<path d="M3 1.5v9l7-4.5z"/>' : '<path d="M9 1.5v9L2 6z"/>') + '</svg>' + _almEsc(_almRateText(Math.abs(rate)));
+}
+function _almChipDateHtml(tzId, focus, step, noWeekday) {
+  var o = ALM_CK_CHIP_FITS[step];
+  if (!o) return '';
+  o = Object.assign({}, o);
+  if (noWeekday) delete o.weekday;
+  if (!o.year) { var fy = _tzFmt(tzId, { year: 'numeric' }); if (fy.format(focus) !== fy.format(new Date())) o.year = 'numeric'; }
+  return _almClockSegs(tzId, focus, _almEraOpts(focus, o));
+}
+// Whether the chip's line is one line: every part shown has the same middle (the line wraps when the chip runs out of room).
+function _almChipOneLine(root) {
+  var kids = root.querySelector('.alm-ck-l').children, mid = null;
+  for (var i = 0; i < kids.length; i++) {
+    if (!kids[i].getClientRects().length) continue;
+    var m = kids[i].offsetTop + kids[i].offsetHeight / 2;
+    if (mid === null) mid = m; else if (Math.abs(m - mid) > ALM_CK_LINE_SLOP_PX) return false;
+  }
+  return true;
+}
+// The chip's date at the longest step that keeps it one line. It is measured only when something that changes its width changed (the
+// window, the state, the rate, the length of the date or the time); every other tick writes the step it already has.
+function _almChipFit(root, st, set, tzId, focus, hot, fast, noWd) {
+  var step = st.step || 0, html = _almChipDateHtml(tzId, focus, step, noWd);
+  var key = [window.innerWidth, hot, fast, noWd, st.r, (st.t || '').length, html.length].join('|');
+  if (st.fitKey === key) { set('.alm-ck-d', html, 'd'); return; }
+  var last = ALM_CK_CHIP_FITS.length - (hot ? 2 : 1);   // away from now the date always shows
+  for (step = 0; step <= last; step++) {
+    html = _almChipDateHtml(tzId, focus, step, noWd);
+    set('.alm-ck-d', html, 'd');
+    if (step === last || _almChipOneLine(root)) break;
+  }
+  st.step = step;
+  st.fitKey = [window.innerWidth, hot, fast, noWd, st.r, (st.t || '').length, html.length].join('|');
+}
 
+function _almIsChip(root) {
+  var pin = root.closest && root.closest('.ae-pin');
+  return !!pin && !pin.classList.contains('ae-pin-open');
+}
 function _almClockAway() { return !!_almFocus && !_almIsLiveNow(_almFocus); }
 
 // Write the clock's slots, in every place it stands, for `focus` (default: the moment now shown). A slot is written only
@@ -1227,34 +1335,52 @@ function _almClockPaint(focus) {
   focus = focus || _almFocusInstant();
   var cp = _almClockParts(focus), rate = _almRate, real = _almRateIsReal(rate), away = _almClockAway(), hot = !real || away;
   var text = rate === 0 || real ? '' : _almRateText(rate), rest = _almSpdRests(hot);
+  var noWd = rate !== 0 && !real;   // the weekday shows at real time (and stopped); while the time runs at any other rate it is dropped
   for (var i = 0; i < roots.length; i++) {
     var root = roots[i], head = root.getAttribute('data-v') === 'head', st = root._ck || (root._ck = {});
+    var chip = _almIsChip(root);   // the 3D view's collapsed chip
     var set = function (sel, html, key) {
       var el = root.querySelector(sel);
       if (el && st[key] !== html) { el.innerHTML = html; st[key] = html; }
     };
-    if (!(_almEd && _almEd.root === root)) {
-      set('.alm-ck-d', _almClockSegs(cp.tzId, focus, _almEraOpts(focus, head ? ALM_CK_DATE_LONG : ALM_CK_DATE_SHORT)), 'd');
+    if (_almStripLeadText && root.getAttribute('data-v') === 'pin') {
+      set('.alm-ck-d', _almEsc(_almStripLeadText), 'd');
+      set('.alm-ck-t', _almEsc(_almStripLeadSub), 't');
+    } else if (!(_almEd && _almEd.root === root)) {
+      if (!chip) set('.alm-ck-d', _almClockSegs(cp.tzId, focus, _almEraOpts(focus, head ? ALM_CK_DATE_LONG : noWd ? ALM_CK_DATE_RUNNING : ALM_CK_DATE_SHORT)), 'd');   // (the chip's is fitted below, once the rest of it is written)
       set('.alm-ck-t', _almClockSegs(cp.tzId, focus, ALM_CK_TIME), 't');
     }
     // The zone, and for the header the place whose clock this is, with the crosshair that chooses it.
     // The zone keeps its room; the place is the part that gives way (ellipsis) in a strip too narrow for both.
-    set('.alm-ck-z', (cp.tz ? '<span class="alm-ck-zn">' + (root.getAttribute('data-v') === 'foot' ? ' ' : ' &middot; ') + _almEsc(cp.tz) + '</span>' : '') +
-      (cp.place ? '<span class="alm-ck-pl"> &middot; ' + (head ? '<span id="almanac-head-place">' + _almEsc(cp.place) + '</span> ' + _almHereBtnHtml('alm-here-icon') : _almEsc(cp.place)) + '</span>' : ''), 'z');
+    set('.alm-ck-z', _almStripLeadText && root.getAttribute('data-v') === 'pin' ? '' : (cp.tz ? '<span class="alm-ck-zn">' + (root.getAttribute('data-v') === 'foot' ? ' ' : ' &middot; ') + _almEsc(cp.tz) + '</span>' : '') +
+      (cp.place ? '<span class="alm-ck-pl"> &middot; ' + (head ? '<span id="almanac-head-place">' + _almEsc(cp.place) + '</span> ' + _almHereBtnHtml('alm-here-icon') + _almMapBtnHtml(cp.loc) : _almEsc(cp.place)) + '</span>' : ''), 'z');
     var r = root.querySelector('.alm-ck-r');
     if (r) {
-      var rh = _almEsc(text);   // the rate, away from real time; paused says so in the button (play, to resume)
+      var rh = chip ? (hot && !real ? _almChipRateHtml(rate) : '') : _almEsc(text);   // the rate, away from real time; paused says so in the button (play, to resume)
       if (st.r !== rh) { r.innerHTML = rh; st.r = rh; }
     }
     var nowBtn = root.querySelector('.alm-ck-now');
     if (nowBtn && nowBtn.hidden === hot) nowBtn.hidden = !hot;
     root.classList.toggle('alm-ck-hot', hot);
+    root.classList.toggle('alm-ck-chip', chip);
+    root.classList.toggle('alm-ck-live', chip && !hot);
+    var fast = chip && hot && rate !== 0 && Math.abs(rate) >= ALM_CK_FAST_RATE;
+    root.classList.toggle('alm-ck-fast', fast);
     root.classList.toggle('alm-ck-run', !(rate === 0 || real));   // its parts are typed only while it stands or runs at 1x
     var spd = root.querySelector('.alm-spd');
     root.classList.toggle('alm-ck-rest', rest);
     root.classList.toggle('alm-ck-open', !!_almClockOpen);
+    // The slider eases in and out (opacity and transform only): at rest it is gone from the layout, so on its way out it is kept, fading, for a moment.
+    var wasRest = root._restSeen;
+    root._restSeen = rest;
+    if (wasRest === false && rest === true && !_almReduceMotion()) {
+      root.classList.add('alm-spd-fade');
+      clearTimeout(root._fadeT);
+      root._fadeT = setTimeout(function () { root.classList.remove('alm-spd-fade'); }, ALM_SPD_FADE_MS);
+    }
     if (root.getAttribute('data-v') === 'pin' && root._rest !== rest) { root._rest = rest; if (typeof _almPinPaint === 'function') _almPinPaint(); }
     if (spd) _almSpdPaint(spd, rate, hot);
+    if (chip && !(_almStripLeadText && root.getAttribute('data-v') === 'pin') && !(_almEd && _almEd.root === root)) _almChipFit(root, st, set, cp.tzId, focus, hot, fast, noWd);
   }
 }
 // At now and 1x the clock rests, as the plain date and time it always was: no slider, nothing underlined. A tap on the
@@ -1276,6 +1402,11 @@ function _almSpdPaint(spd, rate, hot) {
   spd.style.setProperty('--lo', (lo / last).toFixed(4));
   spd.style.setProperty('--hi', (hi / last).toFixed(4));
   spd.classList.toggle('alm-spd-hot', hot);
+  var capped = !!_almStripCapRate, dimL = 0, dimR = 0;   // the far ends a hand cannot reach: the fractions of the track they cover
+  if (capped) { dimL = Math.max(0, _almPosOfRate(-_almStripCapRate)) / last; dimR = 1 - _almPosOfRate(_almStripCapRate) / last; if (getComputedStyle(spd).direction === 'rtl') { var d0 = dimL; dimL = dimR; dimR = d0; } }
+  spd.classList.toggle('alm-spd-capped', capped);
+  spd.style.setProperty('--dim-l', dimL.toFixed(4));
+  spd.style.setProperty('--dim-r', dimR.toFixed(4));
   var rng = spd.querySelector('.alm-spd-range');
   if (!spd.classList.contains('alm-spd-drag')) rng.value = pos.toFixed(2);
   rng.setAttribute('aria-valuetext', rate === 0 ? t('pause') : _almRateIsReal(rate) ? '1×' : _almRateText(rate));
@@ -1624,7 +1755,9 @@ function _almSpdSnap(spd, rng, n) {
 function _almSpdInput(rng) {
   var spd = rng.closest('.alm-spd'), v = parseFloat(rng.value), n = Math.round(v);
   if (spd.classList.contains('alm-spd-drag') && Math.abs(v - n) < _almSpdSnap(spd, rng, n)) { v = n; rng.value = n; }
-  _almClockSetRate(v === ALM_RATE_REAL ? 1 : _almRateAt(v));
+  var r = v === ALM_RATE_REAL ? 1 : _almStripClamp(_almRateAt(v));
+  if (r !== _almRateAt(v) && v !== ALM_RATE_REAL) rng.value = _almPosOfRate(r).toFixed(2);   // the thumb stops at the dimmed end
+  _almClockSetRate(r);
 }
 
 function _almClockPointerDown(e) {
@@ -1662,12 +1795,13 @@ function _almClockClick(e) {
   var tgt = e.target;
   if (!tgt || !tgt.closest) return;
   var root = tgt.closest('.alm-clock'), b;
+  if (root && root.classList.contains('alm-ck-rest') && !root.classList.contains('alm-ck-run') && !tgt.closest('button, a, .alm-spd, .alm-ck-pop')) { _almClockOpenUp(true); return; }   // at rest the date and time are one tap area: it opens the slider
   // A tap away shuts an idle clock: on the click, once the tap has done its own work (on the press, the slider going
   // would move what the finger is on).
   if (!root) { if (_almClockOpen && !_almEd && !_almClockAway() && _almRate === 1) _almClockOpenUp(false); return; }
   if ((b = tgt.closest('.alm-ck-now'))) { if (typeof _orreryClockReset === 'function') _orreryClockReset(); _almBackToToday(); return; }
   if ((b = tgt.closest('.alm-spd-play'))) { _almClockTogglePause(); return; }
-  if ((b = tgt.closest('.alm-spd-mark'))) { _almClockSetRate(ALM_RATE_STOPS[+b.getAttribute('data-stop')]); return; }
+  if ((b = tgt.closest('.alm-spd-mark'))) { _almClockSetRate(_almStripClamp(ALM_RATE_STOPS[+b.getAttribute('data-stop')])); return; }
   if ((b = tgt.closest('.alm-ck-pop button'))) {
     var m = +b.getAttribute('data-m');
     _almEdCommit(function (P) { P.mo = m; });
@@ -1704,7 +1838,34 @@ var _ALM_TRAVEL_DOM_MS = 100;
 // p95 52ms frames; grid disabled = p95 31ms. At 300ms the rebuild still flips
 // months faster than the eye tracks them, and the settle repaint is exact.
 var _ALM_TRAVEL_GRID_MS = 300;
+// The sun map and the star chart redraw while travel runs, but a big canvas costs the frame after it as much again on a slow
+// device: the gap between draws is what the last draw cost the frame, times DUTY (so they take about a fifth of the time),
+// between a few frames and a second. A fast device draws every few frames; a slow one at a few a second, never frozen.
+var _ALM_TRAVEL_CANVAS_MIN_MS = 400, _ALM_TRAVEL_CANVAS_MAX_MS = 1000, _ALM_TRAVEL_CANVAS_DUTY = 4, _ALM_TRAVEL_CALM_EMA = 0.8, _ALM_TRAVEL_CALM_FRAMES = 3;
+var _almCanvasPace = { gap: _ALM_TRAVEL_CANVAS_MIN_MS, drewAt: 0, drew: false, last: 0, calm: 0, seen: 0 };
 var _almTravelThrottleAt = {};
+// How much of the page follows a moving clock, by the machine's level (capability.js ZimiCap.level(), which also steps
+// down when frames run slow): high draws what moves smoothly every frame; standard paces the big canvases by what they
+// cost; low keeps the clock, the hero Moon and the day's text, and the rest lands exactly on settle (
+// "toned down on lower performing systems and fully capable where possible").
+//   dom    the clock and cards' text (ms)        grid  the calendar, world clocks and tide day (ms)
+//   smooth the star chart and analemma every frame while their motion reads    map  the sun map's night every frame
+//   charts the star chart and analemma at all (paced)                           tide the tide's day redrawn as days pass
+var ALM_TRAVEL_TIERS = {
+  high: { dom: _ALM_TRAVEL_DOM_MS, grid: _ALM_TRAVEL_GRID_MS, smooth: true, map: true, charts: true, tide: true },
+  standard: { dom: _ALM_TRAVEL_DOM_MS, grid: _ALM_TRAVEL_GRID_MS, smooth: false, map: true, charts: true, tide: true },
+  low: { dom: 250, grid: 1000, smooth: false, map: false, charts: false, tide: false }
+};
+function _almTravelTier() {
+  var l = typeof ZimiCap !== 'undefined' ? ZimiCap.level() : 'standard';
+  return ALM_TRAVEL_TIERS[l] || ALM_TRAVEL_TIERS.standard;
+}
+// The paces at which a chart's motion reads as motion: the star chart turning up to a quarter-turn a second, the analemma's
+// Sun walking its figure in about four seconds. Faster, each is a blur and paced steps read better.
+var ALM_STARCHART_SMOOTH_RATE = 6 * 3600;
+var ALM_ANALEMMA_SMOOTH_RATE = 90 * 86400;
+var ALM_ANALEMMA_PACE_MS = 250;   // paced: about four times a second
+var _almAnalemmaAt = 0;
 
 // The clock's text, in every place it stands, for a moment (the hero's live tick and the 3D view call this too).
 function _almScrubClock(focus) { _almClockPaint(focus); }
@@ -1769,10 +1930,11 @@ function _almLiveHeadCards(focus) {
 // motion stops.
 //
 // Panels below the fold stay deferred to _almScrubSettle: the meteor
-// countdowns, deep-time, tonight's-sky planet ephemeris, sun-map terminator,
-// star chart and analemma are each a full innerHTML rebuild and/or resolve Q-ID
-// deep-links — and none of them shares a screen with the instrument. The
-// orrery is the exception (#48): it is a canvas, so it rides the visual tier.
+// countdowns, deep-time and tonight's-sky planet ephemeris are each a
+// full innerHTML rebuild and/or resolve Q-ID deep-links — and none of them
+// shares a screen with the instrument. The orrery, the sun map's night, the
+// star chart and the analemma are the exceptions: each is a canvas, so they ride
+// the visual tier while they are on the screen (how smoothly: ALM_TRAVEL_TIERS).
 function _almTravelLive(focus) {
   // Visual tier — every frame.
   var m = null;
@@ -1789,15 +1951,72 @@ function _almTravelLive(focus) {
   // the moving focus every frame, so this tick only paints when that loop is
   // parked at 1× speed. Its date readout is DOM text — it rides the DOM tier.
   if (typeof _orreryTravelTick === 'function') _orreryTravelTick();
-  _almTravelThrottled('dom', _ALM_TRAVEL_DOM_MS, function () {
+  var tier = _almTravelTier();
+  _almTravelThrottled('dom', tier.dom, function () {
     _almScrubClock(focus);
     _almLiveHeadCards(focus);
+    _almTravelRaiseFloors();
   });
-  _almTravelThrottled('grid', _ALM_TRAVEL_GRID_MS, _almSyncSelectedToFocus);
+  _almTravelThrottled('grid', tier.grid, function () { _almSyncSelectedToFocus(); _almTravelRaiseFloors(); });
+  _almTravelThrottled('tz', tier.grid, function () { _tzClockTick(focus); });
+  // The sun map's night, the star chart and the analemma are canvases too: they follow the moment while they are on the screen.
+  _almTravelCanvases(focus, tier);
   // The 3D view reads the same clock: its Sun and Moon move in this frame.
   if (typeof _aeFollowClock === 'function') _aeFollowClock();
-  // So does the tide: its Moon, its bulges, its harbour and the day's line.
-  if (typeof _atTravel === 'function') _atTravel(focus);
+  // So does the tide: its Moon, its bulges, its harbour and the day's line; and a new day's curve as the days pass.
+  if (typeof _atTravel === 'function' && _atTravel(focus) === false && tier.tide && typeof _atRepaint === 'function') {
+    _almTravelThrottled('tide', tier.grid, function () { _atRepaint(); _almTravelRaiseFloors(); });
+  }
+}
+
+// Which of the panels' canvases are on the screen, by observer (asking a rect would force a layout in every frame of the throw): a panel
+// that is not is left for the exact repaint on settle.
+var _almCanvasSeen = { io: null, els: {}, on: {} };
+function _almCanvasOnScreen(id) {
+  var S = _almCanvasSeen, el = document.getElementById(id);
+  if (!('IntersectionObserver' in window)) return !!el;
+  if (!S.io) S.io = new IntersectionObserver(function (list) {
+    list.forEach(function (e) { S.on[e.target.id] = e.isIntersecting; });
+  });
+  if (el && S.els[id] !== el) { if (S.els[id]) S.io.unobserve(S.els[id]); S.els[id] = el; S.io.observe(el); }
+  return !!S.on[id];
+}
+// One call a frame of travel: draw the canvases that are showing, when their gap has passed. The frame after a draw is timed against
+// the ordinary ones (the draw's cost lands in it); nothing is drawn until a few ordinary frames have been seen.
+function _almTravelCanvases(focus, tier) {
+  tier = tier || _almTravelTier();
+  var P = _almCanvasPace, now = performance.now(), dt = P.last ? now - P.last : 0, rate = Math.abs(_almRate);
+  P.last = now;
+  if (!dt) return;
+  // The night's edge is cheap and the eye follows it: it is drawn in every frame, so it glides and does not step (on a
+  // low machine at the calendar's pace).
+  if (_almCanvasOnScreen('almanac-sunmap')) {
+    if (tier.map) _sunMapTravelDraw(focus);
+    else _almTravelThrottled('map', tier.grid, function () { _sunMapTravelDraw(focus); });
+  }
+  if (!tier.charts) return;
+  // The analemma's dot: every frame while its walk reads as one, else about four times a second.
+  if (typeof _renderAnalemma === 'function' && _almCanvasOnScreen('almanac-analemma') &&
+      ((tier.smooth && rate <= ALM_ANALEMMA_SMOOTH_RATE) || now - _almAnalemmaAt >= ALM_ANALEMMA_PACE_MS)) {
+    _almAnalemmaAt = now;
+    _renderAnalemma(focus);
+  }
+  // The star chart: every frame while its turning reads as turning; faster, or on a machine below high, paced by its cost.
+  if (tier.smooth && rate <= ALM_STARCHART_SMOOTH_RATE && _almCanvasOnScreen('almanac-starchart')) {
+    _starChartTravelDraw(focus);
+    return;
+  }
+  if (P.drew) {
+    P.gap = Math.max(_ALM_TRAVEL_CANVAS_MIN_MS, Math.min(_ALM_TRAVEL_CANVAS_MAX_MS, (dt - P.calm) * _ALM_TRAVEL_CANVAS_DUTY));
+    P.drew = false;
+    return;
+  }
+  P.calm = P.seen ? _ALM_TRAVEL_CALM_EMA * P.calm + (1 - _ALM_TRAVEL_CALM_EMA) * dt : dt;
+  if (P.seen < _ALM_TRAVEL_CALM_FRAMES) { P.seen++; return; }
+  if (now - P.drewAt < P.gap) return;
+  if (!_almCanvasOnScreen('almanac-starchart')) return;
+  P.drewAt = now; P.drew = true;
+  _starChartTravelDraw(focus);
 }
 
 function _almIsLiveNow(d) { return Math.abs(d.getTime() - Date.now()) < _SCRUB_LIVE_EPS; }
@@ -1807,11 +2026,10 @@ function _almIsLiveNow(d) { return Math.abs(d.getTime() - Date.now()) < _SCRUB_L
 // months (a five- vs six-week grid, a day-detail holiday list growing and
 // shrinking, polar sun cards swapping in). Mid-scrub that reflowed the whole
 // page every DOM tick — visible jank, and the sticky dock under the lever
-// shifted under the user's finger. So travel pins each variable-height section
-// at its current height (overflow clipped; a truncated holiday list for the
-// duration of a throw is invisible next to the page breathing) and releases the
-// pins on settle, when the exact repaint lands.
-var _ALM_TRAVEL_FREEZE_IDS = ['almanac-head', 'almanac-calendar'];
+// shifted under the user's finger. So travel gives each variable-height section
+// its current height as a floor (it may grow, never shrink) and releases the
+// floors on settle, when the exact repaint lands.
+var _ALM_TRAVEL_FREEZE_IDS = ['almanac-head', 'almanac-calendar', 'almanac-place'];   // the place: its tide's day is drawn again as days pass
 var _almTravelFrozen = false;
 
 function _almTravelFreeze() {
@@ -1829,18 +2047,15 @@ function _almTravelFreeze() {
       nextTop: el.nextElementSibling ? el.nextElementSibling.getBoundingClientRect().top : null
     });
   }
-  for (i = 0; i < marks.length; i++) {
-    marks[i].el.style.height = marks[i].el.offsetHeight + 'px';
-    marks[i].el.style.overflow = 'hidden';
-  }
-  // Pinning changes margin behaviour: a fixed height plus clipped overflow
-  // stops child margins collapsing out of the section (the hero card grid's
-  // 20px bottom margin, the calendar nav's 16px top margin), so the gaps those
-  // escaped margins formed vanish and the sky scene slides up into the hero
-  // cards for the duration of the throw. Give each pinned section explicit
-  // margins that put itself and its neighbour back exactly where they were;
-  // the extra passes absorb adjacent-sibling margin collapse, which can eat
-  // part of a first correction.
+  // A floor, not a fixed height: a section never shrinks mid-throw (the page breathing under the finger) but grows
+  // when a six-week month or a longer list needs it, rather than clipping its foot (the calendar's
+  // list was cut off while dragging). Nothing else about the box changes (no clip, no new formatting context), so the
+  // sticky clock inside stays where it is.
+  for (i = 0; i < marks.length; i++) marks[i].el.style.minHeight = marks[i].el.offsetHeight + 'px';
+  // Should a floor change how margins collapse out of a section (the hero card grid's 20px bottom margin, the
+  // calendar nav's 16px top margin), the gaps those margins formed would vanish and the sky scene slide up into the
+  // hero cards for the throw. Give each pinned section explicit margins that put itself and its neighbour back exactly
+  // where they were; the extra passes absorb adjacent-sibling margin collapse, which can eat part of a first correction.
   for (var pass = 0; pass < 3; pass++) {
     var moved = false;
     for (i = 0; i < marks.length; i++) {
@@ -1862,14 +2077,26 @@ function _almTravelFreeze() {
   }
 }
 
+// A held section that has grown keeps its tallest height until the clock stops ("if it ever grows,
+// don't let it shrink so that the page doesn't bounce"): after each redraw of what can change its height, the floor
+// rises to it. Read on the text's and the calendar's cadences, never per frame.
+function _almTravelRaiseFloors() {
+  if (!_almTravelFrozen) return;
+  for (var i = 0; i < _ALM_TRAVEL_FREEZE_IDS.length; i++) {
+    var el = document.getElementById(_ALM_TRAVEL_FREEZE_IDS[i]);
+    if (!el || !el.style.minHeight) continue;
+    var h = el.offsetHeight;
+    if (h > parseFloat(el.style.minHeight)) el.style.minHeight = h + 'px';
+  }
+}
+
 function _almTravelUnfreeze() {
   if (!_almTravelFrozen) return;
   _almTravelFrozen = false;
   for (var i = 0; i < _ALM_TRAVEL_FREEZE_IDS.length; i++) {
     var el = document.getElementById(_ALM_TRAVEL_FREEZE_IDS[i]);
     if (!el) continue;
-    el.style.height = '';
-    el.style.overflow = '';
+    el.style.minHeight = '';
     el.style.marginTop = '';
     el.style.marginBottom = '';
   }
@@ -1898,6 +2125,7 @@ function _almScrubSettle(target) {
   // throttle so the next gesture's first frame updates the text immediately.
   _almTravelUnfreeze();
   _almTravelThrottleAt = {};
+  _almCanvasPace.last = 0; _almCanvasPace.drew = false; _almCanvasPace.seen = 0;   // the next throw measures its own frames
   if (_almRate === 1 && _almIsLiveNow(target)) {
     _almBackToToday();
   } else {
@@ -1986,14 +2214,21 @@ function _almSec(titleHtml, bodyHtml) {
 var ALM_SECBAR_H = 44;                       // px; .alm-secbar's height in almanac.css
 var ALM_PIN_SHOW_PX = 8;                     // the header's clock is gone when its foot is this far under the page's top
 var ALM_PIN_CLOCK_H = 60;                    // px; the pinned clock's height (.alm-pin-clock): the strip is both, one under the other
-var ALM_SECBAR_LINE = ALM_PIN_CLOCK_H + ALM_SECBAR_H + 4;   // px from the scroller's top: where a section counts as current
-// The strip pins the clock only while it is in use (open, or away from now): at rest it is the section bar alone, and
-// the line where a section counts as current, and where a jump lands, rise by the clock's height.
-function _almPinClockShown() {
+var ALM_PIN_CLOCK_REST_H = 36;               // px; the pinned clock at rest (no slider): the date and time alone
+var ALM_SECBAR_LINE = ALM_PIN_CLOCK_H + ALM_SECBAR_H + 4;   // px from the scroller's top: where a section counts as current, the clock open
+// The strip always carries the clock once the page's own has scrolled away, so time travel starts from anywhere: at rest the clock is the
+// date and time alone (a tap opens its slider), and the strip is shorter by the slider's height. The line where a section counts as
+// current, and where a jump lands, follow the strip's height.
+function _almPinAtRest() {
   var c = document.querySelector('#alm-pin .alm-clock');
-  return !!c && !c.classList.contains('alm-ck-rest');
+  return !c || c.classList.contains('alm-ck-rest');
 }
-function _almSecBarLine() { return ALM_SECBAR_LINE - (_almPinClockShown() ? 0 : ALM_PIN_CLOCK_H); }
+function _almSecBarLine() { return ALM_SECBAR_LINE - (_almPinAtRest() ? ALM_PIN_CLOCK_H - ALM_PIN_CLOCK_REST_H : 0); }
+// A section is named once it fills most of the page below the bar, not when its top reaches the bar ("move the
+// selector pill when the section is nearly all in view ... weird seeing none of the previous section but labeled still"): it is
+// the current one once it begins in the upper part of that room, this fraction of it down from the bar.
+var ALM_SECBAR_SWITCH = 0.4;
+var ALM_SECBAR_LANDED_PX = 2;   // a section's top this close to the page's top edge: the reader was sent to it, so it is the one named
 var ALM_SECBAR_HERO = 'today';
 var ALM_SECBAR_LOCK_MS = 3000;               // the longest a tap's scroll holds the bar
 // [key, the selectors of its parts (the first is where a tap lands), heading string]
@@ -2006,7 +2241,7 @@ var ALM_SECTIONS = [
   [ALM_SECBAR_HERO, ['#almanac-head', '.almanac-sky-wrap', '#almanac-sky-invite'], 'alm_today'],
   ['sky', ['.alm-sky-info', '.almanac-sky-wrap'], 'alm_subj_sky', ALM_SECBAR_SPLIT_MQ],
   ['calendar', ['#almanac-calendar'], 'alm_subj_calendars'],
-  ['place', ['#almanac-sunmap'], 'alm_nav_place'],
+  ['place', ['#almanac-sunmap'], 'alm_pill_time'],
   ['tides', ['#almanac-place .almanac-section'], 'alm_tide_title'],
   ['onthisday', ['#almanac-onthisday'], 'alm_on_this_day'],
   ['solar', ['#almanac-orrery'], 'alm_solar_system'],
@@ -2026,8 +2261,12 @@ var _almSecBar = null;   // { io, ro, sections: [{key, name, els}], cur }
 // The pinned strip: the clock (date and slider) over the section bar, one strip, standing from the page's top once the
 // header's clock has scrolled away. The clock is built once; the bar under it is rebuilt when the sections change.
 function _almSecBarHostHtml() {
-  return '<div class="alm-secbar-host" id="alm-secbar-host"><div class="alm-pin" id="alm-pin" hidden>' +
-    '<div class="alm-pin-clock">' + _almClockHtml('pin') + '</div><div id="alm-secbar-slot"></div></div></div>';
+  return '<div class="alm-secbar-host" id="alm-secbar-host">' + _almPinHtml('', ' id="alm-pin" hidden', '', '<div id="alm-secbar-slot"></div>') + '</div>';
+}
+// The strip's markup, one piece for every place it stands (the page, the 3D view): the pinned clock, then a line under it.
+// `cls`, `attrs` and `clockAttrs` are the host's and the clock box's own (an id, hidden); `line` is the second line's html.
+function _almPinHtml(cls, attrs, clockAttrs, line) {
+  return '<div class="alm-pin' + cls + '"' + attrs + '><div class="alm-pin-clock"' + clockAttrs + '>' + _almClockHtml('pin') + '</div>' + line + '</div>';
 }
 function _almSecBarScroller() { return document.getElementById('almanac-content'); }
 function _almSecBarTeardown() {
@@ -2056,9 +2295,19 @@ function _almSecBarFind() {
   });
   return out;
 }
+var ALM_DOC_TITLE = 'Zimi Almanac', _almPrevTitle = '';   // what the page is called while it is the Almanac (the browser's tab, a print's title, a saved PDF's name)
+// The pill row is the page's own order. The top of the page (Today) has no pill: the bar shows only once it has
+// scrolled away. The place's map, clock and world clocks are one section, Time ("Lump the timezone
+// thing and times and map into "Time""), and the sections with a shorter pill name take it.
+var ALM_PILL_NAMES = { calendar: 'alm_pill_calendar', place: 'alm_pill_time', tides: 'alm_pill_tides' };
+function _almSecBarPillOrder(sections) {
+  return sections.filter(function (s) { return s.key !== ALM_SECBAR_HERO; }).map(function (s) {
+    return ALM_PILL_NAMES[s.key] ? { key: s.key, name: t(ALM_PILL_NAMES[s.key]), els: s.els } : s;
+  });
+}
 function _almSecBarMarkup(sections) {
   var pills = '', items = '';
-  sections.forEach(function (s) {
+  _almSecBarPillOrder(sections).forEach(function (s) {
     var n = _almEsc(s.name);
     pills += '<button type="button" class="pill" data-sec="' + s.key + '" onclick="_almSecGo(\'' + s.key + '\')">' + n + '</button>';
     items += '<li><button type="button" data-sec="' + s.key + '" onclick="_almSecGo(\'' + s.key + '\')">' + n + '</button></li>';
@@ -2111,13 +2360,26 @@ function _almSecBarInit() {
   _almSecBarPaint();
 }
 // The strip stands once the header's clock has scrolled out of sight, or a section past the first is the current one.
+// How far the pinned clock has come in, 0 to 1: the header's clock leaving the top of the page is the clock in the strip
+// arriving (opacity, and the date's size, 22 px to 14), one motion tied to the scroll, not a swap at a line. Where motion
+// is reduced it is the swap.
+var ALM_PIN_REST_TOP_PX = 12;                // the header's clock top, in the page, where it starts to leave
+function _almPinProgress(clock, root) {
+  var gone = root.getBoundingClientRect().top + ALM_PIN_REST_TOP_PX - clock.getBoundingClientRect().top;
+  var p = Math.max(0, Math.min(1, gone / Math.max(1, clock.offsetHeight)));
+  return window.matchMedia && matchMedia('(prefers-reduced-motion: reduce)').matches ? (p >= 1 ? 1 : 0) : p;
+}
 function _almPinPaint() {
   var pin = document.getElementById('alm-pin'), root = _almSecBarScroller(), clock = document.querySelector('#almanac-head .alm-clock');
   if (!pin || !root || !clock) return;
-  var shown = _almPinClockShown();
-  var on = shown && clock.getBoundingClientRect().bottom < root.getBoundingClientRect().top + ALM_PIN_SHOW_PX || !!(_almSecBar && _almSecBar.cur !== ALM_SECBAR_HERO);
+  var p = _almPinProgress(clock, root);
+  var bar = !!(_almSecBar && _almSecBar.cur !== ALM_SECBAR_HERO);
+  var on = p > 0 || bar;
   if (pin.hidden === on) pin.hidden = !on;
-  pin.classList.toggle('alm-pin-bare', !shown);
+  pin.classList.toggle('alm-pin-rest', _almPinAtRest());
+  pin.classList.toggle('alm-pin-arriving', !bar && p < 1);
+  pin.style.setProperty('--alm-pin-p', p.toFixed(3));
+  clock.style.opacity = p > 0 && p < 1 ? (1 - p).toFixed(3) : '';
   root.style.setProperty('--alm-pin-h', (_almSecBarLine() - 2) + 'px');   // where a section's jump lands (almanac.css)
 }
 function _almSecBarSync() {
@@ -2126,11 +2388,18 @@ function _almSecBarSync() {
   if (!st || !root || st.lock) return;   // a tap's scroll is on its way: the bar already names where it ends
   // The section is the last one that has begun above the line: where it ends is no matter, or a jump that lands
   // between two sections (their gap) would name none, and the bar would wait for the next scroll to appear.
-  var line = root.getBoundingClientRect().top + _almSecBarLine(), cur = ALM_SECBAR_HERO;
+  // The line sits ALM_SECBAR_SWITCH of the room under the bar below it, so a section is named once it fills most of the page.
+  var bar = _almSecBarLine(), cur = ALM_SECBAR_HERO;
+  var line = root.getBoundingClientRect().top + bar + Math.max(0, root.clientHeight - bar) * ALM_SECBAR_SWITCH;
   st.sections.forEach(function (s) {
     // A part not laid out (not drawn yet) reads as top 0: it has not begun.
     if (s.els.some(function (e) { var r = e.getBoundingClientRect(); return r.height > 0 && r.top <= line; })) cur = s.key;
   });
+  // A pill sent the reader to a section and it still sits at the page's top edge: it keeps its name, though it is shorter than the
+  // switch line (the sky, on a phone about as tall as this one) and the next section has risen above that line. Scrolled off, it is forgotten.
+  var sent = st.sent && st.sections.filter(function (s) { return s.key === st.sent; })[0];
+  if (sent && Math.abs(sent.els[0].getBoundingClientRect().top - root.getBoundingClientRect().top) < ALM_SECBAR_LANDED_PX) cur = st.sent;
+  else st.sent = null;
   if (cur !== st.cur) { st.cur = cur; _almSecBarPaint(); }
 }
 // The bar's face for the current section: shown past the first, the current
@@ -2169,7 +2438,7 @@ function _almSecGo(key) {
   };
   _almGlide(root, function () { go('instant'); });
   go(_scrollBehavior());
-  st.cur = key;
+  st.cur = st.sent = key;
   _almSecBarPaint();
   // Sections flying past on the way are not announced; the scroll's end (or,
   // where the browser has no scrollend, a while after) hands the bar back.
@@ -2225,7 +2494,7 @@ var ALM_TB_TABLES = ['sunmoon', 'tides', 'twilight', 'phases', 'seasons', 'calen
 var ALM_TB_CALCS = ['distance', 'sundial', 'sunmoonday', 'units', 'sight', 'days', 'convert', 'zones'];
 // The numbers everything above is worked from ("constants rows", Eric): the
 // Earth, the Sun and Moon, the bodies' facts and axes, time, the navigator's, physics, the units.
-var ALM_TB_CONSTS = ['k_earth', 'k_sunmoon', 'k_bodies', 'k_poles', 'k_time', 'k_nav', 'k_physics', 'k_units'];
+var ALM_TB_CONSTS = ['k_earth', 'k_sunmoon', 'k_bodies', 'k_poles', 'k_time', 'k_nav', 'k_physics', 'k_scene', 'k_capability', 'k_units'];
 // One line drawing each, on a 24 grid, in the stroke of the Almanac's other icons.
 var ALM_TB_ICONS = {
   sunmoon: '<path d="M3 18h18M7 18a5 5 0 0 1 10 0M12 6v3M5.6 9.6l2 2M18.4 9.6l-2 2"/>',
@@ -2249,10 +2518,12 @@ var ALM_TB_ICONS = {
   k_earth: '<circle cx="12" cy="12" r="8.5"/><path d="M3.5 12h17M12 3.5v17"/><ellipse cx="12" cy="12" rx="4" ry="8.5"/>',
   k_sunmoon: '<circle cx="9" cy="12" r="5"/><circle cx="18.5" cy="8" r="2.5"/><path d="M9 4V3M9 21v-1M1.5 12h1M3.7 6.7l.8.8M3.7 17.3l.8-.8"/>',
   k_bodies: '<circle cx="8" cy="14" r="5"/><circle cx="17.5" cy="8" r="2.5"/><circle cx="18" cy="17.5" r="1.5"/>',
+  k_capability: '<rect x="3" y="13" width="4" height="8"/><rect x="10" y="8" width="4" height="13"/><rect x="17" y="3" width="4" height="18"/>',
   k_poles: '<circle cx="12" cy="12" r="6"/><path d="M12 2v20M9.5 4.5L12 2l2.5 2.5"/>',
   k_time: '<path d="M7 3h10M7 21h10M8 3c0 5 8 5 8 9s-8 4-8 9M16 3c0 5-8 5-8 9s8 4 8 9"/>',
   k_nav: '<path d="M12 3v18M3 12h18"/><circle cx="12" cy="12" r="5"/>',
   k_physics: '<circle cx="12" cy="12" r="1.8" fill="currentColor" stroke="none"/><ellipse cx="12" cy="12" rx="9" ry="3.5"/><ellipse cx="12" cy="12" rx="9" ry="3.5" transform="rotate(60 12 12)"/><ellipse cx="12" cy="12" rx="9" ry="3.5" transform="rotate(-60 12 12)"/>',
+  k_scene: '<path d="M7 18a4 4 0 0 1-.5-7.96A5.5 5.5 0 0 1 17 8.5 4.5 4.5 0 0 1 17.5 18z"/>',
   k_units: '<path d="M4 20L20 4M7 17l2 2M10 14l1.5 1.5M13 11l2 2M16 8l1.5 1.5"/>'
 };
 var ALM_PRINT_SVG = '<svg aria-hidden="true" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"><path d="M7 9V3h10v6"/><rect x="3" y="9" width="18" height="8" rx="2"/><path d="M7 14h10v7H7z"/></svg>';
@@ -2608,7 +2879,7 @@ function _almSkyPreStyle(loc) {
   return ' style="--sky-pre:' + _skyPreBackground(alt).replace(/"/g, '&quot;') + '"';
 }
 function _renderAlmanacContent() {
-  var now = new Date();
+  var now = _almFocusInstant();
   var m = _moonPhase(now);
 
   var html = '<div class="almanac-inner">' + _almSecBarHostHtml();
@@ -2634,7 +2905,10 @@ function _renderAlmanacContent() {
     '</div>';
   html += '<div class="almanac-sky-wrap">' +
     '<canvas id="almanac-sky-canvas" data-red aria-describedby="almanac-sky-desc" role="img" tabindex="0"' + _almSkyPreStyle(_getLocation()) + '></canvas>' +
+    '<div class="alm-sky-bar">' +
+    '<button type="button" class="alm-sky-stand" onclick="_osStandHere()" aria-label="' + escAttr(t('alm_launch_on_ground')) + '" title="' + escAttr(t('alm_launch_on_ground')) + '">' + ALM_STAND_SVG + '</button>' +
     '<button type="button" class="alm-sky-look" onclick="openAlmanacLook()" aria-label="' + escAttr(t('look_title')) + '" title="' + escAttr(t('look_title')) + '">' + ALM_LOOK_SVG + '</button>' +
+    '</div>' +
     '<button type="button" class="alm-sky-gear" id="almanac-sky-gear" onclick="_skyToggleSettings()" aria-expanded="false" aria-controls="almanac-sky-set" aria-label="' + escAttr(t('alm_sky_set')) + '" title="' + escAttr(t('alm_sky_set')) + '">' + ALM_GEAR_SVG + '</button>' +
     '<div id="almanac-sky-set" class="alm-sky-set" role="group" aria-label="' + escAttr(t('alm_sky_set')) + '" hidden></div>' +
     '<div id="almanac-sky-tip" class="alm-sky-tip" hidden></div>' +
@@ -2691,12 +2965,9 @@ function _renderAlmanacContent() {
 
 
   // Footer
-  // Outside Zimi (the Almanac's ZIM in Kiwix) the page that holds it defines _almHomeLine: the credit line, the page's very last.
-  // Zimi has none.
-  html += '<div class="alm-footer">' +
-    t('alm_footer') +
-    (typeof _almHomeLine === 'function' ? _almHomeLine() : '') +
-    '</div>';
+  // Zimi's footer, the line Home ends on, under the footer's own sentence (zimifooter.js, one definition for Home, the Almanac
+  // and the Games). In Zimi it says the version; in the ZIM read in Kiwix or a browser, the build's year (zimibuild.js).
+  html += '<div class="alm-footer">' + t('alm_footer') + '</div>' + _almFooter();
 
   html += '</div>';
   var anchor = _almRedrawAnchor();
@@ -2723,10 +2994,11 @@ function _renderAlmanacContent() {
     _almKeepStill(el);
     if (el) el._almArriving = false;
   });
-  // The live sky is the second thing on the page, after the Moon: it starts now, with the first frame, not after the
-  // panels below it (it was the ninth of ten, and the gradient it left stood in its place for seconds). Its sums and
-  // first paint come in the next frame (_initSkyScene).
-  _almSafePanel(function () { _loadSunData(_almFocus || now); }, null);
+  // The live sky is the second thing on the page, after the Moon: it starts with the page being shown, not after the
+  // panels below it (it was the ninth of ten, and the gradient it left stood in its place for seconds). A first open
+  // lets the head be shown first: the sky's sums and first paint (the GPU's, seconds on a phone) are the frame after.
+  var startSky = function () { _almSafePanel(function () { _loadSunData(_almFocus || now); }, null); };
+  if (_almRevealing) _almAfterShown(startSky); else startSky();
   // Everything under the calendar is drawn after the Moon, the sky and the month have been painted: the first
   // open is the hero in front of the person, not the whole page computed first (Eric, 2026-10-30: "tapping
   // almanac app opens so slow feels broken"; the panels were 40% of the open's main-thread time). A page drawn
@@ -2748,7 +3020,7 @@ function _renderAlmanacContent() {
       // The orrery opens spinning as scenery so planets visibly orbit on load (still, where motion is reduced)
       _orreryLastFrame = performance.now();
       _orreryAnimate();
-      _almLoadEarth();   // the orrery's way into the 3D view (its glow, the Earth's tap) needs the view's file: drawn now, wanted soon
+      if (!_almLowPower()) _almLoadEarth();   // the orrery's way into the 3D view (its glow, the Earth's tap) needs the view's file: drawn now, wanted soon
     },
     function () { _startTzClock(); _cacheAlmanacHighlights(now, m); },
     function () { _almPlaceWatch(); _almSecBarInit(); _almRedrawRestore(anchor); _almPanelsReady = true; }
@@ -2780,7 +3052,8 @@ function _almWhenSettled(fn, cancelled) {
   };
   _almWhenShown(function () {
     // A page drawn long after it was shown (a language changed) has no window left to keep.
-    var wait = _almShownAt ? Math.max(0, ALM_PANELS_SETTLE_MS - (performance.now() - _almShownAt)) : 0;
+    // A page come back to at a scroll (the address's s) has no settle window: the panels are what it is scrolling to.
+    var wait = _almShownAt && !_almScrollWanted ? Math.max(0, ALM_PANELS_SETTLE_MS - (performance.now() - _almShownAt)) : 0;
     if (!wait) { go(); return; }
     if (sc) sc.addEventListener('scroll', go, { passive: true });
     timer = setTimeout(go, wait);
@@ -3048,8 +3321,9 @@ function _almMoonTarget(e) {
   return e.target && e.target.closest ? e.target.closest('#almanac-head .almanac-moon-open') : null;
 }
 function _almMoonPrepare() {
-  if (typeof _aePrepare === 'function') _aePrepare(true);
-  else _almLoadEarth().then(function () { if (_almanacOpen && typeof _aePrepare === 'function') _aePrepare(true); }, function () {});
+  var go = function () { _aePrepare(true); _aeMoonNext(); };
+  if (typeof _aePrepare === 'function') go();
+  else _almLoadEarth().then(function () { if (_almanacOpen && typeof _aePrepare === 'function') go(); }, function () {});
 }
 // The 3D view's file loads once the page is shown and quiet, or at a touch on the Moon (_almLoadEarth): a lift asked
 // for before it is in is kept, not dropped, and made the moment it is (a drag on a Moon just painted did nothing at all).
@@ -3141,7 +3415,11 @@ function _almHeroLiveTick() {
   _almHeroLiveTimer = 0;
   if (!_almanacOpen) return;
   var covered = typeof _aeIsOpen !== 'undefined' && _aeIsOpen;
-  if (!document.hidden && !_almFocus && !covered) _almHeroLiveUpdate(new Date());
+  if (!document.hidden && !_almFocus) {
+    // Covered by the 3D view, the hero sleeps but the view's own clock pill does not: it read the minute it was painted at
+    // and stood there until a tap ("the top time doesn't update when realtime ... a few mins behind").
+    if (covered) _almClockPaint(); else _almHeroLiveUpdate(new Date());
+  }
   _almHeroLiveStart();
 }
 function _almHeroLiveUpdate(now) {
@@ -3285,79 +3563,15 @@ function _solveKepler(M, e) {
 
 
 
-// Orbit radii as fraction of canvas half-width (max ~0.46 to fit within square)
-var _ORBIT_VIS = {
-  Mercury: 0.06, Venus: 0.10, Earth: 0.14, Mars: 0.19,
-  Jupiter: 0.27, Saturn: 0.34, Uranus: 0.41, Neptune: 0.47
-};
-
-
 // ── Orrery time controls & rocket easter egg ──
 
 
 
-// AU → visual radius mapping: monotone cubic Hermite (Fritsch-Carlson) through
-// planet data points. Smooth C1 curve with no kinks at planet boundaries, while
-// preserving exact planet positions and guaranteeing monotonicity (no overshoot).
-var _AU_VIS_X = [0, 0.387, 0.723, 1.000, 1.524, 5.203, 9.555, 19.19, 30.07];
-var _AU_VIS_Y = [0, 0.06,  0.10,  0.14,  0.19,  0.27,  0.34,  0.41,  0.47 ];
-
-// Precompute Fritsch-Carlson monotone tangents + cubic coefficients
-var _AU_VIS_C = (function() {
-  var n = _AU_VIS_X.length;
-  var dx = [], dy = [], m = [], t = [];
-  for (var i = 0; i < n - 1; i++) {
-    dx[i] = _AU_VIS_X[i + 1] - _AU_VIS_X[i];
-    dy[i] = (_AU_VIS_Y[i + 1] - _AU_VIS_Y[i]) / dx[i];
-  }
-  // Tangents at each point
-  t[0] = dy[0];
-  for (var i = 1; i < n - 1; i++) {
-    if (dy[i - 1] * dy[i] <= 0) { t[i] = 0; }
-    else { t[i] = (dy[i - 1] + dy[i]) / 2; }
-  }
-  t[n - 1] = dy[n - 2];
-  // Fritsch-Carlson: clamp tangents for monotonicity
-  for (var i = 0; i < n - 1; i++) {
-    if (Math.abs(dy[i]) < 1e-12) { t[i] = t[i + 1] = 0; continue; }
-    var a = t[i] / dy[i], b = t[i + 1] / dy[i];
-    var s = a * a + b * b;
-    if (s > 9) { var tau = 3 / Math.sqrt(s); t[i] = tau * a * dy[i]; t[i + 1] = tau * b * dy[i]; }
-  }
-  // Cubic Hermite coefficients per segment: c0 + c1*u + c2*u^2 + c3*u^3
-  var segs = [];
-  for (var i = 0; i < n - 1; i++) {
-    var h = dx[i];
-    segs.push({
-      x0: _AU_VIS_X[i], h: h,
-      c0: _AU_VIS_Y[i],
-      c1: t[i] * h,
-      c2: 3 * (_AU_VIS_Y[i + 1] - _AU_VIS_Y[i]) - 2 * t[i] * h - t[i + 1] * h,
-      c3: 2 * (_AU_VIS_Y[i] - _AU_VIS_Y[i + 1]) + t[i] * h + t[i + 1] * h
-    });
-  }
-  return segs;
-})();
-
-// The solar system's one squeeze: the orrery's radii (above), and past Neptune a gentle continuation, so the 3D
-// view's planets, belt and probes and the orrery stand at the same shares of the way out (almanac-earth.js scales it
-// so the Earth is where it is).
-var _SQUEEZE_TAIL_POW = 0.2;
-function _solarSqueeze(au) {
-  var last = _AU_VIS_X.length - 1;
-  return au <= _AU_VIS_X[last] ? _auToVis(au) : _AU_VIS_Y[last] * Math.pow(au / _AU_VIS_X[last], _SQUEEZE_TAIL_POW);
-}
-function _auToVis(au) {
-  if (au <= 0) return 0;
-  var segs = _AU_VIS_C;
-  if (au >= _AU_VIS_X[_AU_VIS_X.length - 1]) return _AU_VIS_Y[_AU_VIS_Y.length - 1];
-  // Binary search for segment
-  var lo = 0, hi = segs.length - 1;
-  while (lo < hi) { var mid = (lo + hi + 1) >> 1; if (segs[mid].x0 <= au) lo = mid; else hi = mid - 1; }
-  var s = segs[lo];
-  var u = (au - s.x0) / s.h;
-  return s.c0 + u * (s.c1 + u * (s.c2 + u * s.c3));
-}
+// The solar system's one squeeze: the orrery's radii (_orrDeepRadius, a log map that leaves room for the probes), the
+// share of the drawing's half-width a distance from the Sun is drawn at. The 3D view's planets, belt, probes and minimap
+// stand at the same shares of the way out (almanac-earth.js scales it so the Earth is where it is), so a body is in the
+// same place in the orrery and in the Planets view.
+function _solarSqueeze(au) { return _orrDeepRadius(au); }
 
 // ── Transit speed profile ──
 // Rockets use an adaptive 3-phase speed profile:
@@ -3698,7 +3912,7 @@ var _sunMapImg = new Image();
 var _sunMapLoaded = false;
 _sunMapImg.onload = function() { _sunMapLoaded = true; _drawSunMap(); };
 _sunMapImg.onerror = function() { _sunMapLoaded = false; };
-_sunMapImg.src = '/static/world-map.svg?v=1';
+_sunMapImg.src = _almAsset('/static/world-map.svg');
 
 var _sunMapCanvas = null;
 var _sunMapFlashTimer = 0;
@@ -3819,6 +4033,24 @@ function _sunMapBaseLayer(W, H) {
   return cv;
 }
 
+var _sunMapCities = null, _sunMapCitiesKey = '';
+function _sunMapCityLayer(W, H, dpr) {
+  var key = W + 'x' + H + '@' + dpr;
+  if (_sunMapCities && _sunMapCitiesKey === key) return _sunMapCities;
+  var cv = _sunMapCities || document.createElement('canvas');
+  cv.width = W; cv.height = H;
+  var c = cv.getContext('2d');
+  c.clearRect(0, 0, W, H);
+  c.fillStyle = 'rgba(210,180,120,0.5)';
+  for (var ci = 0; ci < _MAP_CITIES.length; ci++) {
+    c.beginPath();
+    c.arc(_sunMapLonToX(_MAP_CITIES[ci].lon, W), _sunMapLatToY(_MAP_CITIES[ci].lat, H), 2 * dpr, 0, Math.PI * 2);
+    c.fill();
+  }
+  _sunMapCities = cv; _sunMapCitiesKey = key;
+  return cv;
+}
+
 // The map's political layer: the zone borders and the label gutter they sit
 // over. Kept in its own canvas rather than baked into the geography above so
 // the era fade is one globalAlpha on a blit — travelling out of the civil-time
@@ -3854,7 +4086,7 @@ function _tzBordersEnsure() {
   _tzBordersFetched = true;
   // ?v= matches the world-map.svg convention: /static/ is served immutable
   // for a year, so a regenerated asset must bump the version to bust caches.
-  fetch('/static/tz-borders.json?v=3')
+  fetch(_almAsset('/static/tz-borders.json'))
     .then(function (r) { return r.ok ? r.json() : null; })
     .then(function (data) {
       if (!data || !data.lines || !data.lines.length) return;
@@ -4010,27 +4242,40 @@ function _sunMapDrawSelectedOffset(c, W, H, dpr) {
   var gutter = Math.round(_sunMapGutter(H, dpr));
   var top = H - gutter;
   var x = _sunMapLonToX(_sunMapOffsetLon(off), W);
-  var label = _sunMapOffsetLabel(off);
-  c.save();
-  c.font = Math.round(8.5 * dpr) + 'px ui-monospace, SFMono-Regular, Menlo, monospace';
-  c.textAlign = 'center';
-  c.textBaseline = 'middle';
-  var pad = 3 * dpr;
-  var tw = c.measureText(label).width;
+  var pill = _sunMapOffsetPill(_sunMapOffsetLabel(off), gutter, dpr);
   // The tick stands at the exact meridian; the label pill clamps inward so it
   // never leaves the canvas at the date-line edges.
-  var lx = Math.max(tw / 2 + pad, Math.min(W - tw / 2 - pad, x));
-  c.fillStyle = 'rgba(4,7,12,0.85)';
-  c.fillRect(lx - tw / 2 - pad, top, tw + pad * 2, gutter);
+  var lx = Math.max(0, Math.min(W - pill.width, Math.round(x - pill.width / 2)));
+  c.drawImage(pill, lx, top);
+  c.save();
   c.strokeStyle = 'rgba(245,158,11,0.95)';
   c.lineWidth = Math.max(1, dpr);
   c.beginPath();
   c.moveTo(Math.round(x) + 0.5, top);
   c.lineTo(Math.round(x) + 0.5, top + gutter * 0.3);
   c.stroke();
-  c.fillStyle = 'rgba(245,158,11,0.95)';
-  c.fillText(label, lx, top + gutter / 2 + gutter * 0.08);
   c.restore();
+}
+// The lit offset's pill (its dark ground and amber words), drawn once per label: setting the font and drawing text
+// every travel frame was most of the sun map's frame in WebKit.
+var _sunMapPill = { key: '', cv: null };
+function _sunMapOffsetPill(label, gutter, dpr) {
+  var key = label + '|' + gutter + '|' + dpr;
+  if (_sunMapPill.key === key) return _sunMapPill.cv;
+  var cv = _sunMapPill.cv || document.createElement('canvas'), c = cv.getContext('2d');
+  var font = Math.round(8.5 * dpr) + 'px ui-monospace, SFMono-Regular, Menlo, monospace', pad = 3 * dpr;
+  c.font = font;
+  var tw = c.measureText(label).width;
+  cv.width = Math.ceil(tw + pad * 2); cv.height = gutter;   // (resizing resets the context's state)
+  c.fillStyle = 'rgba(4,7,12,0.85)';
+  c.fillRect(0, 0, cv.width, gutter);
+  c.font = font;
+  c.textAlign = 'center';
+  c.textBaseline = 'middle';
+  c.fillStyle = 'rgba(245,158,11,0.95)';
+  c.fillText(label, cv.width / 2, gutter / 2 + gutter * 0.08);
+  _sunMapPill = { key: key, cv: cv };
+  return cv;
 }
 
 // The picked location's time zone, lit up as its TRUE shape — the polygon
@@ -4231,7 +4476,7 @@ function _renderSunMap(now, clockLater) {
   } else {
     html += '<span id="almanac-loc-name" style="font-size:12px;color:var(--text3);cursor:pointer" onclick="_almShowCitySearch()" title="' + t('alm_set_location') + '">' + t('alm_set_location') + '</span>';
   }
-  html += _almHereBtnHtml('alm-here-icon');   // the crosshair alone beside the city, as in the header
+  html += _almHereBtnHtml('alm-here-icon');   // the crosshair alone beside the city: the map is what is above it
   // Hidden city search — revealed on click
   html += '<div id="almanac-city-search-wrap" style="display:none;position:absolute;top:-2px;left:50%;transform:translateX(-50%);z-index:10">';
   html += '<input id="almanac-city-search" type="text" placeholder="' + t('alm_search_city') + '" ' +
@@ -4374,13 +4619,22 @@ var _TZ_CITIES = [
   { key: 'auckland', tz: 'Pacific/Auckland', lat: -36.85, lon: 174.76 }
 ];
 
+// A zone's offset changes only at a transition, and every transition falls on a quarter hour: the answer is kept per zone
+// per quarter hour. It runs every travel frame (the sun map's lit offset, the head cards), and formatting and parsing two
+// dates each time was most of the sun map's frame in WebKit.
+var ALM_TZ_OFFSET_SLOT_MS = 15 * 60000, ALM_TZ_OFFSET_MEMO_MAX = 512;
+var _tzOffsetMemo = new Map();
 function _tzUtcOffsetMin(tz, now) {
-  // Cached formatters (_tzFmt, en-US so the output stays Date-parseable):
-  // this runs per travel frame via the head cards, and building two fresh
-  // Intl.DateTimeFormat objects per call dominated that path.
+  var key = tz + '@' + Math.floor(now.getTime() / ALM_TZ_OFFSET_SLOT_MS);
+  var hit = _tzOffsetMemo.get(key);
+  if (hit !== undefined) return hit;
+  // Cached formatters (_tzFmt, en-US so the output stays Date-parseable).
   var fmtOpts = { year: 'numeric', month: 'numeric', day: 'numeric', hour: 'numeric', minute: 'numeric', second: 'numeric', hour12: false };
   var enFmt = function(z) { return _tzFmt(z, fmtOpts, 'en-US').format(now); };
-  return Math.round((new Date(enFmt(tz)) - new Date(enFmt('UTC'))) / 60000);
+  var off = Math.round((new Date(enFmt(tz)) - new Date(enFmt('UTC'))) / 60000);
+  if (_tzOffsetMemo.size >= ALM_TZ_OFFSET_MEMO_MAX) _tzOffsetMemo.clear();
+  _tzOffsetMemo.set(key, off);
+  return off;
 }
 
 // Anchor set for mapping an arbitrary lat/lon to a timezone. There is no
@@ -4608,7 +4862,7 @@ function _almClocks() {
 }
 function _almSetClocks(list) {
   _prefWrite(_ALM_CLOCKS_KEY, JSON.stringify(list));
-  _initTzClock(new Date());
+  _initTzClock(_almFocusInstant());
 }
 function _almClockAdd(tz) {
   if (!tz) return;
@@ -4635,7 +4889,7 @@ function _almClockSetView(view) {
   // The switch is above the cards that change in number, so it stays where it is; a page that was moved by what the
   // cards gained or lost would move the switch under the finger that pressed it (kept in place all the same).
   _almKeepInPlace(document.getElementById('almanac-tz-view'), function () {
-    _initTzClock(new Date());
+    _initTzClock(_almFocusInstant());
     if (typeof _drawSunMap === 'function') _drawSunMap();
   });
 }
@@ -4727,7 +4981,7 @@ function _almClockSheetOpen(btn) {
   _almClockSheetClose();
   var view = document.getElementById('almanac-view');
   if (!view) return;
-  var now = new Date(), zones = _almClockZones(now), label = _almEsc(t('alm_clock_add'));
+  var now = _almFocusInstant(), zones = _almClockZones(now), label = _almEsc(t('alm_clock_add'));
   zones.forEach(function (z) {
     try { z.time = _tzFmt(z.tz, ALM_TZ_TIME_OPTS).format(now); } catch (e) { z.time = ''; }
     z.sub = z.time + ' \u00b7 ' + _almTzOffsetLabel(z.tz, now);
@@ -4847,7 +5101,7 @@ function _almTzCardLabel(tz) {
 // family elsewhere, not a way to move house (the map and the search are).
 function _almSelectTz(tz) {
   _almSelectedTz = tz;
-  _initTzClock(new Date());
+  _initTzClock(_almFocusInstant());
   if (typeof _drawSunMap === 'function') _drawSunMap();
 }
 
@@ -5133,6 +5387,9 @@ function _almTzHandSync(now) {
   }
   var want = (now.getSeconds() * 1000 + now.getMilliseconds()) % ALM_TZ_SWEEP_MS;
   var at = hand._anim.currentTime % ALM_TZ_SWEEP_MS;
+  // It glides only at the pace of the clock (real time, or the focus moving at 1x): at any other pace, or held, it stands at the second.
+  var glides = !_almFocus || _almRate === 1;
+  if (!glides) { hand._anim.pause(); hand._anim.currentTime = want; return true; }
   if (hand._anim.playState !== 'running' || Math.abs(at - want) > ALM_TZ_DRIFT_MS) hand._anim.currentTime = want;
   if (hand._anim.playState !== 'running') hand._anim.play();
   return true;
@@ -5162,14 +5419,17 @@ function _tzWatchView() {
   _tzClockInView = true;
   if (!wrap || typeof IntersectionObserver !== 'function') return;
   _tzClockObs = new IntersectionObserver(function (entries) {
-    var on = entries[entries.length - 1].isIntersecting;
-    if (on && !_tzClockInView && _almanacOpen) { _tzClockInView = true; _tzClockTick(); }   // the face at the time it has reached; the cards only if a minute has turned
+    var on = entries[entries.length - 1].isIntersecting, was = _tzClockInView;
     _tzClockInView = on;
+    if (!on) _tzClockHalt();   // out of sight: no tick, no frame, the hand stands
+    else if (!was && _almanacOpen && !_almanacLoopsHeld) _tzClockRun();   // the face at the time it has reached (the cards only if a minute has turned), and the tick again
   });
   _tzClockObs.observe(wrap);
 }
-function _tzClockTick() {
-  var now = new Date(), minute = now.getMinutes();
+// The clocks read the focused instant: the time travelled to, or this very moment. The face and the digits each call; the
+// cards (one DOM rebuild) only when the minute they show has turned.
+function _tzClockTick(at) {
+  var now = at || _almFocusInstant(), minute = Math.floor(now.getTime() / ALM_MINUTE_MS);
   if (_tzClockInView) {
     _drawTzClock(now);
     // City cards rendered once and went stale within minutes: refresh the grid on each minute rollover.
@@ -5177,19 +5437,29 @@ function _tzClockTick() {
   }
 }
 function _startTzClock() {
-  if (_tzClockRAF) clearTimeout(_tzClockRAF);
-  if (_tzClockFrame) { cancelAnimationFrame(_tzClockFrame); _tzClockFrame = null; }
   _tzWatchView();
+  _tzClockRun();
+}
+// The tick runs only while the clocks are open and in view; anything that stops it (out of sight, the page hidden or
+// closed) leaves no timer and no frame behind.
+function _tzClockRun() {
+  _tzClockHalt();
   function next() {
     _tzClockRAF = setTimeout(function () { _tzClockRAF = null; _tzClockFrame = requestAnimationFrame(tick); }, _TZ_CLOCK_TICK_MS - Date.now() % _TZ_CLOCK_TICK_MS);
   }
   function tick() {
     _tzClockFrame = null;
-    if (!_almanacOpen) { _tzClockRAF = null; return; }
+    if (!_almanacOpen || !_tzClockInView) { _tzClockRAF = null; return; }
     _tzClockTick();
     next();
   }
   tick();
+}
+function _tzClockHalt() {
+  if (_tzClockRAF) { clearTimeout(_tzClockRAF); _tzClockRAF = null; }
+  // A tick whose timer already fired waits as a frame: cancel that too, or it restarts the clock under a view that paused it.
+  if (_tzClockFrame) { cancelAnimationFrame(_tzClockFrame); _tzClockFrame = null; }
+  _almTzHandPause();
 }
 
 // tzOffsetMin: the LOCATION's UTC offset in minutes. Passed by the Sun Map
@@ -5233,6 +5503,11 @@ function _computeSunTimes(now, lat, lon, tzOffsetMin) {
   return result;
 }
 
+// The map's night and sub-solar point for a moment in travel: the canvas alone, from its cached layers (_renderSunMap rebuilds the panel on settle).
+function _sunMapTravelDraw(focus) {
+  _sunMapNow = focus;
+  _drawSunMap();
+}
 function _drawSunMap() {
   if (!_sunMapCanvas || !_sunMapNow) return;
   var ctx = _sunMapCanvas.getContext('2d');
@@ -5269,8 +5544,7 @@ function _drawSunMap() {
   }
 
   // Compute sun subsolar point
-  var doy = _dayOfYear(now);
-  var B = _solarB(doy);
+  var B = _solarB(_dayOfYearFraction(now));
   var decl = _solarDeclination(B);
   var declDeg = decl * 180 / Math.PI;
   var utcH = now.getUTCHours() + now.getUTCMinutes() / 60 + now.getUTCSeconds() / 3600;
@@ -5340,16 +5614,9 @@ function _drawSunMap() {
   ctx.fillStyle = '#fbbf24';
   ctx.fill();
 
-  // City dots
-  for (var ci = 0; ci < _MAP_CITIES.length; ci++) {
-    var c = _MAP_CITIES[ci];
-    var cx = _sunMapLonToX(c.lon, W);
-    var cy = _sunMapLatToY(c.lat, H);
-    ctx.beginPath();
-    ctx.arc(cx, cy, 2 * dpr, 0, Math.PI * 2);
-    ctx.fillStyle = 'rgba(210,180,120,0.5)';
-    ctx.fill();
-  }
+  // City dots: they never move, so they are one cached layer over the night (drawn dot by dot every frame they were
+  // most of what the night's travel cost).
+  ctx.drawImage(_sunMapCityLayer(W, H, dpr), 0, 0);
 
   // Current location marker — only if explicitly set
   if (_sunMapHasLocation) {
@@ -5385,6 +5652,7 @@ function _almShowCitySearch() {
 
 // Show where I am: a crosshair, the mark every map uses for "locate me"
 // (the 3D view's button too).
+var ALM_MAP_SVG = '<svg aria-hidden="true" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 4L3 6v14l6-2 6 2 6-2V4l-6 2-6-2z"/><path d="M9 4v14M15 6v14"/></svg>';
 var ALM_LOCATE_SVG = '<svg aria-hidden="true" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="7"/><circle cx="12" cy="12" r="2" fill="currentColor"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3"/></svg>';
 
 // "Where I am": the button back to the device's own place (geolocation, else
@@ -5392,6 +5660,17 @@ var ALM_LOCATE_SVG = '<svg aria-hidden="true" width="16" height="16" viewBox="0 
 function _almHereBtnHtml(cls) {
   return '<button type="button" class="alm-invite-btn ' + cls + '" onclick="_shareAlmanacLocation()" title="' + _almEsc(t('alm_use_location')) + '" aria-label="' + _almEsc(t('alm_place_here')) + '">' +
     ALM_LOCATE_SVG + '<span>' + _almEsc(t('alm_place_here')) + '</span></button>';
+}
+
+// The map of the Almanac's place (the shared flow: its installed map, or the one worth downloading), an icon beside
+// the crosshair; absent without a place, and where the app shell is not (the Almanac ZIM on its own).
+function _almMapBtnHtml(loc) {
+  if (typeof _mapHere !== 'function' || !loc || !loc.stored) return '';
+  return '<button type="button" class="alm-invite-btn alm-here-icon" onclick="_almMapHere()" title="' + _almEsc(t('map_here')) + '" aria-label="' + _almEsc(t('map_here')) + '">' + ALM_MAP_SVG + '</button>';
+}
+function _almMapHere() {
+  var loc = _getLocation();
+  if (loc.stored) _mapHere().then(function(m) { if (m) m.go(loc.lat, loc.lon, loc.name ? loc.name.split(',')[0].trim() : ''); });
 }
 
 // No place chosen yet: one line asking for it, with the two ways to give it
@@ -6063,7 +6342,7 @@ function _promptAlmanacLocation() {
   overlay.innerHTML = '<div style="color:var(--text);font-size:16px;font-weight:600;margin-bottom:4px">' + t('alm_set_location_title') + '</div>' +
     '<div style="color:var(--text3);font-size:12px;margin-bottom:12px">' + t('alm_tap_city') + '</div>' +
     '<div id="almanac-map-wrap" style="position:relative;max-width:560px;width:100%;border-radius:10px;overflow:hidden;border:1px solid var(--border);cursor:crosshair">' +
-      '<img src="/static/world-map.svg?v=1" width="800" height="400" style="display:block;width:100%;height:auto" draggable="false" alt="World map">' +
+      '<img src="' + _almAsset('/static/world-map.svg') + '" width="800" height="400" style="display:block;width:100%;height:auto" draggable="false" alt="World map">' +
       '<div id="almanac-map-marker" style="display:none;position:absolute;pointer-events:none">' +
         '<div style="width:20px;height:20px;border:2px solid rgba(210,170,100,0.7);border-radius:50%;position:absolute;left:-10px;top:-10px"></div>' +
         '<div style="width:6px;height:6px;background:#d4aa64;border-radius:50%;position:absolute;left:-3px;top:-3px"></div>' +
@@ -6536,7 +6815,7 @@ function _renderMeteorShowers(now, moon) {
       '<span class="almanac-eclipse-type">' + _alLink('shower:' + s.key, t('alm_shower_' + s.key)) + '</span>' +
       '<br><span class="almanac-eclipse-date">~' + s.zhr + t('alm_per_hour') + ' &middot; ' + _lc(s.radiant) + ' &middot; ' + t('alm_speed_' + s.speed.toLowerCase()) +
       ' &middot; ' + t('alm_shower_parent', { name: _alLink('parent:' + s.key, _almEsc(s.parent)) }) +
-      ' &middot; <span style="color:' + condColor + '"><span class="alm-emoji">' + s.moonIcon + '</span> ' + s.moonCondition + '</span></span>' +
+      ' &middot; <span class="almanac-eclipse-moon" style="color:' + condColor + '"><span class="alm-emoji">' + s.moonIcon + '</span> ' + s.moonCondition + '</span></span>' +
       '</div>' +
       '<div class="' + untilClass + '">' + untilStr + '</div></div>';
   }
@@ -7356,7 +7635,8 @@ function _drawAlmanacGrid() {
       // Worldwide entries carry a 2-letter ISO code as src; expand it to the full
       // country name for the tooltip ("France holiday", not "FR holiday").
       var srcName = (ev.src && ev.src.length === 2) ? (_almRegionName(ev.src) || ev.src) : ev.src;
-      var srcTitle = ev.src ? ' title="' + _tLookup('alm_region_holiday', '{c} holiday').replace('{c}', srcName).replace(/"/g, '&quot;') + '"' : '';
+      var srcTitle = ev.src ? ' title="' + _tLookup('alm_region_holiday', '{c} holiday').replace('{c}', srcName).replace(/"/g, '&quot;') + '"' : ' title="' + escapedLabel.replace(/"/g, '&quot;') + '"';
+      // The cell is 44px wide: the name is cut with an ellipsis there, whole in the title and in the day's detail below.
       // Country-specific holidays (those with a region src) get their own
       // colour so they read apart from the worldwide observances (#33).
       var evCls = 'alm-ev alm-ev-' + ev.type + (ev.src ? ' alm-ev-country' : '');
@@ -8415,12 +8695,17 @@ var _ALL_LANGS = [
   {code:'zh',name:'中文'},{code:'ar',name:'العربية'},{code:'hi',name:'हिन्दी'},{code:'he',name:'עברית'}
 ];
 var _RTL_CODES = ['ar','he'];
+function _almFooter() {
+  if (typeof ZimiFooter === 'undefined') return '';
+  var version = (typeof _zimiVersion === 'string' && _zimiVersion) || window.ZIMI_BUILT_VERSION || '';
+  return ZimiFooter.html({ version: version, year: version ? '' : window.ZIMI_BUILT_YEAR, poweredBy: t('powered_by') });
+}
 
 // The Golden Record's pictures, in the record's order: golden-record/credits.json says each one's
 // file, caption, who it is by and whether it is public domain. The Almanac built for Kiwix
 // (almanacstage, community) marks the copyrighted ones omitted and leaves their files out:
 // those are named in the list as a line of text (number, title, credit), so the sequence stays whole.
-var _GR_CREDITS_URL = '/static/golden-record/credits.json';
+var _GR_CREDITS_URL = _almAsset('/static/golden-record/credits.json');
 var _GR_DIR = '/static/golden-record/';
 var _grImages = null, _grFailed = false;
 // The table is kept once it has come; a failed fetch leaves an empty list for this render and is tried again at the next.
@@ -8445,7 +8730,7 @@ var _grTouchStartX = 0;
 async function _loadRosettaManifest() {
   if (_rosettaManifest) return _rosettaManifest;
   try {
-    var resp = await fetch('/static/rosetta/manifest.json');
+    var resp = await fetch(_almAsset('/static/rosetta/manifest.json'));
     _rosettaManifest = await resp.json();
   } catch(e) { _rosettaManifest = []; }
   return _rosettaManifest;
@@ -8454,7 +8739,7 @@ async function _loadRosettaManifest() {
 async function _loadInscription(id) {
   if (_rosettaCache[id]) return _rosettaCache[id];
   try {
-    var resp = await fetch('/static/rosetta/' + id + '.json');
+    var resp = await fetch(_almAsset('/static/rosetta/' + id + '.json'));
     _rosettaCache[id] = await resp.json();
   } catch(e) { _rosettaCache[id] = {texts:{}}; }
   return _rosettaCache[id];
@@ -8584,7 +8869,7 @@ function _renderGoldenRecordGallery() {
     var cap = _almEsc(_grCap(i)), im = _grImages[i];
     html += '<li class="gr-row' + (im.omitted ? ' gr-row-text' : '') + '"><span class="gr-n">' + (i + 1) + '</span>' +
       (im.omitted ? '' : '<button class="gr-pic" onclick="_openGrLightbox(' + i + ')" aria-label="' + cap + '">' +
-        '<img src="' + _almEsc(_GR_DIR + im.file) + '" alt="" loading="lazy"></button>') +
+        '<img src="' + _almEsc(_almAsset(_GR_DIR + im.file)) + '" alt="" loading="lazy"></button>') +
       '<span class="gr-txt"><span class="gr-cap">' + cap + '</span><span class="gr-by">' + _almEsc(_grCredit(i)) + '</span></span></li>';
   }
   html += '</ol>';
@@ -8644,7 +8929,7 @@ function _renderGrLightbox() {
     '<button class="gr-lb-close" onclick="_closeGrLightbox()">&times;</button>' +
     '<button class="gr-lb-arrow gr-lb-prev" onclick="event.stopPropagation();_grNav(-1)"><svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="10,2 4,8 10,14"/></svg></button>' +
     '<div class="gr-lb-main" onclick="event.stopPropagation()">' +
-      '<img src="' + _almEsc(_GR_DIR + im.file) + '" alt="' + cap + '">' +
+      '<img src="' + _almEsc(_almAsset(_GR_DIR + im.file)) + '" alt="' + cap + '">' +
       '<div class="gr-lb-cap">' + cap + '</div>' +
       '<div class="gr-lb-by">' + _almEsc(_grCredit(_grLightboxIdx)) + '</div>' +
       '<div class="gr-lb-num">' + (_grLightboxIdx + 1) + ' / ' + _grImages.length + '</div>' +
@@ -8722,5 +9007,6 @@ window.addEventListener('resize', function() {
     // parked in the past/future must not snap the moon back to today. No
     // animateMoon: from == to position, so it repaints in place without a glide.
     _initSkyScene(_almFocusInstant(), loc.lat, loc.lon);
+    _almClockPaint();   // the 3D view's time chip fits its date to the new width (_almChipFit)
   }, 200);
 });

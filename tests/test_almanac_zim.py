@@ -98,11 +98,10 @@ def test_nothing_the_almanac_calls_is_missing():
 
 def test_the_host_loads_what_zimi_loads_in_the_same_order():
     host = _read(HOST_HTML)
-    app = _read(APP_JS)
-    zimi = re.findall(
-        r"'/static/([\w.-]+\.js)\?v=\d+'",
-        re.search(r"var _ALMANAC_MODULES = \[(.*?)\];", app, re.S).group(1),
-    )
+    shell = _read(os.path.join(os.path.dirname(APP_JS), "..", "templates", "index.html"))   # the page's head lists them
+    capability = re.search(r"var _CAPABILITY_JS = '(/static/[\w.-]+\.js\?v=\d+)'", shell).group(1)
+    items = re.search(r"var _ALMANAC_MODULES = \[(.*?)\];", shell, re.S).group(1).replace("_CAPABILITY_JS", "'%s'" % capability)
+    zimi = re.findall(r"'/static/([\w.-]+\.js)\?v=\d+'", items)
     listed = re.search(r"var ALMANAC_SCRIPTS = \[(.*?)\];", host, re.S).group(1)
     assert re.findall(r"'([\w.-]+\.js)'", listed) == zimi
     for name in zimi:
@@ -158,7 +157,7 @@ def test_it_builds_into_a_real_zim_and_rebuilds_when_a_source_changes(
     path = ownzims.build(ALMANAC)
     a = Archive(path)
     assert a.main_entry.get_item().path == "index.html"
-    assert a.get_metadata("Title").decode() == "Almanac · Zimi"
+    assert a.get_metadata("Title").decode() == "Zimi Almanac"
     assert a.get_metadata("Creator").decode() == "Zimi"
     tags = a.get_metadata("Tags").decode().split(";")
     assert (
