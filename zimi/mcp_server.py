@@ -1094,7 +1094,8 @@ def build(tools="full"):
     instructions)."""
     chosen = resolve_tools(tools)
     instructions = _INSTRUCTIONS_FULL
-    if any(is_lean for _, _, is_lean in chosen):
+    # The lean text describes lean's search and read: say it only when one of them is offered.
+    if any(is_lean and name in ("search", "read") for name, _, is_lean in chosen):
         instructions = f"{_INSTRUCTIONS_LEAN} {_source_names()}"
     server = FastMCP("zimi", instructions=instructions)
     # Report ZIMI's version, not FastMCP's.
