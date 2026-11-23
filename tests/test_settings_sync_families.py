@@ -62,6 +62,8 @@ FAMILIES = {
         "zimi_almanac_units",
         "zimi_sky_settings",
         "zimi_ae_orbits",
+        "zimi_ae_sats_all",
+        "zimi_ae_sats_gps",
         "zimi_alm_landmarks",
         "zimi_alm_hd_later",
         "zimi_orrery_tried",

@@ -30,7 +30,7 @@ var AS_ORBIT_TERM = { leo: 'term:leo', meo: 'term:meo', geo: 'term:geo' };
 var AS_OWNER_ISO = { US: 'US', UK: 'GB', PRC: 'CN', CIS: 'RU', JPN: 'JP', IND: 'IN', FR: 'FR', GER: 'DE', IT: 'IT', CA: 'CA', ESA: 'EU', SKOR: 'KR', ISRA: 'IL', AUS: 'AU', BRAZ: 'BR', SPN: 'ES', TURK: 'TR', UAE: 'AE', ARGN: 'AR', LUXE: 'LU', NETH: 'NL', SWTZ: 'CH', SWED: 'SE', NOR: 'NO', TWN: 'TW', THAI: 'TH', INDO: 'ID', SAUD: 'SA', EGYP: 'EG', MEX: 'MX', POL: 'PL', ISS: 'US' };
 var AS_OWNER_TBD = 'TBD';                             // SATCAT's code for an owner not yet assigned
 var AS_OWNER_CHIPS = 6;                               // the most numerous owners get a chip of their own
-var AS_GPS_KEY = 'zimi_ae_sats_gps', AS_ON = '1';   // the layer's own choice is SK.ALM_SATS_ALL (app.js)
+var AS_ON = '1';   // the layer's own choice is SK.ALM_SATS_ALL, the GPS rings' SK.ALM_SATS_GPS (app.js: both follow a signed-in user)
 
 // ── Drawing ──
 var AS_POINT_PX = 2.6, AS_POINT_GEO_PX = 3.4, AS_POINT_SELECTED_PX = 9;
@@ -80,7 +80,7 @@ var _as = {
 };
 
 function _asPref(on) { _prefWrite(SK.ALM_SATS_ALL, on ? AS_ON : null); }
-function _asGpsOn() { try { return localStorage.getItem(AS_GPS_KEY) === AS_ON; } catch (e) { return false; } }
+function _asGpsOn() { return _rawGet(SK.ALM_SATS_GPS) === AS_ON; }
 
 // ── Reading the catalogue ──
 function _asDecode(payload) {
@@ -1000,8 +1000,7 @@ function _asRenderSheet() {
   el.innerHTML = html;
   _aeById('as-x').onclick = _asCloseSheet;
   _aeById('as-gps-btn').onclick = function () {
-    try { localStorage.setItem(AS_GPS_KEY, _asGpsOn() ? '' : AS_ON); } catch (e) {}
-    if (_asGpsOn() === false) try { localStorage.removeItem(AS_GPS_KEY); } catch (e) {}
+    _prefWrite(SK.ALM_SATS_GPS, _asGpsOn() ? null : AS_ON);
     this.setAttribute('aria-pressed', String(_asGpsOn()));
     _skyKickNow();
   };
