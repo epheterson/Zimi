@@ -115,17 +115,16 @@ class TestIllustrations(unittest.TestCase):
         cf = server._cache_file_path()
         with open(cf) as f:
             data = json.load(f)
-        for rec in data["files"].values():
+        for fn, rec in data["files"].items():  # keyed by file name
             rec.pop("icon_v", None)
-            rec["has_icon"] = (
-                rec["file"].startswith("has48") if "file" in rec else False
-            )
+            rec["has_icon"] = fn.startswith("has48")  # the old rule: only a 48 counted
         with open(cf, "w") as f:
             json.dump(data, f)
         server._zim_list_cache = None
         server.load_cache(force=False)
         rows = {z["name"]: z for z in server.list_zims()}
-        self.assertTrue(rows["only96"]["has_icon"])
+        self.assertTrue(rows["only96"]["has_icon"], "read again, now that any size counts")
+        self.assertTrue(rows["has48"]["has_icon"])
         self.assertFalse(rows["none"]["has_icon"])
 
     def test_a_book_without_any_illustration_still_has_none(self):
