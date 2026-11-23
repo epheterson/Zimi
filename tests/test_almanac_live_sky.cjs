@@ -67,6 +67,7 @@ const S = {
   cancelAnimationFrame: () => {},
 };
 vm.createContext(S);
+S._almAsset = (p) => p;   // app.js: a /static address with its version; here, as it is
 vm.runInContext(require("./sk.cjs")(), S);   // app.js SK, loaded before every Almanac file
 vm.runInContext(require("./sk.cjs").prefWriteSource(), S);
 vm.runInContext(
@@ -84,6 +85,7 @@ vm.runInContext(read('almanac-sky.js'), S);
 vm.runInContext(read('almanac-skygl.js'), S);
 vm.runInContext(read('zone-places.js'), S);
 vm.runInContext(read('almanac-skyfacts.js'), S);
+vm.runInContext(read('almanac-skyscene.js'), S);
 
 const D2R = Math.PI / 180, R2D = 180 / Math.PI;
 // Great-circle distance between two alt/az directions, degrees.
@@ -317,37 +319,52 @@ delete S.window.openAlmanacEarth.unsupported;
 
 // ── 7. One clock ──
 vm.runInContext('var __store = {}; var localStorage = { getItem: function (k) { return k in __store ? __store[k] : null; }, setItem: function (k, v) { __store[k] = String(v); }, removeItem: function (k) { delete __store[k]; } };' +
-  'var _almFocus = null; var _heroMoonAnim = null; var __reduce = false; function _almReduceMotion() { return __reduce; }' +
+  'var _almFocus = null; var _heroMoonAnim = null; var __reduce = false; function _almReduceMotion() { return __reduce; } function _almStill() { return __reduce; }' +
+  'var _almEarthLoading = {};' +   // the 3D view's files (and with them the ISS's elements) are on their way
   'var __painted = 0; _skyPaint = function () { __painted++; };' +
   '_skyState = { inView: true, eph: { sunGeoAlt: -30 }, lm: 7, actors: [], bodies: [], moonAnim: null, nowTime: Date.now() };' +
   'function _skySolarMinutes() { return 360; };' +
   '_skyRand = function () { return 0.99; };', S);   // a meteor's wait is drawn at random: here always a short one, so the timer is the meteor's own
 const SATS = '_skyPollSatsTick';   // the wait for the ISS's elements, on any picture of the sky and with motion reduced
-const MOVING = SATS + ',_skySpawnBirds,_skySpawnMeteor,_skySpawnPlane,_skySpawnWhale,_skySwayTick';   // the beach's: the spawners and the palms' breeze, and that wait
+const SKYLIFE = SATS + ',_skySpawnBirds,_skySpawnHeli,_skySpawnMeteor,_skySpawnPlane,_skySwayTick';   // the same over the true horizon: no whale, there is no sea
+const MOVING = SATS + ',_skySpawnBirds,_skySpawnHeli,_skySpawnMeteor,_skySpawnPlane,_skySpawnWhale,_skySwayTick';   // the beach's: the spawners and the palms' breeze, and that wait
 const armed = () => { timers.length = 0; vm.runInContext('_skyArm()', S); return timers.map((x) => x.fn.name).sort().join(','); };
 // The true horizon, chosen: nothing but the clock's drift, at night or by day, and no twinkle at all.
-vm.runInContext('_skySettings = { skin: "horizon", lines: "off", size: "auto", dial: 0 }', S);
-check(armed() === '_skyLiveTick,' + SATS, 'live at night: the clock\'s drift and nothing else (no twinkle, no breeze, nothing crossing)');
+vm.runInContext('_skySettings = { skin: "horizon", lines: "off", size: "auto", life: "on", dial: 0 }', S);
+check(armed() === '_skyLiveTick,' + SKYLIFE, 'live at night over the true horizon: the clock\'s drift and the life (life is its own switch, on every scene)');
 vm.runInContext('_almFocus = new Date(0)', S);
-check(armed() === SATS, 'scrubbed: no live timer, the sky holds the focused instant (and waits for the ISS\'s elements)');
+check(armed() === SKYLIFE, 'scrubbed: no live timer, the sky holds the focused instant (the life still flies; the ISS\'s elements still awaited)');
 vm.runInContext('_almFocus = null; _skyState.eph.sunGeoAlt = 20', S);
-check(armed() === '_skyLiveTick,' + SATS, 'by day the same');
+check(armed() === '_skyLiveTick,' + SKYLIFE, 'by day the same');
 // The beach is the default: its palms sway and its planes, birds, whales and meteors cross, with nothing chosen.
 vm.runInContext('_skySettings = null; localStorage.removeItem("zimi_sky_settings")', S);
-check(vm.runInContext('_skySetting("skin")', S) === 'beach', 'nothing chosen: the scene is the beach with its life');
+check(vm.runInContext('_skySetting("skin")', S) === 'local', 'nothing chosen: the scene is the place\'s own, with its life');
 check(armed() === '_skyLiveTick,' + MOVING, 'the default scene: the clock, the palms and the moving things');
 // A viewer who chose the true horizon keeps it, and one who chose something else is not made to choose the scene.
 vm.runInContext('_skySettings = null; localStorage.setItem("zimi_sky_settings", JSON.stringify({ skin: "horizon" }))', S);
-check(vm.runInContext('_skySetting("skin")', S) === 'horizon' && armed() === '_skyLiveTick,' + SATS, 'a saved true horizon stays the true horizon');
+check(vm.runInContext('_skySetting("skin")', S) === 'horizon' && armed() === '_skyLiveTick,' + SKYLIFE, 'a saved true horizon stays the true horizon');
 vm.runInContext('_skySettings = null; localStorage.setItem("zimi_sky_settings", JSON.stringify({ lines: "lines" })); _skySetting("lines")', S);
-check(vm.runInContext('_skySetting("skin")', S) === 'beach', 'saving another choice does not save the scene with it');
+check(vm.runInContext('_skySetting("skin")', S) === 'local', 'saving another choice does not save the scene with it');
 vm.runInContext('_skySet("lines", "names")', S);
 check(JSON.parse(vm.runInContext('localStorage.getItem("zimi_sky_settings")', S)).skin === undefined, 'only what was chosen is kept');
+// Life is its own switch: off, the palms still sway and meteors still fall, and nothing else crosses; the beach can be chosen anywhere.
+vm.runInContext('_skySettings = null; localStorage.setItem("zimi_sky_settings", JSON.stringify({ life: "off" }))', S);
+check(armed() === '_skyLiveTick,' + SATS + ',_skySpawnMeteor,_skySwayTick', 'life off: the breeze and the meteors, no planes, birds, whales or boats');
+vm.runInContext('_skySettings = null; localStorage.setItem("zimi_sky_settings", JSON.stringify({ skin: "beach" }))', S);
+check(vm.runInContext('_skySetting("skin") === "beach" && _skySetting("life")', S) === 'on' && armed() === '_skyLiveTick,' + MOVING, 'the beach, chosen: its life is on unless switched off');
+// Sizes: the 'auto' an older version saved reads as Larger.
+vm.runInContext('_skySettings = null; localStorage.setItem("zimi_sky_settings", JSON.stringify({ size: "auto" }))', S);
+check(vm.runInContext('_skySetting("size")', S) === 'large', 'a saved Easy to find is read as Larger');
+vm.runInContext('_skySettings = null; localStorage.removeItem("zimi_sky_settings")', S);
+check(vm.runInContext('_skySetting("size")', S) === 'large', 'nothing chosen: the findable size');
 vm.runInContext('_skySettings = null; localStorage.removeItem("zimi_sky_settings")', S);
 vm.runInContext('__reduce = true', S);
 check(armed() === '_skyLiveTick,' + SATS, 'motion reduced: no breeze and nothing crossing, even on the beach');
 vm.runInContext('__reduce = false; _skySettings = null; _skyState.lens = { az: 0, alt: 0, fov: 60 };', S);
 check(armed() === '_skyLiveTick,' + SATS, 'looking through a lens the beach is not drawn, so nothing moves');
+vm.runInContext('_skyState.lens = null; _almEarthLoading = null; __reduce = true', S);
+check(armed() === '_skyLiveTick', 'the 3D view\'s files not on their way (a low-power machine): no wait for elements that cannot come');
+vm.runInContext('__reduce = false; _almEarthLoading = {}', S);
 vm.runInContext('_skyState.lens = null; _skyState.eph.sunGeoAlt = -30; _skyState.inView = false', S);
 check(armed() === '', 'scrolled out of sight: nothing runs');
 vm.runInContext('_skyState.inView = true; document.hidden = true', S);
@@ -407,6 +424,13 @@ check(frames.length === 1 && vm.runInContext('_skyState.nowTime', S) === Date.pa
   check(at('2027-01-05T00:00:00Z', 51.5).key === 'winter' && at('2027-01-05T00:00:00Z', 51.5).day === 15, 'winter runs across the new year');
   check(vm.runInContext('_almSeasonText(' + Date.parse('2026-10-03T12:00:00Z') + ', 37.77)', S) ===
     'alm_season_day_autumn{"n":11} · alm_season_to_solstice(80)', 'the caption\'s words');
+}
+
+// ── The card crops only its extreme top ──
+{
+  const top = vm.runInContext('_skyDirAt({ lens: null, center: 180, span: 120, W: 100, H: 100 }, 50, 0).alt', S);
+  const horizon = vm.runInContext('_skyY({ lens: null, H: 100 }, 0)', S), zen = vm.runInContext('_skyY({ lens: null, H: 100 }, 90)', S);
+  check(zen < 0 && top > 80 && top < 89 && horizon === 80, 'the card\'s top edge is a few degrees short of the zenith (' + top.toFixed(1) + ' degrees), the horizon where it was');
 }
 
 if (failures) { console.error('\n' + failures + ' failure(s)'); process.exit(1); }

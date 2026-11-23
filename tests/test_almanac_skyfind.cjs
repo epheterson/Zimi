@@ -23,7 +23,7 @@ const sky = makeSky();
 const S = sky.S;
 S.fetch = (url) => Promise.resolve({ ok: true, json: () => Promise.resolve(JSON.parse(fs.readFileSync(path.join(STATIC, 'earth', 'constellations-v1.json'), 'utf8'))) });
 S._almFocusInstant = undefined;
-const en = JSON.parse(fs.readFileSync(path.join(STATIC, 'i18n', 'en.json'), 'utf8'));
+const en = Object.assign(JSON.parse(fs.readFileSync(path.join(STATIC, 'i18n', 'en.json'), 'utf8')), JSON.parse(fs.readFileSync(path.join(STATIC, 'i18n', 'almanac', 'en.json'), 'utf8')));
 // The words as the page has them (the harness's t() answers with the key).
 sky.run('function t(k, v) { var s = ' + JSON.stringify(en).replace(/</g, '\\u003c') + '[k] || k; if (v) for (var n in v) s = s.replace("{" + n + "}", v[n]); return s; }');
 sky.run('function _almStarKey(n) { return "star:" + n.toLowerCase(); } function _tp(n) { return n; } function _almEsc(s) { return String(s); } function _skyReduceMotion() { return true; } function _azCompass(a) { return ["N","NE","E","SE","S","SW","W","NW"][Math.round(a / 45) % 8]; }');
@@ -130,7 +130,7 @@ function sep(alt1, az1, alt2, az2) {
   const missing = [...used].filter((k) => !en[k]);
   check(used.size >= 12 && !missing.length, 'every string it speaks is in the English file (' + used.size + ' keys' + (missing.length ? ', missing ' + missing.join(', ') : '') + ')');
   const app = read('app.js');
-  check(/function openAlmanacFind\(/.test(app) && /almanac-skyfind\.js\?v=/.test(app) && !/_ALMANAC_MODULES = \[[^\]]*skyfind/.test(app), 'it is loaded by a tap on a Find button, not with the Almanac');
+  check(/function openAlmanacFind\(/.test(app) && /almanac-skyfind\.js\?v=/.test(app) && !/_ALMANAC_MODULES = \[[^\]]*skyfind/.test(fs.readFileSync(path.join(STATIC, '..', 'templates', 'index.html'), 'utf8')), 'it is loaded by a tap on a Find button, not with the Almanac');
   check(/almanac-skyfind\.js/.test(fs.readFileSync(path.join(STATIC, '..', 'http.py'), 'utf8')), 'and a change to it busts the service worker cache');
   // Find is the phone-motion view's and nowhere else: not on the live sky, not on the star chart, not in the page.
   const code = (name) => read(name).replace(/\/\/.*$/gm, '');
