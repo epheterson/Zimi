@@ -2243,3 +2243,11 @@ def test_every_region_a_language_offers_can_be_chosen_and_is_said(data, monkeypa
 def test_the_cache_cap_is_decimal_megabytes():
     """A 64 MB cap is 64,000,000 bytes, as Settings' other sizes: not 67 MB (it read 66.9 MB beside the label)."""
     assert voices.BYTES_PER_MB == 1000 * 1000
+
+
+def test_the_prolonged_sound_mark_stays_in_japanese():
+    from zimi import voices
+
+    assert voices.speakable("コーヒー", "ja") == "コーヒー"
+    assert voices.script_ok("コーヒー", "ja")
+    assert voices.speakable("コーヒー", "en") is None

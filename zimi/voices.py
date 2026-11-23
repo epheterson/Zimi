@@ -1772,7 +1772,10 @@ def _allowed_scripts(lang):
 
 def _says(ch, allowed):
     script = _script_of(ch)
-    return script in allowed if allowed is not None else script != "CJK"
+    if allowed is None:
+        return script != "CJK"
+    # a mark shared by two scripts is named for both ("KATAKANA-HIRAGANA PROLONGED SOUND MARK")
+    return any(part in allowed for part in script.split("-"))
 
 
 def _script_of(ch):
