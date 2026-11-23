@@ -36,31 +36,31 @@ Use as much as you need:
 
 | Homepage | Search Results |
 |----------|---------------|
-| ![Homepage](docs/screenshots/homepage.png) | ![Search](docs/screenshots/search.png) |
+| <img alt="Homepage" src="docs/screenshots/homepage.png" width="400"> | <img alt="Search" src="docs/screenshots/search.png" width="400"> |
 
 | Almanac | Solar system |
 |---------|--------------|
-| ![Almanac](docs/screenshots/almanac.png) | ![Solar system](docs/screenshots/solar-system.png) |
+| <img alt="Almanac" src="docs/screenshots/almanac.png" width="400"> | <img alt="Solar system" src="docs/screenshots/solar-system.png" width="400"> |
 
 | Games | ZimCity |
 |-------|---------|
-| ![Games](docs/screenshots/games.png) | ![ZimCity](docs/screenshots/zimcity.png) |
+| <img alt="Games" src="docs/screenshots/games.png" width="400"> | <img alt="ZimCity" src="docs/screenshots/zimcity.png" width="400"> |
 
 | Zimipedia | Bookshelf |
 |-----------|-----------|
-| ![Zimipedia](docs/screenshots/zimipedia.png) | ![Bookshelf](docs/screenshots/bookshelf.png) |
+| <img alt="Zimipedia" src="docs/screenshots/zimipedia.png" width="400"> | <img alt="Bookshelf" src="docs/screenshots/bookshelf.png" width="400"> |
 
 | Maps | ZimiTube |
 |------|----------|
-| ![Maps](docs/screenshots/maps.png) | ![ZimiTube](docs/screenshots/zimitube.png) |
+| <img alt="Maps" src="docs/screenshots/maps.png" width="400"> | <img alt="ZimiTube" src="docs/screenshots/zimitube.png" width="400"> |
 
 | Reddot | Catalog |
 |--------|---------|
-| ![Reddot](docs/screenshots/reddot.png) | ![Catalog](docs/screenshots/browse-library.png) |
+| <img alt="Reddot" src="docs/screenshots/reddot.png" width="400"> | <img alt="Catalog" src="docs/screenshots/browse-library.png" width="400"> |
 
 | Sharing | Make a ZIM |
 |---------|------------|
-| ![Sharing](docs/screenshots/sharing.png) | ![Create](docs/screenshots/create.png) |
+| <img alt="Sharing" src="docs/screenshots/sharing.png" width="400"> | <img alt="Create" src="docs/screenshots/create.png" width="400"> |
 
 ## Install
 
