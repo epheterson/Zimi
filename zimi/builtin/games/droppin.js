@@ -10,7 +10,7 @@
 
   // ── the rules ────────────────────────────────────────────────────────────
   var QUESTIONS = 5, EARTH_KM = 6371.0088, MAP_W = 800, MAP_H = 400, MAX_POINTS = 100, WORLD_SCALE_KM = 1500, DEFAULT_REGION_KM = 40, MIN_SCALE_KM = 2, MAX_SCALE_KM = 1500, DIAG_SHARE = 6;
-  var MAX_ZOOM = 12, WORLD_CENTRE_LON = 10, FIT_PAD = 2.2, FIT_MARGIN = 0.08;   // the world opens centred on Europe and Africa; the answer view is this many times the span of the two pins
+  var MAX_ZOOM = 12, MIN_START_ZOOM = 3, MAX_START_ZOOM = 11, WORLD_CENTRE_LON = 10, FIT_PAD = 2.2, FIT_MARGIN = 0.08;   // the world opens centred on Europe and Africa; the answer view is this many times the span of the two pins
 
   function rad(d) { return d * Math.PI / 180; }
   // The distance over the ground between two points, in kilometres (the great circle).
@@ -65,13 +65,25 @@
   // (the world is an SVG: it has no .hidden property, only the attribute)
   function mapUrl(hash) { return Lib.articleUrl(mapZim, 'index.html') + (hash ? '#' + hash : ''); }
   function truthHash() { return Lib.mapHash(MAP_ZOOM_TRUTH, q().lat, q().lon, q().name); }
+  // Where a round on this map starts looking: the middle of its ground, at a zoom that holds about the width of it, so the map has
+  // an address (#map=) from the first moment and the cross is on a neutral place.
+  function startHash() {
+    var b = mapBounds;
+    if (!b || b.length !== 4) return '';
+    var span = Math.max(0.01, b[2] >= b[0] ? b[2] - b[0] : b[2] + 360 - b[0]), lat = (b[1] + b[3]) / 2, lon = b[2] >= b[0] ? (b[0] + b[2]) / 2 : ((b[0] + b[2] + 360) / 2 + 180) % 360 - 180;
+    return Lib.mapHash(Math.max(MIN_START_ZOOM, Math.min(MAX_START_ZOOM, Math.round(Math.log(360 / span) / Math.LN2 + 1))), Math.round(lat * 1e4) / 1e4, Math.round(lon * 1e4) / 1e4);
+  }
+  // The map is a page of someone else's: here it is only a map (droppin-frame.js says what that takes out and what it cannot).
+  var gameMap = null;
   function showMap(hash) {
     els.stage.classList.remove('world'); els.world.toggleAttribute('hidden', true); els.zoom.hidden = true; els.frame.hidden = false; els.cross.hidden = false;
+    if (gameMap) gameMap.stop();
+    els.drop.setAttribute('aria-disabled', 'true');   // until the map can say where it is looking
     els.frame.src = mapUrl(hash || '');
+    gameMap = root.DropPinFrame.mode(els.frame, g && g.ans ? null : q().name, function () { if (!(g && g.ans)) els.drop.removeAttribute('aria-disabled'); });
+    if (g && g.ans) gameMap.reveal();
   }
-  function mapCenter() {
-    try { return parseHash(els.frame.contentWindow.location.hash); } catch (e) { return null; }
-  }
+  function mapCenter() { return root.DropPinFrame.centre(els.frame); }
   // ── the world outline ──
   function buildWorld() {
     els.frame.hidden = true; els.cross.hidden = true; els.world.toggleAttribute('hidden', false); els.zoom.hidden = false;
@@ -144,7 +156,7 @@
     var x = q(); pin = null; els.mapLink.hidden = true; paint();
     els.ask.textContent = T(g.mode === 'map' ? 'drop.findOnMap' : 'drop.find', { name: Lib.iso(x.name) });
     els.next.hidden = true; els.drop.hidden = false;
-    if (g.mode === 'map') { els.drop.removeAttribute('aria-disabled'); status.say(T('drop.panTo')); showMap(g.ans ? truthHash() : ''); }
+    if (g.mode === 'map') { status.say(T('drop.panTo')); showMap(g.ans ? truthHash() : startHash()); }
     else { els.drop.setAttribute('aria-disabled', 'true'); status.say(T('drop.tapTo')); buildWorld(); }
     if (g.ans) reveal(g.ans, true);   // a round taken up again: the map frame is still loading, so its address already carries the place
   }
@@ -162,6 +174,7 @@
     els.drop.hidden = true; els.next.hidden = false; els.next.textContent = T(g.at + 1 >= g.qs.length ? 'round.seeScore' : 'round.next'); els.next.focus();
     if (g.mode === 'map') {
       els.cross.hidden = true;
+      if (gameMap) gameMap.reveal();   // the place's name is on the map again
       if (!restored) { try { els.frame.contentWindow.location.hash = truthHash(); } catch (e) { els.frame.src = mapUrl(truthHash()); } }
     }
     else { fitAnswer(); paintPins(); }

@@ -1,0 +1,41 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Pig - ZimiGames</title>
+<link rel="stylesheet" href="games.css">
+<link rel="stylesheet" href="play.css">
+<link rel="stylesheet" href="pig.css">
+<!-- zimi-shell --><script src="shell.js"></script><!-- /zimi-shell -->
+</head>
+<body>
+<header class="ar-bar">
+  <a class="ar-back" href="index.html" data-t-aria="shell.back" aria-label="Back">&lsaquo;</a>
+  <h1 data-t="game.pig.title">Pig</h1>
+  <button class="ar-btn" id="pg-new" type="button" hidden data-t="shell.menu.new">New game</button>
+</header>
+
+<main class="pl-main">
+  <div class="pg-table" id="pg-table" role="group" data-t-aria="pig.table" aria-label="The table">
+    <div class="pg-side pg-turn" id="pg-a"><small id="pg-a-name">You</small><b id="pg-a-score">0</b><span class="pg-meter" aria-hidden="true"><i id="pg-a-bank"></i><u id="pg-a-pend"></u></span></div>
+    <div class="pg-center">
+      <button class="pl-die pg-die" id="pg-die" type="button" tabindex="-1" aria-disabled="true"></button>
+      <div class="pg-pot"><small data-t="pig.turnTotal">Turn total</small><b id="pg-pot">0</b></div>
+    </div>
+    <div class="pg-side" id="pg-b"><small id="pg-b-name">Zimi</small><b id="pg-b-score">0</b><span class="pg-meter" aria-hidden="true"><i id="pg-b-bank"></i><u id="pg-b-pend"></u></span></div>
+  </div>
+  <p class="pl-msg" id="pg-msg"></p>
+  <div class="pg-actions">
+    <button class="ar-btn gs-primary pg-roll" id="pg-roll" type="button" data-t="backgammon.roll">Roll</button>
+    <button class="ar-btn pg-hold" id="pg-hold" type="button" data-t="pig.hold">Hold</button>
+  </div>
+</main>
+
+<script src="util.js"></script>
+<script src="playkit.js"></script>
+<script src="pig.js"></script>
+<!-- zimi-recent --><script defer src="recent.js"></script><!-- /zimi-recent -->
+<!-- zimi-about --><footer class="gm-about"><a href="about.html?qid=Q7193201">About Pig</a></footer><!-- /zimi-about -->
+</body>
+</html>
