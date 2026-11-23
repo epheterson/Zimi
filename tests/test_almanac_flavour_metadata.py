@@ -75,9 +75,9 @@ def test_maxi_says_plainly_it_has_the_hd_maps_and_how_big_it_is(built):
 
 def test_a_pin_without_sizes_leaves_the_size_out(tmp_path, monkeypatch):
     pin = tmp_path / "pin.json"
-    pin.write_text('{"file": "x.zim"}')
+    pin.write_text('{"file": "x.zim"}', encoding="utf-8")
     monkeypatch.setattr(ownzims, "TILES_PIN", str(pin))
     assert ownzims._flavour_size(", about %s", "hd_size") == ""
-    pin.write_text('{"hd_size": 1983068162, "max_size": 4814876312}')
+    pin.write_text('{"hd_size": 1983068162, "max_size": 4814876312}', encoding="utf-8")
     assert ownzims._flavour_size(", about %s", "hd_size") == ", about 2 GB"
     assert ownzims._flavour_size(", about %s", "max_size") == ", about 4.8 GB"
