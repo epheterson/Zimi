@@ -82,7 +82,7 @@ jobs:
             || sudo apt-get install -y libgirepository1.0-dev
 
       - name: Install dependencies
-        run: pip install -r desktop/requirements-desktop.txt
+        run: pip install -r packaging/desktop/requirements-desktop.txt
 
       - name: Install libtorrent (in-process BT engine)
         shell: bash
@@ -122,7 +122,7 @@ jobs:
       # The Dictionary's voices: Piper and Kokoro, which zimi_desktop.spec
       # builds into zimi-voice, an executable of their own beside Zimi and
       # never inside it (Piper and espeak-ng are GPL-3; see
-      # desktop/voice_helper.py). After the tests, so the suite runs as CI's
+      # packaging/desktop/voice_helper.py). After the tests, so the suite runs as CI's
       # does. Soft: where a platform has no wheels the spec builds the app
       # without zimi-voice, and Say uses the system's or the device's voice.
       - name: Install the voice engines (zimi-voice)
@@ -191,7 +191,7 @@ jobs:
           "
 
       - name: Build with PyInstaller
-        run: pyinstaller --noconfirm desktop/zimi_desktop.spec
+        run: pyinstaller --noconfirm packaging/desktop/zimi_desktop.spec
 
       # ── Post-build smoke tests ────────────────────────────────────────
 
@@ -203,13 +203,13 @@ jobs:
           SMOKE_EXPECT_BT: '1'
         run: |
           if [ "$RUNNER_OS" = "macOS" ]; then
-            ci/smoke_binary.sh "dist/Zimi.app/Contents/MacOS/Zimi"
+            .github/ci/smoke_binary.sh "dist/Zimi.app/Contents/MacOS/Zimi"
           elif [ "$RUNNER_OS" = "Windows" ]; then
             # windows-latest runners provide git-bash for `shell: bash`.
             # One-dir PyInstaller output is dist/Zimi/Zimi.exe.
-            ci/smoke_binary.sh "dist/Zimi/Zimi.exe"
+            .github/ci/smoke_binary.sh "dist/Zimi/Zimi.exe"
           else
-            ci/smoke_binary.sh "dist/Zimi/Zimi"
+            .github/ci/smoke_binary.sh "dist/Zimi/Zimi"
           fi
 
       # zimi-voice, where it was built: both engines import from inside the
@@ -239,11 +239,11 @@ jobs:
       # Not just a window: the bundle is stamped with the mark of the web the
       # way a downloaded zip arrives, a control run proves that kills 1.9.5,
       # then the app must clear the mark itself, start, and render its home
-      # view. ci/smoke_windows.ps1 is the same script CI runs on every push.
+      # view. .github/ci/smoke_windows.ps1 is the same script CI runs on every push.
       - name: GUI smoke test (Windows, marked bundle renders its home view)
         if: runner.os == 'Windows'
         shell: pwsh
-        run: pwsh ci/smoke_windows.ps1 dist/Zimi/Zimi.exe
+        run: pwsh .github/ci/smoke_windows.ps1 dist/Zimi/Zimi.exe
 
       - name: Upload the Windows smoke screenshot
         if: runner.os == 'Windows' && always()
@@ -373,9 +373,9 @@ jobs:
           mv dist/Zimi "$APPDIR"
 
           # Add AppImage metadata
-          cp linux/AppRun "$APPDIR/"
+          cp packaging/linux/AppRun "$APPDIR/"
           chmod +x "$APPDIR/AppRun"
-          cp linux/zimi.desktop "$APPDIR/"
+          cp packaging/linux/zimi.desktop "$APPDIR/"
           cp zimi/assets/icon.png "$APPDIR/zimi.png"
           ln -sf zimi.png "$APPDIR/.DirIcon"
 
@@ -476,14 +476,14 @@ jobs:
 
           # Sign the main executable, and zimi-voice beside it (the
           # Dictionary's voices) when this build has it
-          # The app (not the helpers beside it) carries desktop/Zimi.entitlements: add-ons load packages it did not sign.
-          codesign --force --options runtime --entitlements desktop/Zimi.entitlements --sign "$IDENTITY" --timestamp dist/Zimi.app/Contents/MacOS/Zimi
+          # The app (not the helpers beside it) carries packaging/desktop/Zimi.entitlements: add-ons load packages it did not sign.
+          codesign --force --options runtime --entitlements packaging/desktop/Zimi.entitlements --sign "$IDENTITY" --timestamp dist/Zimi.app/Contents/MacOS/Zimi
           if [ -f dist/Zimi.app/Contents/MacOS/zimi-voice ]; then
             codesign --force --options runtime --sign "$IDENTITY" --timestamp dist/Zimi.app/Contents/MacOS/zimi-voice
           fi
 
           # Sign the app bundle itself
-          codesign --force --deep --options runtime --entitlements desktop/Zimi.entitlements --sign "$IDENTITY" --timestamp dist/Zimi.app
+          codesign --force --deep --options runtime --entitlements packaging/desktop/Zimi.entitlements --sign "$IDENTITY" --timestamp dist/Zimi.app
 
           # Verify
           codesign --verify --deep --strict dist/Zimi.app
@@ -551,7 +551,7 @@ jobs:
             $iscc = "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe"
           }
           $ver = (Select-String -Path pyproject.toml -Pattern '^version\s*=\s*"(.*)"').Matches[0].Groups[1].Value
-          & $iscc "/DMyAppVersion=$ver" windows\zimi.iss
+          & $iscc "/DMyAppVersion=$ver" packaging\windows\zimi.iss
           Write-Host "Built installer: dist/Zimi-windows-x64-Setup.exe"
 
       # The installer is what most people run and what WinSparkle applies on
@@ -578,7 +578,7 @@ jobs:
           if (-not $relaunched) { throw "the installer did not relaunch Zimi, so an auto-update would leave it closed" }
           $relaunched | Stop-Process -Force
           Start-Sleep -Seconds 3
-          pwsh ci/smoke_windows.ps1 -Exe (Join-Path $dir "Zimi.exe") -Installed
+          pwsh .github/ci/smoke_windows.ps1 -Exe (Join-Path $dir "Zimi.exe") -Installed
 
       - name: Upload the installed-app smoke screenshot
         if: runner.os == 'Windows' && always()
@@ -610,7 +610,7 @@ jobs:
   # The portable headless Linux build (#137): one folder with a `zimi` executable, no Python on the machine, no
   # window; settings stay in a zimi-data folder beside it, so it runs off a USB disk the way kiwix-serve does.
   # Frozen on the oldest glibc each architecture has a runner for: Raspberry Pi OS (bookworm) is glibc 2.36, so
-  # 24.04 runners (glibc 2.39) would make an executable that cannot start there. ci/build_portable.sh builds the
+  # 24.04 runners (glibc 2.39) would make an executable that cannot start there. .github/ci/build_portable.sh builds the
   # tarball and runs it from a copied folder before it is uploaded; ci.yml runs the same script on every PR.
   portable:
     strategy:
@@ -639,7 +639,7 @@ jobs:
           RELEASE_TAG: ${{ github.event.inputs.tag || github.ref_name }}
         run: |
           TAG="$RELEASE_TAG"
-          ci/build_portable.sh "${TAG#v}"
+          .github/ci/build_portable.sh "${TAG#v}"
 
       - name: Upload artifact
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2

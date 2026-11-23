@@ -227,7 +227,7 @@ jobs:
           # downloads it, runs it with sparkle:installerArguments via
           # ShellExecuteEx, then quits WITHOUT relaunching — so /SILENT gives a
           # click-free progress-only update and the installer's [Run] entry does
-          # the relaunch (windows/zimi.iss). /SP- skips the "ready to install"
+          # the relaunch (packaging/windows/zimi.iss). /SP- skips the "ready to install"
           # prompt. Per-user install (no UAC), so silent is safe.
           WIN_INSTALLER_ARGS=' sparkle:installerArguments="/SILENT /SP-"'
           generate_appcast "Windows" "release/$ZIMI_STEM-windows-x64-setup.exe" "$ZIMI_STEM-windows-x64-setup.exe" "appcast-windows.xml" "" "$WIN_INSTALLER_ARGS"

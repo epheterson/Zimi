@@ -1,4 +1,4 @@
-"""The portable headless build's entry point, for PyInstaller (desktop/zimi_portable.spec).
+"""The portable headless build's entry point, for PyInstaller (packaging/desktop/zimi_portable.spec).
 
 ``./zimi serve``, ``./zimi service install``, ``./zimi doctor``: the whole command line of ``python -m zimi``,
 with no Python on the machine and no window. ``portable`` tells ``zimi doctor`` and the updater which kind of

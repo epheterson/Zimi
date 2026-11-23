@@ -223,7 +223,7 @@ jobs:
       # 1.15.3 Almanac broke there and nowhere else). Pinned by checksum;
       # required here, so a missing binary fails instead of skipping.
       - name: Install kiwix-serve
-        run: ci/install_kiwix_serve.sh
+        run: .github/ci/install_kiwix_serve.sh
 
       # --shard i/N: the browser modules, balanced by measured time, each in exactly one
       # shard (tests/conftest.py); tests/test_ci_contract.py checks the shards
@@ -277,7 +277,7 @@ jobs:
         with:
           python-version: "3.12"
 
-      - run: ci/build_portable.sh
+      - run: .github/ci/build_portable.sh
 
   # The environment the DESKTOP release builds in, on every pull request, on
   # every runner it builds on.
@@ -336,7 +336,7 @@ jobs:
             || sudo apt-get install -y libgirepository1.0-dev
 
       - name: Install desktop dependencies
-        run: pip install -r desktop/requirements-desktop.txt pytest pytest-xdist pyflakes
+        run: pip install -r packaging/desktop/requirements-desktop.txt pytest pytest-xdist pyflakes
 
       - name: Install libtorrent (in-process BT engine)
         shell: bash
@@ -371,7 +371,7 @@ jobs:
         if: matrix.os == 'ubuntu-22.04' || matrix.os == 'windows-latest'
         run: |
           pip install pyinstaller
-          pyinstaller --noconfirm desktop/zimi_desktop.spec
+          pyinstaller --noconfirm packaging/desktop/zimi_desktop.spec
 
       # The same script the release runs, in the same headless server mode.
       # The bundle opens a window without it, and there is no display here.
@@ -380,7 +380,7 @@ jobs:
         shell: bash
         env:
           SMOKE_EXPECT_BT: '1'
-        run: ci/smoke_binary.sh "dist/Zimi/Zimi"
+        run: .github/ci/smoke_binary.sh "dist/Zimi/Zimi"
 
       # The window, which no Linux gate ever opened: every AppImage and snap
       # from 1.8 to 1.9.6 died on launch on every distro (issue #81) while
@@ -409,7 +409,7 @@ jobs:
           BROWSER: ${{ github.workspace }}/ci/fake_browser.sh
           FAKE_BROWSER_LOG: /tmp/fake-browser.log
         run: |
-          ci/smoke_binary.sh "dist/Zimi/Zimi"
+          .github/ci/smoke_binary.sh "dist/Zimi/Zimi"
           cat /tmp/fake-browser.log
           # The tab loaded the page: "<url> 200", not "<url> 000".
           grep -qE "^http://127\.0\.0\.1:[0-9]+ 200$" /tmp/fake-browser.log
@@ -424,7 +424,7 @@ jobs:
       - name: The marked bundle fails, then clears its own mark and renders (Windows)
         if: matrix.os == 'windows-latest'
         shell: pwsh
-        run: pwsh ci/smoke_windows.ps1 dist/Zimi/Zimi.exe
+        run: pwsh .github/ci/smoke_windows.ps1 dist/Zimi/Zimi.exe
 
       # The picture of what a Windows user sees on first launch, for eyes.
       - name: Upload the Windows smoke screenshot
@@ -552,7 +552,7 @@ jobs:
       - name: The Quadlet unit is one systemd accepts
         run: |
           mkdir -p ~/.config/containers/systemd
-          cp deploy/podman/zimi.container ~/.config/containers/systemd/
+          cp packaging/deploy/podman/zimi.container ~/.config/containers/systemd/
           # quadlet -dryrun renders the unit, or complains about the line at
           # fault. Its exit code is not the verdict (it exits 0 with a
           # complaint), and neither is a grep behind a pipe with no pipefail:

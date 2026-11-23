@@ -3,7 +3,7 @@
 PyInstaller spec for Zimi Desktop.
 
 Build (from the repo root):
-    pyinstaller --noconfirm desktop/zimi_desktop.spec
+    pyinstaller --noconfirm packaging/desktop/zimi_desktop.spec
 
 Output:
     dist/Zimi/          — one-dir bundle (all platforms)
@@ -25,13 +25,13 @@ from PyInstaller.utils.hooks import (
 
 block_cipher = None
 
-# This spec lives in desktop/; the entry script and its winsparkle sibling live
+# This spec lives in packaging/desktop/; the entry script and its winsparkle sibling live
 # beside it, while the zimi package + data dirs (and CI-downloaded Sparkle
 # framework / WinSparkle DLL) live at the repo root. Anchor every path to those
 # two roots explicitly so the build is independent of the invocation CWD.
 # SPECPATH is the absolute directory containing this spec file.
 DESKTOP_DIR = SPECPATH
-REPO_ROOT = os.path.dirname(SPECPATH)
+REPO_ROOT = os.path.dirname(os.path.dirname(SPECPATH))
 
 # Standard-library modules the add-ons' packages import that the app itself may not (yt-dlp needs optparse): kept in the
 # frozen app so an add-on's Python code runs in it. The list lives with the pinned wheels (scripts/pin_addon_wheels.py).
@@ -258,7 +258,7 @@ a = Analysis(
 # be assumed to have: Python's extension modules, the libraries the wheels
 # vendor (libzim, libtorrent, PyMuPDF, Pillow, PyGObject's _gi) and
 # libgirepository. Every system library goes to _internal/fallback instead,
-# and linux/AppRun puts on the library path only those the host lacks
+# and packaging/linux/AppRun puts on the library path only those the host lacks
 # (a bare box without sqlite3, say, still runs the server and the browser
 # mode). Where the host has a library, the host's is used, and matching the
 # host's own WebKitGTK is the whole point.
@@ -287,7 +287,7 @@ def _split_linux_binaries(binaries):
 
 # ---------------------------------------------------------------------------
 # zimi-voice: Piper and Kokoro for the Dictionary's Say, as their own
-# executable beside Zimi (desktop/voice_helper.py says why). Built only when
+# executable beside Zimi (packaging/desktop/voice_helper.py says why). Built only when
 # this Python has the engines; without them the app is as before.
 # ---------------------------------------------------------------------------
 import sys  # noqa: E402

@@ -3,7 +3,7 @@
 PyInstaller spec for the portable headless Zimi (Linux x64 and arm64).
 
 Build (from the repo root):
-    pyinstaller --noconfirm desktop/zimi_portable.spec
+    pyinstaller --noconfirm packaging/desktop/zimi_portable.spec
 
 Output:
     dist/zimi/          - one folder: the `zimi` executable and `_internal/`
@@ -19,7 +19,7 @@ import sysconfig
 
 from PyInstaller.utils.hooks import collect_submodules
 
-REPO_ROOT = os.path.dirname(SPECPATH)
+REPO_ROOT = os.path.dirname(os.path.dirname(SPECPATH))
 
 # Standard-library modules the add-ons' packages import that the app itself may not (yt-dlp needs optparse): kept in the
 # frozen app so an add-on's Python code runs in it. The list lives with the pinned wheels (scripts/pin_addon_wheels.py).
@@ -42,7 +42,7 @@ for _base in (sysconfig.get_path('purelib'), sysconfig.get_path('platlib')):
         libzim_bins = [(lib, '.') for lib in glob.glob(os.path.join(_dir, '*.so*'))]
         break
 if not libzim_bins:
-    raise SystemExit('zimi_portable.spec: no libzim shared library found; pip install -r desktop/requirements-portable.txt')
+    raise SystemExit('zimi_portable.spec: no libzim shared library found; pip install -r packaging/desktop/requirements-portable.txt')
 
 # Zimi's own ZIMs and what the server reads of the games' source (same list as the desktop spec).
 _BUILTIN = os.path.join(REPO_ROOT, 'zimi/builtin')
