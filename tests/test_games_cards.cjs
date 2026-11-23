@@ -233,7 +233,13 @@ check(K.timeBonus(10) === 0 && K.timeBonus(100) === 7000 && K.timeBonus(700) ===
 
 // ── Faces, backs, the Moon ──────────────────────────────────────────────────
 check(deck.every(c => /^<svg[\s\S]*<\/svg>$/.test(Z.faceMarkup(c, false)) && !/NaN|undefined/.test(Z.faceMarkup(c, true))), 'all 52 faces draw, as page markup and as standalone images');
-check(Z.faceMarkup(id('7H'), false).split('<use').length - 1 === 7 + 2 + 2, 'a 7 shows 7 pips, a small suit in each corner, and the small-card index and body');
+// The French face is made for a 50 px card: one suit in the body, no pip grid (a 7 used to draw 7 pips, cut to triangles in a fan),
+// and the index twice, once per arrangement (row for piles that fan down, column for hands that fan sideways).
+{
+  const seven = Z.faceMarkup(id('7H'), false);
+  check(seven.split('<use').length - 1 === 1 + 2, 'a 7 shows one suit in its body and one in each index arrangement');
+  check(seven.includes('zc-ix-row') && seven.includes('zc-ix-col'), 'every face carries both index arrangements');
+}
 check(Z.faceMarkup(id('7H'), true).split('<use').length === 1, 'a standalone face has no sprite references');
 check(Z.faceMarkup(id('AS'), true).includes('zc-g-mark') && !Z.faceMarkup(id('AH'), true).includes('url(#zc-g-mark)'), 'only the Ace of Spades carries the mark');
 var italian = []; for (var ii = 0; ii < 40; ii++) italian.push(ii);
@@ -261,30 +267,33 @@ check(Z.shuffled(() => 0.5).length === 52 && new Set(Z.shuffled(Math.random)).si
 
 // ── The court cards: public-domain art (courts.js), recoloured to the card palette ──
 {
-  const palette = new Set(['#b3261e', '#1b1b1b', '#e09400', '#1d3b7a', '#2f5ca8', '#fdfcf8', 'none']);
+  const palette = new Set(['#b3261e', '#1b1b1b', '#e09400', '#1d3b7a', '#2f5ca8', '#fdfcf8', '#f9f6ee', '#cdc6b6', 'none']);   // the art's own palette, and the card's paper and edge
   const courtIds = [];
   for (let su = 0; su < 4; su++) for (const r of [11, 12, 13]) courtIds.push(su * 13 + r - 1);
-  const faces = courtIds.map(c => Z.faceMarkup(c, false));
-  check(faces.every(f => f.includes('viewBox="0 0 1300 2000"') && f.includes('zc-small')), 'all twelve French courts carry the courts.js art and a small-card figure');
-  check(new Set(faces).size === 12, 'the twelve French courts are twelve different drawings');
-  const colours = new Set();
-  faces.forEach(f => (f.match(/(?:fill|stroke)="(#[0-9a-fA-F]{3,6}|none)"/g) || []).forEach(m => colours.add(m.split('"')[1].toLowerCase())));
-  check([...colours].every(c => palette.has(c)), 'the courts use only the card palette (' + [...colours].join(' ') + ')');
+  // The page draws a court's figure from the sprite (one symbol per court); the cascade's standalone image carries it inline. The
+  // palette is checked on the standalone drawings, where the colours are.
+  const faces = courtIds.map(c => Z.faceMarkup(c, true));
+  check(courtIds.every(c => /<use href="#zc-ct-[JQK][CDHS]"/.test(Z.faceMarkup(c, false))), 'all twelve French courts draw their courts.js figure from the sprite');
+  check(faces.every(f => /<svg x="2.5" y="40" width="95" height="97.5" viewBox="[\d.]+ 0 [\d.]+ 1000">/.test(f)), 'and carry it inline as a standalone image: the figure crown to waist filling the card under the index, 2.5 units from the sides and bottom');
+  check(courtIds.every(c => (Z.faceMarkup(c, false).match(/class="zc-ct /g) || []).length === 2), 'a court on the page has a frame for each index arrangement');
+  // A covered face-up card in a fan shows its index row only, whatever its rank (a court's frame top is at 40 of 140): one step, cut to indexStep.
+  const ch = 70, units = st => st / ch * 140;
+  check(Math.abs(units(Z.indexStep(ch)) - 39.5) < 1e-9 && Math.abs(Z.FAN_UP_SHARE * ch - Z.indexStep(ch)) < 1e-9, 'a fanned covered card shows its index row only, whatever its rank');
   const bytes = fs.statSync(path.join(dir, 'courts.js')).size;
   check(bytes < 200 * 1024, 'courts.js stays under 200 KB (' + Math.round(bytes / 1024) + ' KB)');
   const ace = Z.faceMarkup(id('AS'), false);
-  check(!ace.includes('viewBox="0 0 1300 2000"'), 'the Ace of Spades keeps its own drawing');
+  check(!ace.includes('zc-ct'), 'the Ace of Spades keeps its own drawing');
 }
 
-// A fanned column on a phone with room to spare shows each face-up card's whole index and its whole top row of pips:
-// a step of 0.28 of a card cut the pips through the middle into triangles beside the index.
+// A fanned column on a phone with room to spare shows each face-up card's index and clean paper down to the body's suit (no pip
+// grid any more): the step opens to FAN_UP_SHARE, the index row (39.5 of 140 units), a court's frame top at 40.
 {
   const phone = { cw: 50, ch: 70, pad: 6, left: 6, step: 54, W: 390, H: 780, cols: 7 };
   const s = K.newState(deck, 1), col = s.piles.t6.slice(-1)[0];
   s.piles.t6.push({ id: (col.id + 13) % 52, up: true }, { id: (col.id + 26) % 52, up: true });
   const ys = K.place(s, phone).cards.filter(c => c.pile === 't6').map(c => c.y), n = ys.length;
   const step = ys[n - 1] - ys[n - 2];
-  check(Math.abs(step - phone.ch * Z.FAN_UP_SHARE) < 0.5 && Z.FAN_UP_SHARE >= 0.33, 'a face-up card in a roomy fan shows a third of its height: ' + step);
+  check(Math.abs(step - phone.ch * Z.FAN_UP_SHARE) < 0.5 && Math.abs(Z.FAN_UP_SHARE * 140 - 39.5) < 1e-9, 'a face-up card in a roomy fan shows its index and clean paper: ' + step);
 }
 
 console.log(failures ? failures + ' failure(s)' : 'all passed');

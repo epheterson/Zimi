@@ -461,3 +461,13 @@ def test_wikipedia_games_play_from_kiwix_serve(browser, world, name, ready, zim,
     assert after == before
     assert not errors, errors
     ctx.close()
+
+
+def test_jigsaw_read_button_names_its_article(browser, world):
+    """The way out to the article says which article ('it said read the article without showing what it is')."""
+    ctx, page, errors = open_game(browser, world, "kiwix_first", "jigsaw.html", OLD[1][1])
+    title = page.evaluate("__jig.puzzle.pic.title")
+    label = page.evaluate("document.getElementById('jg-read').textContent")
+    assert title and title in label, (title, label)
+    assert not errors, errors
+    ctx.close()

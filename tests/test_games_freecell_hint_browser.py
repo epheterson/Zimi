@@ -83,8 +83,15 @@ def test_the_menus_hint_tile_is_named_in_the_players_language(browser, site):
 
 def test_the_hints_glow_is_a_ring_that_shows_on_a_pale_card(browser, site):
     pg = _page(browser, site)
-    pg.evaluate("() => document.getElementById('zc-hint').click()")
-    pg.wait_for_selector(".zc-card.zc-glow", timeout=10000)
+    # The tile is in the page before the deal has settled and its handler may not answer yet (a slow runner): ask again until it does.
+    for _ in range(8):
+        pg.evaluate("() => document.getElementById('zc-hint').click()")
+        try:
+            pg.wait_for_selector(".zc-card.zc-glow", timeout=2500)
+            break
+        except Exception:
+            continue
+    pg.wait_for_selector(".zc-card.zc-glow", timeout=5000)
     shadow = pg.evaluate(
         "() => getComputedStyle(document.querySelector('.zc-card.zc-glow')).boxShadow"
     )

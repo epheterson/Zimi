@@ -355,7 +355,15 @@ def follow_a_link(page, end):
     A link is inline and often wraps, so the middle of its box can be the gap between its lines: Playwright's click aims
     at a point of the link itself (and checks nothing covers it), where tap() at the box's middle can miss."""
     steps = page.evaluate("__race.race.steps.length")
-    page.locator(".rc-link:not([data-path=%s])" % json.dumps(end)).first.click()
+    links = page.locator(".rc-link:not([data-path=%s])" % json.dumps(end))
+    # A link can point at an article the fixture does not hold: the race says it is not counted, and the next link is tried.
+    for i in range(min(links.count(), 12)):
+        links.nth(i).click()
+        try:
+            page.wait_for_function(truthy("__race.race.steps.length === %d" % (steps + 1)), timeout=4000)
+            return
+        except Exception:
+            continue
     page.wait_for_function(truthy("__race.race.steps.length === %d" % (steps + 1)))
 
 

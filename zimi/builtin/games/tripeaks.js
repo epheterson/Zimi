@@ -135,7 +135,7 @@
     page = Z.solitairePage({
       why: function (st, pile) { return TX(isFree(st, pile) ? 'sol.why.neighbor' : 'tri.why.covered'); },
       refuse: function () { page.note(TX('sol.why.stockEmpty')); },
-      rules: api, id: 'tripeaks', fact: true, place: place, cols: FIT_COLS, heightShare: HEIGHT_SHARE, enterTaps: true, stock: drawStock,
+      rules: api, id: 'tripeaks', fact: true, place: place, cols: FIT_COLS, heightShare: HEIGHT_SHARE, enterTaps: true, stock: drawStock, index: 'col',   // the open row overlaps sideways: suit under the rank
       deal: function () { return newState(Z.shuffled(Z.random())); },
       score: function (st) { return st.score; },
       stuck: {
