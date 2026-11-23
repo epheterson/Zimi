@@ -1,14 +1,14 @@
 """Almanac HD: the Almanac's sharp Earth, Moon and planets, one ZIM fetched once, in one of two sizes.
 
 The Almanac ships with one small map per body and works with nothing more. Almanac HD is those maps as tile
-pyramids, far too large for the package. It is the HD flavour of the Almanac itself: ``zimi_almanac_maxi_<month>.zim``
-(Flavour ``maxi``, the same Name as the Almanac in the package), the whole Almanac with the tiles inside under
+pyramids, far too large for the package. It is the HD edition of the Almanac itself: ``zimi_almanac_maps_<month>.zim``
+(no Flavour, as the catalog has it; the same Name as the Almanac in the package), the whole Almanac with the tiles inside under
 ``hd/`` (scripts/build_almanac_maxi.py). Opened alone in Kiwix it is the full Almanac with sharp tiles; in Zimi it is
 fetched the way any ZIM is, through the download queue (library.py), into the library, where the 3D view
 (almanac-earth.js) draws from ``/w/zimi_almanac_maxi/hd/``. A data pack (server.DATA_PACKS): the library shows one
 Almanac, the package's, with HD present.
 
-Every release builds that file and attaches it with a small manifest, ``zimi_almanac_maxi.json``
+Every release builds that file and attaches it with a small manifest, ``zimi_almanac_maps.json``
 (``{"file", "size", "sha256", "tag"}``). The offer is sized offline (the pinned tile source plus the Almanac in the
 package: "about N MB"). Only after a yes, or under Automatically, does Zimi read the manifest of its own version's
 release (``v<version>``), then download the file it names and check its sha256; a build with no release (a dev
@@ -21,7 +21,7 @@ its size, to someone who may download, and Automatically fetches it the first ti
 Never. Reading the manifest is part of that setting: nothing is read before consent, and under Never nothing is.
 
 Two sizes, one installed at a time: HD, the file above (under GitHub's 2 GiB a release file), and
-Maximum, ``zimi_almanac_ultra_<month>.zim`` (Flavour ``ultra``: every layer at its source's full resolution, heights
+Maximum, ``zimi_almanac_maps_maxi_<month>.zim`` (Flavour ``maxi``: every layer at its source's full resolution, heights
 for every body), too big for one release file, so attached as zimsplit chunks (``.zimaa``, ``.zimab``...; cut
 between clusters, so its index stays whole) that the library reads as one book (zimparts.py). The manifest lists
 Maximum under ``max``: the book's file, size and sha256, and each chunk's. Its chunks come into a hidden folder of
@@ -31,6 +31,11 @@ HD removed. Choosing HD removes Maximum the same way. Automatically fetches HD, 
 choice. The set 1.16's development builds made (the flavour plus ``zimi_almanac_hd_<part>`` parts) is still read
 where it is, and once either size replaces it, what it leaves on disk is listed with the older copies (Manage >
 Storage), never deleted unasked.
+
+File names: 1.16.0 called HD ``zimi_almanac_maxi_<month>.zim``, Maximum ``zimi_almanac_ultra_<month>.zim`` and the manifest
+``zimi_almanac_maxi.json``. Those files are on disks and on the v1.16.0 release, and 1.16.0 reads only its own tag's
+release, so that release keeps working untouched. Everything here reads both generations of names (served_name); only
+the manifest and the files a release attaches are new.
 """
 
 import json
@@ -52,16 +57,20 @@ NAME = "zimi_almanac_maxi"
 LEGACY_NAME = "zimi_almanac_hd"
 ENV = "ZIMI_ALMANAC_HD"
 PREFS_KEY = "almanac_hd"
-MANIFEST = "zimi_almanac_maxi.json"
+#: What a release's manifest is called. 1.16.0 named it ``zimi_almanac_maxi.json`` and reads only its own tag's release
+#: (manifest_url), so those assets never change; every release after names its files as the catalog does.
+MANIFEST = "zimi_almanac_maps.json"
 RELEASE_URL = "https://github.com/epheterson/Zimi/releases/download/{tag}/{file}"
 #: Where a release's files are fetched from instead of GitHub (a server of the admin's own, on the LAN, say): an
 #: http(s) address with ``{file}`` and optionally ``{tag}``. Env only: no request can set it. ZIMI_OFFLINE still wins.
 URL_ENV = "ZIMI_ALMANAC_HD_URL"
 #: What a manifest may name: the flavour's file, nothing else (it becomes a path and a URL).
-_FILE_RE = re.compile(r"^zimi_almanac_maxi_\d{4}-\d{2}[a-z]?\.zim$")
+#: ``zimi_almanac_maps_<month>.zim`` is HD in the catalog's names (no Flavour); 1.16.0 called it ``zimi_almanac_maxi_``.
+_FILE_RE = re.compile(r"^zimi_almanac_(?:maps|maxi)_\d{4}-\d{2}[a-z]?\.zim$")
 #: Maximum: the book's name and file, and where its chunks wait until the whole book is checked.
 MAX_NAME = "zimi_almanac_ultra"
-_MAX_RE = re.compile(r"^zimi_almanac_ultra_\d{4}-\d{2}[a-z]?\.zim$")
+#: Maximum is ``zimi_almanac_maps_maxi_<month>.zim`` (Flavour maxi, as in the catalog); 1.16.0 called it ``zimi_almanac_ultra_``.
+_MAX_RE = re.compile(r"^zimi_almanac_(?:maps_maxi|ultra)_\d{4}-\d{2}[a-z]?\.zim$")
 STAGE_DIR = ".almanac-max"
 #: GitHub's limit for a release file: every chunk is under it.
 CHUNK_LIMIT = 2**31
@@ -129,6 +138,16 @@ def release_url_template():
         return custom
     log.warning("Almanac HD: %s is not an http(s) address with {file}; the release is read from GitHub", URL_ENV)
     return RELEASE_URL
+
+
+def served_name(stem):
+    """The name the server has an Almanac HD file under, from its name without ``.zim`` (the date still on), or None
+    when it is not one. Both generations of file names are the same two things: HD is ``NAME``, Maximum ``MAX_NAME``."""
+    if _FILE_RE.match(stem + ".zim"):
+        return NAME
+    if _MAX_RE.match(stem + ".zim"):
+        return MAX_NAME
+    return None
 
 
 def manifest_url(version=None):
@@ -388,7 +407,7 @@ def superseded():
 
 #: Maximum's files in the library's own folder, by name: its book or its chunks. HD is not matched by name: it is the one
 #: file the library reads (see files()), so an older month's copy and the 1.16 development parts never count as it.
-_MAX_FILES = re.compile(r"^zimi_almanac_ultra_\d{4}-\d{2}[a-z]?\.zim(?:[a-z]{2})?$")
+_MAX_FILES = re.compile(r"^zimi_almanac_(?:maps_maxi|ultra)_\d{4}-\d{2}[a-z]?\.zim(?:[a-z]{2})?$")
 
 
 def files(kind):

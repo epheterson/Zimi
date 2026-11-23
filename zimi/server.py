@@ -3059,8 +3059,12 @@ def _zim_base_name(filename):
     """
     name = filename.split(".zim")[0]
     # The Almanac's HD flavour is the tile library, not a build of the Almanac the package serves: its own name.
-    if re.match(r"zimi_almanac_maxi_\d{4}-\d{2}[a-z]?$", name):
-        return "zimi_almanac_maxi"
+    if bundled("almanachd"):
+        from zimi import almanachd
+
+        hd_name = almanachd.served_name(name)
+        if hd_name:
+            return hd_name
     # Extract language code before stripping (e.g. _fr_, _de_, _es_)
     lang_match = re.search(r"(?:\.com)?_([a-z]{2,3})_(?:all|maxi|2\d{3})", name)
     lang_code = lang_match.group(1) if lang_match else ""
@@ -3165,6 +3169,11 @@ _DATE_TOKEN_RE = re.compile(r"(\d{4}-\d{2}[a-z]?)\.zim$")
 _FLAVOR_RANKS = {"maxi": 4, None: 3, "nopic": 2, "mini": 1}
 
 
+def _is_almanac_hd_file(filename):
+    """The file is one of Almanac HD's two sizes, by either generation of names (almanachd.served_name)."""
+    return bundled("almanachd") and _zim_base_name(filename) in ("zimi_almanac_maxi", "zimi_almanac_ultra")
+
+
 def _zim_build_rank(filename):
     """Rank a build for same-name collisions in the same directory tier:
     flavor richness first, then English over another language, then the
@@ -3178,6 +3187,8 @@ def _zim_build_rank(filename):
     fname = filename.lower()
     m = _FLAVOR_TOKEN_RE.search(fname)
     d = _DATE_TOKEN_RE.search(fname)
+    if _is_almanac_hd_file(fname):
+        m = None   # a size of Almanac HD, not a richer build: the old and the new names of one size rank by date alone
     return (
         _FLAVOR_RANKS[m.group(1) if m else None],
         _zim_lang_key(fname) == "en",

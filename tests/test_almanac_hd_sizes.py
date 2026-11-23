@@ -23,8 +23,8 @@ from conftest_zim import build_fixture_zim, remove_zim_file, split_fixture_zim  
 
 from zimi import almanachd, library, outbound  # noqa: E402
 
-HD_FILE = "zimi_almanac_maxi_2026-11c.zim"
-MAX_FILE = "zimi_almanac_ultra_2026-11c.zim"
+HD_FILE = "zimi_almanac_maps_2026-11c.zim"
+MAX_FILE = "zimi_almanac_maps_maxi_2026-11c.zim"
 
 
 def _sha(path):
@@ -201,7 +201,7 @@ def _stage_real_maximum(lib, corrupt=False):
     os.makedirs(tmp, exist_ok=True)
     book = build_fixture_zim(
         os.path.join(tmp, MAX_FILE),
-        metadata={"Name": "zimi_almanac", "Flavour": "ultra"},
+        metadata={"Name": "zimi_almanac", "Flavour": "maxi"},
     )
     whole = _sha(book)
     chunks = split_fixture_zim(book, 4096)
@@ -339,7 +339,7 @@ def test_a_chunk_resumes_after_a_restart_still_checked():
     # A chunk recorded outside the stage folder, or a name that is not a chunk of Maximum, is not ours.
     assert almanachd.saved_release(dict(item, filename=chunk["file"])) is None
     assert (
-        almanachd.saved_release(dict(item, url=item["url"].replace("ultra", "other")))
+        almanachd.saved_release(dict(item, url=item["url"].replace("maxi", "other")))
         is None
     )
 
@@ -425,7 +425,7 @@ class _Release:
                     self.send_response(404)
                     self.end_headers()
                     return
-                if name == "zimi_almanac_maxi.json":
+                if name == "zimi_almanac_maps.json":
                     body = json.dumps(rel.manifest).encode()
                 elif name in rel.files:
                     body = rel.files[name]
@@ -486,7 +486,7 @@ def real(tmp_path, monkeypatch, prefs):
     build_fixture_zim(str(zdir / HD_FILE))
     src = tmp_path / "src"
     src.mkdir()
-    book = build_fixture_zim(str(src / MAX_FILE), metadata={"Name": "zimi_almanac", "Flavour": "ultra"})
+    book = build_fixture_zim(str(src / MAX_FILE), metadata={"Name": "zimi_almanac", "Flavour": "maxi"})
     whole = _sha(book)
     chunks = split_fixture_zim(book, 4096)
     files = {os.path.basename(c): open(c, "rb").read() for c in chunks}
@@ -653,7 +653,7 @@ def _no_half_book(real):
     """Whatever happened, the library holds no part of Maximum a scan could read, and HD is still what is in use."""
     real.scan()
     assert almanachd.MAX_NAME not in almanachd._have()
-    assert not [f for f in os.listdir(real.dir) if f.startswith("zimi_almanac_ultra")]
+    assert not [f for f in os.listdir(real.dir) if f.startswith("zimi_almanac_maps_maxi")]
     assert almanachd.current() == "hd" and os.path.exists(os.path.join(real.dir, HD_FILE))
 
 
@@ -675,7 +675,7 @@ def test_a_manifest_that_cannot_be_reached_is_said_as_the_network_not_as_a_missi
 
 
 def test_a_manifest_that_is_not_on_the_release_is_said_as_missing(real, caplog):
-    real.gone.add("zimi_almanac_maxi.json")
+    real.gone.add("zimi_almanac_maps.json")
     almanachd._manifest.update(rel=None, tried=0.0, why=None)
     with caplog.at_level("INFO", logger="zimi"):
         almanachd.start({"name": "admin"}, kind="max")
@@ -797,7 +797,7 @@ def test_a_maximum_saved_by_an_older_build_falls_back_to_hd_under_automatically_
         assert almanachd.error() == {"kind": "max", "reason": "missing"}   # the gear says it...
         almanachd._auto_start()                                            # ...and the next visit does not repeat it
     fetched = [q["filename"] for q in lib["queued"]]
-    assert HD_FILE in fetched and not [f for f in fetched if "ultra" in f]
+    assert HD_FILE in fetched and not [f for f in fetched if "maxi" in f]
     assert prefs[almanachd.KIND_KEY] == "hd"                 # put back: the next visit does not say it again
     said = [r for r in caplog.records if "Maximum did not come in: missing" in r.getMessage()]
     assert len(said) == 1
@@ -815,10 +815,10 @@ def test_a_release_can_be_served_from_an_address_of_ones_own(monkeypatch):
     monkeypatch.setattr(almanachd, "_version", lambda: "1.16.0")
     assert almanachd.manifest_url().startswith("https://github.com/epheterson/Zimi/releases/download/v1.16.0/")
     monkeypatch.setenv(almanachd.URL_ENV, "http://192.168.1.20:8000/{file}")
-    assert almanachd.manifest_url() == "http://192.168.1.20:8000/zimi_almanac_maxi.json"
+    assert almanachd.manifest_url() == "http://192.168.1.20:8000/zimi_almanac_maps.json"
     assert almanachd.url({"tag": "v1.16.0", "file": HD_FILE}) == "http://192.168.1.20:8000/" + HD_FILE
     monkeypatch.setenv(almanachd.URL_ENV, "http://nas.lan/{tag}/{file}")
-    assert almanachd.manifest_url() == "http://nas.lan/v1.16.0/zimi_almanac_maxi.json"
+    assert almanachd.manifest_url() == "http://nas.lan/v1.16.0/zimi_almanac_maps.json"
     # A restart resumes a chunk the address recorded, and only that address's.
     link = almanachd.url({"tag": "v1.16.0", "file": MAX_FILE + "aa"})
     saved = {"url": link, "size_bytes": 5, "sha256": "ab" * 32, "filename": almanachd.STAGE_DIR + "/" + MAX_FILE + "aa"}
