@@ -173,8 +173,16 @@ DRIVER = """
 
 
 @pytest.fixture(scope="module")
-def served():
-    handler = functools.partial(http.server.SimpleHTTPRequestHandler, directory=GAMES)
+def served(tmp_path_factory):
+    """The Games as their ZIM is built: the folder plus Zimi's footer files from static/ (the Menu's credit line)."""
+    import shutil
+
+    from zimi import almanacstage
+
+    folder = str(tmp_path_factory.mktemp("games"))
+    shutil.copytree(GAMES, folder, dirs_exist_ok=True)
+    almanacstage.copy_footer(folder)
+    handler = functools.partial(http.server.SimpleHTTPRequestHandler, directory=folder)
     handler.log_message = lambda *a, **k: None
     srv = http.server.ThreadingHTTPServer(("127.0.0.1", 0), handler)
     threading.Thread(target=srv.serve_forever, daemon=True).start()
