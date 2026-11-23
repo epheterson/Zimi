@@ -3498,7 +3498,7 @@ function bcClick(e) {
   // An app's icon is the way to its front page, from anywhere inside it.
   if (_isAppPage()) { _appEntryHome(); return; }
   // In ZimiGames the icon is the way to every game: the shelf, from any game (a Discover card or a link lands mid-shelf).
-  if (_isGamesZimOpen()) { openArticle(_GAMES_ZIM, 'index.html', t('app_games')); return; }
+  if (_isGamesZimOpen()) { openArticle(currentArticle.zim, 'index.html', t('app_games')); return; }
   if (currentSource && (readerOpen || mode === 'search')) {
     if (readerOpen) closeReader();
     enterSource(currentSource, false);
@@ -4172,7 +4172,7 @@ function route(push) {
       // One of Zimi's own apps keeps its round in the address (a game's ?daily=): split off, it reaches the page again.
       var aQ = _OWN_ZIM_APP[aZim] ? /^([^?#]*)(\?[^#]*)?(#.*)?$/.exec(aPath) : null;
       if (aQ && aQ[2]) aPath = aQ[1] + (aQ[3] || '');
-      if (aZim === _GAMES_ZIM) _gameHeadBoot(aPath);
+      if (_isGamesZimName(aZim)) _gameHeadBoot(aPath);
       _bootDeepLinkArticle(aZim, aPath, aQ && aQ[2]);
       return;
     }
@@ -4617,7 +4617,7 @@ function goBack() {
       return;
     }
     // A game with nothing behind it (the page was reloaded): the shelf it came from.
-    if (_gameHasShelfBehind()) { openArticle(_GAMES_ZIM, 'index.html', t('app_games')); return; }
+    if (_gameHasShelfBehind()) { openArticle(currentArticle.zim, 'index.html', t('app_games')); return; }
     closeReader();
     // Only go home if reader was auto-opened by enterSource AND user hasn't searched
     if (sourceAutoReader) {
@@ -17478,6 +17478,10 @@ function _appTileHtml(app, title, icon, names, openFn) {
 // Almanac is part of Zimi and always opens its own page, not the ZIM.
 // Their count lines are fixed strings: nothing is read to draw them.
 var _GAMES_ZIM = 'zimi_games';
+// The catalog's Games ZIM (scripts/build_games_kiwix.py) holds the same games under its own name: a library that has it
+// opens its games with the same header.
+var _GAMES_CATALOG_ZIM = 'zimi_mul_games';
+function _isGamesZimName(zim) { return zim === _GAMES_ZIM || zim === _GAMES_CATALOG_ZIM; }
 var _ALMANAC_ZIM = 'zimi_almanac';
 // A Zimi app wears the same line glyph on its Home tile, in Settings and in the breadcrumb once open.
 var _OWN_APP_TITLE = { games: 'app_games', almanac: 'app_almanac' };
@@ -17567,7 +17571,7 @@ var _GAME_ACT_SVG = {
 };
 var _GAME_ACT_KEY = { undo: 'game_undo', pause: 'game_pause', resume: 'game_resume' };
 function _isGamesZimOpen() {
-  return !!(readerOpen && !_almanacOpen && !_createOpen && mode !== 'manage' && currentArticle && currentArticle.zim === _GAMES_ZIM);
+  return !!(readerOpen && !_almanacOpen && !_createOpen && mode !== 'manage' && currentArticle && _isGamesZimName(currentArticle.zim));
 }
 function _isGamePage() { return !!(_gameHead && _isGamesZimOpen()); }
 // The shelf (ZimiGames' index page) is an app that owns the search box: what is typed filters the shelf in the page,
@@ -17591,7 +17595,7 @@ function _gameFrameZim() {
   try { var m = /^\/w\/([^/]+)\//.exec(_gameFrame().contentWindow.location.pathname); return m ? decodeURIComponent(m[1]) : ''; } catch (e) { return ''; }
 }
 function _gameFrameIs(win) {
-  return _gameFrameWindow(win) && readerOpen && !_almanacOpen && !_createOpen && mode !== 'manage' && _gameFrameZim() === _GAMES_ZIM;
+  return _gameFrameWindow(win) && readerOpen && !_almanacOpen && !_createOpen && mode !== 'manage' && _isGamesZimName(_gameFrameZim());
 }
 // What a ZimiGames page may ask of Zimi besides its header (builtin/games/librarykit.js Lib.leadOut, skydetective.js):
 //   {zimi: 'open', zim, path}                 an article (a map path may end in #map=zoom/lat/lon), the handler above

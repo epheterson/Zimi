@@ -971,5 +971,16 @@ def games_zim(dest):
     return shutil.copy(os.path.join(built, name), dest)
 
 
+def catalog_games_zim(dest):
+    """The catalog's Games ZIM (scripts/build_games_kiwix.py, Name zimi_mul_games) built from the working tree, copied into `dest`."""
+    sys.path.insert(0, os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "scripts"))
+    import build_games_kiwix
+
+    built = os.path.join(_cached("catalogzim", lambda stage: build_games_kiwix.build(stage)), "")
+    name = next(n for n in os.listdir(built) if n.endswith(".zim"))
+    os.makedirs(dest, exist_ok=True)
+    return shutil.copy(os.path.join(built, name), dest)
+
+
 if __name__ == "__main__":
     print(build(sys.argv[1] if len(sys.argv) > 1 else "."))
