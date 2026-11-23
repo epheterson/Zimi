@@ -13,6 +13,7 @@ Run: pytest tests/test_pdf_reader.py -v
 """
 
 import os
+import re
 import sys
 import threading
 
@@ -133,7 +134,7 @@ BARS = """() => { const r = s => { const e = document.querySelector(s); const b 
 @pytest.mark.parametrize(
     "device", ["iPhone 13", {"viewport": {"width": 1280, "height": 800}}]
 )
-def test_the_bars_are_zimis_and_step_aside_while_reading(shell, device):
+def test_the_bars_are_zimis_and_stay_up_while_reading(shell, device):
     _skip_without_browser()
     from playwright.sync_api import sync_playwright
 
@@ -160,7 +161,7 @@ def test_the_bars_are_zimis_and_step_aside_while_reading(shell, device):
               .map(b => b.getBoundingClientRect()).filter(r => r.height < 44 || r.width < 44).length"""
             )
             assert small == 0
-            # Reading on by hand: the bars step aside. A phone reads a page at
+            # Reading on by hand: the bars stay. A phone reads a page at
             # a time and turns it with a swipe; a wide screen scrolls.
             vw = got["vw"]
             if isinstance(device, str):
@@ -172,11 +173,16 @@ def test_the_bars_are_zimis_and_step_aside_while_reading(shell, device):
             else:
                 pg.mouse.move(vw / 2, 400)
                 pg.mouse.wheel(0, 900)
+            # The bars stay up through the scroll or the page turn...
+            pg.wait_for_timeout(1200)
+            assert fr.evaluate("() => zimiPdf.barsShown()")
+            assert fr.evaluate(BARS)["head"]["shown"]
+            # ...and only a tap in the middle puts them away, then back.
+            mid = fr.locator("#viewerContainer")
+            mid.click(position={"x": vw / 2, "y": 300})
             fr.wait_for_function("() => !zimiPdf.barsShown()", timeout=5000)
-            pg.wait_for_timeout(400)
-            assert not fr.evaluate(BARS)["head"]["shown"]
-            # ...and a tap on the page brings them back.
-            pg.mouse.click(vw / 2, 420)
+            pg.wait_for_timeout(1000)
+            mid.click(position={"x": vw / 2, "y": 300})
             fr.wait_for_function("() => zimiPdf.barsShown()", timeout=5000)
         finally:
             ctx.browser.close()
@@ -1094,6 +1100,44 @@ def test_the_typed_page_stays_above_the_keyboard(long_shell):
             assert (
                 fr.evaluate("() => document.querySelector('.zp-foot').style.transform")
                 == ""
+            )
+        finally:
+            ctx.browser.close()
+
+
+def test_the_notch_band_is_the_top_bars_colour_and_stays_it(shell):
+    """the colour under the notch did not match the
+    top bar and changed as he read. The bars are solid and the browser is told
+    the bar's colour while a PDF is read."""
+    _skip_without_browser()
+    from playwright.sync_api import sync_playwright
+
+    base, name = shell
+    with sync_playwright() as pw:
+        pg, fr, ctx = _open(pw, base, name, "iPhone 13")
+        try:
+            got = fr.evaluate(
+                """() => { const cs = getComputedStyle(document.querySelector('.zp-head'));
+                  return { bg: cs.backgroundColor, bf: cs.backdropFilter || cs.webkitBackdropFilter || 'none' }; }"""
+            )
+            assert re.fullmatch(r"rgb\(\d+, \d+, \d+\)", got["bg"]), got
+            assert got["bf"] == "none", got
+            tc = pg.evaluate(
+                "() => { const m = document.querySelector('meta[name=\"theme-color\"]'); return m && m.content; }"
+            )
+            assert tc, "the browser is told the reader's colour"
+            # Same colour as the bar, in any notation the browser gives back.
+            bar = pg.evaluate(
+                """(c) => { const e = document.createElement('i'); e.style.color = c; document.body.appendChild(e);
+                  const v = getComputedStyle(e).color; e.remove(); return v; }""",
+                tc,
+            )
+            assert bar == got["bg"], (bar, got)
+            # Leaving the PDF gives the browser's colour back.
+            pg.evaluate("() => goHome(null)")
+            pg.wait_for_timeout(600)
+            assert not pg.evaluate(
+                "() => !!document.querySelector('meta[name=\"theme-color\"]')"
             )
         finally:
             ctx.browser.close()

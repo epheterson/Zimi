@@ -223,7 +223,10 @@ def test_a_game_that_fails_to_start_says_so(kart_served):
         br = pw.chromium.launch()
         ctx = br.new_context(viewport={"width": 390, "height": 844}, service_workers="block")
         pg = ctx.new_page()
-        pg.route("**/w/zimi_games/kart-page.js*", lambda r: r.fulfill(status=200, content_type="text/javascript", body="throw new Error('boom');"))
+        # The page's empty board canvas is 300x150 by default, and the shell reads a canvas that size as a game on
+        # screen (a puzzle is one canvas), so the stand-in script clears it: a start that failed leaves nothing drawn.
+        broken = "document.getElementById('kt-board').remove(); throw new Error('boom');"
+        pg.route("**/w/zimi_games/kart-page.js*", lambda r: r.fulfill(status=200, content_type="text/javascript", body=broken))
         try:
             kart_served["swap"]()
             pg.goto(kart_served["base"] + KART, wait_until="load")

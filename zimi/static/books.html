@@ -35,8 +35,7 @@
   .bk .prog { height: 3px; border-radius: 2px; background: var(--border); overflow: hidden; }
   .bk .prog i { display: block; height: 100%; background: var(--amber); }
   .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(128px, 1fr)); gap: 22px 16px; }
-  .strip { display: grid; grid-auto-flow: column; grid-auto-columns: 124px; gap: 16px; overflow-x: auto; scrollbar-width: none; padding: 2px 2px 6px; margin: 0 -2px; }
-  .strip::-webkit-scrollbar { display: none; }
+  .strip { display: grid; grid-auto-flow: column; grid-auto-columns: 124px; gap: 16px; overflow-x: auto; padding: 2px 2px 6px; margin: 0 -2px; }
   @media (max-width: 480px) {
     .grid { grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 18px 12px; }
     .strip { grid-auto-columns: 100px; gap: 12px; }
@@ -310,6 +309,8 @@ function go(view) { _stack.push(view); show(); }
 function show() {
   renderTabs();
   var v = cur();
+  // Where the shelf is, for the address: nothing at the front.
+  tell({ zimi: 'books-view', view: _stack.length > 1 ? JSON.stringify(v) : '' });
   window.scrollTo(0, 0);
   if (!_home) return;
   if (!_home.total) return showEmpty();
@@ -582,6 +583,8 @@ function load() {
     if (d === FAILED) { _home = null; renderTabs(); $('view').innerHTML = failedHtml(STR.load_failed, 'load()'); return; }
     _home = d;
     remember(_home.popular); remember(_home.recent);
+    // A reload opens the place the address names (the shell passes it as STR.view).
+    try { if (STR.view) _stack = [{ v: 'home' }, JSON.parse(STR.view)]; } catch (e) {}
     show();
     // The records are read in the background the first time: look again
     // until they are there, so eras and subjects arrive without a reload.

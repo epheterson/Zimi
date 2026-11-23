@@ -149,6 +149,7 @@ def mark(pg, zim):
           const r = b.getBoundingClientRect(), m = c.querySelector('.card-more').getBoundingClientRect();
           return { k: b.dataset.k, tag: b.tagName, events: getComputedStyle(b).pointerEvents, foot: !!b.closest('.card-foot'),
                    line: Math.abs((r.top + r.bottom) / 2 - (m.top + m.bottom) / 2), left_of_more: r.right <= m.left,
+                   over_more: (r.top + r.bottom) / 2 < (m.top + m.bottom) / 2 && Math.abs((r.left + r.right) / 2 - (m.left + m.right) / 2) <= 8,
                    dash: (b.querySelector('.kr-arc') || document.body).getAttribute('stroke-dasharray') }; }""",
         zim,
     )
@@ -217,12 +218,9 @@ def test_a_card_marks_its_state_in_its_foot_beside_its_one_control(pw, world):
     br, ctx, pg = library(pw, world)
     keep_one(pg)
     for view in ("list", "tiles"):
-        pg.evaluate(
-            "(v) => { localStorage.setItem('zimi_library_view', v); renderHome(); }",
-            view,
-        )
+        pg.evaluate("(v) => { localStorage.setItem('zimi_library_view', v); renderHome(); }", view)
         pg.wait_for_function(
-            "(v) => { const g = document.querySelector('#output .stats-grid'); return !!g && g.classList.contains('tiles') === (v === 'tiles'); }",
+            "(v) => { const g = document.querySelector('#output .stats-grid:not(.apps-grid)'); return !!g && g.classList.contains('tiles') === (v === 'tiles'); }",
             arg=view,
         )
         # A ZIM the phone does not hold has no mark at all, and nothing on any card but ⋯ is a button.
@@ -232,21 +230,20 @@ def test_a_card_marks_its_state_in_its_foot_beside_its_one_control(pw, world):
             SMALL,
         )
         assert kinds == ["card-more"], kinds
-        # The check sits in the card's foot, on ⋯'s line and before it, and it is a mark, not a target.
+        # The check sits in the card's foot, by ⋯, and it is a mark, not a target.
         m = mark(pg, "wikipedia")
         assert m["k"] == "kept" and m["tag"] == "SPAN" and m["events"] == "none", m
-        assert m["foot"] and m["line"] <= 3 and m["left_of_more"], m
-        # ⋯ is the bottom-right corner of every card, with marks or without.
+        assert m["foot"], m
+        # A wide row stacks its marks up the right edge above ⋯; a tile keeps them on ⋯'s line.
+        assert (m["over_more"] if view == "list" else m["line"] <= 3 and m["left_of_more"]), (view, m)
+        # ⋯ is the bottom-right corner of a card, the top-right of a tile, with marks or without.
         corner = pg.evaluate(
-            "(z) => { const c = document.querySelector(`.stat-card[data-zim='${z}']`).getBoundingClientRect(), b = document.querySelector(`.stat-card[data-zim='${z}'] .card-more`).getBoundingClientRect(); return [c.right - b.right, c.bottom - b.bottom]; }",
-            SMALL,
+            "([z, v]) => { const c = document.querySelector(`.stat-card[data-zim='${z}']`).getBoundingClientRect(), b = document.querySelector(`.stat-card[data-zim='${z}'] .card-more`).getBoundingClientRect(); return [c.right - b.right, v === 'tiles' ? b.top - c.top : c.bottom - b.bottom]; }",
+            [SMALL, view],
         )
         assert 0 <= corner[0] <= 8 and 0 <= corner[1] <= 8, (view, corner)
-        w = pg.evaluate(
-            "(z) => document.querySelector(`.stat-card[data-zim='${z}'] .card-more`).getBoundingClientRect().width",
-            SMALL,
-        )
-        assert w >= (44 if view == "list" else 34), (view, w)
+        w = pg.evaluate("(z) => document.querySelector(`.stat-card[data-zim='${z}'] .card-more`).getBoundingClientRect().width", SMALL)
+        assert w >= (44 if view == "list" else 28), (view, w)
     # ⋯ opens the card's menu and goes nowhere.
     lines = more(pg, SMALL)
     assert (
@@ -264,16 +261,16 @@ def test_a_scroll_inside_the_open_menu_does_not_close_it(pw, world):
     is not the page's, and closed a menu the moment it opened."""
     br, ctx, pg = library(pw, world)
     more(pg, SMALL)
-    scrolled = pg.evaluate("""() => new Promise((done) => {
+    scrolled = pg.evaluate(
+        """() => new Promise((done) => {
             const m = document.getElementById('zim-ctx-menu');
             m.style.maxHeight = '120px';
             m.style.overflowY = 'auto';
             m.addEventListener('scroll', () => done(m.scrollTop), { once: true });
             m.scrollTop = 40;
-        })""")
-    assert pg.evaluate(
-        "() => document.getElementById('zim-ctx-menu').classList.contains('visible')"
-    ), "closed by its own scroll"
+        })"""
+    )
+    assert pg.evaluate("() => document.getElementById('zim-ctx-menu').classList.contains('visible')"), "closed by its own scroll"
     assert scrolled > 0
     ctx.close()
     br.close()
@@ -505,7 +502,7 @@ def test_online_on_this_phone_opens_the_categories(pw, world):
     )
     pg.wait_for_selector(".cat-heading")
     heads = pg.evaluate(
-        "() => [...document.querySelectorAll('#output .cat-heading')].map(e => e.innerText.trim().toLowerCase())"
+        "() => [...document.querySelectorAll('#output .cat-heading')].map(e => { const c = e.cloneNode(true); c.querySelectorAll('.lib-controls').forEach(x => x.remove()); return c.innerText.trim().toLowerCase(); })"
     )
     # Directly below the collections, before the big library flow.
     assert (

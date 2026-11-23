@@ -55,6 +55,7 @@ IDENTITY_ENDPOINTS = [
     # Filtered by the account's ZIM allowlist and by the library: a kept copy
     # would outlive a sign-out (and answer after an account change, offline).
     "/games-links",
+    "/almanac-view",
     "/games-search",
     # The server's day for ZimiGames' dailies: a kept copy is yesterday's.
     "/games-day",

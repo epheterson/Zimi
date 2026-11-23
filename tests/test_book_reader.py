@@ -213,8 +213,10 @@ def test_a_book_reads_like_an_e_reader_on_a_phone(served):
             frame.locator('.zb-toc-list button[data-k="2"]').click()
             pg.wait_for_timeout(500)
             s = st()
-            assert s["sec"] == 3 and s["page"] == 0 and s["away"]
-            # A tap in the middle brings the bars, again sends them away.
+            assert s["sec"] == 3 and s["page"] == 0 and not s["away"]
+            # Jumping to a chapter leaves the bars up; a tap in the middle puts them away.
+            _tap(pg, 195)
+            assert st()["away"]
             _tap(pg, 195)
             assert not st()["away"]
             # The chapter named in the footer opens the contents too, at that chapter.
@@ -224,13 +226,10 @@ def test_a_book_reads_like_an_e_reader_on_a_phone(served):
             assert on.count() == 1 and on.get_attribute("data-k") == "2"
             frame.locator(".zb-toc-sheet .zb-x").click()
             pg.wait_for_timeout(300)
-            if st()["away"]:
-                _tap(pg, 195)
-            _tap(pg, 195)
-            assert st()["away"]
+            assert not st()["away"]
             # Turning: the right edge on, a swipe left on, a swipe right back, the left edge back.
             _tap(pg, 365)
-            assert st()["page"] == 1
+            assert st()["page"] == 1 and not st()["away"], "a turn leaves the bars up"
             _swipe(pg, 320, 80)
             assert st()["page"] == 2
             _swipe(pg, 80, 320)
@@ -244,7 +243,6 @@ def test_a_book_reads_like_an_e_reader_on_a_phone(served):
             assert c and pg.evaluate(CHAR, c)
             assert "left in chapter" in st()["foot"]
             # Bigger type, then the phone turned and back: the same passage on screen.
-            _tap(pg, 195)
             frame.locator(".zb-aa").click()
             pg.wait_for_timeout(300)
             frame.locator('[data-size="4"]').click()  # Larger
@@ -265,7 +263,7 @@ def test_a_book_reads_like_an_e_reader_on_a_phone(served):
             )
             _open(pg, served, "Liber.1")
             assert pg.evaluate(CHAR, c)
-            # Scrolling instead: the passage near the top, the bars away on the way down.
+            # Scrolling instead: the passage near the top, the bars up on the way down.
             # Reopened, the bars are up: Aa is right there.
             frame.locator(".zb-aa").click()
             pg.wait_for_timeout(300)
@@ -277,7 +275,8 @@ def test_a_book_reads_like_an_e_reader_on_a_phone(served):
                 "() => document.getElementById('reader-frame').contentWindow.scrollBy(0, 400)"
             )
             pg.wait_for_timeout(400)
-            assert st()["away"]
+            # The bars stay up through a scroll, either way.
+            assert not st()["away"]
             pg.evaluate(
                 "() => document.getElementById('reader-frame').contentWindow.scrollBy(0, -150)"
             )

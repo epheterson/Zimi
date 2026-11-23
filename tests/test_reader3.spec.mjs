@@ -68,7 +68,7 @@ test.describe('Reader batch v1.8', () => {
     // Inline settings section is present and top-level (no second tap).
     const settings = menu.locator('.tbm-reader-settings');
     await expect(settings).toBeVisible();
-    await expect(settings.locator('.rv-swatch')).toHaveCount(3);   // theme swatches, one row
+    await expect(settings.locator('.rv-swatch')).toHaveCount(5);   // theme swatches (Auto, Light, Sepia, Dark, Red), one row
     await expect(settings.locator('.rv-pill')).toHaveCount(2);     // font family, one row
     await expect(settings.locator('.tsz-btn')).toHaveCount(5); // the five text sizes
     await expect(settings.locator('.rv-action-row')).toHaveCount(1); // Print (share hidden headless)

@@ -75,12 +75,44 @@ setInterval(function() { fetch('/', { cache: 'no-store' }).then(function(r) { if
 </script>
 </body></html>`;
 
+// The files the kept shell cannot draw without: the stylesheets and scripts it names itself. A shell kept with its
+// stylesheet missing shows the header and nothing else (an installed app, offline, "only the header without
+// CSS"), so these are checked, not hoped for: SHELL_URLS are kept one by one and a failure among them is skipped.
+const SHELL_ASSET_TRIES = 3;
+async function shellAssets(cache) {
+  const shell = await cache.match('/');
+  if (!shell) return [];
+  const html = await shell.clone().text();
+  const urls = [];
+  const re = /<(?:link[^>]+rel="stylesheet"[^>]+href|script[^>]+src)="(\/static\/[^"]+)"/g;
+  let m;
+  while ((m = re.exec(html))) urls.push(m[1]);
+  return urls;
+}
+// Keep whichever of them is missing; the ones still missing after the tries.
+async function keepShellAssets(cache) {
+  let missing = [];
+  for (let attempt = 0; attempt < SHELL_ASSET_TRIES; attempt++) {
+    missing = [];
+    for (const u of await shellAssets(cache)) {
+      if (await cache.match(u)) continue;
+      try { await cache.add(u); } catch (e) { missing.push(u); }
+    }
+    if (!missing.length) break;
+  }
+  return missing;
+}
+
 // Install: precache essential assets
 self.addEventListener('install', event => {
   event.waitUntil(
     caches.open(CACHE_VERSION)
       .then(cache => cache.addAll(PRECACHE_URLS)
-        .then(() => Promise.allSettled(SHELL_URLS.map(u => cache.add(u)))))
+        .then(() => Promise.allSettled(SHELL_URLS.map(u => cache.add(u))))
+        // A shell without the files it names is not a shell: the install fails, and the next visit installs again,
+        // rather than a worker in charge that serves the header alone offline.
+        .then(() => keepShellAssets(cache))
+        .then(missing => { if (missing.length) throw new Error('shell files not kept: ' + missing.join(' ')); }))
       // Nothing slower than the shell before taking charge: a new worker held up on the Almanac's megabytes never
       // arrived on a phone that closed the app first (the Almanac is kept again in activate, below).
       .then(() => self.skipWaiting())
@@ -159,7 +191,7 @@ async function checkVersion() {
 // signed-out phone could be shown them. Offline the page reads the guide's own
 // copy instead (/static/fieldguide-offline.json: public text, kept like any
 // static file), so nothing is lost by never keeping these.
-const NETWORK_ONLY_PREFIXES = ['/login', '/logout', '/suggest', '/random', '/places', '/tube', '/exchange', '/reddot', '/me', '/collections', '/userdata', '/dictionary/voices', '/dictionary/speak', '/fieldguide', '/keep', '/games-links', '/games-search', '/games-day', '/own-offline'];
+const NETWORK_ONLY_PREFIXES = ['/login', '/logout', '/suggest', '/random', '/places', '/tube', '/exchange', '/reddot', '/me', '/collections', '/userdata', '/dictionary/voices', '/dictionary/speak', '/fieldguide', '/keep', '/games-links', '/almanac-view', '/games-search', '/games-day', '/own-offline'];
 // /games-links is filtered per account and follows the library: never kept, so no copy outlives a sign-out or an account change.
 // /games-day is the server's date: a kept one would be yesterday's daily.
 
@@ -270,6 +302,11 @@ function routeStrategy(path, requestMode, destination, search) {
 }
 self.routeStrategy = routeStrategy;  // test hook
 
+// A document coming in (the window, or a frame such as the reader's), not a picture, script or data it uses.
+function _isPageLoad(req) {
+  return req.mode === 'navigate' || req.destination === 'iframe' || req.destination === 'frame' || req.destination === 'document';
+}
+
 // Fetch strategy router
 self.addEventListener('fetch', event => {
   // A ranged request (a <video>, ogv.js's reader, Say's audio) goes to the
@@ -279,7 +316,9 @@ self.addEventListener('fetch', event => {
   if (event.request.headers.has('range')) return;
   const url = new URL(event.request.url);
   // The games opened (a tile, an address, a reload): the games and the Almanac are kept whole, a moment after this page has loaded.
-  if (!_ownKeepAsked && url.pathname.startsWith('/w/zimi_games/')) {
+  // A game's page, that is (the reader frame or the window): Home's game tiles and Game of the Day draw their pictures from the
+  // games ZIM too, and a picture is not the games opened. Keeping on those fetched ~40 MB under Data Saver at first paint.
+  if (!_ownKeepAsked && url.pathname.startsWith('/w/zimi_games/') && _isPageLoad(event.request)) {
     _ownKeepAsked = true;
     event.waitUntil(new Promise(r => setTimeout(r, OWN_KEEP_DELAY_MS))
       .then(() => caches.open(CACHE_VERSION)).then(c => c.match(OWN_KEEP_MARK + 'zimi_games'))
@@ -386,7 +425,16 @@ function refreshShell(event, request) {
   event.waitUntil(fetchWithin(request, DEADLINE_COLD_MS).then(async resp => {
     if (resp.ok && resp.status !== 206 && !_gatewayDown(resp)) {
       const cache = await caches.open(CACHE_VERSION);
+      // A shell of another build names files this worker's cache does not hold (a deploy the new worker has not
+      // installed yet): kept over this one, the next start offline has a shell and no stylesheet. The new worker
+      // keeps its own shell with its files; ask it to come (the build is in the page, build:'...').
+      if (/^zimi-v(?!dev)/.test(CACHE_VERSION) && (await resp.clone().text()).indexOf("build:'" + CACHE_VERSION + "'") < 0) {
+        self.registration.update().catch(() => {});
+        return;
+      }
       await cache.put(request, resp);
+      // The server answered: a good moment to make up what an earlier install missed.
+      await keepShellAssets(cache);
     }
   }).catch(() => {}));
 }
@@ -694,6 +742,8 @@ self.addEventListener('message', event => {
   }
   if (event.data && event.data.type === 'keep-almanac') event.waitUntil(keepAlmanac());
   if (event.data && event.data.type === 'keep-own-apps') event.waitUntil(keepOwnApps());
+  // The page has loaded, gone idle and judged the connection fine for it (app.js _keepAheadAllowed).
+  if (event.data && event.data.type === 'keep-own-ahead') event.waitUntil(keepOwnAhead());
   if (event.data && event.data.type === 'forget-own' && OWN_ZIM_PREFIXES.includes('/w/' + event.data.zim + '/')) event.waitUntil(forgetOwnZim(event.data.zim));
 });
 
@@ -722,6 +772,7 @@ const OWN_KEEP_PARALLEL = 4;
 const OWN_KEEP_MARK = '/_kept/own/';   // a small answer saying this cache holds a ZIM's pages whole
 const OWN_KEEP_DELAY_MS = 4000;
 const ACTIVATE_KEEP_WAIT_MS = 2500;   // how long activation lets the deploy's re-keeping run before the worker is in charge
+const OWN_KEEP_HEADROOM_BYTES = 150 * 1024 * 1024;   // free storage the keeping needs before it starts ahead of time (the games and the Almanac are ~40 MB; the rest is the person's own ZIMs' room)
 const OWN_KEEP_MAX_FAILS = 5;   // a network that went away stops the keeping; the next open asks again
 const _ownKeeping = {};
 let _ownKeepAsked = false;   // once per worker life: a page of the games has been asked for
@@ -732,16 +783,39 @@ async function keepOwnApps() {
   await keepOwnZim('zimi_almanac');
 }
 
+// Keeping them ahead of time, on a device that has not opened either: only after the page has loaded and gone idle, and
+// never at the cost of the person's own kept ZIMs (nothing here evicts; short of room it does not start, and a write the
+// browser refuses stops it, quietly). Nothing is asked of the network when both are already kept whole. An install
+// with no own ZIMs (ZIMI_BUILTIN_ZIMS=0) lists none, so nothing is kept, the Almanac's files included.
+async function keepOwnAhead() {
+  let marked;
+  try {
+    const cache = await caches.open(CACHE_VERSION);
+    marked = await cache.match(OWN_KEEP_MARK + 'zimi_games') && await cache.match(OWN_KEEP_MARK + 'zimi_almanac');
+    // Both ZIMs kept whole is not the Almanac kept: its own files (almanac.css...) are fetched apart, and one that failed stays missing.
+    const filesHere = (await Promise.all(ALMANAC_URLS.map(u => cache.match(u)))).every(Boolean);
+    if (marked && filesHere) return;
+    if (self.navigator && navigator.storage && navigator.storage.estimate) {
+      const est = await navigator.storage.estimate();
+      if (est.quota - est.usage < OWN_KEEP_HEADROOM_BYTES) return;
+    }
+  } catch (e) { return; }
+  if (marked) { await keepAlmanac(); return; }   // the pages are kept: only the Almanac's files were missing
+  const kept = (await keepOwnZim('zimi_games')) + (await keepOwnZim('zimi_almanac'));
+  if (kept) await keepAlmanac();
+}
+
+// Resolves to how many pages the server lists for the ZIM (0 when removed or unreachable).
 async function keepOwnZim(zim) {
   if (_ownKeeping[zim]) return _ownKeeping[zim];
   return (_ownKeeping[zim] = (async () => {
     try {
       const cache = await caches.open(CACHE_VERSION);
       const resp = await fetch('/own-offline?zim=' + encodeURIComponent(zim), { credentials: 'same-origin' });
-      if (!resp.ok || _gatewayDown(resp)) return;
+      if (!resp.ok || _gatewayDown(resp)) return 0;
       const body = await resp.json();
       const paths = body.paths || [], version = String(body.version || '');
-      if (!paths.length) { await forgetOwnZim(zim); return; }
+      if (!paths.length) { await forgetOwnZim(zim); return 0; }
       // The file the kept pages came from: when it is another file (a new edition under the same name and paths), every page is
       // fetched again; a cache holding the old copy of a path would otherwise answer offline with the old file.
       const marked = await cache.match(OWN_KEEP_MARK + zim), had = marked ? await marked.text() : null;
@@ -752,12 +826,13 @@ async function keepOwnZim(zim) {
       const worker = async () => {
         while (todo.length && failed < OWN_KEEP_MAX_FAILS) {
           const u = todo.pop();
-          try { await cache.add(new Request(u, { cache: 'no-cache', headers: { 'X-Zimi-Keep': '1' } })); } catch (e) { failed++; }
+          try { await cache.add(new Request(u, { cache: 'no-cache', priority: 'low', headers: { 'X-Zimi-Keep': '1' } })); } catch (e) { failed++; }
         }
       };
       await Promise.all(Array.from({ length: OWN_KEEP_PARALLEL }, worker));
       if (!failed) await cache.put(OWN_KEEP_MARK + zim, new Response(version));
-    } catch (e) { /* offline or busy: asked again the next time it opens */ }
+      return paths.length;
+    } catch (e) { return 0; /* offline or busy: asked again the next time it opens */ }
     finally { delete _ownKeeping[zim]; }
   })());
 }

@@ -71,7 +71,7 @@ ok('a size from the old nine-step scale lands on the nearest step',
 ok('no size saved, or not a size, is the reader\'s default', size(undefined) === 19 && size('big') === 19);
 
 // Every language names the five steps.
-for (const f of fs.readdirSync(path.join(root, 'i18n'))) {
+for (const f of fs.readdirSync(path.join(root, 'i18n')).filter(f => f.endsWith('.json'))) {
   const d = JSON.parse(fs.readFileSync(path.join(root, 'i18n', f), 'utf8'));
   const missing = ['smaller', 'small', 'default', 'large', 'larger'].filter((k) => !d['text_size_' + k]);
   if (missing.length) ok('the steps are named in ' + f, false, missing.join(','));

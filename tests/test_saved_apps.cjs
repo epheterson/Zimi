@@ -314,7 +314,7 @@ ok('a tap in the page under the picker closes it', /window\._closeMenu = closeCt
 
 const KEYS = ['saved_save', 'saved_like', 'saved_add_to_list', 'tube_continue', 'saved_unlisted', 'saved_removed', 'hl_removed', 'saved_sync_behind', 'map_places', 'map_places_and_maps', 'map_place_save'];
 const en = JSON.parse(fs.readFileSync(path.join(root, 'static', 'i18n', 'en.json'), 'utf8'));
-for (const lang of fs.readdirSync(path.join(root, 'static', 'i18n'))) {
+for (const lang of fs.readdirSync(path.join(root, 'static', 'i18n')).filter(f => f.endsWith('.json'))) {
   const d = JSON.parse(fs.readFileSync(path.join(root, 'static', 'i18n', lang), 'utf8'));
   const missing = KEYS.filter((k) => !d[k] || /\u2014/.test(d[k]) || (lang !== 'en.json' && d[k] === en[k]));
   ok(lang + ' says it in its own words', !missing.length, missing.join(', '));
