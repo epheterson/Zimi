@@ -12,6 +12,7 @@
   'use strict';
   var Local = {};
   var SATELLITES_FILE = 'data/satellites-snapshot.json';
+  var SATELLITES_ALL_FILE = 'data/satellites-all-snapshot.json';   // satcatalog.py's catalogue of every active satellite, asked for with ?all=1
   var TIDES_FILE = 'data/tides-snapshot.json';
   var SATELLITES_URL = '/almanac-satellites';
   var PLACE_URL = '/almanac-place';
@@ -116,6 +117,12 @@
   Local.answer = function (url) {
     var u;
     try { u = new URL(url, root.location.href); } catch (e) { return null; }
+    if (u.pathname === SATELLITES_URL && u.searchParams.get('all')) {
+      return read(SATELLITES_ALL_FILE).then(function (c) {
+        return json({ source: 'snapshot', fetched: c.fetched, cols: c.cols, sats: c.sats, stale: Date.now() / 1000 - c.fetched_at > STALE_AFTER_S,
+          refreshing: false, mode: 'never', locked: null, can_change: false });
+      }, function () { return json({ error: 'not here' }, 404); });
+    }
     if (u.pathname === SATELLITES_URL) {
       return Promise.all([read(SATELLITES_FILE), hd()]).then(function (r) {
         var out = Local.satellites(r[0], Date.now() / 1000);
@@ -136,16 +143,4 @@
   };
   Local._prepare = prepare;
   root.ZimiAlmanacLocal = Local;
-
-  // Outside Zimi, the foot of the Almanac carries the credit line "© <year> Zimi" (zimihome.js's ZIMI_HOME_MARK can add the
-  // mark before or after the name, one link with it): the address is zimihome.js's (the Games' file, staged in), the year the
-  // build's (zimibuild.js, written into the ZIM by ownzims), never the reader's clock. Inside Zimi's reader nothing is drawn.
-  // Here, not in index.html: zimcheck reads an href written in the page's own script as a link of the page.
-  root._almHomeLine = function () {
-    var url = root.ZIMI_HOME, year = root.ZIMI_BUILT_YEAR, at = root.ZIMI_HOME_MARK, esc = root.esc, escAttr = root.escAttr;
-    if (root.HOSTED_IN_ZIMI || !url) return '';
-    var mark = at === 'before' || at === 'after' ? '<img src="mark.svg" alt="" width="13" height="13"' + (at === 'after' ? ' class="alm-mark-end"' : '') + '>' : '';
-    return '<div class="alm-home"><span>© ' + (year ? esc(year) + ' ' : '') + '<a href="' + escAttr(url) + '" target="_blank" rel="noopener">' +
-      (at === 'after' ? 'Zimi' + mark : mark + 'Zimi') + '</a></span></div>';
-  };
 })(typeof window !== 'undefined' ? window : globalThis);
