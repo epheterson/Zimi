@@ -154,7 +154,7 @@ check(zoneOffsetAt(-17, 179.9) === 720 && zoneOffsetAt(-17, -179.9) === 720,
   'both sides of the date line near Fiji -> UTC+12 (antimeridian parts)');
 
 // 7. Renderer contract
-check(alm.includes("fetch('/static/tz-borders.json?v=3')"), 'almanac.js lazy-fetches the v3 asset');
+check(alm.includes("fetch(_almAsset('/static/tz-borders.json'))"), 'almanac.js lazy-fetches the asset, at its content hash');
 check(alm.includes('_tzBordersPathFor'), 'almanac.js builds the cached border Path2D');
 check(alm.includes('_tzZonePathFor'), 'almanac.js builds the cached highlight Path2D');
 check(alm.includes('_sunMapDrawZoneHighlight'), 'almanac.js draws the true-shape highlight');

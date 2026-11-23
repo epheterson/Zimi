@@ -24,15 +24,14 @@
   display: inline-flex; align-items: center; justify-content: center; width: 44px; min-height: 44px; padding: 0;
   border: 0; border-radius: 10px; background: none; color: var(--text2); font: inherit; cursor: pointer;
 }
-.tb-bar-end { display: inline-flex; align-items: center; }
+.tb-bar-end { display: inline-flex; align-items: center; margin-inline-end: calc(var(--tb-gutter) - 4px); }  /* the last button's box (the tinted square) ends on the content edge: the bar's own padding is 4 */
 .tb-back:hover, .tb-back:focus-visible { color: var(--amber); background: var(--amber-glow); }
 .tb-back:focus-visible, .tb-tab:focus-visible { outline: 2px solid var(--amber); outline-offset: -2px; }
 [dir="rtl"] .tb-chev { transform: scaleX(-1); }
 .tb-tabs {
-  display: flex; gap: 2px; overflow-x: auto; padding: 0 var(--tb-gutter); scrollbar-width: none;
+  display: flex; gap: 2px; overflow-x: auto; padding: 0 var(--tb-gutter);
   -webkit-overflow-scrolling: touch; scroll-padding-inline: var(--tb-gutter);
 }
-.tb-tabs::-webkit-scrollbar { display: none; }
 .tb-tab {
   flex: none; min-height: 40px; padding: 0 10px; border: 0; border-bottom: 2px solid transparent; background: none;
   color: var(--text2); font: inherit; font-size: 13px; white-space: nowrap; cursor: pointer;
@@ -123,6 +122,28 @@
 }
 .tb-table tr.tb-grp th > span { position: sticky; inset-inline-start: 10px; }
 .tb-table tr.tb-foot > * { color: var(--text2); font-size: 11.5px; }
+/* Body by quantity: the unit under each column's name, a mark on a cell from another source, the sources under the table. */
+.tb-pivot thead th { text-align: end; vertical-align: bottom; line-height: 1.25; }
+.tb-pivot thead th:first-child { text-align: start; }
+.tb-pivot .tb-unit { font-weight: 400; color: var(--text3); }
+/* A source mark sits in the cell's end padding, so a marked number ends where an unmarked one does. */
+.tb-pivot { --tb-mark-room: 8px; }
+.tb-pivot td { position: relative; padding-inline-end: calc(6px + var(--tb-mark-room)); font-variant-numeric: tabular-nums; }
+.tb-pivot .tb-mark { position: absolute; inset-inline-end: 3px; top: calc(50% - 0.95em); font-size: 10px; line-height: 1; color: var(--text2); }
+.tb-pivot td.tb-text { text-align: start; white-space: normal; min-width: 9em; padding-inline-end: 10px; }
+.tb-pivot tbody th { box-shadow: inset -1px 0 0 var(--tb-rule); }
+.tb-pivot td.tb-none { text-align: center; padding-inline-end: 10px; color: var(--text3); }
+/* The edge fade: more columns lie to the right while the wrapper carries data-more. */
+.tb-fadewrap { position: relative; }
+.tb-fadewrap::after {
+  content: ''; position: absolute; top: 1px; bottom: 1px; inset-inline-end: 1px; width: 32px; z-index: 5; pointer-events: none;
+  border-radius: 0 11px 11px 0; opacity: 0; transition: opacity 0.15s;
+  background: linear-gradient(to right, transparent, var(--bg));
+}
+[dir="rtl"] .tb-fadewrap::after { background: linear-gradient(to left, transparent, var(--bg)); border-radius: 11px 0 0 11px; }
+.tb-fadewrap[data-more]::after { opacity: 1; }
+.tb-pivot-src { margin: 8px 0 18px; }
+.tb-pivot-src .tb-note { margin: 2px 0; font-size: 12px; color: var(--text2); }
 .tb-table .tb-dim { color: var(--text3); }
 .tb-table .tb-hi { font-weight: 600; }
 .tb-table .tb-lo { color: var(--text2); }
@@ -133,7 +154,8 @@
 .tb-wrap td { text-align: start; }
 /* Constants: the name and the source wrap, the value and its unit stay whole. */
 .tb-consts th[scope="row"], .tb-consts .tb-src { white-space: normal; text-align: start; }
-.tb-consts .tb-src { font-size: 12px; color: var(--text2); min-width: 64px; }
+.tb-consts .tb-src { font-size: 12px; color: var(--text2); min-width: 64px; overflow-wrap: anywhere; }
+.tb-consts td.tb-prose { white-space: normal; text-align: start; min-width: 9em; overflow-wrap: anywhere; }
 .tb-consts thead th:last-child { text-align: start; }
 .tb-table td:has(> .tb-txt) { text-align: start; }
 .tb-mono { font-family: var(--tb-mono); font-size: 12px; }
@@ -183,7 +205,7 @@
 .tb-eqs > summary { padding: 10px 0; font-weight: 600; color: var(--text); cursor: pointer; }
 .tb-eq { margin: 4px 0 10px; break-inside: avoid; }
 .tb-eq-l { font-size: 11.5px; color: var(--text3); }
-.tb-eq-m { overflow-x: auto; overflow-y: hidden; padding: 2px 0; color: var(--text); scrollbar-width: thin; }
+.tb-eq-m { overflow-x: auto; overflow-y: hidden; padding: 2px 0; color: var(--text); }
 .tb-eq-m math { font-size: 15px; margin: 0; }
 .tb-eq-m math.tml-display { display: block math; width: max-content; min-width: 100%; text-align: start; }
 .tb-eq-src { font-size: 11.5px; white-space: pre-wrap; overflow-wrap: anywhere; color: var(--text2); }
@@ -236,9 +258,8 @@
 /* Segments: one of a few, the chosen one lifted. */
 .tk-seg {
   display: inline-flex; padding: 3px; gap: 2px; border-radius: 11px; background: var(--surface); border: 1px solid var(--border);
-  max-width: 100%; overflow-x: auto; scrollbar-width: none;
+  max-width: 100%; overflow-x: auto;
 }
-.tk-seg::-webkit-scrollbar { display: none; }
 .tb-controls > .tk-seg { display: flex; }
 .tb-controls > .tk-seg button { flex: 1 1 0; }
 .tk-seg button {
@@ -335,6 +356,9 @@
   .tb-body { max-width: none; padding: 0; }
   .tb-out { opacity: 1 !important; }
   .tb-frame { max-height: none; overflow: visible; border: 0; border-radius: 0; }
+  .tb-fadewrap::after { display: none; }
+  .tb-pivot td { padding-inline-end: 4pt; }
+  .tb-pivot .tb-mark { position: static; color: #000; margin-inline-start: 1pt; }
   .tb-table { font-size: 8pt; }
   .tb-table thead { display: table-header-group; }
   .tb-table thead th, .tb-table tbody th { position: static; background: none; color: #000; }
@@ -458,6 +482,8 @@
 .alm-book .tb-ph svg { width: 8pt; height: 8pt; }
 .alm-book .tb-book-wide .tb-table { font-size: 8pt; }
 .alm-book .tb-consts, .alm-book .tb-book-wide .tb-table { width: 100%; }
+.alm-book .tb-fadewrap::after { display: none; }
+.alm-book .tb-pivot .tb-mark { position: static; color: #000; margin-inline-start: 1pt; font-size: 6pt; }
 .alm-book .tb-note, .alm-book .tb-lede { max-width: none; margin: var(--bh) 0 0; font-size: 8.5pt; line-height: 11pt; color: #222; }
 .alm-book .tb-empty { padding: var(--bl) 0; border: 0.5pt solid #999; border-radius: 0; color: #222; }
 /* A chapter's own subheads (text, not outline headings). */
@@ -524,7 +550,7 @@
 @media print {
   html.alm-book-print #almanac-content > *:not(#alm-book) { display: none !important; }
   html.alm-book-print .alm-book { display: block !important; position: static !important; overflow: visible !important; }
-  .tb-book-foot { position: fixed; bottom: 0; inset-inline: 0; color: #333; font-size: 8pt; }
+  .tb-book-foot { position: fixed; bottom: -14mm; inset-inline: 0; color: #333; font-size: 8pt; }   /* in the page's bottom margin (18mm), not over the last row of the content */
 }
 /* Paper: an article link is no use on a page, so its dots do not print. */
 @media print {

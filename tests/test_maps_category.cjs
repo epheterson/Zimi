@@ -31,7 +31,10 @@ function ok(label, cond, detail) {
 const ctx = { console };
 vm.createContext(ctx);
 vm.runInContext([
+  extract(/const COMMUNITY_ICON_PATHS = .*;/, 'COMMUNITY_ICON_PATHS'),
+  extract(/const COMMUNITY_CAT = .*;/, 'COMMUNITY_CAT'),
   extract(/function _catIcon\(paths\) \{[\s\S]*?\n\}/, '_catIcon'),
+  extract(/function communityIcon\(size\) \{[\s\S]*?\n\}/, 'communityIcon'),
   extract(/const BROWSE_CATEGORIES = \[[\s\S]*?\n\];/, 'BROWSE_CATEGORIES'),
   extract(/const _OPDS_CAT_MAP = \{[\s\S]*?\n\};/, '_OPDS_CAT_MAP'),
   extract(/function autoCategorize\(item\) \{[\s\S]*?\n\}/, 'autoCategorize'),
@@ -70,6 +73,10 @@ if (fs.existsSync(snap)) {
 } else {
   console.log('SKIP  no snapshot in this checkout');
 }
+
+// Community ZIMs are their own bucket, not Other.
+ok('a community ZIM categorizes as community', ctx.autoCategorize({ name: 'hitchwiki_en', category: 'other', source: 'community' }) === 'community');
+ok('community is a browse category', ctx.BROWSE_CATEGORIES.some(c => c.key === 'community'));
 
 console.log(failures ? failures + ' FAILED' : 'all passed');
 process.exit(failures ? 1 : 0);

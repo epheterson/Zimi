@@ -29,10 +29,12 @@ import pytest
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-GL_ARGS = ["--use-angle=swiftshader", "--enable-unsafe-swiftshader", "--disable-accelerated-2d-canvas"]
+from browser_slots import WEBGL_ARGS
+GL_ARGS = WEBGL_ARGS + ['--disable-accelerated-2d-canvas']
 VIEW = {"width": 390, "height": 844}
 PLACE = {"lat": 37.7749, "lon": -122.4194, "name": "San Francisco"}
 NIGHT = "2026-08-10T08:00:00Z"  # 01:00 in San Francisco, Sagittarius low in the south
+HORIZON_NO_LIFE = "localStorage.setItem('zimi_sky_settings', '{\"skin\":\"horizon\",\"life\":\"off\"}');"   # the true horizon with its life off: the still sky (life flies over every scene since d47f952c)
 HORIZON = "localStorage.setItem('zimi_sky_settings', '{\"skin\":\"horizon\"}');"   # the true horizon, chosen
 POLL_MS = 100
 WAIT_MS = 170000  # a loaded runner compiles shaders slowly
@@ -107,6 +109,10 @@ def _almanac(browser, served, place=PLACE, init="", **ctx_args):
     pg.wait_for_function(
         "() => typeof _skyState !== 'undefined' && _skyState && _skyState.eph",
         polling=POLL_MS,
+    )
+    # These tests are about the physical sky, at a dark site: the place's own light pollution (almanac-onesky.js _osPlaceDial, from the night-lights grid) would dim the Milky Way.
+    pg.evaluate(
+        "() => { window._osSetPlaceDial = function () {}; window._osNightLoad = function () {}; _osPlaceDial = null; _skyState.baseDirty = true; }"
     )
     # The sky stands under the Moon's numbers and its words, below the first screen: bring it into view, as a reader does.
     pg.evaluate(
@@ -194,6 +200,7 @@ def test_the_milky_way_stands_on_the_galactic_plane_brightest_at_the_centre(brow
     ctx, pg, errors = _almanac(browser, served, place=SYDNEY)
     try:
         _settle(pg, JULY_MIDNIGHT)
+        pg.evaluate("_skySet('dial', 0)")   # a dark sky: the dial otherwise starts from the place's night lights (3ae549cd)
         got = pg.evaluate(
             """async () => {
               const s = _skyState, e = s.eph, M = _sgHorizonMatrix(e.P, e.lst, s.lat);
@@ -292,7 +299,7 @@ COUNT = (
 def test_an_idle_sky_asks_for_no_frame_and_a_live_tick_that_moved_nothing_paints_nothing(
     browser, served
 ):
-    ctx, pg, errors = _almanac(browser, served, init=HORIZON)   # the beach's breeze asks for twelve frames a second; this is the still sky
+    ctx, pg, errors = _almanac(browser, served, init=HORIZON_NO_LIFE)   # the beach's breeze asks for twelve frames a second; this is the still sky
     try:
         _settle(pg, NIGHT)
         _drawn(pg)
@@ -331,9 +338,11 @@ def test_the_beach_with_its_life_is_the_default_and_the_true_horizon_a_choice_th
     ctx, pg, errors = _almanac(browser, served)
     try:
         _settle(pg, NIGHT)
-        assert pg.evaluate("_skySetting('skin')") == "beach"
+        # The default is the place's own scene (Local, since 832e1807); the beach with its life is a card to pick.
+        assert pg.evaluate("_skySetting('skin')") == "local"
+        pg.evaluate("_skySet('skin', 'beach')")
         assert (
-            pg.evaluate("_skySetting('dial')") == 0
+            0 <= pg.evaluate("_skySetting('dial')") <= 1   # (the dial starts from the place's night lights, 3ae549cd)
             and pg.evaluate("_skySetting('lines')") == "off"
         )
         pg.wait_for_function(
@@ -355,7 +364,7 @@ def test_the_beach_with_its_life_is_the_default_and_the_true_horizon_a_choice_th
         # The true horizon: chosen, it stops every one of them, and is kept across a reload.
         pg.evaluate("_skySet('skin', 'horizon')")
         pg.wait_for_function(
-            "() => !_skyTimers.sway && !_skyTimers.plane && !_skyTimers.meteor", polling=POLL_MS
+            "() => !_skyTimers.whale", polling=POLL_MS   # (the true horizon has no sea: no whale; life and the breeze go on over every scene since d47f952c)
         )
         pg.reload(wait_until="load")
         pg.wait_for_function(
@@ -609,6 +618,7 @@ def test_the_milky_way_reads_away_from_the_centre_too(browser, served):
     ctx, pg, errors = _almanac(browser, served)
     try:
         _settle(pg, NIGHT)
+        pg.evaluate("_skySet('dial', 0)")   # a dark sky: the dial otherwise starts from the place's night lights (3ae549cd)
         got = pg.evaluate(
             """async () => {
               const s = _skyState, e = s.eph, M = _sgHorizonMatrix(e.P, e.lst, s.lat);

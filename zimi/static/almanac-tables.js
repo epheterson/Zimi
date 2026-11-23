@@ -41,7 +41,6 @@ var TB_MAX_STAR_YEARS = 10;
 var TB_NAV_HOURLY_MAX_DAYS = 7;    // past a week, the navigation table steps a day at a time
 var TB_MS_MIN = 60000;
 var TB_MS_HOUR = 3600000;
-var TB_MIN_PER_DAY = 1440;
 
 var _tb = {
   id: null, kind: null,     // the open table or calculation, 'table' | 'calc'
@@ -1022,7 +1021,7 @@ function _tbBookSend(ids, showing, share) {
   } else copy();
 }
 // A tile's page as a book chapter: headings that make the PDF's outline
-// (Chromium's comes from them, ARIA headings too). Its own heading is the
+// (the server's almanacbook reads them). Its own heading is the
 // chapter's, set by the book; How this is made and its Equations keep a
 // heading's look (tb-sumh) but are not headings, and the tile's own subheads
 // become text, so the outline is the parts and the chapters only (Eric,
@@ -1180,9 +1179,9 @@ function _tbBookOn(ids, showing) {
 }
 // Print: a real PDF, opened in Zimi's PDF reader (its Print prints the file
 // itself). A phone's own print dialog took the page before the book was set
-// ("I got one page then the webpage tiles view then the full 57 page PDF",
-// Eric, 2026-10-04), so the server lays the book out in its headless
-// Chromium and hands back a file. Where it has none, or it fails, the
+// ("I got one page then the webpage tiles view then the full 57 page PDF"),
+// so the server sets the book in type (almanacbook.py,
+// no browser) and hands back a file. Where it cannot, or it fails, the
 // browser's dialog prints the book, asked for only once it is all there.
 // One at a time: the Print icons spin meanwhile and a second tap waits.
 var TB_PDF_URL = '/almanac/pdf';
@@ -1310,7 +1309,8 @@ function _tbPdfClose() {
   var view = _tbEl('almanac-view'), mv = _tbEl('main-view');
   if (view) view.style.display = '';
   if (mv) mv.classList.add('hidden');
-  if (typeof _setWindowTitle === 'function') _setWindowTitle('Almanac');
+  if (typeof ALM_DOC_TITLE === 'string') document.title = ALM_DOC_TITLE;
+  if (typeof _setWindowTitle === 'function') _setWindowTitle(typeof ALM_DOC_TITLE === 'string' ? ALM_DOC_TITLE : 'Zimi Almanac');
   if (typeof updateTopbar === 'function') updateTopbar();
   var b = document.querySelector(TB_PRINT_BTNS);
   if (b && b.focus) b.focus({ preventScroll: true });
@@ -1446,6 +1446,32 @@ function _tbMadeFill(x) {
   if (eq) eq.addEventListener('toggle', function () { if (eq.open) _tbEqOpen(eq); });
 }
 // Which Constants tile holds each constant a method rests on.
+// Capability levels (capability.js, ZimiCap.TABLE): what each level draws, low · standard · high, one row a limit.
+function _tbCapabilityRows() {
+  if (typeof ZimiCap === 'undefined') return [];
+  var T = ZimiCap.TABLE, G = ZimiCap.GOVERNOR, trio = function (key, k) { return ['low', 'standard', 'high'].map(function (l) { var v = T[l][key]; return v === 0 && key === 'fpsMax' ? '∞' : _arNum(v * (k || 1), 2); }).join(' · '); }, SRC = 'Zimi';
+  return [
+    ['cap_dpr', trio('dprMax'), 0, '×', SRC],
+    ['cap_stand_dpr', trio('standDprMax'), 0, '×', SRC],
+    ['cap_sats', trio('satMax'), 0, '', SRC],
+    ['cap_hd_mem', trio('hdMemMB'), 0, 'MB', SRC],
+    ['cap_texture', trio('textureMax'), 0, 'px', SRC],
+    ['cap_gpu', trio('gpuMB'), 0, 'MB', SRC],
+    ['cap_fps', trio('fpsMax'), 0, '/s', SRC],
+    ['cap_slow', trio('slowMs'), 0, 'ms', SRC],
+    ['cap_steps', ZimiCap.STEP.join(', '), 0, '×', SRC],
+    // The governor: when a step is lost, and when it comes back.
+    ['cap_window', G.slowInWindow + ' / ' + G.windowFrames, 0, '', SRC],
+    ['cap_ceil', G.slowCeilMs, 0, 'ms', SRC],
+    ['cap_level_step', G.levelDropStep, 0, '', SRC],
+    ['cap_hold', G.holdMs, 0, 'ms', SRC],
+    ['cap_recover', G.recoverEasyMs, 0, 'ms', SRC + ' (doubled after each step lost again at once)'],
+    ['cap_easy', G.easyShare * 100, 0, '%', SRC + ' (at 60 a second a frame is 16.7 ms: under ' + _arNum(G.easyShare * T.high.slowMs, 2) + ' ms it has room to spare)'],
+    ['cap_cadence', G.cadenceSlack, 2, '×', SRC + ' (low draws ' + T.low.fpsMax + ' a second: a frame cannot come sooner)'],
+    ['cap_bounce', G.bounceMs, 0, 'ms', SRC],
+    ['cap_bounces', G.maxBounces, 0, '', SRC]
+  ];
+}
 var TB_MADE_CONST_TILE = { aberration: 'k_physics', light: 'k_physics', parallax: 'k_nav', moonk: 'k_sunmoon', synodic: 'k_sunmoon',
   sidereal: 'k_earth', year: 'k_time', tai: 'k_time' };
 
@@ -1854,8 +1880,57 @@ var TB_ISA_T0_C = 15;                // ICAO standard atmosphere at sea level
 var TB_ISA_LAPSE_K_PER_KM = 6.5;
 var TB_SAROS_SYNODIC = 223;          // the Saros: 223 synodic months
 var TB_S_PER_DAY_SI = 86400;
+var TB_S_PER_HOUR = 3600;
 var TB_SRC_EXACT = 'SI';
 // Rows: [name key, value, digits, unit, source]; value a number, or text.
+// Every quantity the Almanac computes outside the tables' own sums (the sky card, the Moon, the tides, the satellites, the
+// orrery and the 3D view, the missions), by its model and where the model comes from ("We're gonna need
+// all our Almanac maths in the tables"), each a row of the constants page it rests on (TB_MODELS_ON:
+// no section of its own, the equations among the constants they depend on). The numbers in a formula are read from the
+// constants the code itself uses; a module not loaded yet shows its formula without them.
+var TB_MODELS_ON = {
+  k_earth: ['tides'],
+  k_sunmoon: ['sun', 'moon', 'phase', 'lunar_eclipse'],
+  k_bodies: ['planets_3d', 'magnitudes'],
+  k_poles: ['spin'],
+  k_time: ['frames'],
+  k_nav: ['planets_nav', 'navstars', 'refraction'],
+  k_physics: ['relativity', 'jump', 'transfers', 'planner'],
+  k_scene: ['stars', 'airmass', 'skylight', 'meteors', 'aurora', 'sats']
+};
+var TB_METHOD_KEYS = [].concat.apply([], Object.keys(TB_MODELS_ON).map(function (k) { return TB_MODELS_ON[k]; }));
+function _tbDefined(name, fallback) { return typeof window[name] !== 'undefined' ? window[name] : fallback; }
+function _tbMethodsRows(keys) {
+  var n = function (x, d) { return x == null ? '…' : _arNum(x, d); };
+  var refr = _tbDefined('SKY_REFRACT_K', null), am = [_tbDefined('SKY_AIRMASS_A'), _tbDefined('SKY_AIRMASS_B'), _tbDefined('SKY_AIRMASS_C')];
+  var pole = _tbDefined('SKY_MAG_POLE', null);
+  var M = {
+    sun: ['VSOP87D · nutation · aberration (' + n(_tbDefined('AE_SUN_ABERRATION_ARCSEC'), 4) + '″ ÷ R)', 'Bretagnon & Francou 1988; Meeus 22, 25'],
+    moon: ['ELP-2000/82, the 60 + 60 terms of Meeus 47', 'Chapront-Touzé & Chapront; Meeus 47'],
+    phase: ['i from the elongation; lit = (1 + cos i) ÷ 2', 'Meeus 48'],
+    planets_nav: ['VSOP87D · light time · aberration', 'Bretagnon & Francou 1988; Meeus 33'],
+    planets_3d: ['VSOP87D, Mercury to Neptune and the Earth, each series cut to the fewest terms within 1″ of the full one over 1500–2500 (' + (typeof EPH_VSOP87D !== 'undefined' ? Object.keys(EPH_VSOP87D).reduce(function (n, k) { return n + EPH_VSOP87D[k].reduce(function (m, v) { return m + v.reduce(function (q, r) { return q + r.length; }, 0); }, 0); }, 0) + ' terms' : '…') + '); within 2″ of JPL Horizons (DE440) 1969–2026', 'Bretagnon & Francou 1988 (IMCCE, VSOP87D.*); scripts/build_vsop87.py; Pluto: Standish (JPL) elements'],
+    frames: ['ζ, z, θ precession between J2000 and the date', 'Lieske 1977; IAU 2006'],
+    spin: ['W = W₀ + Ẇ · d · the pole’s α₀, δ₀', 'IAU WGCCRE 2015 (Archinal et al. 2018)'],
+    stars: ['9,096 stars · J2000, precessed to the date', 'Bright Star Catalogue (Hoffleit & Warren 1991); HYG v41'],
+    navstars: ['proper motion · radial velocity · precession · nutation · aberration', 'Hipparcos (van Leeuwen 2007); Meeus 23'],
+    refraction: [refr ? 'R = ' + refr[0] + ' ÷ tan(h + ' + refr[1] + ' ÷ (h + ' + refr[2] + '))′' : 'R(h)', 'Saemundsson 1986; Meeus 16.4'],
+    airmass: ['X = 1 ÷ (sin h + ' + n(am[0], 5) + ' · (h + ' + n(am[1], 5) + ')^−' + n(am[2], 4) + ')', 'Kasten & Young 1989'],
+    skylight: ['Rayleigh, Mie and ozone, single and multiple scattering', 'Hillaire 2020'],
+    magnitudes: ['5 log₁₀(r Δ) + a polynomial in the phase angle', 'Mallama & Hilton 2018'],
+    lunar_eclipse: ['the shadow at the Moon’s distance, × ' + n(_tbDefined('SKY_DANJON'), 2) + ' for the air', 'Danjon; Meeus 54'],
+    meteors: ['ZHR · e^(−days ÷ width) · sin(radiant) · ' + n(_tbDefined('SKY_METEOR_POP'), 1) + '^(LM − ' + n(_tbDefined('SKY_METEOR_LM'), 1) + ') · ' +
+      n(_tbDefined('SKY_METEOR_SPORADIC_HR'), 0) + ' sporadic an hour', 'International Meteor Organization (ZHR, population index)'],
+    aurora: [(pole ? 'geomagnetic latitude, pole ' + pole[0] + '°, ' + pole[1] + '° · ' : '') + 'the oval reaching farther with the sunspot number', 'IGRF; illustrative'],
+    tides: ['37 tidal harmonics, set for the year', 'NOAA; Schureman 1958'],
+    sats: ['SGP4 / SDP4 from each element set', 'Vallado et al. 2006 (satellite.js); CelesTrak'],
+    transfers: ['Hohmann ellipse between the two orbits', 'Hohmann 1925'],
+    planner: ['Lambert’s problem by universal variables · C3 = v∞²', 'Bate, Mueller & White 5.2'],
+    relativity: ['γ = 1 ÷ √(1 − β²) · lag = t β² ÷ (1 + √(1 − β²))', 'Einstein 1905'],
+    jump: ['h = v² ÷ 2g, v = ' + n(_tbDefined('AE_WALK_JUMP_MS'), 1) + ' m/s, g the body’s own', 'NASA fact sheet (g)']
+  };
+  return (keys || TB_METHOD_KEYS).map(function (k) { return [null, M[k][0], 0, '', M[k][1], _tbT('km_' + k)]; });
+}
 var TB_CONST_ROWS = {
   k_earth: function () {
     var a = AE_EARTH_RADIUS_KM, f = AE_EARTH_FLATTENING;
@@ -1880,6 +1955,11 @@ var TB_CONST_ROWS = {
       ['moon_k', AR_MOON_K, 7, '', 'IAU'],
       ['moon_motion', AE_MOON_MEAN_LON_RATE / JULIAN_CENTURY, 6, '°/d', 'Meeus 47.1'],
       ['sun_motion', AE_SUN_ANOMALY_RATE / JULIAN_CENTURY, 6, '°/d', 'Meeus 47.3'],
+      ['sun_rotation', AE_SUN_CARRINGTON_DEG_DAY, 4, '°/d', 'IAU 2015'],
+      ['sun_diff_rot', AE_SNODGRASS.join(', '), 0, '°/d', 'Snodgrass & Ulrich 1990'],
+      ['sun_granules', AE_GRANULES_PER_RADIUS, 0, '', 'Zimi (real: about 700)'],
+      ['sun_prom_height', AE_PROM_HEIGHT.join(' to '), 0, 'R☉', 'Zimi (real: up to about 0.15)'],
+      ['sun_flare', AE_FLARE_RISE_MIN + ', ' + AE_FLARE_DECAY_MIN, 0, 'min', 'Zimi (illustrative)'],
       ['synodic', _CN_SYN, 6, 'd', 'Meeus 49'],
       ['tropical_month', _tbPeriod(AE_MOON_MEAN_LON_RATE), 6, 'd', 'Meeus 47.1'],
       ['anomalistic', _tbPeriod(AE_MOON_ANOMALY_RATE), 6, 'd', 'Meeus 47.4'],
@@ -1921,7 +2001,71 @@ var TB_CONST_ROWS = {
       ['sunrise_alt', AR_SUNRISE_ALT * TB_ARCMIN_PER_DEG, 0, '′', 'NOAA'],
       ['moon_hp', AR_MOON_HP_FACTOR, 4, '× HP', 'Meeus 15'],
       ['sun_parallax', AR_SOLAR_PARALLAX_ARCSEC, 3, '″', 'IAU'],
-      ['twilights', [AR_TWILIGHT_ALTS.civil, AR_TWILIGHT_ALTS.nautical, AR_TWILIGHT_ALTS.astronomical].join('°, ') + '°', 0, '', 'USNO']
+      ['twilights', [AR_TWILIGHT_ALTS.civil, AR_TWILIGHT_ALTS.nautical, AR_TWILIGHT_ALTS.astronomical].join('°, ') + '°', 0, '', 'USNO'],
+      // The all-satellites layer (almanac-sats.js): what it draws, lists and estimates by.
+      ['sat_age_fresh', AE_SATS_REF.ageFreshDays, 0, 'd', 'Zimi'],
+      ['sat_age_gone', AE_SATS_REF.ageGoneDays, 0, 'd', 'Zimi'],
+      ['sat_leo_max', AE_SATS_REF.leoMaxKm, 0, 'km', 'Zimi'],
+      ['sat_geo_min', AE_SATS_REF.geoMinKm, 0, 'km', 'Zimi'],
+      ['sat_pass_el', AE_SATS_REF.passMinEl, 0, '°', 'Zimi'],
+      ['sat_pass_sun', AE_SATS_REF.passSunAlt, 0, '°', 'USNO'],
+      ['sat_pass_mag', AE_SATS_REF.passMag, 1, '', 'Zimi'],
+      ['sat_sky_mag', AE_SATS_REF.skyMag, 1, '', 'Zimi'],
+      ['sat_albedo', AE_SATS_REF.albedo, 2, '', 'Zimi'],
+      ['sat_sun_mag', AE_SATS_REF.sunMag, 2, '', 'IAU'],
+      ['sat_model', 'm = m☉ − 2.5 log₁₀(a · A · p(φ) / (π d²))', 0, '', 'Russell 1916 (Lambert sphere)'],
+      ['sat_area_iss', AE_SATS_REF.areaM2.iss, 0, 'm²', 'Fitted to McCants −1.8 (standard magnitude)'],
+      ['sat_pass_max', AE_SATS_REF.passMax, 0, '', 'Zimi'],
+      ['sat_lone_starlinks', AE_SATS_REF.loneStarlinks, 0, '', 'Zimi'],
+      ['sat_area_starlink', AE_SATS_REF.areaM2.starlink, 0, 'm²', 'Zimi'],
+      ['sat_area_oneweb', AE_SATS_REF.areaM2.oneweb, 0, 'm²', 'Zimi'],
+      ['sat_area_iridium', AE_SATS_REF.areaM2.iridium, 0, 'm²', 'Zimi'],
+      ['sat_min_rcs', AE_SATS_REF.minRcsM2, 0, 'm²', 'Zimi'],
+      ['sat_train_gap', AE_SATS_REF.trainGapS, 0, 's', 'Zimi'],
+      ['sat_train_plane', AE_SATS_REF.trainRaanDeg, 0, '°', 'Zimi'],
+      ['sat_gps_el', AE_SATS_REF.gpsMinEl, 0, '°', 'Zimi'],
+      ['sat_leo_gone', AE_SATS_REF.leoGoneDays, 0, 'd', 'Zimi'],
+      // Fly (almanac-fly.js): what the ship flies by, and how the speed it shows is worked out.
+      ['fly_tau', AE_FLY_REF.tauS, 0, 's', 'Zimi; speed = height over the nearest surface ÷ this (time to contact: Lee 1976, Perception 5, 437)'],
+      ['fly_trip', 't = τ · (ln(D ÷ 2h₀) + ln(D ÷ 2h₁)); peak speed D ÷ 2τ', 0, '', 'Zimi (from the law above: D the way, h₀ and h₁ the heights it starts and stops at)'],
+      ['fly_light', 'light time = distance ÷ c', 0, '', 'c = 299,792.458 km/s (SI)'],
+      ['fly_hover', AE_FLY_REF.hoverM, 0, 'm', 'Zimi'],
+      ['fly_band', AE_FLY_REF.bandShare * 100, 2, '%', 'Zimi (higher, the globe’s map says more than the ground’s haze)'],
+      ['fly_skim', AE_FLY_REF.skimKm, 0, 'km', 'Zimi (the sphere is drawn without relief)'],
+      ['fly_orbit', 'at the lowest height, forward lever, nose within ' + AE_FLY_REF.hugPitchDeg + '° of level', 0, '', 'Zimi (the craft circles the world at that height instead of flying off; it never moves without a lever)'],
+      ['fly_deck', AE_FLY_REF.deckShare * 100, 0, '%', 'Zimi (a world of gas has no ground; lower, its map is a blur)'],
+      ['fly_arrive', 'd = r ÷ sin(' + _orrNum(AE_FLY_REF.arriveSpan, null, 2) + ' · θ), θ half the picture’s shorter field', 0, '', 'Zimi (the world spans two thirds of the picture’s shorter side)'],
+      ['fly_speed', 'km/s = drawn speed × true km per drawn Earth radius', 0, '', 'Zimi (the planets are drawn nearer the Sun than they are; a speed past c is marked)'],
+      ['fly_ease', AE_FLY_REF.arriveEase * 100, 0, '%', 'Zimi (of the goal’s radius in the time above: a pace that only halved with the distance would never arrive)'],
+      ['fly_clear', AE_FLY_REF.clearRadii, 1, '×', 'Zimi (of that world’s radius, from its middle)'],
+      ['fly_craft', AE_FLY_REF.craftM, 3, 'm', 'Zimi (two millionths of the Earth’s radius; near a drawn ground the speed is never figured from less height than this)'],
+      ['fly_detent', AE_FLY_REF.detent * 100, 0, '%', 'Zimi'],
+      ['fly_flare', _orrNum(AE_FLY_REF.flareFrom, null, 2) + ' → ' + _orrNum(AE_FLY_REF.flareLevel, null, 2) + ' r · ' + AE_FLY_REF.flareDegS + '°/s', 0, '', 'Zimi (r: the world’s radius; over the same heights the craft comes to ride the world’s spin)'],
+      ['fly_reanchor', AE_FLY_REF.reanchorM + ' m · ' + AE_FLY_REF.reanchorHeights + ' h', 0, '', 'Zimi (h: the craft’s height; both must hold, so a craft high up moves far before its ground is stale)'],
+      ['fly_iss_clear', AE_ISS_FAR_CLEAR_RE, 2, 'R⊕', 'Zimi (no nearer the way down than the tangent from the station to this sphere)'],
+      // The ground under a craft (almanac-stand.js, almanac-standhost.js): when it is built, what its picture is made of, and how it meets the globe's.
+      ['gnd_prep', AE_GROUND_REF.prep + ' · ' + AE_GROUND_REF.prep * AE_GROUND_REF.keep, 0, '×', 'Zimi (of the height the ground starts to show at: built within the first, let go beyond the second)'],
+      ['gnd_late', AE_GROUND_REF.lateMs, 0, 'ms', 'Zimi'],
+      ['gnd_map', 'w = S((√(2Rh) ÷ (2πR ÷ W) − ' + AE_GROUND_REF.mapTexels[0] + ') ÷ ' + (AE_GROUND_REF.mapTexels[1] - AE_GROUND_REF.mapTexels[0]) + ')', 0, '', 'Zimi (√(2Rh): the horizon from height h; 2πR ÷ W: one texel of a map W wide; S(t) = 6t⁵ − 15t⁴ + 10t³; under w the ground is the place’s mean colour)'],
+      ['gnd_snow', AE_GROUND_REF.snowLineM + ' · cos(φ)^' + AE_GROUND_REF.snowLinePow, 0, 'm', 'Zimi (' + _arNum(Math.round(AE_GROUND_REF.snowLineM * Math.pow(Math.cos(46 * Math.PI / 180), AE_GROUND_REF.snowLinePow) / 100) * 100, 0) + ' m at 46°: the Alps’ snow line is 2,700 to 3,100 m; trees end ' + AE_GROUND_REF.treeBelowM + ' m below)'],
+      ['gnd_tone', 'shown = (1 − e^(−L · k))^(1 ÷ ' + AE_GROUND_REF.gamma + '), k = ' + AE_GROUND_REF.exposureTarget + ' ÷ L₀', 0, '', 'Zimi (L: the light off the ground, the Sun at the Earth being 1; L₀: a reference ground’s, never taken below ' + AE_GROUND_REF.nightFloor.toExponential(1) + ')'],
+      ['gnd_night', AE_GROUND_REF.nightGlow.toExponential(0) + ' · min(1, ' + _arNum(Math.round(AE_GROUND_REF.exposureTarget / AE_GROUND_REF.nightFloor), 0) + ' ÷ k)', 0, '', 'Zimi (starlight and airglow, the Sun at the Earth being 1; opened up no further than this view’s own widest exposure, so it never glows)'],
+      ['gnd_match', 'k = E(globe) ÷ E(ground), E(d) = −ln(1 − d^' + AE_GROUND_REF.gamma + ')', 0, '', 'Zimi (the tone curve inverted; d: mean luminance, Rec. 709 weights ' + AE_GROUND_REF.luma.join(', ') + ', of a ' + AE_GROUND_REF.matchPx + ' px square of each picture, read every ' + AE_GROUND_REF.matchEveryMs / 1000 + ' s)'],
+      ['gnd_match_limits', '÷' + Math.round(1 / AE_GROUND_REF.matchK[0]) + ' … ×' + AE_GROUND_REF.matchK[1] + ' · ÷' + AE_GROUND_REF.matchHue + ' … ×' + AE_GROUND_REF.matchHue, 0, '', 'Zimi (the exposure, then each colour left over; a mean over ' + AE_GROUND_REF.matchWhite + ' is clipped and read as that)'],
+      ['gnd_settle', 's = S(log₁₀(top ÷ h) ÷ ' + AE_GROUND_REF.settleDecades + ')', 0, '', 'Zimi (the match is raised to the power 1 − s: the ground is at its own exposure and colour ' + AE_GROUND_REF.settleDecades + ' tenfolds of height below the band’s top)'],
+      ['gnd_hd', AE_GROUND_REF.hdPx, 0, 'px', 'Zimi (two pictures of Almanac HD’s tiles round the place: one reaching a = ' + AE_GROUND_REF.hdFar + ' · acos(R ÷ (R + top)), one ' + _orrNum(AE_GROUND_REF.hdNearShare, null, 3) + ' of that; looked at every ' + AE_GROUND_REF.hdEveryMs + ' ms)'],
+      ['gnd_hd_window', '[a ÷ (2π · max(cos φ, ' + AE_GROUND_REF.hdMinCos + ')), a ÷ π]', 0, '', 'Zimi (a: the picture’s angle, φ: the latitude; the near one is drawn again once the craft is ' + AE_GROUND_REF.hdRecentre + ' of its half-size off its middle)'],
+      ['gnd_hd_level', 'n = ⌈log₂(0.5 ÷ v)⌉', 0, '', 'Zimi (v: the picture’s half-height on the map; no deeper than the layer goes)'],
+      ['gnd_warm', AE_GROUND_REF.warmPx + ' px · ' + AE_GROUND_REF.warmMs + ' ms', 0, '', 'Zimi (each program compiled and used once on a small target before the ground shows, a step a frame; given up after the time)'],
+      ['gnd_slice', AE_GROUND_REF.sliceMs + ' · ' + AE_GROUND_REF.sliceIdleMs, 0, 'ms', 'Zimi (beside a flight one slice follows each frame; standing, back to back)'],
+      ['gnd_trees', _arNum(AE_GROUND_REF.treesMax, 0) + ' · ' + AE_GROUND_REF.treeChunk, 0, '', 'Zimi (from ' + AE_GROUND_REF.treesRangeM[0] + ' m to ' + _arNum(AE_GROUND_REF.treesRangeM[1], 0) + ' m off; the same trees every visit: their places are drawn from a seed the place gives)'],
+      // The mission player (almanac-missions.js): what its strip lays out and words by.
+      ['mission_coast_m', AE_MISSION_REF.coastM, 0, 'm', 'Zimi'],
+      ['mission_turn_share', AE_MISSION_REF.turnShare * 100, 0, '%', 'Zimi'],
+      ['mission_turn_s', AE_MISSION_REF.turnS, 0, 's', 'Zimi'],
+      ['mission_strip_sag', AE_MISSION_REF.stripSagPx, 0, 'px', 'Zimi'],
+      ['mission_strip_step', AE_MISSION_REF.stripStepPx.join('–'), 0, 'px', 'Zimi'],
+      ['mission_rel', AE_MISSION_REF.relS.map(function (x) { return _arNum(x, 0); }).join(', '), 0, 's', 'Zimi']
     ];
   },
   k_physics: function () {
@@ -1938,6 +2082,27 @@ var TB_CONST_ROWS = {
       ['zero_c', TB_ZERO_C_K, 2, 'K', TB_SRC_EXACT]
     ];
   },
+  // The sky and its scene: the air the sky is computed from (almanac-skygl.js), and the things that
+  // cross it (almanac-skyscene.js, almanac-sky.js), drawn for illustration to these sizes.
+  k_scene: function () {
+    var SRC = 'Zimi', AIR = 'Hillaire 2020';
+    var per = function (a, d) { return a.map(function (x) { return _arNum(x * 1000, d); }).join(' / '); };   // per km in the model, per Mm here
+    var span = function (pair, k) { return _arNum(pair[0] * (k || 1), 1) + ' – ' + _arNum(pair[1] * (k || 1), 1); };
+    return [
+      ['air_rayleigh', per(SG_RAYLEIGH, 2), 0, '/Mm', AIR],
+      ['air_rayleigh_h', SG_RAYLEIGH_H, 1, 'km', AIR],
+      ['air_mie', _arNum(SG_MIE_SCATTER * 1000, 2) + ' + ' + _arNum(SG_MIE_ABSORB * 1000, 2), 0, '/Mm', AIR],
+      ['air_mie_h', SG_MIE_H, 1, 'km', AIR],
+      ['air_ozone', per(SG_OZONE, 3), 0, '/Mm', AIR],
+      ['airliner_h', span(SKY_PLANE_KM), 0, 'km', SRC],
+      ['airliner_v', span(SKY_PLANE_KM_S, TB_S_PER_HOUR), 0, 'km/h', SRC],
+      ['heli_h', span(SKY_HELI.km), 0, 'km', SRC],
+      ['heli_v', span(SKY_HELI.kms, TB_S_PER_HOUR), 0, 'km/h', SRC],
+      ['heli_beacon', SKY_HELI_BEACON_MS, 0, 'ms', SRC]
+    ];
+  },
+  // What each capability level draws (capability.js): the table a light device, a standard one and a roomy one read.
+  k_capability: function () { return _tbCapabilityRows(); },
   k_units: function () {
     var rows = [];
     Object.keys(TB_UNITS).forEach(function (kind) {
@@ -1952,6 +2117,11 @@ var TB_CONST_ROWS = {
     return rows;
   }
 };
+// Each page's models after its own numbers.
+Object.keys(TB_MODELS_ON).forEach(function (page) {
+  var own = TB_CONST_ROWS[page];
+  TB_CONST_ROWS[page] = function () { return own().concat(_tbMethodsRows(TB_MODELS_ON[page])); };
+});
 // The constants pages: the article each row's name stands for. A row left out is a
 // plain label, and tests/test_almanac_qids.cjs says why for each (no article of its own,
 // or a compound of two things).
@@ -1965,12 +2135,14 @@ var TB_CONST_LINKS = {
   draconic: 'term:lunar_month', saros: 'term:saros', sidereal_day: 'term:sidereal_time',
   tropical_year: 'term:tropical_year', julian_year: 'term:julian_year', jd_j2000: 'term:epoch',
   jd_unix: 'term:unix_time', delta_t: 'term:delta_t', delta_t_measured: 'term:delta_t',
+  sat_leo_max: 'term:leo', sat_geo_min: 'term:geo', sat_pass_sun: 'term:twilight', sat_pass_mag: 'term:apparent_magnitude', sat_sun_mag: 'term:apparent_magnitude',
   tai_utc: 'term:leap_second', last_leap: 'term:leap_second', nmi: 'term:nautical_mile', knot: 'term:knot',
   refraction: 'term:atmospheric_refraction', std_air: 'term:isa', dip: 'term:horizon', horizon: 'term:horizon',
   sun_sd: 'term:angular_diameter', sunrise_alt: 'term:sunrise', moon_hp: 'term:parallax',
   sun_parallax: 'term:parallax', twilights: 'term:twilight', c: 'term:speed_of_light',
   g: 'term:gravitational_constant', aberration: 'term:aberration', atm: 'term:standard_atmosphere',
-  sea_pressure: 'term:isa', isa_t0: 'term:isa', lapse: 'term:isa'
+  sea_pressure: 'term:isa', isa_t0: 'term:isa', lapse: 'term:isa',
+  airliner_h: 'sky:airliner', airliner_v: 'sky:airliner', heli_h: 'sky:helicopter', heli_v: 'sky:helicopter'
 };
 // What a row cites: each name below becomes its article's link wherever it stands in the
 // Source column ("Meeus 12.4" links Meeus; "SI · exact" links SI).
@@ -1987,21 +2159,107 @@ function _tbSource(text) {
 }
 // A value as the table shows it: text as it is; a number to its digits, or
 // to its own significant figures when it has none.
+var TB_SCI_RE = /^-?[\d.]+e[+-]\d+$/;   // a value written as scientific notation
 function _tbConstVal(v, d) {
-  if (typeof v !== 'number') return String(v);
+  if (typeof v !== 'number') return TB_SCI_RE.test(v) ? _tbCellNum(v) : String(v);
   return d == null ? _tbSig(v, true) : _arNum(v, d);
 }
-function _tbRenderConst(body) {
-  var rows = TB_CONST_ROWS[_tb.id]().map(function (r) {
-    var name = r[5] || _tbT('kn_' + r[0]);
-    // The unit beside its value: four columns do not fit a phone.
-    var nameHtml = r[5] || !TB_CONST_LINKS[r[0]] ? _almEsc(name) : _alLink(TB_CONST_LINKS[r[0]], _almEsc(name));
-    return '<tr><th scope="row">' + nameHtml + '</th><td><span dir="ltr">' + _almEsc(_tbConstVal(r[1], r[2]) + (r[3] ? ' ' + r[3] : '')) + '</span></td>' +
-      '<td class="tb-src">' + _tbSource(r[4] === TB_SRC_EXACT ? 'SI · ' + _tbT('k_exact') : r[4]) + '</td></tr>';
+var TB_CONST_WRAP_CHARS = 24;   // a text value longer than this wraps
+var TB_NAME_SEP = ' · ';        // a body's row is named "<body> · <quantity>"
+var TB_PIVOT_MIN_BODIES = 2;    // a quantity gets a column when this many bodies hold it
+var TB_WORDS_RE = /[A-Za-z]{3}/;   // a value that is words, not a number: it reads from the start and wraps
+var TB_NONE = '–';              // a body that lacks a quantity
+var TB_SUPERSCRIPTS = '⁰¹²³⁴⁵⁶⁷⁸⁹';
+function _tbSup(n) { return String(n).replace(/\d/g, function (d) { return TB_SUPERSCRIPTS.charAt(d); }); }
+function _tbSrcHtml(src) { return _tbSource(src === TB_SRC_EXACT ? 'SI · ' + _tbT('k_exact') : src); }
+// A constants row as the list shows it: name, value and unit, source.
+function _tbConstRow(r) {
+  var name = r[5] || _tbT('kn_' + r[0]);
+  // The unit beside its value: four columns do not fit a phone.
+  var nameHtml = r[5] || !TB_CONST_LINKS[r[0]] ? _almEsc(name) : _alLink(TB_CONST_LINKS[r[0]], _almEsc(name));
+  // A value that is words or a formula, not a number, wraps in its cell (a method's line is longer than a phone).
+  var val = _tbConstVal(r[1], r[2]) + (r[3] ? ' ' + r[3] : ''), prose = typeof r[1] !== 'number' && val.length > TB_CONST_WRAP_CHARS;
+  return '<tr><th scope="row">' + nameHtml + '</th><td' + (prose ? ' class="tb-prose"' : '') + '><span dir="ltr">' + _almEsc(val) + '</span></td>' +
+    '<td class="tb-src">' + _tbSrcHtml(r[4]) + '</td></tr>';
+}
+// Rows named "<body>.<quantity>" (ids) split into a grid, one row per body and one column per quantity, and the rest that stay
+// a list: { grid: { bodies: [{key, name}], cols: [{name, unit, cells: {body: row}}] }, rest: rows }. A quantity only one body
+// has stays in the list; the grid is null when no column is left.
+function _tbPivotRows(rows) {
+  var order = typeof AE_REF_ORDER !== 'undefined' ? AE_REF_ORDER : [], cols = {}, colOrder = [], names = {};
+  var cellOf = function (r) {
+    var id = typeof r[6] === 'string' ? r[6].split('.') : [], name = String(r[5] || '').split(TB_NAME_SEP);
+    return id.length === 2 && order.indexOf(id[0]) >= 0 && name.length > 1 ? { body: id[0], q: id[1], bodyName: name[0], qName: name.slice(1).join(TB_NAME_SEP) } : null;
+  };
+  rows.forEach(function (r) {
+    var c = cellOf(r);
+    if (!c) return;
+    names[c.body] = c.bodyName;
+    if (!cols[c.q]) { cols[c.q] = { name: c.qName, unit: r[3], cells: {} }; colOrder.push(c.q); }
+    cols[c.q].cells[c.body] = r;
+  });
+  var keep = colOrder.filter(function (q) { return Object.keys(cols[q].cells).length >= TB_PIVOT_MIN_BODIES; });
+  if (!keep.length) return { grid: null, rest: rows };
+  return {
+    grid: {
+      bodies: order.filter(function (k) { return keep.some(function (q) { return cols[q].cells[k]; }); }).map(function (k) { return { key: k, name: names[k] }; }),
+      cols: keep.map(function (q) { return cols[q]; })
+    },
+    rest: rows.filter(function (r) { var c = cellOf(r); return !(c && keep.indexOf(c.q) >= 0); })
+  };
+}
+// The grid as a table (the unit in a column's head, a blank cell where a body has no such number) and its sources beneath:
+// a column's commonest source once, in a line with the columns that share it; a cell from another source is marked and
+// listed under its mark.
+function _tbPivotHtml(grid) {
+  var bySrc = {}, srcOrder = [], marks = {}, markOrder = [];
+  grid.cols.forEach(function (col) {
+    var tally = {}, top = null;
+    Object.keys(col.cells).forEach(function (k) { var s = col.cells[k][4]; tally[s] = (tally[s] || 0) + 1; if (top === null || tally[s] > tally[top]) top = s; });
+    col.src = top;
+    if (!bySrc[top]) { bySrc[top] = []; srcOrder.push(top); }
+    bySrc[top].push(col.name);
+  });
+  var head = _tbHead([_tbH('k_name')].concat(grid.cols.map(function (c) {
+    return _almEsc(c.name) + (c.unit ? '<br><span class="tb-unit" dir="ltr">' + _almEsc(c.unit) + '</span>' : '');
+  })));
+  var body = grid.bodies.map(function (b) {
+    return '<tr><th scope="row">' + _almEsc(b.name) + '</th>' + grid.cols.map(function (c) {
+      var r = c.cells[b.key];
+      if (!r) return '<td class="tb-none" aria-hidden="true">' + TB_NONE + '</td>';
+      var mark = '';
+      if (r[4] !== c.src) {
+        if (!marks[r[4]]) { marks[r[4]] = []; markOrder.push(r[4]); }
+        marks[r[4]].push(b.name + TB_NAME_SEP + c.name);
+        mark = '<span class="tb-mark">' + _tbSup(markOrder.indexOf(r[4]) + 1) + '</span>';
+      }
+      var val = _tbConstVal(r[1], r[2]);
+      return '<td' + (TB_WORDS_RE.test(val) ? ' class="tb-text"' : '') + '><span dir="ltr">' + _almEsc(val) + '</span>' + mark + '</td>';
+    }).join('') + '</tr>';
   }).join('');
-  body.innerHTML = '<div id="tb-print-head"></div><div class="tb-out" id="tb-out">' +
-    _tbTable(_tbHead([_tbH('k_name'), _tbH('k_value') + ' (' + _tbH('k_unit') + ')', _tbH('k_source')]), rows, 'tb-consts') + '</div>';
+  var notes = srcOrder.map(function (s) { return _tbNote(_almEsc(bySrc[s].join(', ')) + ': ' + _tbSrcHtml(s)); }).concat(markOrder.map(function (s, i) {
+    return _tbNote(_tbSup(i + 1) + ' ' + _almEsc(marks[s].join('; ')) + ': ' + _tbSrcHtml(s));
+  })).join('');
+  return '<div class="tb-fadewrap">' + _tbTable(head, body, 'tb-pivot') + '</div><div class="tb-pivot-src">' + notes + '</div>';
+}
+function _tbRenderConst(body) {
+  var pv = _tbPivotRows(TB_CONST_ROWS[_tb.id]());
+  var rows = pv.rest.map(_tbConstRow).join('');
+  body.innerHTML = '<div id="tb-print-head"></div><div class="tb-out" id="tb-out">' + (pv.grid ? _tbPivotHtml(pv.grid) : '') +
+    (rows ? _tbTable(_tbHead([_tbH('k_name'), _tbH('k_value') + ' (' + _tbH('k_unit') + ')', _tbH('k_source')]), rows, 'tb-consts') : '') +
+    (_tb.id === 'k_scene' ? _tbNote(_tbH('scene_note')) : '') + '</div>';
   _tbEl('tb-print-head').innerHTML = _tbPrintHead([]);
+  _tbWatchMore(body.querySelector('.tb-fadewrap'));
+}
+// A frame that scrolls sideways says so: its wrapper carries data-more while columns lie beyond the visible edge.
+var TB_MORE_SLACK_PX = 1;
+function _tbWatchMore(wrap) {
+  var fr = wrap && wrap.querySelector('.tb-frame');
+  if (!fr) return;
+  var sync = function () { wrap.toggleAttribute('data-more', Math.abs(fr.scrollLeft) + fr.clientWidth < fr.scrollWidth - TB_MORE_SLACK_PX); };
+  fr.addEventListener('scroll', sync, { passive: true });
+  window.addEventListener('resize', sync);
+  sync();
 }
 
 // The heading only paper and Copy carry: what, then where and when in one

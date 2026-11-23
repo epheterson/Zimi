@@ -25,7 +25,6 @@ import gzip
 import heapq
 import logging
 import math
-import os
 import sqlite3
 import threading
 

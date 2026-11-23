@@ -237,6 +237,50 @@ def test_kiwix_bounds_are_read_from_its_config_in_its_own_shape(tmp_path, monkey
     assert (z["map_bounds"], z["map_source"]) == ([-174.5114, -15.87838, -170.5427, -10.96083], "Kiwix")
 
 
+def test_kiwix_world_map_config_without_a_box_is_the_planet(tmp_path, monkeypatch):
+    from zimi import mapchoice, mapregions
+
+    _library_with(
+        tmp_path, monkeypatch, "maps_en_all_2026-06.zim",
+        {"Scraper": "maps2zim v0.2.1"},
+        files={"content/config.json": b'{"secondaryColor": "#FFFFFF", "zimName": "maps_en_all"}'},
+    )
+    srv.load_cache(force=True)
+    z = next(z for z in srv._zim_list_cache if z["file"] == "maps_en_all_2026-06.zim")
+    assert z["map_source"] == "Kiwix"
+    assert mapregions.is_world(z["map_bounds"])
+    # Los Angeles and Sydney: the world map is the installed map of both, and nothing is offered over it.
+    for lat, lng in ((34.05, -118.24), (-33.87, 151.21)):
+        got = mapchoice.answer([z], lat, lng, catalog=[])
+        assert [m["name"] for m in got["installed"]] == [z["name"]] and got["installed"][0]["world"]
+
+
+def test_a_cached_world_map_with_no_box_is_read_again_once(tmp_path, monkeypatch):
+    import json
+
+    _library_with(
+        tmp_path, monkeypatch, "maps_en_all_2026-06.zim",
+        {"Scraper": "maps2zim v0.2.1"},
+        files={"content/config.json": b'{"zimName": "maps_en_all"}'},
+    )
+    srv.load_cache(force=True)
+    cache_path = srv._cache_file_path()
+    with open(cache_path, encoding="utf-8") as f:
+        payload = json.load(f)
+    rec = payload["files"]["maps_en_all_2026-06.zim"]
+    rec["map_bounds"] = None   # what an older Zimi decided
+    rec.pop("map_v", None)
+    with open(cache_path, "w", encoding="utf-8") as f:
+        json.dump(payload, f)
+    srv.load_cache(force=False)
+    hit = next(z for z in srv._zim_list_cache if z["file"] == "maps_en_all_2026-06.zim")
+    assert hit["map_bounds"] == srv._MAP_PLANET
+    calls = []
+    monkeypatch.setattr(srv, "_read_map_facts", lambda path: calls.append(path) or {})
+    srv.load_cache(force=False)
+    assert calls == [], "a record already read at this version was read again"
+
+
 def test_a_map_without_a_readable_config_is_decided_as_unknown(tmp_path, monkeypatch):
     _library_with(tmp_path, monkeypatch, "maps_en_all_2026-06.zim", {"Scraper": "maps2zim v0.2.1"})
     srv.load_cache(force=True)

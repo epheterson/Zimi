@@ -38,6 +38,7 @@ vm.runInContext([
   extract(/var _MAPS_SVG = [^\n]*\n/, '_MAPS_SVG'),
   extract(/function _newestPer\(list, key\) \{[\s\S]*?\n\}/, '_newestPer'),
   'function _appTileFootHtml() { return ""; }',  // the tile foot (dot and the more button) is not under test here
+  'function _appTileDotHtml() { return ""; }',
   extract(/function _installedOfKind\(kind, key\) \{[\s\S]*?\n\}/, '_installedOfKind'),
   extract(/function _installedFor\(kind, app, key\) \{[\s\S]*?\n\}/, '_installedFor'),
   extract(/function _mapName\(z\) \{[\s\S]*?\n\}/, '_mapName'),
@@ -48,7 +49,7 @@ vm.runInContext([
   extract(/function _mapsTileHtml\(\) \{[\s\S]*?\n\}/, '_mapsTileHtml'),
 ].join('\n'), ctx);
 const tile = ctx._mapsTileHtml();
-ok('a stat-card like any source, named Maps, listing the maps', /^<a class="stat-card app-tile maps-tile" href="#maps"/.test(tile) && /<span class="zt">Maps<\/span>/.test(tile) && /Hawaii · Samoa/.test(tile));
+ok('a stat-card like any source, named Maps, listing the maps', /^<a class="stat-card pick-tile app-tile maps-tile" href="#maps"/.test(tile) && /<span class="zt">Maps<\/span>/.test(tile) && /Hawaii · Samoa/.test(tile));
 ok('it opens the door', /onclick="return _spaNav\(event, openMaps\)"/.test(tile));
 ctx.zimsCache = ctx.zimsCache.filter(z => z.kind !== 'map');
 ok('no map installed: the tile stays and opens the Maps category of the catalog', /app-empty maps-tile/.test(ctx._mapsTileHtml()) && /No map yet/.test(ctx._mapsTileHtml()) && /_openCategory\(_APP_CATEGORY\.maps\)/.test(ctx._mapsTileHtml()));
@@ -63,7 +64,7 @@ ok('picking a row opens the place where it is', /if \(s\.pos\) openArticle\(s\.z
 const keys = extract(/q\.addEventListener\('keydown', e => \{[\s\S]*?\n\}\);/, 'keydown');
 ok('Enter on a map takes the first place', /if \(_isMapPage\(\)\) \{\s*\r?\n\s*if \(suggestItems\.length && suggestItems\[0\]\._place\) selectSuggest\(0\);/.test(keys));
 ok('the box says what it is for', /_isMapPage\(\)\) return t\('maps_search_placeholder'\)/.test(src));
-for (const lang of fs.readdirSync(path.join(__dirname, '..', 'zimi', 'static', 'i18n'))) {
+for (const lang of fs.readdirSync(path.join(__dirname, '..', 'zimi', 'static', 'i18n')).filter(f => f.endsWith('.json'))) {
   const d = JSON.parse(fs.readFileSync(path.join(__dirname, '..', 'zimi', 'static', 'i18n', lang), 'utf8'));
   if (!d.maps_search_placeholder) ok('maps_search_placeholder in ' + lang, false);
 }
