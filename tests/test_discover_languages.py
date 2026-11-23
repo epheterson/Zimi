@@ -555,3 +555,14 @@ def test_the_card_passes_over_a_crude_word():
         is_wikiquote=False,
         require_thumb=True,
     ) == "fallback"
+
+
+def test_vulgar_latin_etymology_is_not_a_crude_word():
+    from zimi import previews
+
+    latin = '<a href="/Category:English_terms_derived_from_Vulgar_Latin">x</a>'
+    crude = '<a href="/Category:English_vulgarities">x</a>'
+    page = '"wgCategories":["Nouns","English terms derived from Vulgar Latin"]'
+    assert not previews._WIKT_CRUDE_RE.search(latin)
+    assert not previews._WIKT_PAGE_CRUDE_RE.search(page)
+    assert previews._WIKT_CRUDE_RE.search(crude)

@@ -897,7 +897,7 @@ _ARABIC_MARKS_RE = re.compile(r"[ً-ٰٟ]")
 # Termes vulgaires, Вульгарные выражения, the Sex topic), in the editions'
 # own words.
 _CRUDE_WORDS = (
-    "vulg|offensive|derogator|pejorat|slur|obscen|obsc[eè]n|insult|swear|profan"
+    "vulg(?!ar[ _]latin)|offensive|derogator|pejorat|slur|obscen|obsc[eè]n|insult|swear|profan"
     "|sexual|sex(?![a-z])|beleidigend|abwertend|schimpf|injur|grossier"
     "|ofensiv|despectiv|palabrota|вульгар|грубы|бран|непристойн|ругател|секс"
     "|粗|侮"
