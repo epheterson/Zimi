@@ -342,8 +342,8 @@ _BUILDS = [
     ("Zimi-portable-linux-x64", "zimi-1.2.3-linux-x64.tar.gz"),
     ("Zimi-portable-linux-arm64", "zimi-1.2.3-linux-arm64.tar.gz"),
     # Built in the release run: the Almanac's HD flavour and the manifest Zimi reads.
-    ("Almanac-maxi", "zimi_almanac_maxi_2026-11.zim"),
-    ("Almanac-maxi", "zimi_almanac_maxi.json"),
+    ("Almanac-maxi", "zimi_almanac_maps_2026-11.zim"),
+    ("Almanac-maxi", "zimi_almanac_maps.json"),
 ]
 
 
@@ -383,7 +383,7 @@ def test_release_files_are_named_version_platform_chip(tmp_path):
         "Zimi-1.2.3-x86_64.AppImage.zsync",
         "zimi-1.2.3-linux-arm64.tar.gz",
         "zimi-1.2.3-linux-x64.tar.gz",
-    ] + sorted(_OWN_ZIMS + ["zimi_almanac_maxi_2026-11.zim", "zimi_almanac_maxi.json"])
+    ] + sorted(_OWN_ZIMS + ["zimi_almanac_maps_2026-11.zim", "zimi_almanac_maps.json"])
     text = _commands("desktop-release.yml")
     # The release gets every renamed file (beside the SBOM, when one was made).
     assert 'gh release create "$TAG" release/*' in text and 'gh release upload "$TAG" release/*' in text

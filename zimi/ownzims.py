@@ -510,9 +510,10 @@ def flavour_text(folder, own, flavour, texts=None):
     return {"description": description, "long_description": long_description.replace(STANDARD_EDITION, edition)}
 
 
-def write_zim(own, path, flavour=None, extra_items=None):
+def write_zim(own, path, flavour=None, extra_items=None, edition=None):
     """``own`` built into ``path``, from its source as it is now: another flavour of the same Name
     (``flavour``, ``extra_items``: see creator.create_folder_zim). Nothing is committed or stamped.
+    ``edition`` is the FLAVOUR_TEXT key to say about itself when that is not the Flavour (HD has none).
     """
 
     def _write(folder):
@@ -523,7 +524,7 @@ def write_zim(own, path, flavour=None, extra_items=None):
             out_path=path,
             register=False,
             flavour=flavour,
-            **flavour_text(folder, own, flavour),
+            **flavour_text(folder, own, edition or flavour),
             extra_items=with_build_year(extra_items),
             mime_overrides=COMPRESSED_BINARY_TYPES,
         )
