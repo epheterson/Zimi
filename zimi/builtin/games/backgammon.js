@@ -303,7 +303,7 @@
     for (i = 0; i < 24; i++) {
       var sl = slot(i), u = colU(sl.col), dark = (sl.col + (sl.top ? 1 : 0)) % 2 === 0, v0 = sl.top ? TM : V - TM, v1 = sl.top ? TM + HALF - 8 : V - TM - HALF + 8;
       var tipV = sl.top ? TM + HALF - 20 : V - TM - HALF + 20, tc = xy(u + PW / 2, tipV);
-      num += '<text x="' + tc[0] + '" y="' + (tc[1] + 4) + '" text-anchor="middle" class="bk-pn">' + (i + 1) + '</text>';
+      num += '<text x="' + tc[0] + '" y="' + (tc[1] + 4.5) + '" text-anchor="middle" class="bk-pn">' + (i + 1) + '</text>';
       tri += '<polygon points="' + [xy(u, v0), xy(u + PW, v0), xy(u + PW / 2, v1)].join(' ') + '" class="bk-tri ' + (dark ? 'a' : 'b') + '"/>';
     }
     host.innerHTML = '<svg viewBox="0 0 ' + W + ' ' + H + '" aria-hidden="true">' + WK.STONE_DEFS + '<rect width="' + W + '" height="' + H + '" rx="12" class="bk-frame"/>' +
@@ -312,7 +312,7 @@
     gLayer = { marks: host.querySelector('#bk-marks'), checkers: host.querySelector('#bk-checkers'), extra: host.querySelector('#bk-extra') };
     var pts = [], ids = [];
     for (i = 0; i < 24; i++) { var s2 = slot(i); pts.push(boxUV(colU(s2.col), pointV(s2.top), PW, HALF)); ids.push('p' + i); }
-    pts.push(boxUV(barU(), TM + 3, GAP, V - 2 * TM - 6)); ids.push('bar');
+    pts.push(boxUV(barU() - 2, TM + 3, GAP + 4, V - 2 * TM - 6)); ids.push('bar');   // 2 units either side: 44px on a phone, the points beside it keep the rest
     pts.push(boxUV.apply(null, boxArgs(trayBox(true)))); ids.push('off');
     var raw = WK.overlay(host, W, H, pts, function (k) { onSpot(ids[k]); }, 'bk-pt');
     btns = {}; raw.forEach(function (b, k) { btns[ids[k]] = b; });

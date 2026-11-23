@@ -225,11 +225,14 @@ function ZimiJanggiEngine(S) {
     }
     return out;
   }
-  // What the searcher and the page offer: the legal moves, or the pass when a side that is not in check has none (or is in bikjang).
+  // What the searcher and the page offer: the legal moves, or the pass when a side that is not in check has none.
+  // In bikjang the pass is on offer even in check (a cannon can check over its own general), as Fairy-Stockfish
+  // has it: the pass ends the game in a draw.
   function movesOrPass(pos) {
     var ms = legalMoves(pos);
+    if (bikjang(pos)) return ms.concat([PASS]);
     if (inCheck(pos)) return ms;
-    return !ms.length ? [PASS] : bikjang(pos) ? ms.concat([PASS]) : ms;   // in bikjang the pass is on offer: it ends the game in a draw
+    return ms.length ? ms : [PASS];
   }
   function findMove(pos, a, b) {
     var ms = legalMoves(pos);
