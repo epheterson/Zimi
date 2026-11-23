@@ -123,3 +123,16 @@ def test_a_voice_with_its_engine_is_not_offered_again(data, monkeypatch):
         "en" not in voices.page_payload()["offers"]
         or voices.page_payload()["offers"]["en"]["tag"] != "en-US"
     )
+
+
+def test_a_voice_removed_while_the_first_word_is_asked_for_does_not_crash(monkeypatch):
+    from zimi import outbound
+
+    answers = iter([{"fr": {"engine": "x"}}, {}])   # a removal lands between two reads of the installed list
+    monkeypatch.setattr(voices.POLICY, "mode", lambda: (outbound.AUTO, False))
+    monkeypatch.setattr(voices, "_offer_tag", lambda lang, accent: "fr")
+    monkeypatch.setattr(voices, "_usable", lambda engine: True)
+    monkeypatch.setattr(voices, "installed", lambda: next(answers))
+    monkeypatch.setattr(voices, "_needs_setup", lambda tag, rec: False)
+    monkeypatch.setattr(voices, "start_download", lambda tag: None)
+    voices._maybe_fetch("fr", "")   # a second read of installed() would raise KeyError or StopIteration

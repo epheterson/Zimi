@@ -92,12 +92,24 @@ VARS: dict[str, tuple[str, str]] = {
         "Almanac HD, the sharper Earth and Moon, from Zimi's GitHub release: ask (offered in the Almanac to an admin), auto (on the Almanac's first open) or never",
         "Almanac HD",
     ),
+    "ZIMI_ALMANAC_HD_URL": (
+        "Where Almanac HD's files and manifest are fetched from instead of GitHub: an http(s) address with {file} (and {tag}), for a server of your own",
+        "",
+    ),
     "ZIMI_SATELLITE_UPDATES": (
         "Satellite data for the Almanac's 3D Earth, from CelesTrak: ask (only when an admin asks), auto or never",
         "Satellite data from the internet",
     ),
+    "ZIMI_ADDONS": (
+        "Add-ons (the Browser, SingleFile, Video, Import) fetched into the data folder: ask (only when an admin presses Add), auto (when a capture needs one) or never",
+        "Add-ons",
+    ),
     "ZIMI_VOICE_DOWNLOADS": (
         "Clearer voices for the Dictionary's Say (Piper from Hugging Face, Kokoro from GitHub): ask (only when an admin asks), auto or never",
+        "Voices for Dictionary",
+    ),
+    "ZIMI_VOICE_CACHE_DIR": (
+        "Where said audio (the words and sentences Say and Read aloud made) is kept, instead of the voices folder: a RAM disk such as /dev/shm keeps an SD card from being written; it is trimmed to the size set in Settings > Voices (64 MB unless changed)",
         "Voices for Dictionary",
     ),
     "ZIMI_PIPER": (
@@ -120,7 +132,7 @@ VARS: dict[str, tuple[str, str]] = {
         "Best answer",
     ),
     "ZIMI_MCP_TOOLS": (
-        "MCP tools: lean (search, read, read_section) or full (every tool)",
+        "MCP tools: lean (search, read, read_section), full (every tool), or a comma list of tool names such as search,read,list_entries or lean,list_entries",
         "MCP",
     ),
     "ZIMI_APPS": (
@@ -193,6 +205,7 @@ VARS: dict[str, tuple[str, str]] = {
     "ZIMI_RATE_LIMIT": ("Requests per minute, anonymous", ""),
     "ZIMI_RATE_LIMIT_TRUSTED": ("Requests per minute, signed in", ""),
     "ZIMI_RATE_LIMIT_LOGIN": ("Login attempts per minute", ""),
+    "ZIMI_DEBUG_LOG": ("1 keeps every window's taps and errors in the server's rolling debug log (data folder, debug/); 0 forces it off", "Debug log"),
     # ── capture ───────────────────────────────────────────────────────────
     "ZIMI_BEHAVIORS": ("Path to browsertrix-behaviors, for capture", ""),
 }

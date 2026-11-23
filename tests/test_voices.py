@@ -806,6 +806,11 @@ def test_with_no_choice_the_best_here_says_it(three):
         "engines": ["kokoro", "piper", "espeak"],
         "engine": "kokoro",
         "chosen": None,
+        "regions": [
+            {"region": "US", "here": True, "engines": ["kokoro", "piper", "espeak"], "tag": None, "bytes": 0},
+            {"region": "GB", "here": True, "engines": ["kokoro"], "tag": None, "bytes": 0},
+        ],
+        "region": None,
         "pinned": True,
         "piper": None,
         "remove": "en-US",
@@ -1608,7 +1613,9 @@ def test_the_engine_pins_agree_everywhere():
     with open(os.path.join(root, "Dockerfile"), encoding="utf-8") as f:
         installs = [ln for ln in f if ln.startswith("RUN pip install")]
     docker = {pin for ln in installs for pin in re.findall(r'"([^"]+)"', ln)}
-    assert set(voices.ENGINE_REQUIREMENTS) <= docker
+    # The add-ons image carries none of the big parts: the voice engines are set up on demand into the data folder, so the
+    # image must NOT install them (the pins above are the venv's and the extra's).
+    assert not (set(voices.ENGINE_REQUIREMENTS) & docker)
 
 
 def test_a_cancel_during_setup_stops_pip_and_leaves_nothing(bare, monkeypatch):
@@ -2108,3 +2115,131 @@ def test_a_cold_sample_voice_does_not_spend_the_one_try(piper, monkeypatch):
     assert (
         voices._sample_speed("piper", "en") is True
     ), "the try was kept for a later warm"
+
+
+def test_what_an_engine_would_spell_out_is_not_sent_to_it():
+    """Settings > Hear said "Chinese letter" for a random English Wiktionary title in
+    Han: an engine spells out a letter of a script it does not speak."""
+    from zimi import voices
+
+    assert voices.speakable("Some dictionary words are: cat, 漢字, dog.", "en") == "Some dictionary words are: cat, , dog."
+    assert voices.speakable("漢字", "en") is None
+    assert voices.speakable("★ Wikipédia → livre", "pt") == "Wikipédia → livre"
+    assert voices.speakable("大 Wikipedia", "zh") == "大 Wikipedia"
+    assert voices.speakable("дом 漢", "ru") == "дом"
+    assert voices.script_ok("café", "fr") and not voices.script_ok("漢字", "en")
+    assert voices.script_ok("हिन्दी", "hi") and not voices.script_ok("हि", "en")
+    # a language whose script is not in the table keeps its own letters, and still drops Han
+    assert voices.speakable("அஆ", "ta") == "அஆ" and voices.script_ok("தமிழ்", "ta")
+    assert voices.speakable("அஆ 漢", "ta") == "அஆ" and not voices.script_ok("漢", "ta")
+
+
+def test_every_languages_real_samples_survive_whole():
+    """The sentences Settings and the speed sample send, in all ten languages, reach
+    the engine unchanged except for spaces."""
+    from zimi import voices
+
+    here = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "zimi", "static", "i18n")
+    for code in ("ar", "de", "en", "es", "fr", "he", "hi", "pt", "ru", "zh"):
+        with open(os.path.join(here, code + ".json"), encoding="utf-8") as f:
+            line = json.load(f)["voices_sample"].replace("{words}", "word")
+        assert voices.speakable(line, code) == line, code
+    for code, line in voices.SPEED_SAMPLES.items():
+        assert voices.speakable(line, code) == line, code
+
+
+# ── an accent of a language, and where said audio is kept ────────────────
+
+
+def test_a_region_is_chosen_saved_and_said(three):
+    assert voices.choose("en") == ("kokoro", "en-US") or voices.choose("en")[1] == "en-US"
+    assert voices.set_region("en", "GB") is True
+    assert voices.choose("en")[1] == "en-GB", "no accent asked: the chosen one"
+    assert voices.choose("en", "US")[1] == "en-US", "an accent asked wins"
+    voices._reset_for_tests()  # read back from the prefs file
+    assert voices.region_choices() == {"en": "GB"}
+    assert voices.choose("en")[1] == "en-GB"
+    assert "en:GB" in voices._stamp(voices.installed()), "a new address for every word"
+    # The home region, or none, is the default again; a region nobody has is refused.
+    assert voices.set_region("en", "US") and voices.region_choices() == {}
+    assert voices.set_region("en", "ZZ") is False
+    assert voices.set_region("../x", "GB") is False
+
+
+def test_a_language_row_offers_its_regions_even_with_one_here(piper):
+    row = voices._lang_row("en", {}, {}, True)
+    regions = {r["region"]: r for r in row["regions"]}
+    assert set(regions) >= {"US", "GB"}
+    assert regions["GB"]["tag"] == "en-GB" and regions["GB"]["here"] is False
+    assert row["regions"][0]["region"] == "US", "home first"
+    assert voices._lang_row("ca", {}, {}, True)["regions"] == [], "one region: no picker"
+
+
+def test_said_audio_can_be_kept_elsewhere(data, monkeypatch, tmp_path):
+    ram = str(tmp_path / "ram")
+    monkeypatch.setenv(voices.CACHE_DIR_ENV, ram)
+    path = voices._cache_dir("piper", "en_US-x")
+    assert path.startswith(ram + os.sep)
+    os.makedirs(path)
+    with open(os.path.join(path, "a.wav"), "wb") as f:
+        f.write(b"x" * 100)
+    voices._trim_cache(limit=0)
+    assert not os.listdir(path), "the cap trims the folder it was pointed at"
+    # The folder named is shared (a RAM disk): Clear removes Zimi's own folder in it, never a neighbour.
+    neighbour = os.path.join(ram, "someone-elses.txt")
+    with open(neighbour, "w") as f:
+        f.write("keep")
+    voices.clear_cache()
+    assert os.path.exists(neighbour), "Clear left another program's file alone"
+    monkeypatch.delenv(voices.CACHE_DIR_ENV)
+    assert voices._cache_dir("piper", "en_US-x").startswith(str(data / "data"))
+
+
+def test_the_cache_is_a_setting_and_zero_keeps_it_in_memory(data, monkeypatch):
+    monkeypatch.delenv(voices.CACHE_DIR_ENV, raising=False)
+    monkeypatch.setattr(voices, "_ram_cache_root", lambda: str(data / "ram"))
+    assert voices.cache_mb() == 64
+    assert voices._cache_root() == os.path.join(str(data / "data"), "voices", "cache")
+    for bad in (-1, 1.5, "64", True, 99999, None):
+        assert voices.set_cache_mb(bad) is False
+    folder = voices._cache_dir("piper", "x")
+    os.makedirs(folder)
+    with open(os.path.join(folder, "a.wav"), "wb") as f:
+        f.write(b"x" * 10)
+    assert voices.cache_info() == {"count": 1, "size_bytes": 10}
+    assert voices.set_cache_mb(0) is True
+    assert not os.path.exists(os.path.join(str(data / "data"), "voices", "cache")), "off removes what was kept"
+    assert voices._cache_root() == str(data / "ram"), "and nothing is written to the data folder"
+    voices._reset_for_tests()  # read back from the prefs file
+    assert voices.cache_mb() == 0
+    assert voices.set_cache_mb(16) and voices.cache_mb() == 16
+    os.makedirs(voices._cache_dir("piper", "x"))
+    open(os.path.join(voices._cache_dir("piper", "x"), "b.wav"), "wb").write(b"yy")
+    assert voices.clear_cache() == 2 and voices.cache_info()["count"] == 0
+
+
+def test_every_region_a_language_offers_can_be_chosen_and_is_said(data, monkeypatch):
+    """With every pinned voice here, each region the picker lists is accepted and
+    says that region's voice (a region with no voice of its own gives the language's)."""
+    kokoro, piper = {}, {}
+    for tag in voices.KOKORO_LANGS:
+        kokoro.setdefault(voices._primary(tag), {})[tag.split("-", 1)[1].upper() if "-" in tag else ""] = tag
+    for tag in voices.VOICES:
+        if tag != voices.KOKORO_TAG:
+            piper.setdefault(voices._primary(tag), {})[tag.split("-", 1)[1].upper() if "-" in tag else ""] = tag
+    engines(monkeypatch, piper=piper, kokoro=kokoro)
+    multi = [p for p in set(kokoro) | set(piper) if len(voices.pinned_regions(p)) > 1]
+    assert {"en", "pt", "zh"} <= set(multi) or len(multi) >= 3
+    for primary in multi:
+        row = voices._lang_row(primary, {}, {}, True)
+        assert [r["region"] for r in row["regions"]] == list(dict.fromkeys(r["region"] for r in row["regions"]))
+        for opt in row["regions"]:
+            assert voices.set_region(primary, opt["region"]) is True, (primary, opt)
+            if opt["region"] in {**kokoro.get(primary, {}), **piper.get(primary, {})}:
+                voice = voices.choose(primary)[1]
+                assert voice in (kokoro.get(primary, {}).get(opt["region"]), piper.get(primary, {}).get(opt["region"])) or opt["region"] == voices._HOME_REGION.get(primary, primary.upper()), (primary, opt, voice)
+
+
+def test_the_cache_cap_is_decimal_megabytes():
+    """A 64 MB cap is 64,000,000 bytes, as Settings' other sizes: not 67 MB (it read 66.9 MB beside the label)."""
+    assert voices.BYTES_PER_MB == 1000 * 1000

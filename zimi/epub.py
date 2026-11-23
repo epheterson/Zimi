@@ -139,6 +139,29 @@ def _text(el):
     return re.sub(r"\s+", " ", "".join(el.itertext())).strip() if el is not None else ""
 
 
+MAX_DIRECTORY_BYTES = 4 * 1024 * 1024  # the zip's central directory: ZipFile reads all of it before anything can count members
+_EOCD = b"PK\x05\x06"
+_EOCD_LEN = 22
+_EOCD_SEARCH = _EOCD_LEN + 0xFFFF  # the end record, then a comment of up to 64 KiB
+_ZIP64_MARK = 0xFFFFFFFF
+
+
+def _directory_too_big(fileobj):
+    """Whether the zip's end record says its central directory is over MAX_DIRECTORY_BYTES
+    or MAX_MEMBERS entries: read from the end of the file, so a large EPUB with a small
+    directory passes. A directory in Zip64 form is over, too (it starts past 4 GiB)."""
+    fileobj.seek(0, os.SEEK_END)
+    end = fileobj.tell()
+    fileobj.seek(max(0, end - _EOCD_SEARCH))
+    tail = fileobj.read(_EOCD_SEARCH)
+    at = tail.rfind(_EOCD)
+    if at < 0 or len(tail) - at < _EOCD_LEN:
+        return False  # ZipFile says what is wrong with it
+    entries = int.from_bytes(tail[at + 10 : at + 12], "little")
+    size = int.from_bytes(tail[at + 12 : at + 16], "little")
+    return size == _ZIP64_MARK or size > MAX_DIRECTORY_BYTES or entries > MAX_MEMBERS
+
+
 def _local(tag):
     return tag.rsplit("}", 1)[-1]
 
@@ -148,14 +171,22 @@ class Book:
     language, date, the cover picture), its spine, and its members."""
 
     def __init__(self, data):
+        # Bytes, or (an EPUB over the serving cap) a seekable file over its
+        # bytes in the ZIM (zimblob.RunFile), read member by member and
+        # costing nothing to keep.
+        in_memory = isinstance(data, (bytes, bytearray))
         try:
-            self._zip = zipfile.ZipFile(io.BytesIO(data))
+            source = io.BytesIO(data) if in_memory else io.BufferedReader(data)
+            if _directory_too_big(source):
+                raise EpubError("directory too large")
+            source.seek(0)
+            self._zip = zipfile.ZipFile(source)
             infos = self._zip.infolist()
         except (zipfile.BadZipFile, OSError, ValueError) as e:
             raise EpubError(f"not a zip: {e}") from e
         if len(infos) > MAX_MEMBERS:
             raise EpubError(f"{len(infos)} members")
-        self.size = len(data)
+        self.size = len(data) if in_memory else 0
         self._sizes = {i.filename: i.file_size for i in infos if not i.is_dir()}
         self._lock = threading.Lock()
         self._page = None
@@ -449,15 +480,26 @@ def _identity(zim):
 
 
 def _load(zim, epub_path):
-    """The EPUB entry's bytes, read under the library lock; None when the
-    ZIM has no such entry (or one too big to serve)."""
+    """The EPUB entry's bytes, read under the library lock; over the
+    serving cap, a file over its one uncompressed run in the ZIM (zimblob),
+    never loaded whole. None when the ZIM has no such entry, or one over the
+    cap stored compressed."""
     from zimi import server as _srv
+    from zimi import zimblob
 
     with _srv._zim_lock:
         archive = _srv.get_archive(zim)
         if archive is None:
             return None
-        return _srv.entry_bytes(archive, epub_path, _srv.MAX_SERVE_BYTES)
+        item = _srv.entry_item(archive, epub_path)
+        if item is None:
+            return None
+        if item.size <= _srv.MAX_SERVE_BYTES:
+            return bytes(item.content)
+        index, size = getattr(item, "_index", None), item.size
+    path = _srv.get_zim_files().get(zim, "")
+    at = zimblob.locate(path, index, size)
+    return zimblob.RunFile(path, at, size) if at is not None else None
 
 
 def book_in_zim(zim, epub_path):

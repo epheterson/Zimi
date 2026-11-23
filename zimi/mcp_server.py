@@ -7,13 +7,16 @@ one as its intro and an outline) and read_section. full: every tool,
 collections, chunks, translations and the apps included.
 
 Usage:
-  zimi-mcp [ZIM_DIR] [--tools lean|full]     lean unless told otherwise
-  zimi mcp [ZIM_DIR] [--tools lean|full]     the same, in the full install
+  zimi-mcp [ZIM_DIR] [--tools TOOLS]     lean unless told otherwise
+  zimi mcp [ZIM_DIR] [--tools TOOLS]     the same, in the full install
   python3 -m zimi.mcp_server [--tools ...]   full unless told otherwise
+
+  TOOLS is lean, full, or a comma list of tool names and sets:
+  `--tools search,read,list_entries`, `--tools lean,list_entries`.
 
 Configuration:
   ZIM_DIR         Path to directory containing *.zim files (default: /zims)
-  ZIMI_MCP_TOOLS  lean or full, when --tools is not given
+  ZIMI_MCP_TOOLS  the same list as --tools, when --tools is not given
 
 Claude Code config (local):
   {
@@ -71,6 +74,14 @@ from zimi import server as zimi
 # so a config written for it before lean existed gets what it always got.
 TOOL_SETS = ("lean", "full")
 TOOLS_ENV = "ZIMI_MCP_TOOLS"
+# What --tools says, for its help and its errors.
+TOOLS_HELP = (
+    "lean, full, or a comma list of tool names, e.g. search,read,list_entries "
+    "or lean,list_entries. A named set fixes the flavour of its tools (lean "
+    "answers in Markdown, full in structured data); a bare name alone is the "
+    f"full tool, and read_section, which only lean has, is lean (default: ${TOOLS_ENV}, "
+    "else lean for zimi-mcp and zimi mcp, full for python -m zimi.mcp_server)"
+)
 _INSTRUCTIONS_FULL = "Search and read articles from offline ZIM knowledge archives."
 _INSTRUCTIONS_LEAN = (
     "An offline library. search finds pages; read returns one as Markdown; "
@@ -1045,14 +1056,45 @@ LEAN_TOOLS = (
 )
 
 
+def resolve_tools(spec):
+    """``spec`` (lean, full, or a comma list of names and sets) as
+    ``[(name, function, is_lean)]`` in the order given.
+
+    A set brings its own flavour of every tool in it (lean's ``search`` and
+    ``read`` answer in Markdown, full's in structured data). A bare name is
+    the full tool, except ``read_section``, which only lean has. A name a set
+    already brought is not offered twice, and lean and full cannot be mixed
+    (both have a ``search``). ValueError names what is wrong and what is valid."""
+    full, lean = dict(FULL_TOOLS), dict(LEAN_TOOLS)
+    valid = f"sets: {', '.join(TOOL_SETS)}; tools: {', '.join(sorted(full.keys() | lean.keys()))}"
+    items = [i.strip().lower() for i in str(spec).split(",")]
+    if not all(items):
+        raise ValueError(f"tools is empty or has an empty entry ({valid})")
+    if all(s in items for s in TOOL_SETS):
+        raise ValueError("tools cannot name both lean and full: both have search and read")
+    chosen = {}
+    for item in items:
+        if item == "lean":
+            chosen.update({n: (f, True) for n, f in LEAN_TOOLS})
+        elif item == "full":
+            chosen.update({n: (f, False) for n, f in FULL_TOOLS})
+        elif item in lean and item not in full:
+            chosen.setdefault(item, (lean[item], True))
+        elif item in full:
+            chosen.setdefault(item, (full[item], False))
+        else:
+            raise ValueError(f"unknown tool '{item}' ({valid})")
+    return [(n, f, is_lean) for n, (f, is_lean) in chosen.items()]
+
+
 def build(tools="full"):
-    """A FastMCP server offering one tool set. Builds nothing else: no cache
-    load, no thread, no scan beyond the ZIM directory's file names (lean
-    names the sources in its instructions)."""
-    if tools not in TOOL_SETS:
-        raise ValueError(f"tools must be one of {', '.join(TOOL_SETS)}")
+    """A FastMCP server offering the tools ``tools`` names (see
+    ``resolve_tools``). Builds nothing else: no cache load, no thread, no scan
+    beyond the ZIM directory's file names (lean names the sources in its
+    instructions)."""
+    chosen = resolve_tools(tools)
     instructions = _INSTRUCTIONS_FULL
-    if tools == "lean":
+    if any(is_lean for _, _, is_lean in chosen):
         instructions = f"{_INSTRUCTIONS_LEAN} {_source_names()}"
     server = FastMCP("zimi", instructions=instructions)
     # Report ZIMI's version, not FastMCP's.
@@ -1070,10 +1112,6 @@ def build(tools="full"):
         server._mcp_server.version = zimi.ZIMI_VERSION
     except Exception:  # pragma: no cover - shape changed upstream
         pass
-    if tools == "full":
-        for name, fn in FULL_TOOLS:
-            server.tool(name=name)(fn)
-        return server
     # Lean answers are text, so no output schema rides along in tools/list:
     # every token of it would be one a small model's context pays for twice.
     import inspect
@@ -1081,8 +1119,8 @@ def build(tools="full"):
     plain = {}
     if "structured_output" in inspect.signature(server.tool).parameters:
         plain["structured_output"] = False
-    for name, fn in LEAN_TOOLS:
-        server.tool(name=name, **plain)(fn)
+    for name, fn, is_lean in chosen:
+        server.tool(name=name, **(plain if is_lean else {}))(fn)
     return server
 
 
@@ -1106,28 +1144,30 @@ def _keep_stdout_for_the_protocol():
 
 
 def run(tools):
-    """Serve ``tools`` over stdio until the client hangs up.
+    """Serve ``tools`` (lean, full or a list, see ``resolve_tools``) over stdio
+    until the client hangs up.
 
     Lean starts only what it answers with: the metadata cache (read from
     disk; a first run reads each ZIM's header once). No title-index builds,
     BitTorrent, mDNS, catalog or web server; search uses an index already on
     disk and libzim's own otherwise. Full also warms every index in the
-    background, as it always has, for the tools that want them."""
+    background, as it always has, for the tools that want them; so does any
+    selection with a full tool in it."""
     _keep_stdout_for_the_protocol()
     zimi.load_cache()
-    if tools == "full":
+    if any(not is_lean for _, _, is_lean in resolve_tools(tools)):
         threading.Thread(target=zimi.warm_indexes, daemon=True).start()
     build(tools).run(transport="stdio")
 
 
 def tools_setting(value, default):
-    """``value`` (a flag or ZIMI_MCP_TOOLS) checked, or ``default``."""
-    value = (value or "").strip().lower() or default
-    if value not in TOOL_SETS:
-        raise SystemExit(
-            f"zimi: {TOOLS_ENV} / --tools must be one of {', '.join(TOOL_SETS)}, "
-            f"not '{value}'"
-        )
+    """``value`` (a flag or ZIMI_MCP_TOOLS) checked and normalized, or
+    ``default``. Exits with the valid names when it is not a selection."""
+    value = (value or "").strip().lower().replace(" ", "") or default
+    try:
+        resolve_tools(value)
+    except ValueError as e:
+        raise SystemExit(f"zimi: {TOOLS_ENV} / --tools: {e}")
     return value
 
 
@@ -1141,7 +1181,7 @@ def main(argv=None):
     parser.add_argument(
         "--tools",
         default=None,
-        help=f"lean or full (default: ${TOOLS_ENV}, else full)",
+        help=TOOLS_HELP,
     )
     args = parser.parse_args(argv)
     run(tools_setting(args.tools or os.environ.get(TOOLS_ENV), "full"))

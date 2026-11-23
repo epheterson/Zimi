@@ -16,6 +16,7 @@ mislabel it). Nothing here changes the file. The link scan reads every page,
 so ``quick`` leaves it, and the checksum, out.
 """
 
+import hashlib
 import logging
 import posixpath
 import re
@@ -49,6 +50,67 @@ PNG_SIZE_END = 24
 # A page with a thousand broken links is one finding, not a thousand lines.
 MAX_LINK_FINDINGS = 25
 ILLUSTRATION_SIZE = 48
+
+
+# The ZIM header (https://wiki.openzim.org/wiki/ZIM_file_format); its last
+# field is where the 16-byte MD5 of every byte before it is stored.
+_HEADER = struct.Struct("<IHH16sIIQQQQIIQ")
+_MAGIC = 72173914
+_MD5_LEN = 16
+# hashlib lets go of the GIL for blocks this size; a read is a few ms of disk.
+_READ_BYTES = 4 << 20
+CHECKSUM_MISMATCH = "the file does not match its own checksum"
+
+
+class CheckStopped(Exception):
+    """A checksum read stopped on request, before it reached an answer."""
+
+
+def checksum_problem(path, on_bytes=None, stop=None):
+    """None when the book at ``path`` matches its own checksum (or carries
+    none), else what is wrong, in words. ``on_bytes(n)`` hears each block
+    read; ``stop`` (an Event) set raises CheckStopped after the block.
+
+    What libzim's Archive.check() does, done here instead: check() holds
+    Python's GIL for the whole read, and every other thread of a server
+    stood still while it ran (seven seconds a gigabyte). This streams the
+    file, every chunk of a split book in order, through hashlib, which lets
+    go of the GIL, and needs neither libzim nor its lock."""
+    from zimi import zimparts
+
+    files = zimparts.parts(zimparts.first_chunk(path))
+    try:
+        with open(files[0], "rb") as f:
+            fields = _HEADER.unpack(f.read(_HEADER.size))
+    except (OSError, IndexError, struct.error):
+        return "the header cannot be read"
+    if fields[0] != _MAGIC:
+        return "not a ZIM file"
+    left = fields[-1]  # bytes the checksum covers
+    if not left:
+        return None  # no checksum to check
+    md5, stored = hashlib.md5(), b""
+    try:
+        for part in files:
+            with open(part, "rb") as f:
+                while len(stored) < _MD5_LEN:
+                    block = f.read(_READ_BYTES)
+                    if not block:
+                        break
+                    if stop is not None and stop.is_set():
+                        raise CheckStopped()
+                    take = block[:left]
+                    md5.update(take)
+                    left -= len(take)
+                    if on_bytes:
+                        on_bytes(len(block))
+                    if not left:
+                        stored += block[len(take) :][: _MD5_LEN - len(stored)]
+    except OSError as e:
+        return f"the file cannot be read: {e.strerror}"
+    if len(stored) < _MD5_LEN:
+        return "the file is cut short"
+    return None if md5.digest() == stored else CHECKSUM_MISMATCH
 
 
 def _finding(level, check, message):
@@ -183,26 +245,19 @@ def _walk(archive, links):
 
 
 def check(path, quick=False):
-    """Every finding for the ZIM at ``path``; an empty list is a clean bill."""
-    from libzim.reader import Archive
+    """Every finding for the ZIM at ``path``; an empty list is a clean bill.
+    Any chunk of a split book (name.zimab...) checks the whole book."""
+    from zimi import zimparts
 
     try:
-        archive = Archive(path)
+        archive = zimparts.open_book(zimparts.first_chunk(path))
     except Exception as e:
         return [_finding(ERROR, "open", f"cannot be opened: {e}")]
     out = []
     if not quick:
-        try:
-            if archive.has_checksum and not archive.check():
-                out.append(
-                    _finding(
-                        ERROR, "checksum", "the file does not match its own checksum"
-                    )
-                )
-        except Exception as e:
-            out.append(
-                _finding(ERROR, "checksum", f"the checksum could not be verified: {e}")
-            )
+        problem = checksum_problem(path)
+        if problem:
+            out.append(_finding(ERROR, "checksum", problem))
     if not archive.has_main_entry:
         out.append(_finding(WARNING, "main", "there is no main page"))
     else:

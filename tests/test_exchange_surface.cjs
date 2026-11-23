@@ -29,7 +29,7 @@ ok('shelves per site with tags, a paged list per site or tag, a question view wi
 ok('a link to another question stays inside ZimiExchange', /a\[data-q\]/.test(page));
 ok('the empty page is a door to the Q&A category', /category: 'stack_exchange'/.test(page));
 ok('the page takes the shared sheet, which holds both themes', /<!--@apps\.css@-->/.test(page) && !/prefers-color-scheme/.test(page));
-for (const lang of fs.readdirSync(path.join(__dirname, '..', 'zimi', 'static', 'i18n'))) {
+for (const lang of fs.readdirSync(path.join(__dirname, '..', 'zimi', 'static', 'i18n')).filter(f => f.endsWith('.json'))) {
   const d = JSON.parse(fs.readFileSync(path.join(__dirname, '..', 'zimi', 'static', 'i18n', lang), 'utf8'));
   if (d.exchange !== 'ZimiExchange') ok('it is called ZimiExchange in ' + lang, false);
   for (const k of ['exchange_search_placeholder', 'exchange_answers', 'exchange_empty', 'app_empty_exchange']) if (!d[k]) ok(k + ' in ' + lang, false);

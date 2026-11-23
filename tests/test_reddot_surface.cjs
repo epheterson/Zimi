@@ -36,7 +36,7 @@ ok('the page takes the shared sheet, which holds both themes', /<!--@apps\.css@-
 ok('no Subreddit tile: a reddit.com/r/ address under Web page is a subreddit, and the preview says so', !/id: 'reddit', network: true, reddot: true/.test(create) && /CREATE_REDDIT_DEF = \{ id: 'reddit'/.test(create) && /_createRedditPanel && \(def\.id === 'page' \|\| def\.id === 'site'\)\) def = CREATE_REDDIT_DEF/.test(create) && /p\.mode === 'reddit'/.test(create) && /add\('create_mode_reddit', p\.title\)/.test(create) && /reddit: \{ name: 'ArcticZim'/.test(create));
 ok('Reddot\'s doors open Create with the address started', /_REDDIT_ADDRESS_START = 'https:\/\/www\.reddit\.com\/r\/Kiwix'/.test(src) && (src.match(/_createRememberSource = _REDDIT_ADDRESS_START/g) || []).length === 2 && /seedEl\.dispatchEvent\(new Event\('input'\)\)/.test(create));
 ok('the Create page can be opened on a remembered mode', /if \(typeof _createRememberMode === 'string' && _createRememberMode\) \{\n\s*_createSelected = _createRememberMode;/.test(create));
-for (const lang of fs.readdirSync(path.join(__dirname, '..', 'zimi', 'static', 'i18n'))) {
+for (const lang of fs.readdirSync(path.join(__dirname, '..', 'zimi', 'static', 'i18n')).filter(f => f.endsWith('.json'))) {
   const d = JSON.parse(fs.readFileSync(path.join(__dirname, '..', 'zimi', 'static', 'i18n', lang), 'utf8'));
   if (d.reddot !== 'Reddot') ok('it is called Reddot in ' + lang, false);
   for (const k of ['reddot_search_placeholder', 'reddot_comments', 'reddot_empty', 'app_empty_reddot', 'create_mode_reddit', 'create_pv_reddit_what', 'reddot_home', 'reddot_follow', 'reddot_following', 'reddot_home_hint']) if (!d[k]) ok(k + ' in ' + lang, false);

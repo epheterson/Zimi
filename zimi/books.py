@@ -747,10 +747,6 @@ def _has_book(zim, book_id):
     return any(r["id"] == book_id for r in rows)
 
 
-def is_books(name):
-    return any(z["name"] == name for z in _book_zims())
-
-
 # ── the details build ──────────────────────────────────────────────────────
 
 

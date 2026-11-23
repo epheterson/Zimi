@@ -38,6 +38,7 @@ const sent = { search: [], suggest: [] };
 const no = () => false, nop = () => {};
 const sandbox = {
   setTimeout, clearTimeout,
+  window: {},
   q: { value: '' },
   mode: 'search', currentSource: 'wikipedia_en_all', manageTab: 'installed',
   searchTimer: null, suggestTimer: null,
