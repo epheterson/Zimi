@@ -7,6 +7,7 @@ Run: pytest tests/test_almanac_flavour_metadata.py -v
 """
 
 import os
+import re
 import sys
 
 import pytest
@@ -62,3 +63,21 @@ def test_only_the_standard_edition_says_it_is_standard(built):
     # nothing else of the text changed
     rest = built[None]["LongDescription"].replace(ownzims.STANDARD_EDITION, "")
     assert built["maxi"]["LongDescription"].replace(ownzims.FLAVOUR_TEXT[("zimi_almanac", "maxi")][1], "") == rest
+
+
+def test_maxi_says_plainly_it_has_the_hd_maps_and_how_big_it_is(built):
+    long = built["maxi"]["LongDescription"]
+    assert "high-resolution maps of the Earth, Moon and planets" in long
+    assert re.search(r"about \d+(\.\d)? GB", long) and re.search(r"about \d+(\.\d)? GB", built["maxi"]["Description"])
+    assert "maximum-resolution" in built["ultra"]["Description"]
+    assert re.search(r"about \d+(\.\d)? GB", built["ultra"]["LongDescription"])
+
+
+def test_a_pin_without_sizes_leaves_the_size_out(tmp_path, monkeypatch):
+    pin = tmp_path / "pin.json"
+    pin.write_text('{"file": "x.zim"}')
+    monkeypatch.setattr(ownzims, "TILES_PIN", str(pin))
+    assert ownzims._flavour_size(", about %s", "hd_size") == ""
+    pin.write_text('{"hd_size": 1983068162, "max_size": 4814876312}')
+    assert ownzims._flavour_size(", about %s", "hd_size") == ", about 2 GB"
+    assert ownzims._flavour_size(", about %s", "max_size") == ", about 4.8 GB"

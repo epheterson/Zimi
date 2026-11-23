@@ -258,13 +258,22 @@ def with_craft(manifest_bytes, has_craft):
     return json.dumps(manifest, separators=(",", ":")).encode()
 
 
-def build(tiles_zim, out_dir, month=None, craft_dir=None, flavour=FLAVOUR, caps=None):
+def build(tiles_zim, out_dir, month=None, craft_dir=None, flavour=FLAVOUR, caps=None, catalog=False):
     """A flavour of the Almanac (HD, ``maxi``, by default; Maximum is ``ultra``), built from the source as it is now
-    with the tile source's tiles inside, ``caps`` cutting layers short. Returns its path."""
+    with the tile source's tiles inside, ``caps`` cutting layers short. Returns its path.
+
+    ``catalog``: the openZIM catalog's build, not Zimi's own: the community edition (build_almanac_kiwix) with its Name
+    ``zimi_mul_almanac``, Title and ten Languages, and this Flavour."""
     from zimi import ownzims
 
     own = next(o for o in ownzims.OWN if o.name == "zimi_almanac")
     month = month or datetime.date.today().strftime("%Y-%m")
+    if catalog:
+        import build_almanac_kiwix
+
+        return build_almanac_kiwix.build(
+            out_dir, month=month, flavour=flavour, extra_items=add_tiles(tiles_zim, craft_dir, caps)
+        )
     os.makedirs(out_dir, exist_ok=True)
     path = os.path.join(out_dir, (MAX_FILE_FMT if flavour == MAX_FLAVOUR else FILE_FMT) % month)
     return ownzims.write_zim(
@@ -441,6 +450,12 @@ def main(argv=None):
     ap.add_argument("--build-craft", action="store_true", help="build the craft folder here from NASA's files (build_craft_folder) instead of the pinned one")
     ap.add_argument("--no-craft", action="store_true", help="a flavour without the HD craft (the Almanac's 3D view keeps its stock models)")
     ap.add_argument(
+        "--catalog",
+        action="store_true",
+        help="the openZIM catalog's HD flavour (Name zimi_mul_almanac, ten languages, Flavour maxi, no Golden Record pictures "
+        "that are not public domain) instead of Zimi's own; one file, with HD's tile caps (not with --tag)",
+    )
+    ap.add_argument(
         "--tag",
         help="the release the files go on: builds HD and Maximum (as chunks) and writes the manifest naming them",
     )
@@ -450,10 +465,12 @@ def main(argv=None):
     )
     a = ap.parse_args(argv)
     tiles = a.tiles or fetch_tiles(a.cache)
+    if a.catalog and a.tag:
+        raise SystemExit("--catalog builds the one catalog file; a release (--tag) is Zimi's own")
     if not a.craft and not a.no_craft:
         a.craft = build_craft_folder(os.path.join(a.cache, "craft")) if a.build_craft else fetch_craft(a.cache, required=bool(a.tag))
     if not a.tag:
-        path = build(tiles, a.out, month=a.month, craft_dir=a.craft)
+        path = build(tiles, a.out, month=a.month, craft_dir=a.craft, caps=hd_caps() if a.catalog else None, catalog=a.catalog)
         print("built %s (%.1f MB)" % (path, os.path.getsize(path) / 1e6))
         return 0
     tm, tl = _date(os.path.basename(tiles))   # the tile source's own <month><letter> (.zim or .zimaa)

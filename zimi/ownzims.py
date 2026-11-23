@@ -21,6 +21,7 @@ download gets. ``ZIMI_BUILTIN_ZIMS=0`` serves none.
 import collections
 import datetime
 import hashlib
+import json
 import os
 import re
 import shutil
@@ -459,16 +460,36 @@ COMPRESSED_BINARY_TYPES = {".bin": "text/plain"}
 
 #: The sentence of the Almanac's LongDescription that says which edition a file is; a flavour swaps it (FLAVOUR_TEXT).
 STANDARD_EDITION = "This is the standard edition, without the high-resolution map tiles."
+TILES_PIN = os.path.join(os.path.dirname(SOURCE_ROOT), "assets", "almanac-tiles.json")
+
+
+def _flavour_size(template, key):
+    """``template`` with the flavour file's size in gigabytes (the tile pin's ``hd_size`` / ``max_size``, written when the
+    files are built), or "" when the pin has none: a description says how big the file is only when that is known."""
+    try:
+        with open(TILES_PIN, encoding="utf-8") as f:
+            size = json.load(f).get(key)
+    except (OSError, ValueError, AttributeError):
+        return ""
+    if not isinstance(size, int) or isinstance(size, bool) or size <= 0:
+        return ""
+    return template % ("%s GB" % ("%.1f" % (size / 1e9)).removesuffix(".0"))
+
+
 #: ``(own name, Flavour)`` -> the Description (80 characters at most, the openZIM limit) and the edition sentence a flavour
 #: carries. Title stays the standard edition's, so a reader lists the files side by side; the Description tells them apart.
 FLAVOUR_TEXT = {
     ("zimi_almanac", "maxi"): (
-        "The Almanac with high-resolution maps of Earth, Moon and planets",
-        "This is the maxi edition, with the high-resolution map tiles inside.",
+        "The Almanac with high-resolution maps of Earth, Moon and planets" + _flavour_size(", about %s", "hd_size"),
+        "This is the maxi edition. It carries the high-resolution maps of the Earth, Moon and planets, the sharp tiles the smaller edition leaves out"
+        + _flavour_size(", about %s in all", "hd_size")
+        + ".",
     ),
     ("zimi_almanac", "ultra"): (
         "The Almanac with maximum-resolution maps of Earth, Moon and planets",
-        "This is the maximum edition, with every map tile at its source's full resolution.",
+        "This is the maximum edition. It carries the maps of the Earth, Moon and planets with every tile at its source's full resolution"
+        + _flavour_size(", about %s in all", "max_size")
+        + ".",
     ),
 }
 

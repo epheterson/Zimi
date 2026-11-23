@@ -26,7 +26,6 @@ DEFAULT_NAME = "zimi_mul_almanac"   # openZIM: {domain}_{lang}_{selection}; seve
 #: The Language metadata: the ten languages the page speaks, ISO 639-3, in the order the Games use.
 LANGUAGES = "eng,zho,hin,spa,ara,fra,por,rus,deu,heb"
 DEFAULT_TITLE = "Zimi Almanac"
-FILE_FMT = "%s_%s.zim"
 _NAME = re.compile(r"^zimi_([a-z]{2,3})_([a-z0-9][a-z0-9.-]*)$")
 #: Text for the ZIM's Description or LongDescription instead of zimi.txt's (None keeps zimi.txt's). Change a line, rebuild.
 DESCRIPTION = None
@@ -48,8 +47,17 @@ def set_fields(folder, **fields):
         f.write(text)
 
 
-def build(out_dir, file_name=None, name=DEFAULT_NAME, title=DEFAULT_TITLE, month=None, description=None, long_description=None):
-    """The community Almanac, built from the source as it is now. Returns its path."""
+def file_name_of(name, month, flavour=None):
+    """openZIM's file name: ``<name>_<YYYY-MM>.zim``, with the Flavour before the month (``<name>_maxi_<YYYY-MM>.zim``)."""
+    return "%s_%s.zim" % ("%s_%s" % (name, flavour) if flavour else name, month)
+
+
+def build(out_dir, file_name=None, name=DEFAULT_NAME, title=DEFAULT_TITLE, month=None, description=None, long_description=None,
+          flavour=None, extra_items=None):
+    """The community Almanac, built from the source as it is now. Returns its path.
+
+    ``flavour`` (``maxi``) is another build of the same Name, the way Kiwix ships them: its Description and LongDescription say
+    what it carries (ownzims.FLAVOUR_TEXT) and ``extra_items`` (the tiles) go in beside the Almanac."""
     from zimi import almanacstage, creator, ownzims
 
     m = _NAME.match(name)
@@ -59,17 +67,23 @@ def build(out_dir, file_name=None, name=DEFAULT_NAME, title=DEFAULT_TITLE, month
         )
     month = month or datetime.date.today().strftime("%Y-%m")
     os.makedirs(out_dir, exist_ok=True)
-    path = os.path.join(out_dir, file_name or FILE_FMT % (name, month))
+    path = os.path.join(out_dir, file_name or file_name_of(name, month, flavour))
     with tempfile.TemporaryDirectory(prefix="zimi-kiwix-") as tmp:
         dest = os.path.join(tmp, m.group(2))
         os.mkdir(dest)
         almanacstage.stage(dest, community=True)
         set_fields(dest, Title=title, Language=LANGUAGES, Description=description or DESCRIPTION, LongDescription=long_description or LONG_DESCRIPTION)
+        own = next(o for o in ownzims.OWN if o.name == "zimi_almanac")
+        said = ownzims.flavour_text(dest, own, flavour)
         # The Name is set outright: creator derives it from the Language metadata's 3-letter code (zimi_eng_...).
         real = creator.zim_name
         creator.zim_name = lambda scope, language="eng": name
         try:
-            creator.create_folder_zim(dest, out_path=path, register=False, extra_items=ownzims.with_build_year())
+            creator.create_folder_zim(
+                dest, out_path=path, register=False, flavour=flavour, extra_items=ownzims.with_build_year(extra_items),
+                mime_overrides=ownzims.COMPRESSED_BINARY_TYPES,
+                **{k: v for k, v in said.items() if k != "description" or not description}
+            )
         finally:
             creator.zim_name = real
     return path
