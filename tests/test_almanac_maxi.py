@@ -257,29 +257,44 @@ def _metadata(path):
     return a, {k: bytes(a.get_metadata(k)).decode("utf-8") for k in a.metadata_keys if not k.startswith("Illustration")}
 
 
-def test_the_catalog_hd_flavour_is_the_catalog_name_in_ten_languages_with_the_maxi_flavour(built, tmp_path):
+def test_the_catalog_hd_is_the_base_title_in_ten_languages_with_no_flavour(built, tmp_path):
     import build_almanac_kiwix as kiwix
 
     assert maxi.main(["--tiles", built["tiles"], "--out", str(tmp_path), "--month", "2026-11", "--no-craft", "--catalog"]) == 0
     (made,) = os.listdir(tmp_path)
-    assert made == "%s_maxi_2026-11.zim" % kiwix.DEFAULT_NAME
+    assert made == "%s_2026-11.zim" % kiwix.DEFAULT_NAME
     a, meta = _metadata(str(tmp_path / made))
     assert meta["Name"] == kiwix.DEFAULT_NAME == "zimi_mul_almanac"
     assert meta["Title"] == kiwix.DEFAULT_TITLE
     assert meta["Language"] == kiwix.LANGUAGES
-    assert meta["Flavour"] == "maxi"
+    assert "Flavour" not in meta
     assert "high-resolution maps" in meta["Description"] and len(meta["Description"]) <= 80
     assert "high-resolution maps of the Earth, Moon and planets" in meta["LongDescription"]
-    assert "standard edition" not in meta["LongDescription"]
+    assert "standard edition" not in meta["LongDescription"] and "mini edition" in meta["LongDescription"]
     # the community edition (the Almanac for openZIM) with the tiles inside
     assert json.loads(_read(a, "hd/hd.json"))["layers"]
     assert b"_almPickLang" in _read(a, "index.html")
 
 
-def test_the_catalog_standard_flavour_has_no_flavour_and_says_it_is_standard(tmp_path):
+def test_the_catalog_small_maps_are_the_mini_flavour(tmp_path):
     import build_almanac_kiwix as kiwix
 
-    _, meta = _metadata(kiwix.build(str(tmp_path), month="2026-11"))
-    assert "Flavour" not in meta and meta["Name"] == "zimi_mul_almanac"
-    assert "high-resolution" not in meta["Description"]
-    assert ownzims.STANDARD_EDITION in meta["LongDescription"]
+    path = kiwix.build(str(tmp_path), month="2026-11")
+    assert os.path.basename(path) == "zimi_mul_almanac_mini_2026-11.zim"
+    _, meta = _metadata(path)
+    assert meta["Flavour"] == "mini" and meta["Name"] == "zimi_mul_almanac" and meta["Language"] == kiwix.LANGUAGES
+    assert "high-resolution" not in meta["Description"] and len(meta["Description"]) <= 80
+    assert "mini edition" in meta["LongDescription"] and ownzims.STANDARD_EDITION not in meta["LongDescription"]
+
+
+def test_the_catalog_maximum_is_one_file_with_the_maxi_flavour_and_every_level(built, tmp_path):
+    import build_almanac_kiwix as kiwix
+
+    assert maxi.main(["--tiles", built["tiles"], "--out", str(tmp_path), "--month", "2026-11", "--no-craft", "--catalog", "maximum"]) == 0
+    (made,) = os.listdir(tmp_path)
+    assert made == "zimi_mul_almanac_maxi_2026-11.zim"
+    a, meta = _metadata(str(tmp_path / made))
+    assert meta["Flavour"] == "maxi" and meta["Name"] == "zimi_mul_almanac" and meta["Language"] == kiwix.LANGUAGES
+    assert "full resolution" in meta["Description"] and len(meta["Description"]) <= 80
+    assert "every tile at its source's full resolution" in meta["LongDescription"]
+    assert json.loads(_read(a, "hd/hd.json"))["layers"]

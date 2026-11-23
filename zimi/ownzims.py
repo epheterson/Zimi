@@ -494,14 +494,16 @@ FLAVOUR_TEXT = {
 }
 
 
-def flavour_text(folder, own, flavour):
+def flavour_text(folder, own, flavour, texts=None):
     """``{"description", "long_description"}`` a flavour of ``own`` says about itself, built from the folder's zimi.txt;
-    {} for the standard edition (no flavour) and for a flavour with nothing of its own."""
-    if (own.name, flavour) not in FLAVOUR_TEXT:
+    {} for the standard edition (no flavour) and for a flavour with nothing of its own. ``texts`` (default FLAVOUR_TEXT)
+    is the table to read: the openZIM catalog names its editions differently (build_almanac_kiwix.CATALOG_TEXT)."""
+    texts = FLAVOUR_TEXT if texts is None else texts
+    if (own.name, flavour) not in texts:
         return {}
     from zimi import folderfiles
 
-    description, edition = FLAVOUR_TEXT[(own.name, flavour)]
+    description, edition = texts[(own.name, flavour)]
     long_description = folderfiles.read_sidecar(os.path.join(folder, "zimi.txt"), {"longdescription"}).get("longdescription", "")
     if STANDARD_EDITION not in long_description:
         raise RuntimeError("%s's zimi.txt LongDescription no longer holds the standard edition's sentence" % own.name)

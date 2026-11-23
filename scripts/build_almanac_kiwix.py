@@ -22,6 +22,8 @@ import tempfile
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, ROOT)
 
+from zimi import ownzims  # noqa: E402
+
 DEFAULT_NAME = "zimi_mul_almanac"   # openZIM: {domain}_{lang}_{selection}; several languages are "mul"
 #: The Language metadata: the ten languages the page speaks, ISO 639-3, in the order the Games use.
 LANGUAGES = "eng,zho,hin,spa,ara,fra,por,rus,deu,heb"
@@ -47,6 +49,32 @@ def set_fields(folder, **fields):
         f.write(text)
 
 
+#: The catalog names the three editions by Kiwix's flavour names, not Zimi's own (``maxi`` HD, ``ultra`` Maximum): the
+#: small maps are ``mini``, HD is the base title (no Flavour), Maximum is ``maxi``. Keys are the edition's own
+#: Flavour (None = the small maps); values are the catalog's.
+CATALOG_FLAVOUR = {None: "mini", "maxi": None, "ultra": "maxi"}
+
+#: What each catalog edition says about itself, like ownzims.FLAVOUR_TEXT (Description 80 characters at most).
+CATALOG_TEXT = {
+    ("zimi_almanac", None): (
+        "The Almanac with compact maps of Earth, Moon and planets, the smallest edition",
+        ownzims.STANDARD_EDITION.replace("the standard edition", "the mini edition"),
+    ),
+    ("zimi_almanac", "maxi"): (
+        "The Almanac with high-resolution maps of Earth, Moon and planets" + ownzims._flavour_size(", about %s", "hd_size"),
+        "This edition carries the high-resolution maps of the Earth, Moon and planets, the sharp tiles the mini edition leaves out"
+        + ownzims._flavour_size(", about %s in all", "hd_size")
+        + ".",
+    ),
+    ("zimi_almanac", "ultra"): (
+        "Almanac maps of Earth, Moon and planets at full resolution" + ownzims._flavour_size(", about %s", "max_size"),
+        "This is the maxi edition. It carries the maps of the Earth, Moon and planets with every tile at its source's full resolution"
+        + ownzims._flavour_size(", about %s in all", "max_size")
+        + ".",
+    ),
+}
+
+
 def file_name_of(name, month, flavour=None):
     """openZIM's file name: ``<name>_<YYYY-MM>.zim``, with the Flavour before the month (``<name>_maxi_<YYYY-MM>.zim``)."""
     return "%s_%s.zim" % ("%s_%s" % (name, flavour) if flavour else name, month)
@@ -56,9 +84,10 @@ def build(out_dir, file_name=None, name=DEFAULT_NAME, title=DEFAULT_TITLE, month
           flavour=None, extra_items=None):
     """The community Almanac, built from the source as it is now. Returns its path.
 
-    ``flavour`` (``maxi``) is another build of the same Name, the way Kiwix ships them: its Description and LongDescription say
-    what it carries (ownzims.FLAVOUR_TEXT) and ``extra_items`` (the tiles) go in beside the Almanac."""
-    from zimi import almanacstage, creator, ownzims
+    ``flavour`` is the edition by Zimi's own name (None the small maps, ``maxi`` HD, ``ultra`` Maximum); the file carries the
+    catalog's Flavour for it (CATALOG_FLAVOUR: mini, none, maxi) and a Description and LongDescription that say what it carries
+    (CATALOG_TEXT). ``extra_items`` (the tiles) go in beside the Almanac."""
+    from zimi import almanacstage, creator
 
     m = _NAME.match(name)
     if not m:
@@ -67,20 +96,21 @@ def build(out_dir, file_name=None, name=DEFAULT_NAME, title=DEFAULT_TITLE, month
         )
     month = month or datetime.date.today().strftime("%Y-%m")
     os.makedirs(out_dir, exist_ok=True)
-    path = os.path.join(out_dir, file_name or file_name_of(name, month, flavour))
+    catalog_flavour = CATALOG_FLAVOUR[flavour]
+    path = os.path.join(out_dir, file_name or file_name_of(name, month, catalog_flavour))
     with tempfile.TemporaryDirectory(prefix="zimi-kiwix-") as tmp:
         dest = os.path.join(tmp, m.group(2))
         os.mkdir(dest)
         almanacstage.stage(dest, community=True)
         set_fields(dest, Title=title, Language=LANGUAGES, Description=description or DESCRIPTION, LongDescription=long_description or LONG_DESCRIPTION)
         own = next(o for o in ownzims.OWN if o.name == "zimi_almanac")
-        said = ownzims.flavour_text(dest, own, flavour)
+        said = ownzims.flavour_text(dest, own, flavour, CATALOG_TEXT)
         # The Name is set outright: creator derives it from the Language metadata's 3-letter code (zimi_eng_...).
         real = creator.zim_name
         creator.zim_name = lambda scope, language="eng": name
         try:
             creator.create_folder_zim(
-                dest, out_path=path, register=False, flavour=flavour, extra_items=ownzims.with_build_year(extra_items),
+                dest, out_path=path, register=False, flavour=catalog_flavour, extra_items=ownzims.with_build_year(extra_items),
                 mime_overrides=ownzims.COMPRESSED_BINARY_TYPES,
                 **{k: v for k, v in said.items() if k != "description" or not description}
             )

@@ -263,7 +263,7 @@ def build(tiles_zim, out_dir, month=None, craft_dir=None, flavour=FLAVOUR, caps=
     with the tile source's tiles inside, ``caps`` cutting layers short. Returns its path.
 
     ``catalog``: the openZIM catalog's build, not Zimi's own: the community edition (build_almanac_kiwix) with its Name
-    ``zimi_mul_almanac``, Title and ten Languages, and this Flavour."""
+    ``zimi_mul_almanac``, Title and ten Languages, and the catalog's Flavour for this one (build_almanac_kiwix.CATALOG_FLAVOUR)."""
     from zimi import ownzims
 
     own = next(o for o in ownzims.OWN if o.name == "zimi_almanac")
@@ -451,9 +451,12 @@ def main(argv=None):
     ap.add_argument("--no-craft", action="store_true", help="a flavour without the HD craft (the Almanac's 3D view keeps its stock models)")
     ap.add_argument(
         "--catalog",
-        action="store_true",
-        help="the openZIM catalog's HD flavour (Name zimi_mul_almanac, ten languages, Flavour maxi, no Golden Record pictures "
-        "that are not public domain) instead of Zimi's own; one file, with HD's tile caps (not with --tag)",
+        nargs="?",
+        const="hd",
+        choices=("hd", "maximum"),
+        help="the openZIM catalog's edition (Name zimi_mul_almanac, ten languages, no Golden Record pictures that are not "
+        "public domain) instead of Zimi's own: hd (the default: no Flavour, HD's tile caps) or maximum (Flavour maxi, every "
+        "level, one whole file); one file (not with --tag)",
     )
     ap.add_argument(
         "--tag",
@@ -470,7 +473,11 @@ def main(argv=None):
     if not a.craft and not a.no_craft:
         a.craft = build_craft_folder(os.path.join(a.cache, "craft")) if a.build_craft else fetch_craft(a.cache, required=bool(a.tag))
     if not a.tag:
-        path = build(tiles, a.out, month=a.month, craft_dir=a.craft, caps=hd_caps() if a.catalog else None, catalog=a.catalog)
+        maximum = a.catalog == "maximum"
+        path = build(
+            tiles, a.out, month=a.month, craft_dir=a.craft, flavour=MAX_FLAVOUR if maximum else FLAVOUR,
+            caps=hd_caps() if a.catalog and not maximum else None, catalog=bool(a.catalog),
+        )
         print("built %s (%.1f MB)" % (path, os.path.getsize(path) / 1e6))
         return 0
     tm, tl = _date(os.path.basename(tiles))   # the tile source's own <month><letter> (.zim or .zimaa)
