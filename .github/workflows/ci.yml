@@ -9,6 +9,10 @@ on:
   push:
     branches: [main]
   pull_request:
+    # A release goes up as stacked parts, each based on the one before: a part's PR runs the quick tier
+    # (it stands on its own), and a PR into main (the first part, each part once it is retargeted, the
+    # release) runs the whole matrix. Every merge into main runs it again (push above).
+    branches: [main, 'line/**']
     types: [opened, synchronize, reopened, ready_for_review]
   workflow_dispatch:
 
@@ -163,7 +167,7 @@ jobs:
 
   test-browser:
     name: test-browser (${{ matrix.shard }}/4)
-    if: github.event_name != 'pull_request' || !github.event.pull_request.draft
+    if: github.event_name != 'pull_request' || (!github.event.pull_request.draft && github.base_ref == 'main')
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
@@ -225,7 +229,7 @@ jobs:
           if-no-files-found: ignore
 
   test:
-    if: always() && (github.event_name != 'pull_request' || !github.event.pull_request.draft)
+    if: always() && (github.event_name != 'pull_request' || (!github.event.pull_request.draft && github.base_ref == 'main'))
     needs: [test-quick, test-browser, portable]
     runs-on: ubuntu-latest
     steps:
@@ -237,7 +241,7 @@ jobs:
   # The portable headless Linux build (#137), built and run from a copied folder on both architectures: the
   # same script the release runs, so the tag never meets it for the first time. 22.04 for the glibc floor.
   portable:
-    if: github.event_name != 'pull_request' || !github.event.pull_request.draft
+    if: github.event_name != 'pull_request' || (!github.event.pull_request.draft && github.base_ref == 'main')
     strategy:
       fail-fast: false
       matrix:
@@ -280,7 +284,7 @@ jobs:
       matrix:
         os: [ubuntu-22.04, macos-15-intel, macos-latest, windows-latest]
 
-    if: github.event_name != 'pull_request' || !github.event.pull_request.draft
+    if: github.event_name != 'pull_request' || (!github.event.pull_request.draft && github.base_ref == 'main')
     runs-on: ${{ matrix.os }}
 
     steps:
@@ -413,7 +417,7 @@ jobs:
   # zimi is, and drives `zimi-mcp` over stdio (lean and full: handshake, tools,
   # search, read), then checks none of the dependencies it leaves out came in.
   zimi-mcp:
-    if: github.event_name != 'pull_request' || !github.event.pull_request.draft
+    if: github.event_name != 'pull_request' || (!github.event.pull_request.draft && github.base_ref == 'main')
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
@@ -446,7 +450,7 @@ jobs:
   # fails if one declared bundled is missing, or one that sets itself up
   # could not here (voices: a venv with pip, or uv).
   pip-clean:
-    if: github.event_name != 'pull_request' || !github.event.pull_request.draft
+    if: github.event_name != 'pull_request' || (!github.event.pull_request.draft && github.base_ref == 'main')
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
@@ -478,7 +482,7 @@ jobs:
   # UID they cannot read), and the Quadlet unit we ship must be one systemd
   # accepts. Both are checked here rather than promised in the README.
   podman:
-    if: github.event_name != 'pull_request' || !github.event.pull_request.draft
+    if: github.event_name != 'pull_request' || (!github.event.pull_request.draft && github.base_ref == 'main')
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
@@ -538,7 +542,7 @@ jobs:
           echo "the Quadlet unit renders to a service with the userns mapping intact"
 
   docker:
-    if: github.event_name != 'pull_request' || !github.event.pull_request.draft
+    if: github.event_name != 'pull_request' || (!github.event.pull_request.draft && github.base_ref == 'main')
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
