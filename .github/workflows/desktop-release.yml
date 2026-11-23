@@ -101,7 +101,8 @@ jobs:
         run: pip install "PyGObject<3.52"
 
       - name: Install pytest
-        run: pip install pytest
+        # pyflakes: the undefined-names test (tests/test_python_undefined_names.py) runs with the suite.
+        run: pip install pytest "pyflakes>=3"
 
       # ── Pre-build tests ──────────────────────────────────────────────
       #
@@ -681,7 +682,11 @@ jobs:
         env:
           TAG: ${{ github.event.inputs.tag || github.ref_name }}
           GH_TOKEN: ${{ github.token }} # to read which file names releases already shipped
-        run: python3 scripts/build_almanac_maxi.py --cache /mnt/almanac/tiles --out /mnt/almanac/out --tag "$TAG"
+        # --no-craft while a release carries no pinned HD craft asset (zimi/assets/almanac-craft.json): the flavour has
+        # every map, and the 3D view keeps its stock craft models.
+        run: |
+          if [ -f zimi/assets/almanac-craft.json ]; then CRAFT=""; else CRAFT="--no-craft"; fi
+          python3 scripts/build_almanac_maxi.py --cache /mnt/almanac/tiles --out /mnt/almanac/out --tag "$TAG" $CRAFT
 
       - name: Upload both sizes and the manifest
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
