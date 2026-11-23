@@ -6076,7 +6076,34 @@ function _sortLibrary(list) {
 function _setLibraryView(mode) {
   if (mode !== 'tiles') mode = 'list';
   _prefWrite(SK.LIBRARY_VIEW, mode);
-  renderHome();  // scope/recency filters are module state, so this re-renders in place
+  // The cards are the same markup in both views (the grid's class and the language chip's wording differ), so the
+  // switch changes those in place: nothing on Home is drawn again, so nothing blinks.
+  if (!_applyLibraryViewInPlace(mode)) renderHome();
+}
+// True when Home's grids were switched where they stand; false (draw it again) when there is no library grid to switch.
+function _applyLibraryViewInPlace(mode) {
+  var grids = output.querySelectorAll('.stats-grid.tiles, .stats-grid.pick-grid');
+  if (!grids.length) return false;
+  var tiles = mode === 'tiles';
+  Array.prototype.forEach.call(grids, function(g) {
+    g.classList.toggle('tiles', tiles);
+    g.classList.toggle('pick-grid', !tiles);
+    Array.prototype.forEach.call(g.querySelectorAll('.stat-card[data-zim]'), function(card) {
+      var badge = card.querySelector('.lang-badge:not(.multi)');
+      if (!badge) return;
+      var z = (zimsCache || []).find(function(x) { return x.name === card.dataset.zim; });
+      var info = z && _zimLangBadgeInfo(z, false);
+      if (!info || !info.code) return;
+      badge.classList.toggle('lang-badge-full', tiles);
+      badge.textContent = tiles ? _langOwnName((z.language || '').toLowerCase().slice(0, 2)) : info.code;
+    });
+  });
+  Array.prototype.forEach.call(output.querySelectorAll('.lib-view-btn'), function(b, i) {
+    var on = (i === 1) === tiles;  // the list button comes first, the tiles button second
+    b.classList.toggle('active', on);
+    b.setAttribute('aria-pressed', String(on));
+  });
+  return true;
 }
 // The grid/list segmented toggle. Both glyphs are always shown; the active one
 // is aria-pressed. It's a global view control but lives on the first section
