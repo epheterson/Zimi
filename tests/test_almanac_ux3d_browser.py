@@ -1488,6 +1488,22 @@ def test_dragging_the_mission_slider_through_the_landing_does_not_take_the_missi
     assert not pg.errors, pg.errors
 
 
+def test_scrubbing_away_while_the_hand_off_waits_for_the_site_cancels_it(three_d):
+    pg = three_d
+    pg.evaluate("() => _aeMissionStart('apollo11')")
+    pg.wait_for_function("() => _ae.mission && _ae.mission.id === 'apollo11' && _ae.mission.t !== undefined", timeout=GROUND_MS)
+    pg.wait_for_timeout(1500)
+    pg.evaluate(
+        "() => { window.__visits = 0; window._aeSitesLoad = () => {}; window._aeLmLoad = () => {}; window._asData = {}; window._asDefFor = () => null;"
+        " window._amLandingRow = () => [0]; window._aeSiteVisit = () => { window.__visits++; }; window._amBackChip = () => {};"   # (the site's rows arrive after the first poll, as on a slow device)
+        " const m = _amMission(), i = m.phases.findIndex(p => p.k === m.handoff.phase); window._amMission = () => m; const row = window._amLandingRow; window._amLandingRow = () => null;"
+        " _amHandoff(m, i); _amScrubTo(m, 60); window._amLandingRow = row; }"
+    )   # playing into touchdown starts the hand-off; a drag to the launch follows before the site's rows are in
+    pg.wait_for_timeout(3000)
+    assert pg.evaluate("() => window.__visits") == 0, "the mission was not taken to the site after the user scrubbed away"
+    assert not pg.errors, pg.errors
+
+
 def test_a_moon_is_named_only_in_its_own_planets_view(three_d):
     pg = three_d
     pg.evaluate("() => _aePreset('mars')")
