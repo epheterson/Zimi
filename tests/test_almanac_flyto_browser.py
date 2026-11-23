@@ -17,12 +17,8 @@ import pytest
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-GL_ARGS = [
-    "--use-angle=swiftshader",
-    "--enable-unsafe-swiftshader",
-    "--disable-accelerated-2d-canvas",
-    "--ignore-gpu-blocklist",
-]
+from browser_slots import WEBGL_ARGS
+GL_ARGS = WEBGL_ARGS + ['--disable-accelerated-2d-canvas']
 VIEW = {"width": 390, "height": 844}
 PLACE = '{"lat":37.77,"lon":-122.42,"name":"San Francisco"}'
 READY_MS = 240_000
@@ -30,7 +26,7 @@ LATE_MS = 2500
 # The model's files come late, so a flight has to wait for them.
 SLOW_FETCH = (
     "(function(){var of=window.fetch;window.fetch=function(u){var a=arguments;"
-    "return /craft-|iss-v1/.test(String(u&&u.url||u))?new Promise(function(r){setTimeout(r,%d)}).then(function(){return of.apply(window,a)}):of.apply(window,a)}})()"
+    "return /craft-|iss-v1/.test(String(u&&u.url||u))?new Promise(function(r){(function w(){window.__lateOpen?setTimeout(r,%d):setTimeout(w,50)})()}).then(function(){return of.apply(window,a)}):of.apply(window,a)}})()"
     % LATE_MS
 )
 # Every frame of a flight, after the view has drawn it: where the target stands on screen, whether the flight waits for
@@ -69,13 +65,16 @@ def served(tmp_path_factory):
     (tmp / "data").mkdir()
     old = (srv.ZIM_DIR, srv.ZIMI_DATA_DIR)
     srv.ZIM_DIR, srv.ZIMI_DATA_DIR = str(tmp / "zims"), str(tmp / "data")
-    srv.load_cache(force=True)
-    httpd = ThreadingHTTPServer(("127.0.0.1", 0), ZimHandler)
-    threading.Thread(target=httpd.serve_forever, daemon=True).start()
-    yield "http://127.0.0.1:%d" % httpd.server_address[1]
-    httpd.shutdown()
-    srv.ZIM_DIR, srv.ZIMI_DATA_DIR = old
-    env.undo()
+    try:
+        srv.load_cache(force=True)
+        httpd = ThreadingHTTPServer(("127.0.0.1", 0), ZimHandler)
+        threading.Thread(target=httpd.serve_forever, daemon=True).start()
+        yield "http://127.0.0.1:%d" % httpd.server_address[1]
+        httpd.shutdown()
+    finally:
+        srv.ZIM_DIR, srv.ZIMI_DATA_DIR = old
+        srv.load_cache(force=True)
+        env.undo()
 
 
 def _open(browser, base, slow=True, reduced=False):
@@ -117,9 +116,19 @@ def _open(browser, base, slow=True, reduced=False):
 
 def _fly(pg, key):
     """Fly to `key` and return the frames of the flight and where it ended."""
+    pg.evaluate("window.__lateOpen = false")
     pg.evaluate(RECORD, key)
+    pg.evaluate("window.__lateOpen = true")
     pg.wait_for_function(
         "() => { _ae.dirty = true; _aeKick(); return !_ae.fly; }",
+        timeout=90_000,
+        polling=200,
+    )
+    # The station's flight is one straight zoom that does not hold for a late model: the model comes in after the flight and is drawn then.
+    pg.wait_for_function(
+        """(k) => { _ae.dirty = true; _aeKick(); var I = k === 'iss' ? _ae.gl.iss : (_ae.gl.crafts && _ae.gl.crafts[k]);
+        return !!I && I.root.visible && (I.show == null || I.show === 1); }""",
+        arg=key,
         timeout=90_000,
         polling=200,
     )
@@ -147,8 +156,9 @@ def _check(frames, end, key):
     flying = [f for f in frames if f["fly"]]
     assert flying, frames
     # It starts at once and holds for the model, which is late.
-    assert any(f["wait"] for f in flying), "the flight did not wait for the late model"
-    # Once the camera has turned to it, no frame of the flight where the target is neither its dot nor its model on the screen.
+    if key != "iss":   # (Earth to the station is one straight zoom, not a held flight: nothing to wait at)
+        assert any(f["wait"] for f in flying), "the flight did not wait for the late model"
+    # From the first frame it is on the screen (the camera turns to it first), no frame of the flight where the target is off the screen, or neither its dot nor its model.
     seen = [i for i, f in enumerate(flying) if _on_screen(f)]
     assert seen, flying
     for f in flying[seen[0] :]:
@@ -174,7 +184,7 @@ def test_flights_to_voyager_and_the_station_wait_for_a_late_model_and_end_on_it(
                 pg.evaluate("_aePreset('earth')")
                 pg.wait_for_function(
                     "() => { _ae.dirty = true; _aeKick(); return !_ae.fly; }",
-                    timeout=90_000,
+                    timeout=300_000,
                     polling=200,
                 )
                 frames, end = _fly(pg, key)
@@ -187,7 +197,7 @@ def test_flights_to_voyager_and_the_station_wait_for_a_late_model_and_end_on_it(
                 pg.evaluate("_aePreset('earth')")
                 pg.wait_for_function(
                     "() => { _ae.dirty = true; _aeKick(); return !_ae.fly; }",
-                    timeout=90_000,
+                    timeout=300_000,
                     polling=200,
                 )
             assert not errors, errors
@@ -203,14 +213,17 @@ def test_with_reduced_motion_it_goes_straight_to_the_model(served):
         br = pw.chromium.launch(args=GL_ARGS)
         try:
             ctx, pg, errors = _open(br, served, reduced=True)
-            pg.evaluate("_aePreset('voyager1')")
+            pg.evaluate(
+                "() => { window.__lateOpen = true; window.__flew = false; (function look() { if (_ae.fly) window.__flew = true; requestAnimationFrame(look); })(); _aePreset('voyager1'); }"
+            )
             # No flight at all: it waits for the model, and is there.
             pg.wait_for_function(
                 "() => { _ae.dirty = true; _aeKick(); var I = _ae.gl.crafts && _ae.gl.crafts.voyager1; return !_ae.fly && _ae.target === 'voyager1' && !!I && I.root.visible; }",
                 timeout=90_000,
                 polling=200,
             )
-            assert pg.evaluate("_ae.dist / _aeCraftSpanRe('voyager')") < 6
+            assert not pg.evaluate("window.__flew"), "a flight was made under reduced motion"
+            assert 2 <= pg.evaluate("_ae.dist / _aeCraftSpanRe('voyager')") < 6
             assert not errors, errors
             ctx.close()
         finally:

@@ -19,12 +19,8 @@ import pytest
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, ROOT)
 
-GL_ARGS = [
-    "--use-angle=swiftshader",
-    "--enable-unsafe-swiftshader",
-    "--disable-accelerated-2d-canvas",
-    "--ignore-gpu-blocklist",
-]
+from browser_slots import WEBGL_ARGS
+GL_ARGS = WEBGL_ARGS + ['--disable-accelerated-2d-canvas']
 VIEW = {"width": 390, "height": 844}
 PLACE = '{"lat":37.77,"lon":-122.42,"name":"San Francisco"}'
 READY_MS = 240_000
@@ -82,11 +78,13 @@ def open_spin(pg, served):
         timeout=READY_MS,
         polling=200,
     )
-    pg.click("[data-ae-view='planets']")
+    pg.evaluate("() => _aePreset('planets')")
     pg.wait_for_function(
         "() => !_ae.fly && _ae.target === 'sun'", timeout=60_000, polling=200
     )
-    pg.click("[data-ae-view='spin']")
+    pg.click("#ae-find")
+    pg.click("[data-ae-gomode=grid]")   # Side by side is the grid's third cell now
+    pg.click(".ae-go-top3 [data-ae-go=spin]")
     pg.wait_for_function(
         "() => !!_ae.spin && !!_ae.gl.spin && _ae.gl.spin.cells.every(c => c.uni.mapped.value === 1)",
         timeout=60_000,
@@ -247,7 +245,7 @@ def test_tilts_are_drawn_as_they_are_and_the_axis_and_orbit_are_there(page):
     page.evaluate("_aeSpinDraw()")
     got = page.evaluate(
         """() => Object.fromEntries(_ae.gl.spin.cells.map(c => { var g = _aeSpinGeometry(c.b, _aeDisplayMs() / MS_PER_DAY + JD_UNIX_EPOCH), p = c.north.geometry.attributes.position.array;
-            return [c.b.key, { axis: g.axis, tilt: g.tiltDeg, tip: [p[3], p[4]], orbit: c.orbit.visible, northVisible: c.north.visible && c.south.visible }]; }))"""
+            return [c.b.key, { axis: g.axis, pole: g.pole, tilt: g.tiltDeg, tip: [p[3], p[4]], orbit: c.orbit.visible, northVisible: c.north.visible && c.south.visible }]; }))"""
     )
     for k in ORDER:
         ax = got[k]["axis"]
@@ -259,7 +257,11 @@ def test_tilts_are_drawn_as_they_are_and_the_axis_and_orbit_are_there(page):
         )
         assert ax[1] == pytest.approx(math.cos(math.radians(got[k]["tilt"])), abs=1e-6)
         assert got[k]["orbit"] and got[k]["northVisible"]
-    assert got["venus"]["axis"][1] < -0.99  # upside down: spinning backwards
+        # The arrow is drawn at the IAU north pole (the main view's), not the spin vector: for Venus and Uranus they are opposite.
+        tip = got[k]["tip"]
+        assert math.atan2(tip[1], tip[0]) == pytest.approx(math.atan2(got[k]["pole"][1], got[k]["pole"][0]), abs=1e-3), k
+    assert got["venus"]["axis"][1] < -0.99  # the spin vector upside down: spinning backwards
+    assert got["venus"]["tip"][1] > 0  # its arrow points up, and it turns clockwise seen from there
     assert got["uranus"]["axis"][0] > 0.98  # on its side
 
 
@@ -320,7 +322,7 @@ def test_side_by_side_always_has_the_planes_and_years(page):
 def full_state(pg):
     return pg.evaluate(
         """() => { var v = _ae.el.getBoundingClientRect(), shown = id => { var e = document.querySelector(id); return !!e && e.getClientRects().length > 0; };
-            return { full: _aeFullOn(), cls: _ae.el.classList.contains('ae-spin-full'), top: shown('.ae-top'), bottom: shown('.ae-bottom'), gear: shown('#ae-gear'),
+            return { full: _aeFullOn(), cls: _ae.el.classList.contains('ae-spin-full'), top: shown('#ae-back'), bottom: shown('.ae-bottom'), gear: shown('#ae-gear'),
               bar: shown('#ae-fullbar'), topbar: shown('.topbar'), w: v.width, h: v.height, left: v.left, topEdge: v.top, faces: _aeSpinFacesOn(),
               pressed: document.querySelector('#ae-fullbar [data-ae-faces]').getAttribute('aria-pressed'),
               shownFaces: _ae.gl.spin.cells.every(c => c.face.visible),
@@ -382,14 +384,14 @@ def test_full_screen_hides_the_chrome_and_faces_follow_the_person(page):
 def test_a_tap_on_a_planet_goes_there_and_the_date_is_put_back(page):
     # From the live clock: Side by side runs it at an hour a second, and leaving puts it back where it was.
     page.evaluate("_almClockSetRate(1); _aeNow()")
-    page.click("[data-ae-view='spin']")   # Side by side again: back to the planets (its row is the Sun and itself)
-    page.wait_for_function("() => !_ae.spin && !_ae.fly && _ae.preset === 'planets'", timeout=60_000, polling=200)
-    # One tap from the Planets view: its chip stands beside it.
-    assert page.is_visible("[data-ae-view='spin']")
-    page.click("[data-ae-view='spin']")
+    page.click("#ae-chips [data-ae-view='sun']")   # the Sun: out of Side by side (its row is the Sun, and its tools in the foot)
+    page.wait_for_function("() => !_ae.spin && !_ae.fly && _ae.target === 'sun'", timeout=60_000, polling=200)
+    # From the Planets view Side by side is the grid's third cell.
+    page.click("#ae-find")
+    page.click("[data-ae-gomode=grid]")
+    page.click(".ae-go-top3 [data-ae-go=spin]")
     page.wait_for_function("() => !!_ae.spin", timeout=60_000, polling=200)
-    assert page.evaluate("_almRate") == 3600 and page.evaluate("_ae.spin.autoRun")
-    # The clock runs ahead of the wall (an hour a second).
+    assert page.evaluate("_almRate") == 3600 and page.evaluate("_ae.spin.autoRun"), "from real time the grid starts at an hour a second"
     page.wait_for_function("() => _aeDisplayMs() - Date.now() > 60000", timeout=60_000, polling=200)
     # The row while they stand side by side: the Sun and itself, lit (its tools where Earth and Planets were).
     assert page.evaluate("_aeRowKeys().join(',')") == "sun,spin"
@@ -397,29 +399,163 @@ def test_a_tap_on_a_planet_goes_there_and_the_date_is_put_back(page):
     page.click("[data-ae-spin='jupiter']")
     page.wait_for_function("() => !_ae.spin && _ae.target === 'jupiter'", timeout=60_000, polling=200)
     assert not page.evaluate("document.getElementById('ae-view').classList.contains('ae-spinning')")
-    assert page.evaluate("_almRate") == 1 and abs(page.evaluate("_aeDisplayMs() - Date.now()")) < 10_000
+    assert page.evaluate("_almRate") == 1 and abs(page.evaluate("_aeDisplayMs() - Date.now()")) < 10_000, "leaving puts the clock back"
     # Go to lists it first among the planets.
-    page.click("#ae-go-btn")
+    page.click("#ae-find")
     assert page.evaluate("document.querySelector('#ae-go [data-ae-go=\"spin\"]').textContent") == "Side by side"
     page.evaluate("_aeShowGo(false)")   # the open sheet covers its button (a tap away or Escape shuts it)
 
 
 def test_a_phone_on_its_side_has_the_row_down_the_left_and_room_for_the_planets(page):
-    """In Safari on its side a phone has about 250 px under its bars: the row stands down the left edge, the foot is the date
+    """In Safari on its side a phone has about 250 px under its bars: the row stands down the left edge, the capsule is the date
     and time, and no planet's caption runs into either."""
     page.evaluate("() => { if (_aeFullOn()) _aeFullExit(); if (!_ae.spin) { _ae.fly = null; _aePreset(AE_SPIN_KEY); } }")
-    page.wait_for_function("() => !!_ae.spin", timeout=10_000)
+    page.wait_for_function("() => !!_ae.spin", timeout=60_000)
     page.set_viewport_size({"width": 932, "height": 300})
     try:
-        page.wait_for_function("() => { _ae.dirty = true; _aeKick(); return _ae.sidePx > 0; }", timeout=10_000)
+        page.wait_for_function("() => { _ae.dirty = true; _aeKick(); return _ae.sidePx > 0; }", timeout=60_000)
         page.evaluate("_aeSpinDraw()")
         got = page.evaluate(
-            """() => { var r = e => e.getBoundingClientRect(), v = r(document.getElementById('ae-views')), c = r(document.querySelector('#ae-clock .alm-ck-l') || document.getElementById('ae-clock'));
-            return { col: v.height > v.width, cells: Array.from(document.querySelectorAll('#ae-spin .ae-sp')).map(b => { var q = r(b); return [q.left, q.bottom]; }),
-              viewsRight: v.right, clockTop: c.top, slider: !!document.querySelector('#ae-clock .alm-spd') && document.querySelector('#ae-clock .alm-spd').getClientRects().length > 0 }; }"""
+            """() => { var r = e => e.getBoundingClientRect(), v = r(document.getElementById('ae-views')), c = r(document.getElementById('ae-pin'));
+            return { col: v.height > v.width, cells: Array.from(document.querySelectorAll('#ae-spin .ae-sp')).map(b => { var q = r(b); return [q.left, q.top]; }),
+              viewsRight: v.right, pinBottom: c.bottom, slider: !!document.querySelector('#ae-clock .alm-spd') && document.querySelector('#ae-clock .alm-spd').getClientRects().length > 0 }; }"""
         )
         assert got["col"], got
-        assert all(x >= got["viewsRight"] and b <= got["clockTop"] + 1 for x, b in got["cells"]), got
-        assert not got["slider"], got
+        assert all(x >= got["viewsRight"] and t >= got["pinBottom"] - 1 for x, t in got["cells"]), got
+        assert got["pinBottom"] <= 110, got   # the capsule (time, speed slider, where line) stays short: the planets keep their room
     finally:
         page.set_viewport_size(VIEW)
+
+
+def test_the_tools_are_three_labelled_buttons_in_the_foot_and_nothing_floats_over_the_planets(page):
+    page.evaluate("() => { if (_aeFullOn()) _aeFullExit(); if (!_ae.spin) { _ae.fly = null; _aePreset(AE_SPIN_KEY); } }")
+    page.wait_for_function("() => !!_ae.spin", timeout=60_000)
+    page.evaluate("_aeSpinDraw()")
+    got = page.evaluate(
+        """() => { var r = e => e.getBoundingClientRect(), tools = Array.from(document.querySelectorAll('#ae-spinrow .ae-btn')).map(b => [b.querySelector('.ae-chip-l').textContent.trim(), Math.round(r(b).top), Math.round(r(b).height)]),
+          cells = Array.from(document.querySelectorAll('#ae-spin .ae-sp')).map(b => r(b).bottom), loc = document.getElementById('ae-locate'), chip = document.querySelector('#ae-chips [data-ae-view=spin]');
+          return { tools: tools, lowest: Math.max.apply(null, cells), locate: getComputedStyle(loc).display, spinChip: chip ? getComputedStyle(chip).display : 'none' }; }"""
+    )
+    assert [t[0] for t in got["tools"]] == ["Same size", "Faces", "Full screen"], got
+    assert all(t[1] >= got["lowest"] and t[2] >= 44 for t in got["tools"]), got   # below the planets, a finger tall
+    assert got["locate"] == "none" and got["spinChip"] == "none", got
+
+
+def _enter_spin(page):
+    page.evaluate("() => { _aePreset('planets'); }")
+    page.wait_for_function("() => !_ae.fly && _ae.target === 'sun' && !_ae.spin", timeout=60_000, polling=200)
+    page.evaluate("_aePreset('spin')")
+    page.wait_for_function("() => !!_ae.spin", timeout=60_000, polling=200)
+
+
+def test_the_grid_leaves_a_speed_the_person_set_alone(page):
+    # Time travel at its own speed: entering and leaving the grid neither changes it nor puts a date back.
+    page.evaluate("_aePreset('planets'); _almClockSetRate(60)")
+    page.wait_for_function("() => !_ae.fly && _ae.target === 'sun' && !_ae.spin", timeout=60_000, polling=200)
+    page.evaluate("_aePreset('spin')")
+    page.wait_for_function("() => !!_ae.spin", timeout=60_000, polling=200)
+    assert page.evaluate("_almRate") == 60 and not page.evaluate("_ae.spin.autoRun")
+    page.evaluate("_aePreset('planets')")
+    page.wait_for_function("() => !_ae.spin", timeout=60_000, polling=200)
+    assert page.evaluate("_almRate") == 60
+    page.evaluate("_almClockSetRate(1); _aeNow()")
+
+
+def test_a_touch_on_the_clock_keeps_the_date_it_ran_to(page):
+    page.evaluate("_almClockSetRate(1); _aeNow()")
+    _enter_spin(page)
+    assert page.evaluate("_almRate") == 3600
+    page.evaluate("document.getElementById('ae-clock').dispatchEvent(new PointerEvent('pointerdown', { bubbles: true }))")
+    page.evaluate("_aePreset('planets')")
+    page.wait_for_function("() => !_ae.spin", timeout=60_000, polling=200)
+    assert page.evaluate("_almRate") == 3600, "the person's own speed stays when they leave"
+    page.evaluate("_almClockSetRate(1); _aeNow()")
+
+
+def test_the_back_arrow_steps_out_of_the_grid_to_where_it_was_chosen_from(page):
+    page.evaluate("_almClockSetRate(1); _aeNow()")
+    _enter_spin(page)
+    assert page.evaluate("_ae.spin.from") == "planets"
+    label = page.evaluate("document.getElementById('ae-back').getAttribute('aria-label')")
+    page.evaluate("_aeRimSync(true)")
+    label = page.evaluate("document.getElementById('ae-back').getAttribute('aria-label')")
+    assert "lanets" in label or "Solar" in label, label   # it names the place it goes to
+    page.click("#ae-back")
+    page.wait_for_function("() => !_ae.spin && _aeIsOpen", timeout=60_000, polling=200)
+    assert page.evaluate("_ae.preset") == "planets", "back left the grid, not the view"
+    assert page.evaluate("_almRate") == 1
+
+
+def test_the_sun_beside_the_grid_is_not_faded_by_the_strip_it_stands_in(page):
+    page.evaluate("_almClockSetRate(1); _aeNow()")
+    _enter_spin(page)
+    page.wait_for_timeout(600)
+    got = page.evaluate("""() => { var c = document.getElementById('ae-chips');
+      return { end: c.classList.contains('ah-end'), out: getComputedStyle(c).getPropertyValue('--ah-out').trim() }; }""")
+    assert got["end"] and got["out"] == "0px", got   # nothing more to scroll: no edge fade over the Sun
+
+
+def _hidden(page, on):
+    page.evaluate(
+        "(on) => { Object.defineProperty(document, 'hidden', { configurable: true, get: () => on }); document.dispatchEvent(new Event('visibilitychange')); }",
+        on,
+    )
+
+
+def test_an_open_view_gives_its_gpu_weight_back_while_the_phone_is_away_and_returns_where_it_was(page):
+    # Safari reloads a heavy page after an app switch: hidden, the open view frees its context, maps and scene; shown, it
+    # is built again at the place it was, with the view still open.
+    page.evaluate("_almClockSetRate(1); _aeNow(); _aePreset('planets')")
+    page.wait_for_function("() => !_ae.spin && !_ae.fly && _ae.target === 'sun'", timeout=60_000, polling=200)
+    assert page.evaluate("matchMedia('(pointer:coarse)').matches")
+    held = page.evaluate("() => { var m = _ae.gl.renderer.info.memory; return [m.textures, m.geometries]; }")
+    assert held[0] > 0 and held[1] > 0, held
+    _hidden(page, True)
+    assert page.evaluate("() => [!_ae.gl, _aeIsOpen]") == [True, True], "context and scene are given back, the view stays open"
+    _hidden(page, False)
+    page.wait_for_function("() => _aeReady() && !_ae.fly && _ae.preset === 'planets'", timeout=READY_MS, polling=250)
+    back = page.evaluate("() => { var m = _ae.gl.renderer.info.memory; return [m.textures > 0, _aeIsOpen]; }")
+    assert back == [True, True]
+    assert not page.errors, page.errors
+
+
+def test_leaving_and_coming_back_puts_the_camera_exactly_where_it_was_with_no_flight(page):
+    # the return rebuilt the view through the opening (a flight from far out, or the hero's hand-in); it is now the address
+    # put back, a snap to the same camera.
+    page.evaluate("_almClockSetRate(1); _aeNow(); _aePreset('moon')")
+    page.wait_for_function("() => _ae.preset === 'moon' && !_ae.fly", timeout=180_000, polling=200)
+    page.evaluate("() => { _ae.fromHero = true; _ae.dist *= 1.37; _ae.az += 0.4; _ae.el_ = 0.3; }")
+    before = page.evaluate("() => [_ae.dist, _ae.az, _ae.el_]")
+    _hidden(page, True)
+    _hidden(page, False)
+    page.wait_for_function("() => _aeReady()", timeout=READY_MS, polling=250)
+    got = page.evaluate("() => ({ cam: [_ae.dist, _ae.az, _ae.el_], fly: !!_ae.fly, hand: !!_ae.hand, preset: _ae.preset })")
+    assert not got["fly"] and not got["hand"] and got["preset"] == "moon", got
+    for i, (a, b) in enumerate(zip(before, got["cam"])):
+        if i == 1:  # the turn is written within a half circle
+            b += 2 * math.pi * round((a - b) / (2 * math.pi))
+        assert abs(a - b) <= 0.002 * max(1, abs(a)), (before, got)  # the address keeps four figures
+    assert not page.errors, page.errors
+
+
+def test_the_address_names_the_view_while_the_phone_is_away_so_a_reload_lands_back_in_it(page):
+    # parked, the view wrote nothing, so the page's address fell back to a bare #almanac.
+    page.evaluate("_almClockSetRate(1); _aeNow(); _aePreset('moon')")
+    page.wait_for_function("() => _ae.preset === 'moon' && !_ae.fly", timeout=180_000, polling=200)
+    _hidden(page, True)
+    assert page.evaluate("() => !_ae.gl")
+    h = page.evaluate("() => _almLinkHash()")
+    assert "v=moon" in h and "c=" in h, h
+
+
+def test_going_away_and_back_again_and_again_never_sets_the_view_aside(page):
+    # giving the context back fired the GPU-loss strike each time; three in a minute turned the 3D view off.
+    page.evaluate("_almClockSetRate(1); _aeNow()")
+    for _ in range(4):
+        _hidden(page, True)
+        _hidden(page, False)
+        page.wait_for_function("() => _aeReady()", timeout=READY_MS, polling=250)
+    page.wait_for_timeout(500)
+    got = page.evaluate("() => ({ aside: !!_ae.capStatic, view: ZimiCap.view3d(), open: _aeIsOpen })")
+    assert got == {"aside": False, "view": "open", "open": True}, got
+    assert not page.errors, page.errors

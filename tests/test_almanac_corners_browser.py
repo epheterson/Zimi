@@ -1,7 +1,12 @@
-"""The Almanac page's corners on a phone, as the ZIM's readers meet them in ten languages.
+"""The Almanac page's corners on a phone (a design review of the 1.16 build).
 
 - the clock reads 18:32, not 32:18, in Hebrew and Arabic, and a calendar's Latin month name is its own run in a right-to-left row
 - no card label in the head is cut off, at 360 px, in any of the ten languages, and a row's tiles share a height and a value line
+- the pinned clock's place gives way before its zone does, and a place that fits is whole
+- the orrery's tip has one primary button and one quiet one
+- every control on the page, and with the time machine on, gives a finger 44 x 44 (the few that are not measured are named below)
+- a cold open of the Almanac does not fetch the 4096 Moon map, and a device that is short of memory, cores or data does not
+  fetch the 3D view's file ahead of the tap
 
 Run: pytest tests/test_almanac_corners_browser.py -v
 """
@@ -15,6 +20,7 @@ import pytest
 HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, os.path.dirname(HERE))
 sys.path.insert(0, HERE)
+from hit_area import undersized  # noqa: E402
 
 LANGS = "ar de en es fr he hi pt ru zh".split()
 NEW_YORK = '{"lat":40.71,"lon":-74.0,"name":"New York"}'
@@ -50,7 +56,7 @@ def base(tmp_path_factory):
     env.undo()
 
 
-def _open(pw, base, lang="en", width=390, place=NEW_YORK, init=""):
+def _open(pw, base, lang="en", width=390, place=NEW_YORK, init="", cards=5):
     br = pw.chromium.launch()
     ctx = br.new_context(
         viewport={"width": width, "height": 844},
@@ -70,7 +76,7 @@ def _open(pw, base, lang="en", width=390, place=NEW_YORK, init=""):
     pg.goto(base + "/#almanac")
     pg.wait_for_selector("#almanac-head-time .ep", timeout=60000)
     # Settled: the panels are built and the head's tiles are drawn (a state, not a fixed wait).
-    pg.wait_for_function("() => window._almPanelsReady && document.querySelectorAll('#almanac-head .alm-card').length >= 5", timeout=60000)
+    pg.wait_for_function("() => window._almPanelsReady && document.querySelectorAll('#almanac-head .alm-card').length >= %d" % cards, timeout=60000)
     return br, pg, errs
 
 
@@ -138,3 +144,174 @@ def test_no_head_label_is_cut_off_at_360(base, lang):
         )
         assert gaps and max(gaps) <= 13, gaps
         br.close()
+
+
+def _pinned(pg):
+    pg.evaluate(
+        "() => { _almClockOpen = true; _almClockPaint(); _almSecBarScroller().scrollTop = 1100; }"
+    )
+    pg.wait_for_timeout(1500)
+    return pg.evaluate(
+        "() => { const z = document.querySelector('#alm-pin .alm-ck-zn'), p = document.querySelector('#alm-pin .alm-ck-pl');"
+        " const w = e => e ? [e.scrollWidth, e.clientWidth] : null; return { zone: w(z), place: w(p), text: p ? p.innerText : '' }; }"
+    )
+
+
+def test_the_pinned_clock_shows_a_place_that_fits_whole(base):
+    from playwright.sync_api import sync_playwright
+
+    with sync_playwright() as pw:
+        br, pg, _ = _open(pw, base, "en", width=390, place=SYDNEY)
+        got = _pinned(pg)
+        assert "Sydney" in got["text"] and got["place"][0] <= got["place"][1], got
+        br.close()
+
+
+def test_the_pinned_clock_cuts_the_place_not_the_zone(base):
+    from playwright.sync_api import sync_playwright
+
+    with sync_playwright() as pw:
+        br, pg, _ = _open(pw, base, "en", width=360, place=LONG, cards=1)  # a polar place has fewer tiles: no sunset in November
+        got = _pinned(pg)
+        assert got["zone"][0] <= got["zone"][1], got  # the zone is whole
+        assert got["place"][0] > got["place"][1], got  # the place is what gave way
+        br.close()
+
+
+def test_the_orrery_tip_has_one_primary_button(base):
+    from playwright.sync_api import sync_playwright
+
+    with sync_playwright() as pw:
+        br, pg, _ = _open(pw, base, "en")
+        pg.evaluate("() => document.getElementById('almanac-orrery').scrollIntoView()")
+        pg.wait_for_timeout(2500)
+        pg.evaluate(
+            "() => _orreryShowTipFn({ type: 'planet', data: _orreryPlanetPositions.filter(p => p.name === 'Saturn')[0] })"
+        )
+        pg.wait_for_selector("#orrery-tooltip .orrery-tip-btn")
+        btns = pg.evaluate(
+            "() => [...document.querySelectorAll('#orrery-tooltip .orrery-tip-btn')].map(b => [b.hasAttribute('data-orr-fly'), b.classList.contains('orrery-tip-quiet'), getComputedStyle(b).backgroundColor])"
+        )
+        assert len(btns) == 2, btns
+        fly = [b for b in btns if b[0]][0]
+        close = [b for b in btns if not b[0]][0]
+        assert not fly[1] and fly[2] != "rgba(0, 0, 0, 0)", btns
+        assert close[1] and close[2] == "rgba(0, 0, 0, 0)", btns
+        br.close()
+
+
+def test_a_cold_open_does_not_fetch_the_4096_moon(base):
+    from playwright.sync_api import sync_playwright
+
+    with sync_playwright() as pw:
+        br, pg, errs = _open(pw, base, "en")
+        asked = pg.evaluate(
+            "() => performance.getEntriesByType('resource').map(e => e.name).filter(n => /earth\\/moon/.test(n))"
+        )
+        assert any("moon-2k-v1" in n for n in asked), asked
+        assert not any("moon-4k" in n for n in asked), asked
+        br.close()
+        assert not errs, errs
+
+
+# An automated browser with no word on it gets Full (capability.js setting()); a test of the levels says Auto in so many words.
+LOW_POWER = "Object.defineProperty(navigator,'hardwareConcurrency',{get:()=>2}); try { localStorage.setItem('zimi_cap', 'auto'); } catch (e) {}"
+
+
+def test_a_device_short_of_cores_waits_for_the_tap_to_fetch_the_3d_view(base):
+    from playwright.sync_api import sync_playwright
+
+    with sync_playwright() as pw:
+        br, pg, errs = _open(pw, base, "en", init=LOW_POWER)
+        pg.wait_for_timeout(8000)  # past the idle delay that fetches it everywhere else
+        asked = pg.evaluate(
+            "() => performance.getEntriesByType('resource').map(e => e.name).filter(n => /almanac-earth/.test(n))"
+        )
+        assert not asked, asked
+        # Still offered: the tap is what fetches it.
+        assert pg.evaluate(
+            "() => typeof openAlmanacEarth === 'undefined' && _orreryEarthViewAvailable()"
+        )
+        br.close()
+        assert not errs, errs
+
+
+def test_a_normal_device_still_has_it_ready(base):
+    from playwright.sync_api import sync_playwright
+
+    with sync_playwright() as pw:
+        br, pg, _ = _open(
+            pw,
+            base,
+            "en",
+            init="Object.defineProperty(navigator,'hardwareConcurrency',{get:()=>8});",
+        )
+        pg.wait_for_function(
+            "() => typeof openAlmanacEarth === 'function'", timeout=30000
+        )
+        br.close()
+
+
+# Not measured here: the shell's own top bar (the shell's tests do), the clock's parts (a tap takes the nearest part within
+# ALM_CLOCK_TAP_SLOP, so their box on the screen is bigger than their drawn one), the tide month's bars (one scrub control,
+# tested below), the speed marks (42px apart) and, with the time machine on, the head's two location marks (the slider
+# comes right under them: 32px tall there), and the calendar names (a tight list, as on a desktop): the places 44 is not reached.
+HIT_WAITING = ".topbar, .ep, .alm-spd-mark, .at-m-row, .alm-ck-pl .alm-here-icon, .alm-crossref-row"
+
+
+def test_every_control_on_the_page_gives_a_finger_44px(base):
+    from playwright.sync_api import sync_playwright
+
+    with sync_playwright() as pw:
+        br, pg, errs = _open(pw, base)
+        short = undersized(pg, scroller="#almanac-content", skip=HIT_WAITING)
+        # Turning the time machine on (a tap on the clock) brings its slider and speed marks.
+        pg.wait_for_timeout(1000)  # the page has scrolled back to its head
+        x, y = pg.evaluate(
+            "() => { const r = [...document.querySelectorAll('.ep[data-p=\"hour\"]')].find(e => e.offsetWidth)"
+            ".getBoundingClientRect(); return [r.x + r.width / 2, r.y + r.height / 2]; }"
+        )
+        pg.touchscreen.tap(x, y)
+        pg.wait_for_selector(".alm-spd-mark", state="visible", timeout=10000)
+        short += undersized(pg, scroller="#almanac-content", noscroll=True, skip=HIT_WAITING)  # its head: the page below is the same
+        br.close()
+        assert not errs, errs
+        assert not short, "\n".join(sorted(set(short)))
+
+
+def test_the_calendar_names_are_a_tight_list_on_a_phone(base):
+    from playwright.sync_api import sync_playwright
+
+    with sync_playwright() as pw:
+        br, pg, errs = _open(pw, base)
+        pg.wait_for_selector(".alm-crossref-row", state="attached", timeout=60000)
+        heights = pg.evaluate("() => [...document.querySelectorAll('.alm-crossref-row')].map(e => Math.round(e.getBoundingClientRect().height))")
+        br.close()
+        assert not errs, errs
+        assert len(heights) == 7 and max(heights) <= 34, heights
+
+
+def test_a_drag_along_the_tide_month_picks_the_day_under_the_finger(base):
+    from playwright.sync_api import sync_playwright
+
+    with sync_playwright() as pw:
+        br, pg, errs = _open(pw, base)
+        pg.wait_for_selector(".at-m-row .at-m-day", state="attached", timeout=60000)
+        pg.evaluate("() => { window.__go = null; window._atGoDay = (k) => { window.__go = k; }; }")
+        pg.locator(".at-m-row").scroll_into_view_if_needed()
+        pg.wait_for_timeout(500)
+        row = pg.locator(".at-m-row").bounding_box()
+        n = pg.locator(".at-m-row .at-m-day").count()
+        x = lambda i: row["x"] + row["width"] * (i + 0.5) / n  # noqa: E731
+        y = row["y"] + row["height"] / 2
+        pg.mouse.move(x(10), y)
+        pg.mouse.down()
+        pg.mouse.move(x(15), y, steps=4)
+        lit = pg.evaluate("() => [...document.querySelectorAll('.at-m-day')].findIndex(b => b.classList.contains('at-scrub'))")
+        said = pg.evaluate("() => document.querySelector('.at-month .at-sub').textContent")
+        label = pg.evaluate("() => document.querySelectorAll('.at-m-day')[15].getAttribute('aria-label')")
+        pg.mouse.up()
+        went = pg.evaluate("() => window.__go")
+        br.close()
+        assert not errs, errs
+        assert (lit, said, went) == (15, label, 15 - 14), (lit, said, went)  # the day is its offset from today: 14 bars before it

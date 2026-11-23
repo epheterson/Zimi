@@ -19,12 +19,8 @@ import pytest
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, ROOT)
 
-GL_ARGS = [
-    "--use-angle=swiftshader",
-    "--enable-unsafe-swiftshader",
-    "--disable-accelerated-2d-canvas",
-    "--ignore-gpu-blocklist",
-]
+from browser_slots import WEBGL_ARGS
+GL_ARGS = WEBGL_ARGS + ['--disable-accelerated-2d-canvas']
 VIEW = {"width": 390, "height": 844}
 PLACE = '{"lat":37.77,"lon":-122.42,"name":"San Francisco"}'
 READY_MS = 240_000
@@ -165,6 +161,8 @@ def test_the_picture_does_not_flip_looking_straight_down_at_the_earth(station):
 
 def test_two_fingers_slide_the_view_across_the_station_and_pinch_zooms(station):
     pg, cdp, errors = station
+    # Landed first: a flight still under way sets the distance itself, and a pinch mid-flight zooms the flight, not the view.
+    pg.wait_for_function("() => { _ae.dirty = true; _aeKick(); return !_ae.fly; }", timeout=60_000, polling=200)
     pg.evaluate(
         "() => { _ae.pan = null; _ae.dist = AE_TARGETS.iss.min * 1.2; _ae.dirty = true; _aeKick(); }"
     )
@@ -206,14 +204,14 @@ PINCH_IN_ORDER = """(order) => {
     var cv = _aeById('ae-canvas'), ev = function (type, id, x, y) {
         cv.dispatchEvent(new PointerEvent(type, { pointerId: id, clientX: x, clientY: y, pointerType: 'touch', isPrimary: id === 901, bubbles: true }));
     };
-    cv.setPointerCapture = function () {};   // synthetic pointers have nothing to capture
+    cv.setPointerCapture = function () {}; cv.hasPointerCapture = function () { return true; };   // synthetic pointers have nothing to capture, and a finger the canvas no longer holds is dropped (2130bbf28)
     _ae.fly = null; _ae.pan = null; _ae.dist = AE_TARGETS.iss.min * 1.2;
     var dist0 = _ae.dist;
     ev('pointerdown', 901, 135, 400); ev('pointerdown', 902, 255, 400);
     order.forEach(function (m) { ev('pointermove', m[0], m[1], m[2]); });
     var out = { dist0: dist0, dist: _ae.dist, min: AE_TARGETS.iss.min };
     ev('pointercancel', 901, 0, 0); ev('pointercancel', 902, 0, 0);
-    delete cv.setPointerCapture;
+    delete cv.setPointerCapture; delete cv.hasPointerCapture;
     return out;
 }"""
 
@@ -276,4 +274,50 @@ def test_shift_drag_slides_and_a_flight_lets_it_go(station):
     assert pg.evaluate("() => !!_ae.pan && Math.hypot.apply(null, _ae.pan.v) > 0")
     pg.evaluate("() => _aePreset('earth')")
     assert pg.evaluate("() => _ae.pan === null")
+    assert not errors, errors
+
+
+# The places under two fingers on the Earth, and where they are drawn now (canvas pixels): each finger's place is found where the gesture began.
+UNDER_FINGERS = """(pts) => { var cv = _aeById('ae-canvas').getBoundingClientRect(), c = _aeTargetPos(), R = AE_TARGETS[_ae.target].surface;
+  _aePlaceCamera(); _ae.gl.camera.updateMatrixWorld(true);
+  return pts.map(function (p) { var h = _aeRayHit(p[0] - cv.left, p[1] - cv.top, c, R); return h ? _aeSub(h, c) : null; }); }"""
+DRAWN_AT = """(rels) => { var cv = _aeById('ae-canvas').getBoundingClientRect(), c = _aeTargetPos(); _aePlaceCamera(); _ae.gl.camera.updateMatrixWorld(true);
+  return rels.map(function (r) { var s = _aeProject(_aeAdd(c, r)); return s ? [s.x + cv.left, s.y + cv.top] : null; }); }"""
+
+
+# The nearest the view goes over the Earth is where its map is still sharp: far up with the plain map a test has, close with Almanac HD (stood in for here).
+@pytest.mark.parametrize("start,sharp,spread", [(1.7, None, 24), (1.5, 1.0, 60)])
+def test_a_pinch_on_the_earth_keeps_the_places_under_the_fingers_under_them(station, start, sharp, spread):
+    """Two real touches on the Earth, spread and then closed, at a phone's size: the places under each finger stay under that finger the whole gesture (within a
+    few pixels), from well out and from close over the ground. The zoom used to be about the picture's middle by the distance from the Earth's centre: close in the
+    height closed far faster than the fingers (a jump in), and the places slid out from under them."""
+    pg, cdp, errors = station
+    pg.evaluate("() => { _ae.pan = null; _aePreset('earth'); }")
+    pg.wait_for_function("() => { _ae.dirty = true; _aeKick(); return !_ae.fly && _ae.target === 'earth' && AE_TARGETS.earth.stop > 1; }", timeout=60_000, polling=200)
+    pg.evaluate(
+        "([k, s]) => { window.__sharp = window.__sharp || _aeSharpMin; window._aeSharpMin = s ? function () { return s; } : window.__sharp;"
+        " _ae.pan = null; _ae.twist = 0; _ae.az = 0.5; _ae.el_ = 0.3; _ae.dist = s ? k : AE_TARGETS.earth.stop * k; _ae.dirty = true; _aeKick(); }",
+        [start, sharp],
+    )
+    pg.wait_for_timeout(300)   # (a view of the middle latitudes: within the view's own limit on how far over a pole it looks, where the hold can always be kept)
+    a, b = (150, 430), (240, 470)
+    rels = pg.evaluate(UNDER_FINGERS, [a, b])
+    assert all(rels), ("both fingers start on the Earth", rels)
+    touches(cdp, "touchStart", [a, b])
+    pg.wait_for_function("() => !!_ae.pinch && !!_ae.pinch.hold", timeout=10_000)   # (both fingers land on place names there: still the globe's pinch)
+    worst = 0
+    path = [(i, i * 0.6) for i in range(6, spread + 1, 6)] + [(spread - i, (spread - i) * 0.6) for i in range(6, spread + spread // 2 + 1, 6)]   # spread, then close past where it began
+    for dx, dy in path:
+        fa, fb = (a[0] - dx, a[1] - dy), (b[0] + dx, b[1] + dy)
+        touches(cdp, "touchMove", [fa, fb])
+        pg.wait_for_function(
+            "(m) => !!_ae.pinch && Math.abs(_ae.pinch.mx - m[0]) < 0.01 && Math.abs(_ae.pinch.span - m[1]) < 0.01",
+            arg=[(fa[0] + fb[0]) / 2, ((fa[0] - fb[0]) ** 2 + (fa[1] - fb[1]) ** 2) ** 0.5],
+            timeout=10_000,
+        )
+        drawn = pg.evaluate(DRAWN_AT, rels)
+        worst = max(worst, max(((d[0] - f[0]) ** 2 + (d[1] - f[1]) ** 2) ** 0.5 for d, f in zip(drawn, (fa, fb))))
+    touches(cdp, "touchEnd", [])
+    pg.evaluate("() => { window._aeSharpMin = window.__sharp; _ae.twist = 0; }")
+    assert worst < 6, ("a place left its finger by %.1f px" % worst)
     assert not errors, errors
