@@ -12,6 +12,7 @@ Output:
 
 import glob
 import os
+import sys
 import platform
 import sysconfig
 
@@ -31,6 +32,14 @@ block_cipher = None
 # SPECPATH is the absolute directory containing this spec file.
 DESKTOP_DIR = SPECPATH
 REPO_ROOT = os.path.dirname(SPECPATH)
+
+# Standard-library modules the add-ons' packages import that the app itself may not (yt-dlp needs optparse): kept in the
+# frozen app so an add-on's Python code runs in it. The list lives with the pinned wheels (scripts/pin_addon_wheels.py).
+# Read by path: importing zimi.addon_wheels would import the zimi package, the server and libzim, at build time.
+_wheels = {}
+with open(os.path.join(REPO_ROOT, 'zimi', 'addon_wheels.py'), encoding='utf-8') as _f:
+    exec(compile(_f.read(), 'addon_wheels.py', 'exec'), _wheels)
+FROZEN_STDLIB = _wheels['FROZEN_STDLIB']
 
 
 def _app_version(repo_root):
@@ -189,7 +198,7 @@ a = Analysis(
         (os.path.join(REPO_ROOT, 'zimi/assets'), 'zimi/assets'),
         (os.path.join(REPO_ROOT, 'zimi/static'), 'zimi/static'),
     ] + builtin_datas + pythonnet_datas + webkit_datas,
-    hiddenimports=[
+    hiddenimports=list(FROZEN_STDLIB) + [
         'zimi',
         'zimi.server',
         'zimi.http',

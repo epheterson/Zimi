@@ -36,5 +36,16 @@
   "zimi_games": [
    "Fixes and Kiwix compatibility, so the Games ZIM can be shared with the community."
   ]
+ },
+ "1.16.0": {
+  "zimi_almanac": [
+   "Stand on the ground of Earth, the Moon, Mars, Venus, Titan, Pluto and more, under each world's own sky.",
+   "Fly a UFO between the worlds and set it down on their ground.",
+   "Tap any world, from the Sun out to Pluto, and the 3D view flies you there in one move.",
+   "Drive the Moon buggy or a Mars rover across the real landing sites, and replay Apollo 11, Perseverance and Voyager."
+  ],
+  "zimi_games": [
+   "Twenty-five new games, in ten languages."
+  ]
  }
 }

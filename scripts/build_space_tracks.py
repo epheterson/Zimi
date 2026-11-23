@@ -169,6 +169,34 @@ PROBES = {
         "step": "1d",
         "events": [["2021-12-25", "launch", ""], ["2022-01-24", "arrive", "L2"]],
     },
+    # Retired in a Sun orbit: the table ends the day contact did, and the view holds the craft at that last known place.
+    "spitzer": {
+        "hold": True,
+        "name": "Spitzer Space Telescope",
+        "id": "-79",
+        "start": "2003-08-26",
+        "end": "2020-01-30",
+        "step": "1d",
+        "events": [["2003-08-25", "launch", ""], ["2020-01-30", "end", ""]],
+    },
+    "kepler": {
+        "hold": True,
+        "name": "Kepler",
+        "id": "-227",
+        "start": "2009-03-08",
+        "end": "2018-11-15",
+        "step": "1d",
+        "events": [["2009-03-07", "launch", ""], ["2018-11-15", "end", ""]],
+    },
+    "gaia": {
+        "hold": True,
+        "name": "Gaia",
+        "id": "-139479",
+        "start": "2013-12-20",
+        "end": "2025-03-27",
+        "step": "1d",
+        "events": [["2013-12-19", "launch", ""], ["2014-01-08", "arrive", "L2"], ["2025-03-27", "end", ""]],
+    },
     "cassini": {
         "name": "Cassini",
         "id": "-82",
@@ -208,6 +236,54 @@ PROBES = {
             ["2030-04-11", "orbit", "Jupiter"],
         ],
     },
+    "solarorbiter": {
+        "name": "Solar Orbiter",
+        "id": "-144",
+        "start": "2020-02-11",
+        "end": "2030-11-19",
+        "step": "1d",
+        "events": [["2020-02-10", "launch", ""]],
+    },
+    "psyche": {
+        "name": "Psyche",
+        "id": "-255",
+        "start": "2023-10-14",
+        "end": "2029-02-23",
+        "step": "1d",
+        "events": [["2023-10-13", "launch", ""]],
+    },
+    "lucy": {
+        "name": "Lucy",
+        "id": "-49",
+        "start": "2021-10-17",
+        "end": "2033-03-12",
+        "step": "1d",
+        "events": [["2021-10-16", "launch", ""]],
+    },
+    "juice": {
+        "name": "JUICE",
+        "id": "-28",
+        "start": "2023-04-15",
+        "end": "2031-07-20",
+        "step": "1d",
+        "events": [["2023-04-14", "launch", ""]],
+    },
+    "osirisapex": {
+        "name": "OSIRIS-APEX",
+        "id": "-64",
+        "start": "2016-09-09",
+        "end": "2030-03-21",
+        "step": "1d",
+        "events": [["2016-09-08", "launch", ""]],
+    },
+    "hayabusa2": {
+        "name": "Hayabusa2",
+        "id": "-37",
+        "start": "2014-12-04",
+        "end": "2027-01-28",
+        "step": "1d",
+        "events": [["2014-12-03", "launch", ""]],
+    },
 }
 # The giant planets (and Pluto), from the same table as the probes.
 PLANETS = {
@@ -226,6 +302,14 @@ BODIES = {
     "ceres": {
         "name": "Ceres",
         "id": "2000001",
+        "start": "1900-01-01",
+        "end": "2100-01-01",
+        "step": "2d",
+        "events": [],
+    },
+    "vesta": {
+        "name": "Vesta",
+        "id": "2000004",
         "start": "1900-01-01",
         "end": "2100-01-01",
         "step": "2d",
@@ -272,6 +356,15 @@ REF_PROBE_DATES = {
     "cassini": ["2000-01-01", "2004-07-01", "2012-01-01"],
     "galileo": ["1992-01-01", "1995-12-07", "2000-01-01"],
     "europaclipper": ["2025-03-01", "2026-10-13", "2030-01-01"],
+    "spitzer": ["2004-01-01", "2012-01-01", "2020-01-01"],
+    "kepler": ["2010-01-01", "2014-01-01", "2018-10-01"],
+    "gaia": ["2014-06-01", "2020-01-01", "2025-03-01"],
+    "solarorbiter": ["2020-06-01", "2024-01-01", "2026-10-13"],
+    "psyche": ["2023-11-01", "2025-01-01", "2026-10-13"],
+    "lucy": ["2021-11-01", "2024-01-01", "2026-10-13"],
+    "juice": ["2023-05-01", "2025-01-01", "2026-10-13"],
+    "osirisapex": ["2016-10-01", "2021-01-01", "2026-10-13"],
+    "hayabusa2": ["2015-01-01", "2020-12-06", "2026-10-13"],
 }
 
 
@@ -489,7 +582,7 @@ def _entry(spec, rows, tols, events):
     if miss > 1.0:
         raise RuntimeError("%s: the written curve misses by %.2fx its tolerance" % (spec["name"], miss))
     print("%-14s dense %7d -> kept %5d  worst %.2f of tolerance" % (spec["name"], len(rows), len(keep), miss))
-    return {
+    entry = {
         "name": spec["name"],
         "id": spec["id"],
         "jd0": packed[0][0],
@@ -497,6 +590,9 @@ def _entry(spec, rows, tols, events):
         "events": events,
         "s": packed,
     }
+    if spec.get("hold"):
+        entry["hold"] = True   # retired: the view keeps it at the table's last place
+    return entry
 
 
 def track_names():

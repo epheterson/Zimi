@@ -1,0 +1,32 @@
+# Searches skip these (ripgrep reads .ignore; git does not, so they stay tracked).
+# Data, vendored libraries and generated art: one line can be 100K+ tokens,
+# so a search hit or a whole-file read here fills an agent's context.
+# Open one of these only when the task is to edit it.
+
+# vendored or minified
+zimi/static/pdfjs/
+zimi/static/temml/
+zimi/static/libzim/
+zimi/static/earth/*.min.js
+zimi/assets/browsertrix-behaviors/
+zimi/builtin/games/engines/
+zimi/builtin/games/puzzles/*.js
+!zimi/builtin/games/puzzles/zimi-fit.js
+zimi/builtin/games/zimcity/engine/
+tests/vendor/
+
+# data
+zimi/static/earth/*.json
+zimi/static/tz-borders.json
+zimi/static/world-map.svg
+zimi/builtin/games/data/
+zimi/builtin/games/courts*.js
+zimi/builtin/games/fiveletters-words.js
+zimi/builtin/games/hanafuda-art.js
+zimi/builtin/games/world-land.js
+zimi/builtin/games/thumbs/
+zimi/builtin/games/icon.svg
+tests/fixtures/best_answer/corpus.json
+
+# built
+*.zim

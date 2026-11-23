@@ -26,6 +26,7 @@ Things to know:
 - `--dist loadgroup` keeps a module's tests on one worker, which is what module-scoped servers and libraries assume (it is `--dist loadfile` with one exception: a module that sets `XDIST_SPLIT = n` has its independent parametrized cases dealt over n workers, so one long module is not the last one running).
 - Tests never bind a fixed port: use `tests/ports.py` (`free_port()`, or the `free_port` fixture) or `--port 0`. Fixed ports collide when workers, or another session, run at once.
 - The suite clears `ZIMI_TORRENT` and `ZIMI_OFFLINE` for itself, so it passes the same with or without them exported; a test that needs either sets it with `monkeypatch.setenv`.
+- At most `ZIMI_TEST_BROWSERS` Chromiums run at once on the machine (default 8), shared by every pytest there, whatever `-n` says (`tests/browser_slots.py`). On a Mac the 3D tests draw WebGL on the GPU through Metal instead of SwiftShader, at about a tenth of the CPU; `ZIMI_TEST_GL=soft` draws in software, as CI's Linux runners do.
 - Each pytest run uses its own temp directory (tests/conftest.py), so two runs at once do not delete each other's files.
 - The node tests (`tests/*.cjs`) are not collected by pytest; `scripts/run_node_tests.py` runs them all in parallel and prints a failing file's whole output.
 - Old habits that still work: `python3 tests/test_unit.py`, `python3 tests/test_unit.py --perf` (needs a running server).
@@ -54,6 +55,12 @@ Before tagging, verify these on the feature branch:
 ### Release notes
 
 Desktop Release builds the draft's body from the version's `## [X.Y.Z]` section in `CHANGELOG.md` (`scripts/release_notes.py`). The section may open with a `### Highlights` block, before `### Added` and the rest: up to eight one-line bullets grouped under bold area headings (see below). When it does, the release body is that block, a **Fixed** list of the section's lines that cite an issue (#N) the Highlights do not already name, and a link to the full entry in the CHANGELOG at the version's tag. Without the block the whole section is the body. Highlights are one-line factual bullets, no stories; the CHANGELOG itself keeps them as its first subsection. A draft that already exists is never overwritten, so a curated body wins.
+
+The Highlights are grouped by area under bold headings, **Zimi** first and **Almanac** last (it is the Easter egg), with **Games** and any other area between, and a bullet or more under each. Each bullet is one short line saying what a person can do now; a fix is listed only when it fixes something an earlier release shipped, and what was built and corrected inside the release is not a fix. `python3 scripts/release_notes.py --check X.Y.Z` (or `Unreleased`) names a block that breaks the order. Add your line to the Unreleased block in the right area as you make the change.
+
+### Patch releases
+
+Patch releases (`X.Y.Z`) are cut on demand only: when a real bug hits people on a released version, branch from `main`, fix just that, and release it as the next patch. The release in progress (`X.Y+1.0`) is never held for it and never carries a patch's version number. A merged version is spent: a fix after a merge ships as the next patch, never a re-cut of the same number.
 
 The Highlights are grouped by area under bold headings, **Zimi** first and **Almanac** last (it is the Easter egg), with **Games** and any other area between, and a bullet or more under each. Each bullet is one short line saying what a person can do now; a fix is listed only when it fixes something an earlier release shipped, and what was built and corrected inside the release is not a fix. `python3 scripts/release_notes.py --check X.Y.Z` (or `Unreleased`) names a block that breaks the order. Add your line to the Unreleased block in the right area as you make the change.
 
