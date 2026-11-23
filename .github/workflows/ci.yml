@@ -77,9 +77,9 @@ jobs:
   #   test-quick    every test that does not need a browser, in parallel
   #                 (pytest-xdist), plus the node tests and the packaging checks
   #   test-browser  the browser tests (the `browser` marker, set in
-  #                 tests/conftest.py), split over 4 shards (--shard i/4, which
-  #                 puts every test module in exactly one shard), each parallel
-  #                 inside with xdist
+  #                 tests/conftest.py), split over 16 shards (--shard i/16, which
+  #                 puts every test module in exactly one shard), one browser
+  #                 per runner
   #   test          the one check that is green only when both are; the name the
   #                 branch protection and the release know
   #
@@ -104,7 +104,21 @@ jobs:
       # FastMCP, and their MCP server refused to start.
       # Pillow as requirements.txt has it (favicons; the Red contrast test reads pixels).
       - name: Install package
-        run: pip install -e ".[pdf,mcp]" pytest pytest-xdist "Pillow>=13.0.0" numpy
+        run: pip install -e ".[pdf,mcp]" pytest pytest-xdist pyflakes "Pillow>=13.0.0" numpy
+
+      # Zimi's own ZIMs (zimi/builtin/*.zim) are committed once per release, not
+      # with every source edit: a pull request into main (a release) fails here
+      # when they are older than their source, and the fix is one command,
+      # ./scripts/release-gate.sh --fix. Pull requests into topic and dev
+      # branches skip this, so no one commits a 17 MB binary per change.
+      - name: Own ZIMs are current (a release)
+        if: github.base_ref == 'main' || github.ref == 'refs/heads/main'
+        run: python -m zimi.ownzims --check
+
+      # Every job tests the ZIMs the source builds to, not whatever was last
+      # committed: a no-op (one hash) when they are current.
+      - name: Build Zimi's own ZIMs from the source
+        run: python -m zimi.ownzims
 
       # The tier without a browser. Tests needing a sidecar are
       # `pytest.mark.skipif`, so they skip cleanly here instead of failing.
@@ -166,13 +180,13 @@ jobs:
 
 
   test-browser:
-    name: test-browser (${{ matrix.shard }}/4)
+    name: test-browser (${{ matrix.shard }}/16)
     if: github.event_name != 'pull_request' || (!github.event.pull_request.draft && github.base_ref == 'main')
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
       matrix:
-        shard: [1, 2, 3, 4]
+        shard: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16]
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
 
@@ -189,7 +203,7 @@ jobs:
       # FastMCP, and their MCP server refused to start.
       # Pillow as requirements.txt has it (favicons; the Red contrast test reads pixels).
       - name: Install package
-        run: pip install -e ".[pdf,mcp]" pytest pytest-xdist "Pillow>=13.0.0" numpy
+        run: pip install -e ".[pdf,mcp]" pytest pytest-xdist pyflakes "Pillow>=13.0.0" numpy
 
       # A real browser, so the paint gate actually runs somewhere.
       #
@@ -213,9 +227,17 @@ jobs:
 
       # --shard i/N: the browser modules, balanced by measured time, each in exactly one
       # shard (tests/conftest.py); tests/test_ci_contract.py checks the shards
-      # add up to the whole.
-      - name: Run the browser tests (shard ${{ matrix.shard }} of 4)
-        run: python -m pytest tests/ -m browser --shard ${{ matrix.shard }}/4 -n auto --dist loadgroup -q --durations=25 --junitxml=junit-shard-${{ matrix.shard }}.xml
+      # add up to the whole. One browser per runner: software GL
+      # draws on every core, so two at once starved each other's frames into timeouts. A browser test that fails is run up to twice more: on a
+      # shared runner drawing 3D in software a frame can stall for seconds, and a
+      # real defect still fails all three times (--reruns, pytest-rerunfailures). Tests marked local_gate time
+      # 3D frames that software GL can't draw fast enough; the full local run on every bake keeps them.
+      # pytest-timeout ends a hung test (the modules' timeout marks), and the job's own limit ends a hung shard.
+      - name: Run the browser tests (shard ${{ matrix.shard }} of 16)
+        timeout-minutes: 60
+        run: |
+          pip install "pytest-rerunfailures>=14" "pytest-timeout>=2.3"
+          python -m pytest tests/ -m "browser and not local_gate" --shard ${{ matrix.shard }}/16 -q --durations=25 --reruns 2 --timeout 900 --junitxml=junit-shard-${{ matrix.shard }}.xml
 
       # The timing report: the shards are dealt by the seconds in tests/shard_weights.json. Download these
       # when one shard runs much longer than its siblings and run scripts/shard_weights.py on them.
@@ -314,7 +336,7 @@ jobs:
             || sudo apt-get install -y libgirepository1.0-dev
 
       - name: Install desktop dependencies
-        run: pip install -r desktop/requirements-desktop.txt pytest pytest-xdist
+        run: pip install -r desktop/requirements-desktop.txt pytest pytest-xdist pyflakes
 
       - name: Install libtorrent (in-process BT engine)
         shell: bash
@@ -330,6 +352,10 @@ jobs:
       - name: Install PyGObject (Linux)
         if: runner.os == 'Linux'
         run: pip install "PyGObject<3.52"
+
+      - name: Build Zimi's own ZIMs from the source
+        shell: bash
+        run: python -m zimi.ownzims
 
       # -v, not -q, and the reason is specific: a hard interpreter crash prints
       # no failure summary at all. The Windows leg of the 1.9.0 tag died at 30%
@@ -574,6 +600,22 @@ jobs:
           docker compose ps
           docker compose logs --tail 80
           exit 1
+
+      - name: Image stays under a gig (compressed)
+        run: |
+          # The image always stays under a gigabyte. The big optional parts (browser, Node, ffmpeg,
+          # yt-dlp, voices, warc2zim) are add-ons fetched into /config (zimi/addons.py), not image layers.
+          # gzip -6 is close to what a registry stores; the limit is 1 GB (1000 MB).
+          LIMIT=1000000000
+          IMAGE=$(docker inspect --format '{{.Image}}' zimi)
+          UNPACKED=$(docker image inspect --format '{{.Size}}' "$IMAGE")
+          PACKED=$(docker save "$IMAGE" | gzip -6 | wc -c)
+          echo "image: $((UNPACKED / 1000000)) MB unpacked, $((PACKED / 1000000)) MB compressed (limit $((LIMIT / 1000000)) MB)"
+          if [ "$PACKED" -gt "$LIMIT" ]; then
+            echo "::error::the image is $((PACKED / 1000000)) MB compressed, over the 1 GB limit; move the new weight into an add-on (zimi/addons.py)"
+            docker history --no-trunc --format '{{.Size}}\t{{.CreatedBy}}' "$IMAGE" | sort -hr | head -8
+            exit 1
+          fi
 
       - name: Smoke test Docker
         run: |

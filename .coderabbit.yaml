@@ -28,6 +28,13 @@ reviews:
     enabled: true
     auto_incremental_review: false
     drafts: false
+    # Reviews follow the default branch (main) unless more bases are listed:
+    # PRs into a release line (docs/release-lines.md) are reviewed too.
+    base_branches:
+      - "line/.*"
+    # A merge-up is content that was reviewed when it first landed.
+    ignore_title_keywords:
+      - "merge-up"
   path_filters:
     # Vendored libraries and binary fixtures: nothing here is ours to review.
     - "!zimi/static/pdfjs/**"

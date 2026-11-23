@@ -26,6 +26,7 @@ Things to know:
 - `--dist loadgroup` keeps a module's tests on one worker, which is what module-scoped servers and libraries assume (it is `--dist loadfile` with one exception: a module that sets `XDIST_SPLIT = n` has its independent parametrized cases dealt over n workers, so one long module is not the last one running).
 - Tests never bind a fixed port: use `tests/ports.py` (`free_port()`, or the `free_port` fixture) or `--port 0`. Fixed ports collide when workers, or another session, run at once.
 - The suite clears `ZIMI_TORRENT` and `ZIMI_OFFLINE` for itself, so it passes the same with or without them exported; a test that needs either sets it with `monkeypatch.setenv`.
+- At most `ZIMI_TEST_BROWSERS` Chromiums run at once on the machine (default 8), shared by every pytest there, whatever `-n` says (`tests/browser_slots.py`). On a Mac the 3D tests draw WebGL on the GPU through Metal instead of SwiftShader, at about a tenth of the CPU; `ZIMI_TEST_GL=soft` draws in software, as CI's Linux runners do.
 - Each pytest run uses its own temp directory (tests/conftest.py), so two runs at once do not delete each other's files.
 - The node tests (`tests/*.cjs`) are not collected by pytest; `scripts/run_node_tests.py` runs them all in parallel and prints a failing file's whole output.
 - Old habits that still work: `python3 tests/test_unit.py`, `python3 tests/test_unit.py --perf` (needs a running server).

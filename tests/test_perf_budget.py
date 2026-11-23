@@ -35,7 +35,7 @@ def _first_paint_files():
     shell = _read("templates/index.html").decode()
     files = re.findall(r'(?:href|src)="/static/([\w.-]+\.(?:css|js))[?"]', shell)
     app = _read("static/app.js").decode()
-    files += re.findall(r"_MOON_MAP_URL = '/static/([\w./-]+)'", app)
+    files += re.findall(r"_MOON_MAP_URL = (?:_almAsset\()?'/static/([\w./-]+)'", app)
     return files
 
 
