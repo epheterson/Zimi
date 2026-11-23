@@ -1310,12 +1310,34 @@ _CHILD_PYTHON = (
 )
 
 
-def _zim_entry_count(zim_name):
+_header_counts = {}
+
+
+def zim_entry_count(zim_name, zim_path=None):
+    """How many entries a ZIM holds: the library list's count, or, while that still reads "?" (a cold start, before the
+    background measure has opened the file), the count in the ZIM's own header, which costs one open and no scan. 0 only
+    when neither can be read. The builders choose their process and the Q-ID pass its size cap by this number, and a
+    "?" taken as 0 made the biggest ZIM of a cold start the one built on a server thread."""
     for z in _srv._zim_list_cache or []:
         if z.get("name") == zim_name:
             entries = z.get("entries", 0)
-            return entries if isinstance(entries, int) else 0
-    return 0
+            if isinstance(entries, int):
+                return entries
+    zim_path = zim_path or _srv.get_zim_files().get(zim_name)
+    if not zim_path:
+        return 0
+    try:
+        key = (zim_path, os.path.getsize(zim_path), os.path.getmtime(zim_path))
+        if key not in _header_counts:
+            from libzim.reader import Archive
+
+            _header_counts[key] = Archive(zim_path).entry_count
+        return _header_counts[key]
+    except Exception:
+        return 0
+
+
+
 
 
 def _build_index_isolated(
@@ -1339,7 +1361,7 @@ def _build_index_isolated(
         subproc.wait_for_memory()
         if subproc.stopping.is_set():
             raise RuntimeError(f"{kind} index build skipped: the server is stopping")
-        if getattr(sys, "frozen", False) or _zim_entry_count(zim_name) < min_entries:
+        if getattr(sys, "frozen", False) or zim_entry_count(zim_name, zim_path) < min_entries:
             return build_fn(zim_name, zim_path)
         return _run_build_child(kind, zim_name, zim_path, close_fn)
 

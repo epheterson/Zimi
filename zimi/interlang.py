@@ -27,6 +27,7 @@ from zimi.search import (
     _build_index_isolated,
     _loadavg_throttle,
     _write_index_meta,
+    zim_entry_count,
     pooled_db_use as _pooled_db_use,
 )
 from zimi.safety import join_inside, loggable
@@ -935,8 +936,7 @@ def request_qid_index(zim_name):
     path = zims.get(zim_name)
     if path is None or _zim_project_name(zim_name) != "wikipedia":
         return
-    entries = next((z.get("entries", 0) for z in (_srv._zim_list_cache or []) if z.get("name") == zim_name), 0)
-    if not isinstance(entries, int) or entries > _QID_FULL_SCAN_MAX_ENTRIES:
+    if zim_entry_count(zim_name, path) > _QID_FULL_SCAN_MAX_ENTRIES:
         return
 
     def _build():
@@ -972,7 +972,9 @@ def _build_all_qid_indexes_inner(first_use=False):
     current = 0
     skipped_large = 0
     for name, path in wiki_zims:
-        entries = zim_info.get(name, 0) or 0
+        entries = zim_info.get(name, 0)
+        if not isinstance(entries, int):   # "?": not measured yet
+            entries = zim_entry_count(name, path)
         if entries > _QID_FULL_SCAN_MAX_ENTRIES:
             skipped_large += 1
             continue
@@ -984,11 +986,7 @@ def _build_all_qid_indexes_inner(first_use=False):
             need_build.append((name, path))
 
     if need_build:
-        need_build.sort(
-            key=lambda x: (
-                zim_info.get(x[0], 0) if isinstance(zim_info.get(x[0], 0), int) else 0
-            )
-        )
+        need_build.sort(key=lambda x: zim_entry_count(x[0], x[1]))
 
         _background_start("qids", len(need_build))
         try:

@@ -54,7 +54,7 @@ class IsolatedBuildTests(unittest.TestCase):
 
     def _isolated(self, kind, build_fn, close_fn):
         closed = []
-        with mock.patch.object(_search, "_zim_entry_count", lambda name: 1):
+        with mock.patch.object(_search, "zim_entry_count", lambda name, path=None: 1):
             _search._build_index_isolated(
                 kind,
                 "fixture",

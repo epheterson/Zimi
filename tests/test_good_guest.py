@@ -79,7 +79,7 @@ def test_a_builder_child_takes_idle_io_as_well_as_nice(monkeypatch):
 
 def test_builders_of_different_kinds_never_overlap(monkeypatch):
     monkeypatch.setattr(subproc, "wait_for_memory", lambda *a, **k: True)
-    monkeypatch.setattr(search, "_zim_entry_count", lambda name: 0)   # small: built in this process
+    monkeypatch.setattr(search, "zim_entry_count", lambda name, path=None: 0)   # small: built in this process
     running, peak, lock = [0], [0], threading.Lock()
 
     def build(name, path):
@@ -233,3 +233,14 @@ def test_example_compose_files_carry_a_memory_ceiling_and_a_stop_grace(path):
     text = open(os.path.join(REPO_ROOT, path), encoding="utf-8").read()
     assert "\n    mem_limit:" in text
     assert "\n    stop_grace_period:" in text
+
+
+def test_an_unmeasured_zim_is_counted_from_its_header(monkeypatch, tmp_path):
+    """A cold start lists every ZIM entries as "?" until the background measure has run; the builders must not read that
+    as zero (the biggest ZIM built on a server thread) nor compare it with a number (the Q-ID pass crashed)."""
+    zim = str(tmp_path / "fixture.zim")
+    build_fixture_zim(zim)
+    monkeypatch.setattr(search._srv, "_zim_list_cache", [{"name": "fixture", "entries": "?"}])
+    monkeypatch.setattr(search, "_header_counts", {})
+    assert search.zim_entry_count("fixture", zim) > 0
+    assert search.zim_entry_count("nope", None) == 0
