@@ -47,18 +47,6 @@ def successor_name(prefix):
     return prefix
 
 
-def old_names(prefix):
-    """Every earlier name of `prefix` in the table."""
-    t, out, todo = table(), [], [prefix]
-    while todo:
-        cur = todo.pop()
-        for old, new in t.items():
-            if new == cur and old not in out:
-                out.append(old)
-                todo.append(old)
-    return out
-
-
 def remember(new_prefix, installed_file):
     _pending[new_prefix] = installed_file
 

@@ -155,7 +155,7 @@ def test_a_tap_on_the_bar_takes_the_almanac_to_its_top(served):
         try:
             pg.goto(base + "/#almanac")
             pg.wait_for_function(
-                "() => { const c = document.getElementById('almanac-content'); return !_almVeilIsUp() && c && c.scrollHeight > 3000; }",
+                "() => { const c = document.getElementById('almanac-content'); return (typeof _almShownAt !== 'undefined' && _almShownAt > 0 && !_almSkyHold()) && c && c.scrollHeight > 3000; }",
                 timeout=30000,
             )
             pg.evaluate(
@@ -253,13 +253,13 @@ VIEWS = {
     "dictionary": ("() => openDictionary()", APP, None, False),
     "almanac": (
         "() => openAlmanac()",
-        "() => { const c = document.getElementById('almanac-content'); return !_almVeilIsUp() && c && c.scrollHeight > 3000; }",
+        "() => { const c = document.getElementById('almanac-content'); return (typeof _almShownAt !== 'undefined' && _almShownAt > 0 && !_almSkyHold()) && c && c.scrollHeight > 3000; }",
         None,
         False,
     ),
     "a-table-over-the-scrolled-almanac": (
         "() => openAlmanac()",
-        "() => !_almVeilIsUp() && document.getElementById('alm-group-tables')",
+        "() => (typeof _almShownAt !== 'undefined' && _almShownAt > 0 && !_almSkyHold()) && document.getElementById('alm-group-tables')",
         "() => { document.getElementById('almanac-content').scrollTop = 1500; _almRefOpen('sunmoon'); }",
         False,
     ),
@@ -357,9 +357,9 @@ def test_a_tap_on_the_bar_takes_every_view_to_its_top(library, view):
                 k: v for k, v in pg.evaluate(SCROLLED).items() if behind.get(k) != v
             }
             assert moved, "the view scrolled"
-            # The header steps aside only while an article is read.
+            # The header stays while reading, scrolling or turning pages (7e7b7bb8d), an article included.
             away = pg.evaluate("() => document.body.classList.contains('chrome-away')")
-            assert away == reading, (view, away)
+            assert not away, (view, away)
             pg.evaluate("() => document.body.classList.remove('chrome-away')")
             pg.wait_for_timeout(400)
             spot = pg.evaluate(EMPTY_SPOT)

@@ -17,7 +17,6 @@ from zimi.btclient import NO_REDIRECT, REQUEST_TIMEOUT_S, ClientError, ExternalB
 
 log = logging.getLogger("zimi.transmission")
 
-RPC_PATH = "/transmission/rpc"
 MIN_RPC_VERSION = 16  # labels, Transmission 3.00
 SESSION_HEADER = "X-Transmission-Session-Id"
 

@@ -598,6 +598,11 @@ def daily_card(name, day):
     if not e or not e.get("path"):
         return None
     out = {k: e[k] for k in keys if e.get(k)}
+    # The ISO 639-1 code a Wiktionary/Wikiquote word or quote is in, so the
+    # card's Say speaks the same language the Dictionary does.
+    # On-this-day events carry none; a wiki's pick carries its own.
+    if e.get("lang"):
+        out["lang"] = e["lang"]
     if e.get("kick"):
         out["part_of_speech" if e.get("role") == "word" else "attribution"] = e["kick"]
     return dict(out, zim=name)
@@ -885,46 +890,45 @@ def _warm(day, names):
         for name in names:
             _day_of(name, day)
             words(name, day)
-        lead = _discover_wiktionary(names)
-        if lead:
-            _say_word_ahead(lead, day)
     finally:
         with _lock:
             _warming.discard(day)
 
 
-def _discover_wiktionary(names):
-    """The Wiktionary whose word Discover's Word of the day shows by default,
-    ranked as the page ranks it (_featuredZimFor) for a reader with no
-    languages set: English, then a Simple one, then the most entries."""
-    best, rank = None, None
-    for z in _srv._zim_list_cache or []:
-        if z.get("name") not in names or _project(z) != "wiktionary":
-            continue
-        r = (_language(z) == "en", "simple" in z["name"].lower(), z.get("entries") or 0)
-        if rank is None or r > rank:
-            best, rank = z["name"], r
-    return best
+_saying = set()  # (word, language) being said ahead now: a card drawn twice starts one
 
 
-def _say_word_ahead(name, day):
-    """Discover's word of the day, said by the server's voice once the day is
-    worked out, so Say plays at once (Eric, 2026-10-21: "Just the discover row
-    word ... One word"). Only with a voice already here for its language, and
-    never while one is busy reading."""
-    if not _srv.bundled("voices"):
+def say_card_ahead(card):
+    """The word of the day a page has just been given, said by the server's voice in the background so its Say plays
+    at once. Exactly the word the card shows, for the day and language its browser asked for ("only
+    warm the one word that is being displayed"). Only with a voice already here, never while one is busy reading.
+    """
+    if not card or not card.get("title") or not _srv.bundled("voices"):
         return
-    z = next((z for z in _srv._zim_list_cache or [] if z.get("name") == name), None)
+    z = next(
+        (z for z in _srv._zim_list_cache or [] if z.get("name") == card.get("zim")),
+        None,
+    )
     if z is None or _project(z) != "wiktionary":
         return
-    try:
-        card = daily_card(name, day)
-        if card and card.get("title"):
+    key = (card["title"], _language(z))
+    with _lock:
+        if key in _saying:
+            return
+        _saying.add(key)
+
+    def run():
+        try:
             from zimi import voices
 
-            voices.say_ahead(card["title"], _language(z))
-    except Exception as e:
-        log.debug("Word of the day for %s not said ahead: %s", name, e)
+            voices.say_ahead(*key)
+        except Exception as e:
+            log.debug("Word of the day %r not said ahead: %s", key[0], e)
+        finally:
+            with _lock:
+                _saying.discard(key)
+
+    threading.Thread(target=run, name="word-say-ahead", daemon=True).start()
 
 
 def _start_warm(day, names):

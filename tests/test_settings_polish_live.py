@@ -214,13 +214,14 @@ def test_seeding_settings_hide_while_bittorrent_is_off(served, phone):
     pg.route("**/manage/mirror*", bt_off)
     pg.goto(served + "/?manage=server")
     pg.wait_for_selector("#ms-mirror-status input[onchange*=torrent]", state="attached", timeout=15000)
-    pg.wait_for_selector("#ms-dl-schedule .needs-bt", state="attached", timeout=15000)
+    pg.wait_for_selector("#ms-dl-schedule .ms-dl-speed", state="attached", timeout=15000)
+    # Restrict uploads rides the nightly window: with the window off it is not drawn at all.
     got = pg.evaluate(
         """() => ({ off: document.getElementById('ms-pane').classList.contains('ms-bt-off'),
       mirror: !!(document.querySelector('#ms-mirror-status input[onchange*=mirror]') || {}).offsetParent,
-      upload: !!document.querySelector('#ms-dl-schedule .needs-bt').offsetParent })"""
+      upload: document.querySelectorAll('#ms-dl-schedule .needs-bt').length })"""
     )
-    assert got == {"off": True, "mirror": False, "upload": False}, got
+    assert got == {"off": True, "mirror": False, "upload": 0}, got
 
 
 def test_every_settings_on_off_is_a_switch(served, phone):

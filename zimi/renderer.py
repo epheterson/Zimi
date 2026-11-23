@@ -62,7 +62,6 @@ memory event. See ``RenderedSession``.
 import hashlib
 import html as _html
 import logging
-import mimetypes
 import os
 import posixpath
 import re
@@ -487,10 +486,28 @@ def browser_status(refresh=False):
     with _available_lock:
         if _available is not None and not refresh:
             return _available
-    result = _probe_browser()
+    result = _probe_off_any_loop()
     with _available_lock:
         _available = result
     return result
+
+
+def _probe_off_any_loop():
+    """The probe uses Playwright's sync API, which refuses to start on a thread that already runs an asyncio loop (a
+    caller inside an async framework, or a test that holds a sync Playwright of its own). It said "no-chromium" there and
+    that answer was cached for the life of the process: every later caller heard no browser. On such a thread the probe
+    runs on a fresh one."""
+    import asyncio
+
+    try:
+        asyncio.get_running_loop()
+    except RuntimeError:
+        return _probe_browser()
+    out = []
+    t = threading.Thread(target=lambda: out.append(_probe_browser()), name="zimi-browser-probe", daemon=True)
+    t.start()
+    t.join()
+    return out[0] if out else (False, "no-chromium")
 
 
 def browser_available(refresh=False):

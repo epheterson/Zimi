@@ -313,7 +313,11 @@ def test_puzzle_pages_say_their_rules_in_one_line(browser, served):
 # 8. German: the games speak to the player as "du" (the shelf's "Sie" in a score pill read as "she/they"), and Hold'em's
 # out and fold words differ.
 THIRD_PERSON_SIE = {"game.goproblems.why", "game.koikoi.why", "help.fourinarow.turn", "help.inertia.turn", "help.liarsdice.tip", "help.scopa.turn",
-                    "history.blast", "history.draughts", "history.golf", "history.pattern", "openings.notThis", "sky.fact.venus", "spider.why.rank"}
+                    "history.blast", "history.draughts", "history.golf", "history.pattern", "openings.notThis", "sky.fact.venus", "spider.why.rank",
+                    # the new games: Sie is she, it or they (a card, a pile, a shape), never the player
+                    "accordion.why.match", "help.beleaguered.tip", "help.canfield.tip", "help.cheat.turn", "help.courtier.turn", "help.fortythieves.tip",
+                    "help.polyominoes.turn", "help.shutthebox.tip", "history.acesup", "history.fortythieves", "history.polyominoes",
+                    "poly.why.bounds", "poly.why.corner", "poly.why.edge"}
 
 
 def test_german_games_text_is_informal():
@@ -327,3 +331,16 @@ def test_german_games_text_is_informal():
     found = [k for k in found if k != "history.zimcity"]   # "Ihr Code" is the city simulator's own code
     assert not found, found
     assert de["holdem.out"] != de["holdem.last.fold"] and "raus" not in de["holdem.out"]
+
+
+def test_backgammon_point_numbers_are_readable_on_a_phone(browser, served):
+    """The point numbers were 10px beside the triangle tips: they are 12px on the phone's board, upright, and none leaves the board."""
+    c, page = open_game(browser, served, "backgammon")
+    got = page.evaluate(
+        """() => { const svg = document.querySelector('#wk-board svg'), b = svg.getBoundingClientRect();
+          return [...document.querySelectorAll('.bk-pn')].map(t => { const m = t.getScreenCTM(), r = t.getBoundingClientRect();
+            return { px: parseFloat(getComputedStyle(t).fontSize) * Math.hypot(m.a, m.b), upright: Math.abs(m.b) < 0.01 && m.a > 0, inside: r.left >= b.left && r.right <= b.right && r.top >= b.top && r.bottom <= b.bottom }; }); }"""
+    )
+    assert len(got) == 24, got
+    assert all(g["px"] >= 11.5 and g["upright"] and g["inside"] for g in got), got
+    c.close()

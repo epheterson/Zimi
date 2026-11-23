@@ -14,12 +14,8 @@ import pytest
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-GL_ARGS = [
-    "--use-angle=swiftshader",
-    "--enable-unsafe-swiftshader",
-    "--disable-accelerated-2d-canvas",
-    "--ignore-gpu-blocklist",
-]
+from browser_slots import WEBGL_ARGS
+GL_ARGS = WEBGL_ARGS + ['--disable-accelerated-2d-canvas']
 VIEW = {"width": 390, "height": 844}
 POLL_MS = 100
 READY_MS = 240_000
@@ -144,7 +140,7 @@ def test_the_views_own_close_takes_its_step_back(browser, served):
             timeout=READY_MS,
             polling=200,
         )
-        pg.click("#back-btn")
+        pg.click("#ae-back")
         pg.wait_for_function("() => !_aeIsOpen", timeout=10_000)
         pg.wait_for_timeout(400)
         assert not pg.evaluate("!!(history.state && history.state.aeView)")
@@ -635,8 +631,19 @@ def test_a_turns_time_steps_back_while_the_clock_dot_is_on_it(browser, served):
         pg.wait_for_function(
             "(n) => (%s)() < n" % shown, arg=total, timeout=30_000, polling=POLL_MS
         )
+        # A time where the dot (and the line it draws down to the axis) is under none of the times: the first such hour.
+        away = pg.evaluate("""(t) => {
+              const c = _at.curve, g = AT_YIELD_GAP;
+              for (let k = 1; k < 24; k++) {
+                const m = t + k * 3600e3; if (m > c.end) break;
+                const x = c.X(m), y = c.Y(c.p.height(m));
+                if (!_at.labels.some(l => l.x0 < x + g && x - g < l.x1 && l.y1 > y - g) && !_at.dots.some(d => Math.hypot(d.x - x, d.y - y) < d.r + AT_NOW_DOT_R)) return m;
+              }
+              return null;
+            }""", turn)
+        assert away is not None, "no time of the day clears every turn's time"
         pg.evaluate(
-            "(t) => { _almClockSetRate(0); _almScrubSettle(new Date(t + 3 * 3600e3), { land: false }); }", turn
+            "(t) => { _almClockSetRate(0); _almScrubSettle(new Date(t), { land: false }); }", away
         )
         pg.wait_for_function(
             "(n) => (%s)() === n" % shown, arg=total, timeout=30_000, polling=POLL_MS
@@ -779,5 +786,37 @@ def test_look_asks_for_motion_in_the_tap_that_opens_it(browser, served):
         )
         # Asked once, in the tap's own turn (before the view's files had loaded), and no second tap to turn it on.
         assert got == {"asked": 1, "early": True, "ask": False}, got
+    finally:
+        ctx.close()
+
+
+def test_the_almanacs_phone_header_is_the_shells_one_way_out(browser, served):
+    """Zimi crumb, the field, night, and the ⋯ menu: no second door (the X) and no globe, which waits in ⋯ with the language."""
+    ctx, pg, errors = _page(browser, served)
+    try:
+        shown = pg.evaluate(
+            """() => ['logo', 'topbar-search', 'night-btn', 'topbar-more', 'manage-btn', 'lang-selector-btn', 'random-btn']
+              .map(c => [c, !!(document.querySelector('.' + c) && document.querySelector('.' + c).offsetWidth)])"""
+        )
+        assert dict(shown) == {
+            "logo": True,
+            "topbar-search": True,
+            "night-btn": True,
+            "topbar-more": True,
+            "manage-btn": False,
+            "lang-selector-btn": False,
+            "random-btn": False,
+        }, shown
+        pg.click(".topbar-more")
+        pg.wait_for_selector("#topbar-menu.visible")
+        labels = pg.evaluate(
+            "() => [...document.querySelectorAll('#topbar-menu .topbar-menu-item')].map(b => b.textContent.trim())"
+        )
+        assert any(l.startswith("Language") for l in labels), labels
+        for sel in (".topbar-more", ".night-btn"):
+            box = pg.evaluate(
+                "(s) => { const r = document.querySelector(s).getBoundingClientRect(); return [r.width, r.height]; }", sel
+            )
+            assert box[1] >= 28, (sel, box)  # drawn; the hit area is the shell's ::after (test_hit_areas_browser)
     finally:
         ctx.close()

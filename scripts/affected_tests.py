@@ -1,6 +1,6 @@
 """Run only the tests that touch what changed: the check before a NAS deploy.
 
-    python3 scripts/affected_tests.py            # changed since the last deploy (deploy.sh's stamp)
+    python3 scripts/affected_tests.py            # changed since the last deploy (the deploy's stamp in .git)
     python3 scripts/affected_tests.py main       # changed since a git ref
     python3 scripts/affected_tests.py --list     # say which, run nothing
 
@@ -18,8 +18,8 @@ import sys
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 STAMP = os.path.join(ROOT, ".git", "zimi-last-deploy")
 SOURCES = ("zimi/", "scripts/", "docker/")
-# What deploy.sh ships besides those folders, and the tests themselves.
-SHIPPED_FILES = ("requirements.txt", "Dockerfile", "docker-compose.nas.yml")
+# What a deploy ships besides those folders, and the tests themselves.
+SHIPPED_FILES = ("requirements.txt", "Dockerfile")
 TESTS = "tests/"
 # Names too common to say which tests a change touches (app.js is named by a hundred of them: matching it would
 # make every deploy a full run). They are said out loud below, so a change to one is never silently untested.

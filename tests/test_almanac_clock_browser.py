@@ -19,12 +19,8 @@ POLL_MS = 100
 FRAME_BOUND_MS = 30_000
 SF = '{"lat":37.77,"lon":-122.42,"name":"San Francisco"}'
 TOKYO = '{"lat":35.68,"lon":139.69,"name":"Tokyo"}'
-GL_ARGS = [
-    "--use-angle=swiftshader",
-    "--enable-unsafe-swiftshader",
-    "--disable-accelerated-2d-canvas",
-    "--ignore-gpu-blocklist",
-]
+from browser_slots import WEBGL_ARGS
+GL_ARGS = WEBGL_ARGS + ['--disable-accelerated-2d-canvas']
 LA = "America/Los_Angeles"
 #: The clock is under test, not the sky: the true horizon is the sky that stands still when nothing moves. The beach's life
 #: (palms, waves) repaints the sky's canvas every frame and software GL rasters each at a runner's speed, so a page
@@ -145,8 +141,99 @@ def _land(pg, iso):
 
 def _open(pg):
     """A tap on the resting clock's time opens it: the slider shows."""
-    pg.click("#almanac-head-time .ep[data-p=hour]")
+    pg.click("#almanac-head-time")   # (the date and time are one tap area at rest: none of their parts is a target yet)
     pg.wait_for_function("() => !document.querySelector('#almanac-head .alm-clock').classList.contains('alm-ck-rest')", timeout=FRAME_BOUND_MS)
+
+
+def test_at_rest_the_date_and_time_are_one_tap_area_with_no_part_to_select_or_highlight(browser, served):
+    ctx, pg, errors = _page(browser, served)
+    try:
+        pg.wait_for_function("() => document.querySelector('#almanac-head .alm-clock').classList.contains('alm-ck-rest')", timeout=FRAME_BOUND_MS)
+        got = pg.evaluate(
+            """() => { var root = document.querySelector('#almanac-head .alm-clock'), ps = Array.from(root.querySelectorAll('.ep'));
+              return { n: ps.length, inert: ps.every(p => getComputedStyle(p).pointerEvents === 'none' && getComputedStyle(p).textDecorationLine === 'none'),
+                sel: getComputedStyle(root).userSelect, slider: getComputedStyle(root.querySelector('.alm-spd')).display }; }"""
+        )
+        assert got["n"] >= 3 and got["inert"] and got["sel"] == "none" and got["slider"] == "none", got
+        pg.click("#almanac-head-date")   # anywhere on the date: it opens the slider
+        pg.wait_for_function("() => !document.querySelector('#almanac-head .alm-clock').classList.contains('alm-ck-rest')", timeout=FRAME_BOUND_MS)
+        assert pg.evaluate("() => getComputedStyle(document.querySelector('#almanac-head .alm-spd')).display !== 'none'")
+        # open, the parts are targets again
+        assert pg.evaluate("() => Array.from(document.querySelectorAll('#almanac-head .ep')).every(p => getComputedStyle(p).pointerEvents !== 'none')")
+        assert not errors, errors
+    finally:
+        ctx.close()
+
+
+def test_the_pills_follow_the_page_with_time_for_the_place_and_a_pill_lands_its_section_with_its_title_just_below_the_pinned_rows(browser, served):
+    ctx, pg, errors = _page(browser, served)
+    try:
+        pg.wait_for_function("() => document.querySelectorAll('#alm-secbar-pills .pill').length > 3", timeout=FRAME_BOUND_MS)
+        names = pg.evaluate("() => Array.from(document.querySelectorAll('#alm-secbar-pills .pill')).map(b => b.textContent.trim())")
+        # The page's order: Calendar, then Time (the map, the clock, the world's clocks: no "Your place"), Tides where the place has them.
+        assert "Your place" not in names and "Today" not in names, names
+        cal, tm = names.index("Calendar"), names.index("Time")
+        assert tm == cal + 1 and ("Tides" not in names or names.index("Tides") == tm + 1), names
+        tops = pg.evaluate("() => _almSecBarPillOrder(_almSecBar.sections).map(s => s.els[0].getBoundingClientRect().top)")
+        assert tops == sorted(tops), (names, tops)   # each pill's section is further down the page than the one before
+        for key in ("calendar", "solar"):
+            pg.evaluate("(k) => { document.getElementById('almanac-content').scrollTo({ top: 700, behavior: 'instant' }); }", key)   # (the pill row pins once the page is scrolled)
+            pg.click("#alm-secbar-pills [data-sec=%s]" % key)
+            pg.wait_for_timeout(1500)
+            got = pg.evaluate(
+                """(k) => { var s = _almSecBar.sections.filter(x => x.key === k)[0], pin = document.getElementById('alm-pin').getBoundingClientRect(), r = s.els[0].getBoundingClientRect();
+                  return { top: r.top, pinBottom: pin.bottom }; }""", key)
+            assert got["pinBottom"] - 2 <= got["top"] <= got["pinBottom"] + 40, (key, got)   # the title is not hidden behind the pill row
+        assert not errors, errors
+    finally:
+        ctx.close()
+
+
+def test_the_slider_eases_in_and_out_with_opacity_and_transform_only(browser, served):
+    ctx, pg, errors = _page(browser, served)
+    try:
+        pg.wait_for_function("() => document.querySelector('#almanac-head .alm-clock').classList.contains('alm-ck-rest')", timeout=FRAME_BOUND_MS)
+        _open(pg)
+        assert pg.evaluate("() => getComputedStyle(document.querySelector('#almanac-head .alm-spd')).animationName") == "alm-spd-in"
+        pg.evaluate("() => _almClockOpenUp(false)")
+        pg.wait_for_function("() => document.querySelector('#almanac-head .alm-clock').classList.contains('alm-ck-rest')", timeout=FRAME_BOUND_MS)
+        got = pg.evaluate("() => { var c = document.querySelector('#almanac-head .alm-clock'), s = c.querySelector('.alm-spd'); return [c.classList.contains('alm-spd-fade'), getComputedStyle(s).display, getComputedStyle(s).animationName]; }")
+        assert got == [True, "block", "alm-spd-out"], got   # it is kept while it fades
+        pg.wait_for_function("() => !document.querySelector('#almanac-head .alm-clock').classList.contains('alm-spd-fade') && getComputedStyle(document.querySelector('#almanac-head .alm-spd')).display === 'none'", timeout=3000)
+        assert not errors, errors
+    finally:
+        ctx.close()
+
+
+def test_the_page_is_called_zimi_almanac_while_it_is_open_and_the_name_comes_back(browser, served):
+    ctx, pg, errors = _page(browser, served)
+    try:
+        assert pg.evaluate("() => document.title") == "Zimi Almanac"
+        before = pg.evaluate("() => _almPrevTitle")
+        pg.evaluate("() => closeAlmanac()")
+        pg.wait_for_function("() => document.title !== 'Zimi Almanac'", timeout=10_000)
+        assert pg.evaluate("() => document.title") == (before or pg.evaluate("() => document.title"))
+        assert not errors, errors
+    finally:
+        ctx.close()
+
+
+def test_the_analemma_dot_moves_with_time_travel_at_speed(browser, served):
+    ctx, pg, errors = _page(browser, served)
+    try:
+        for _ in range(6):   # the page above it settles as it is reached: go again until it stands in view
+            pg.evaluate("() => { var c = document.getElementById('almanac-content'), r = document.getElementById('almanac-analemma').getBoundingClientRect(); c.scrollTop = c.scrollTop + r.top - 300; }")
+            pg.wait_for_timeout(500)
+        rect = pg.evaluate("() => { var r = document.getElementById('almanac-analemma').getBoundingClientRect(); return [r.top, r.bottom, innerHeight]; }")
+        assert 0 < rect[0] and rect[1] < rect[2], ("the analemma is on screen", rect)
+        pg.evaluate("() => { window.__draws = 0; var o = window._renderAnalemma; window._renderAnalemma = function (d) { window.__draws++; window.__last = +d; return o.apply(this, arguments); }; _almClockSetRate(86400 * 30); }")
+        pg.wait_for_timeout(2500)
+        got = pg.evaluate("() => [window.__draws, window.__last]")
+        pg.evaluate("() => _almClockSetRate(1)")
+        assert got[0] >= 3 and got[1] > 0, got   # it was drawn again as the date ran, not once at the end
+        assert not errors, errors
+    finally:
+        ctx.close()
 
 
 def _wall(pg):
@@ -481,25 +568,48 @@ def test_the_middle_button_pauses_and_resumes(browser, served):
         ctx.close()
 
 
+def test_the_now_chip_away_from_now_is_named_and_plain(browser, served):
+    """Away from now (a launch pad in 1969) the chip is a button that goes home; a bare "Now" beside a 1969 date read as the
+    time shown. It is named for what it does (aria-label) and drawn as the plain pill, with no glyph (it read as a button fine)."""
+    ctx, pg, errors = _page(browser, served)
+    try:
+        pg.evaluate("() => { _almFocus = new Date(Date.UTC(1969, 6, 16, 13, 32)); _almClockPaint(); }")
+        got = pg.evaluate(
+            """() => { var b = document.querySelector('#almanac-head .alm-ck-now');
+              return { hidden: b.hidden, name: b.getAttribute('aria-label'), mark: getComputedStyle(b, '::before').content }; }"""
+        )
+        assert got["hidden"] is False, got
+        assert got["name"] == "Back to now", got
+        assert got["mark"] in ("none", "normal", ""), got
+        assert not errors, errors
+    finally:
+        ctx.close()
+
+
 def test_the_clock_and_the_section_bar_pin_as_one_strip(browser, served):
     ctx, pg, errors = _page(browser, served)
     try:
         pg.wait_for_function("() => !!_almSecBar", timeout=60_000, polling=POLL_MS)
         assert pg.evaluate("() => document.getElementById('alm-pin').hidden")
-        pg.evaluate("() => document.getElementById('almanac-content').scrollTo(0, 900)")
+        # The page's own clock has scrolled away but no section past the first has begun: the strip is already there, with the clock.
+        pg.evaluate("() => document.getElementById('almanac-content').scrollTo(0, 60)")
+        pg.wait_for_function("() => !document.getElementById('alm-pin').hidden", timeout=FRAME_BOUND_MS, polling=POLL_MS)
+        assert pg.evaluate("() => _almSecBar.cur") == "today"
+        pg.evaluate("() => document.getElementById('almanac-content').scrollTo(0, 1500)")
         pg.wait_for_function(
-            "() => !document.getElementById('alm-pin').hidden",
+            "() => !document.getElementById('alm-pin').hidden && _almSecBar.cur !== 'today'",
             timeout=FRAME_BOUND_MS,
             polling=POLL_MS,
         )
-        # At rest the strip is the section bar alone: the time pins only while the clock is in use.
-        bare = pg.evaluate("() => [getComputedStyle(document.querySelector('#alm-pin .alm-pin-clock')).display, document.getElementById('alm-pin').getBoundingClientRect().height]")
-        assert bare[0] == "none" and bare[1] < ALM_SECBAR_H_PX + 8, bare
-        pg.evaluate("() => _almClockOpenUp(true)")
-        pg.wait_for_function("() => getComputedStyle(document.querySelector('#alm-pin .alm-pin-clock')).display !== 'none'", timeout=FRAME_BOUND_MS, polling=POLL_MS)
+        # At rest the clock is pinned too, as the date and time alone: time travel starts from anywhere on the page.
+        rest = pg.evaluate("() => [getComputedStyle(document.querySelector('#alm-pin .alm-pin-clock')).display, document.getElementById('alm-pin').getBoundingClientRect().height, document.querySelector('#alm-pin .alm-clock').classList.contains('alm-ck-rest')]")
+        assert rest[0] != "none" and rest[2] and ALM_SECBAR_H_PX + 20 < rest[1] < ALM_SECBAR_H_PX + 60, rest
+        # A tap on the pinned date opens the slider, as it does on the page's own clock.
+        pg.click("#alm-pin .alm-ck-d")   # (one tap area at rest)
+        pg.wait_for_function("() => document.querySelector('#alm-pin .alm-clock').classList.contains('alm-ck-open') && !!document.querySelector('#alm-pin .alm-spd') && getComputedStyle(document.querySelector('#alm-pin .alm-spd')).display !== 'none'", timeout=FRAME_BOUND_MS, polling=POLL_MS)
         got = pg.evaluate(
             """() => { var pin = document.getElementById('alm-pin'), r = pin.getBoundingClientRect(), c = pin.querySelector('.alm-clock').getBoundingClientRect(), b = document.getElementById('alm-secbar').getBoundingClientRect();
-          return { top: r.top, h: r.height, clockBottom: c.bottom, barTop: b.top, bars: document.querySelectorAll('.alm-secbar, .alm-pin').length,
+          return { top: r.top, h: r.height, clockBottom: c.bottom, barTop: b.top, bars: document.querySelectorAll('#alm-secbar-host .alm-secbar, #alm-secbar-host .alm-pin').length,
                    sticky: getComputedStyle(document.getElementById('alm-secbar-host')).position, line: ALM_SECBAR_LINE }; }"""
         )
         assert (
@@ -538,6 +648,26 @@ def test_the_clock_and_the_section_bar_pin_as_one_strip(browser, served):
         ctx.close()
 
 
+def test_the_sun_map_and_the_star_chart_follow_the_clock_while_it_runs(browser, served):
+    """Time travel moves the sun map's night and the star chart as it goes, not only when it stops (they are canvases: they ride the visual tier)."""
+    ctx, pg, errors = _page(browser, served)
+    try:
+        pg.wait_for_function("() => !!document.getElementById('almanac-starchart') && !!document.getElementById('almanac-sunmap-canvas')", timeout=60_000, polling=POLL_MS)
+        for sel in ("#almanac-sunmap-canvas", "#almanac-starchart"):
+            pg.evaluate("(sel) => document.querySelector(sel).scrollIntoView({ block: 'center' })", sel)
+            pg.wait_for_timeout(1000)
+            seen = pg.evaluate("(sel) => document.querySelector(sel).toDataURL()", sel)
+            pg.evaluate("() => _almClockSetRate(86400)")   # a day a second
+            pg.wait_for_function(
+                "([sel, was]) => document.querySelector(sel).toDataURL() !== was", arg=[sel, seen], timeout=30_000, polling=POLL_MS)
+            assert pg.evaluate("() => _almTravelFrozen"), "it changed while the clock was still running, with the page's panels pinned"
+            pg.evaluate("() => _almBackToToday()")
+            pg.wait_for_function("() => !_almTravelFrozen", timeout=10_000, polling=POLL_MS)
+        assert not errors, errors
+    finally:
+        ctx.close()
+
+
 def test_one_clock_in_the_page_the_orrery_and_the_3d_view(browser, served):
     ctx, pg, errors = _page(browser, served)
     try:
@@ -571,6 +701,7 @@ def test_one_clock_in_the_page_the_orrery_and_the_3d_view(browser, served):
             != ""
         )
         # Play in the view: forward runs the one clock, the page's moment moves, the view draws it.
+        pg.evaluate("() => _aePinSet(true)")   # the slider and its play button are in the open capsule
         pg.click("#ae-clock .alm-spd-play", force=True)
         pg.wait_for_function("() => _almRate !== 0", timeout=FRAME_BOUND_MS)
         a = pg.evaluate("() => _almFocusInstant().getTime()")
@@ -599,21 +730,27 @@ def test_one_clock_in_the_page_the_orrery_and_the_3d_view(browser, served):
         )
         # The view's time stands in a pill beside the date (paused, the clock is in use: its parts are underlined).
         assert pg.evaluate(
-            "() => !!document.querySelector('#ae-clock .alm-ck-pill > .alm-ck-t .ep[data-p=hour]')"
+            "() => !!document.querySelector('#ae-clock .alm-ck-l > .alm-ck-t .ep[data-p=hour]')"
         )
         # Typed in the view: the part is the same part.
         pg.click("#ae-clock .ep[data-p=day]")
         pg.wait_for_function(
-            "() => !!_almEd && _almEd.root.getAttribute('data-v') === 'foot'",
+            "() => !!_almEd && _almEd.root.getAttribute('data-v') === 'pin'",
             timeout=FRAME_BOUND_MS,
             polling=POLL_MS,
         )
         pg.keyboard.press("Escape")
-        # The picture's centre rides up by half the bar.
+        # The picture's centre stands in the room between the strip and the foot.
         shift = pg.evaluate(
-            "() => ({ shift: _ae.infoShift, half: document.getElementById('ae-clock').offsetHeight / 2 })"
+            "() => ({ shift: _ae.infoShift, room: (_aeHudFootPx() - Math.ceil(document.getElementById('ae-pin').getBoundingClientRect().bottom - _ae.el.getBoundingClientRect().top)) / 2 })   // (the capsule stands 8 px down: its foot is what the picture clears)"
         )
-        assert abs(shift["shift"] - shift["half"]) < 1.5, shift
+        assert abs(shift["shift"] - shift["room"]) < 1.5, shift
+        # The strip is the page's pinned strip: the same markup (almanac.js _almPinHtml), the same pin clock.
+        same = pg.evaluate(
+            "() => ['#alm-pin', '#ae-pin'].map(function (s) { var e = document.querySelector(s); "
+            "return [e.classList.contains('alm-pin'), !!e.querySelector(':scope > .alm-pin-clock > .alm-clock[data-v=pin]')]; })"
+        )
+        assert same == [[True, True], [True, True]], same
         # Closing the view leaves the page on the moment.
         pg.evaluate("() => _aeClose()")
         pg.wait_for_function("() => !_aeIsOpen", timeout=FRAME_BOUND_MS, polling=POLL_MS)
@@ -631,10 +768,10 @@ def test_the_slider_rests_at_now_and_a_picked_day_keeps_the_pace(browser, served
         # At now and 1x the clock rests as the plain date and time: no slider, nothing underlined.
         assert pg.evaluate(rests) and not pg.evaluate(shown)
         assert pg.evaluate(
-            "() => getComputedStyle(document.querySelector('#almanac-head-time .ep[data-p=hour]')).textDecorationColor"
-        ) in ("rgba(0, 0, 0, 0)", "transparent")
+            "() => getComputedStyle(document.querySelector('#almanac-head-time .ep[data-p=hour]')).textDecorationLine"
+        ) == "none"   # (no underline at all at rest)
         # A tap on the time opens it (and types nothing yet); a tap elsewhere shuts it.
-        pg.click("#almanac-head-time .ep[data-p=hour]")
+        pg.click("#almanac-head-time")
         assert not pg.evaluate(rests) and pg.evaluate(shown) and pg.evaluate("() => !_almEd")
         pg.mouse.click(195, 700)
         pg.wait_for_function(rests, timeout=FRAME_BOUND_MS, polling=POLL_MS)
@@ -728,6 +865,35 @@ def test_a_day_picked_keeps_the_place_s_time_of_day(browser, served):
         pg.evaluate("() => _almSelectDay(_gregorianToJDN(2026, 11, 20))")
         pg.wait_for_function("() => !_almRunToRAF", timeout=FRAME_BOUND_MS, polling=POLL_MS)
         assert _wall(pg)[:4] == [2026, 11, 20, 8]
+        assert not errors, errors
+    finally:
+        ctx.close()
+
+
+def test_the_view_s_pill_follows_real_time_while_it_covers_the_page(browser, served):
+    """At real time the 3D view's date pill moves on by itself: the minute timer slept while the view covered the page, so the
+    pill stood at the minute it was painted until a tap ("a few mins behind")."""
+    ctx, pg, errors = _page(browser, served)
+    try:
+        pg.wait_for_function(
+            "() => typeof openAlmanacEarth === 'function' && typeof _aeLoadThree === 'function'",
+            timeout=120_000,
+        )
+        pg.evaluate("() => openAlmanacEarth({ target: 'earth' })")
+        pg.wait_for_function(
+            "() => typeof _aeReady === 'function' && _aeReady() && _aeIsOpen && !_ae.fly && !_almFocus",
+            timeout=120_000,
+            polling=200,
+        )
+        shown = "() => document.querySelector('#ae-clock .alm-ck-t').textContent"
+        before = pg.evaluate(shown)
+        # Five minutes pass for the page (Date moves on; the minute timer's own wait is not what is under test).
+        pg.evaluate(
+            "() => { const R = Date, off = 5 * 60000;"
+            " window.Date = class extends R { constructor(...a) { if (a.length) super(...a); else super(R.now() + off); } static now() { return R.now() + off; } };"
+            " _almHeroLiveTick(); }"
+        )
+        assert pg.evaluate(shown) != before
         assert not errors, errors
     finally:
         ctx.close()

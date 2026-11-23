@@ -57,6 +57,8 @@ from zimi.zimwriter import _slug, scraper_string
 WARC2ZIM_PY_MIN = (3, 14)
 WARC2ZIM_PY_MAX_EXCL = (3, 15)
 WARC2ZIM_REQUIREMENT = "warc2zim"
+# The Python uv is asked for when it makes the sidecar (the add-on has no 3.14 of its own).
+WARC2ZIM_PYTHON = "%d.%d" % WARC2ZIM_PY_MIN
 PY_REQUIREMENT_TEXT = "Python >=3.14,<3.15"
 
 _SIDECAR_MARKER = ".zimi-sidecar.json"
@@ -217,8 +219,13 @@ def _run_stream(cmd, sink, heartbeat_s=HEARTBEAT_SECONDS, watch=None, env=None):
 BUNDLED_SIDECARS_DIR = "/opt/zimi-sidecars"
 
 
+def own_sidecar_dir():
+    """The venv Zimi builds in its data folder (never the one an install ships)."""
+    return os.path.join(_srv.ZIMI_DATA_DIR, "tools", "warc2zim")
+
+
 def sidecar_dir():
-    own = os.path.join(_srv.ZIMI_DATA_DIR, "tools", "warc2zim")
+    own = own_sidecar_dir()
     bundled = os.path.join(BUNDLED_SIDECARS_DIR, "warc2zim")
     if not _installed(own) and _installed(bundled):
         return bundled
@@ -273,12 +280,7 @@ def _marker_path(venv):
 
 
 def _read_marker(venv):
-    try:
-        with open(_marker_path(venv), encoding="utf-8") as f:
-            data = json.load(f)
-        return data if isinstance(data, dict) else {}
-    except (OSError, ValueError):
-        return {}
+    return _srv._read_json_dict(_marker_path(venv))
 
 
 def _write_marker(venv, **fields):
@@ -373,6 +375,7 @@ def ensure_sidecar(sink=None):
         # `zimi import --status` can say what this machine is actually running.
         state = _patch_srcset_comma_bug(venv, say)
         _patch_block_scoped_globals(venv, say)
+        make_portable(venv, say)
         if state == "applied":
             marker = _read_marker(venv)
             marker["srcset_patch"] = state
@@ -382,7 +385,11 @@ def ensure_sidecar(sink=None):
         raise CreateError(OFFLINE_PRESEED_MSG.format(dir=venv))
     # No marker but a directory: a previous install died mid-flight, and
     # build_venv starts it again from nothing.
-    py, ver = _find_python()
+    try:
+        py, ver = _find_python()
+    except CreateError as no_python:
+        # No Python 3.14 here (a desktop app has none): the add-on fetches uv, which fetches its own.
+        return _ensure_via_addon(exe, say, no_python)
     say(f"creating warc2zim sidecar (Python {ver[0]}.{ver[1]} via {py}) at {venv}")
     if not build_venv(venv, py, [WARC2ZIM_REQUIREMENT], exe, say):
         # Never "see the output above": by the time anyone reads this in a
@@ -391,14 +398,30 @@ def ensure_sidecar(sink=None):
             "warc2zim sidecar install failed (the job log has the tool's "
             "output). Nothing was left behind; re-run to try again."
         )
-    version = _tool_version(exe)
+    finish_sidecar(venv, say, python=f"{ver[0]}.{ver[1]}")
+    return exe
+
+
+def _ensure_via_addon(exe, say, no_python):
+    """The sidecar from the warc2zim add-on (uv and its own Python): installed here under Automatically, otherwise
+    the job is told where to add it. Raises CreateError when that is not possible."""
+    from zimi import addons
+
+    if addons.supported() and addons.ensure("warc2zim", say):
+        return exe
+    if not addons.supported():
+        raise no_python
+    raise CreateError(addons.refusal("warc2zim", str(no_python).rstrip(". ")))
+
+
+def finish_sidecar(venv, say, python=WARC2ZIM_PYTHON):
+    """A freshly built sidecar: the one-time script patches, and the marker that makes Zimi treat it as installed."""
+    version = _tool_version(_venv_bin(venv, "warc2zim"))
     patched = _patch_srcset_comma_bug(venv, say)
     _patch_block_scoped_globals(venv, say)
-    _write_marker(
-        venv, warc2zim=version, python=f"{ver[0]}.{ver[1]}", srcset_patch=patched
-    )
+    make_portable(venv, say)
+    _write_marker(venv, warc2zim=version, python=python, srcset_patch=patched)
     say(f"warc2zim {version or '(unknown version)'} ready")
-    return exe
 
 
 # ── one upstream bug, held open until upstream closes it ────────────────────
@@ -561,6 +584,157 @@ def _patch_block_scoped_globals(venv, say):
         return "failed"
     say("patched zimscraperlib's script wrapper (block-scoped globals, #329)")
     return "applied"
+
+
+# zimscraperlib imports cairosvg at the top of its image module, and cairosvg loads libcairo when it is imported: on a
+# Mac without Homebrew's cairo or a Windows without GTK the whole sidecar dies at start ("no library called
+# libcairo-2.dll"), over a feature (turning an SVG icon into a PNG) warc2zim already survives losing. So it is imported
+# on first use instead; warc2zim catches the failure per icon and falls back to its default illustration.
+_CAIRO_IMPORT = "import cairosvg  # pyright: ignore[reportMissingTypeStubs]"
+_CAIRO_LAZY = """class _LazyCairoSvg:  # zimi: libcairo loads when an SVG is converted, not when the module is imported
+    def __getattr__(self, name):
+        import cairosvg
+
+        return getattr(cairosvg, name)
+
+
+cairosvg = _LazyCairoSvg()"""
+
+
+def _patch_lazy_cairosvg(venv, say):
+    """Idempotent, and self-removing the day upstream stops importing cairosvg at the top."""
+    import glob
+
+    hits = glob.glob(os.path.join(venv, "lib", "*", "site-packages", "zimscraperlib", "image", "conversion.py"))
+    hits += glob.glob(os.path.join(venv, "Lib", "site-packages", "zimscraperlib", "image", "conversion.py"))
+    if not hits:
+        return "not found"
+    try:
+        with open(hits[0], encoding="utf-8") as f:
+            source = f.read()
+    except OSError:
+        return "unreadable"
+    if _CAIRO_LAZY in source:
+        return "applied"
+    if _CAIRO_IMPORT not in source:
+        return "not needed"
+    try:
+        with open(hits[0], "w", encoding="utf-8") as f:
+            f.write(source.replace(_CAIRO_IMPORT, _CAIRO_LAZY, 1))
+    except OSError as e:
+        say(f"could not patch zimscraperlib's image module: {e}")
+        return "failed"
+    say("patched zimscraperlib's image module (libcairo loaded when an SVG is converted)")
+    return "applied"
+
+
+# python-magic needs the libmagic C library, which a Mac without Homebrew and a Windows machine do not have, and
+# zimscraperlib imports it at the top of its filesystem module: the sidecar died on `import magic` (found on an Apple
+# silicon Mac). warc2zim uses it for one call, magic.from_buffer(content, mime=True); where the library is missing, a
+# module of the same name answers it from puremagic's signatures and the standard library instead.
+_MAGIC_SHIM = '''"""zimi shim: python-magic needs libmagic, which this machine does not have. The two calls the sidecar's
+libraries make, answered from puremagic's signatures when it is installed and from a few well-known ones otherwise."""
+import mimetypes
+
+try:
+    import puremagic
+except Exception:  # pragma: no cover
+    puremagic = None
+
+_SIGNATURES = (
+    (b"\\x89PNG\\r\\n\\x1a\\n", "image/png"), (b"\\xff\\xd8\\xff", "image/jpeg"), (b"GIF8", "image/gif"),
+    (b"%PDF-", "application/pdf"), (b"PK\\x03\\x04", "application/zip"), (b"\\x1f\\x8b", "application/gzip"),
+    (b"RIFF", "image/webp"), (b"\\x00\\x00\\x01\\x00", "image/vnd.microsoft.icon"),
+)
+
+
+def _kind(data, name=None):
+    head = bytes(data[:4096])
+    if puremagic is not None:
+        try:
+            got = puremagic.from_string(head, mime=True)
+            got = got[0] if isinstance(got, (list, tuple)) else got
+            if got:
+                return got
+        except Exception:
+            pass
+    for sig, mime in _SIGNATURES:
+        if head.startswith(sig):
+            return "image/webp" if sig == b"RIFF" and head[8:12] != b"WEBP" else mime
+    try:
+        text = head.decode("utf-8")
+    except UnicodeDecodeError:
+        return "application/octet-stream"
+    low = text.lstrip().lower()
+    if low.startswith("<svg") or ("<svg" in low[:600] and low.startswith("<?xml")):
+        return "image/svg+xml"
+    if low.startswith("<?xml"):
+        return "application/xml"
+    if low.startswith("<!doctype html") or "<html" in low[:1024] or "<body" in low[:1024]:
+        return "text/html"
+    guess = mimetypes.guess_type(name or "")[0]
+    return guess if guess and guess.startswith("text/") else "text/plain"
+
+
+def from_buffer(buffer, mime=False):
+    data = buffer.encode("utf-8") if isinstance(buffer, str) else bytes(buffer)
+    return _kind(data)
+
+
+def from_file(filename, mime=False):
+    with open(filename, "rb") as f:
+        return _kind(f.read(4096), str(filename))
+
+
+class Magic:
+    def __init__(self, mime=False, **_kw):
+        self.mime = mime
+
+    def from_buffer(self, buffer):
+        return from_buffer(buffer)
+
+    def from_file(self, filename):
+        return from_file(filename)
+'''
+
+
+def _patch_magic_shim(venv, say):
+    """Where ``import magic`` fails in the sidecar's own Python (no libmagic), a module of that name that answers
+    without it. Idempotent; a machine that has libmagic is left alone."""
+    import glob
+
+    probe = _venv_bin(venv, "python")
+    if not os.path.exists(probe):
+        return "not found"
+    rc, _out = _run_capture([probe, "-c", "import magic"])
+    hits = glob.glob(os.path.join(venv, "lib", "*", "site-packages", "magic", "__init__.py")) + glob.glob(
+        os.path.join(venv, "Lib", "site-packages", "magic", "__init__.py")
+    )
+    if not hits:
+        return "not found"
+    try:
+        with open(hits[0], encoding="utf-8") as f:
+            current = f.read()
+    except OSError:
+        return "unreadable"
+    if current.startswith(_MAGIC_SHIM.splitlines()[0]):
+        return "applied"
+    if rc == 0:
+        return "not needed"
+    try:
+        with open(hits[0], "w", encoding="utf-8") as f:
+            f.write(_MAGIC_SHIM)
+    except OSError as e:
+        say(f"could not give the sidecar a libmagic stand-in: {e}")
+        return "failed"
+    say("this machine has no libmagic: the sidecar uses a stand-in for python-magic")
+    return "applied"
+
+
+def make_portable(venv, say):
+    """What a sidecar built on a machine without the system libraries (macOS without Homebrew, Windows) needs to start."""
+    _patch_lazy_cairosvg(venv, say)
+    _patch_magic_shim(venv, say)
 
 
 def sidecar_status():

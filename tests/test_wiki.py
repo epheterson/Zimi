@@ -665,6 +665,16 @@ def test_random_with_a_day_answers_the_wiki_s_pick(served):
     assert card["path"] == otd[0]["path"]
 
 
+def test_the_card_a_page_is_given_is_the_word_said_ahead(served, monkeypatch):
+    """The browser asks for its own day; the word it is given is the one the server says ahead."""
+    got = []
+    monkeypatch.setattr(wiki, "say_card_ahead", lambda card: got.append(card))
+    homes = _get(served + "/wiki/home")[1]["wikis"]
+    wikt = next(w["name"] for w in homes if w["project"] == "wiktionary")
+    status, card = _get(served + "/random?zim=%s&day=20260925" % wikt)
+    assert status == 200 and [c["title"] for c in got] == [card["title"]]
+
+
 def test_today_answers_for_the_wikis_named_and_home_carries_what_is_known(
     today_lib, monkeypatch
 ):

@@ -7,6 +7,120 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [1.16.0]
+
+### Highlights
+
+**Zimi**
+
+- Home fits any screen from phone to 4K, and every tile, row and card has one menu.
+- The Docker image is under 1 GB, with the browser and video tools as add-ons you add once.
+- The Catalog adds Kiwix's community ZIMs, and split ZIMs, big PDFs and EPUBs open.
+
+**Games**
+
+- Twenty-five new games, in ten languages.
+
+**Almanac**
+
+- Stand on the ground of Earth, the Moon, Mars, Venus, Titan, Pluto and more, under each world's own sky.
+- Fly a UFO between the worlds and set it down on their ground.
+- Tap any world, from the Sun out to Pluto, and the 3D view flies you there in one move.
+- Drive the Moon buggy or a Mars rover across the real landing sites, and replay Apollo 11, Perseverance and Voyager.
+
+### Zimi
+
+- Docker image under 1 GB; the browser, SingleFile, video tools, warc2zim and the Reddit helper are add-ons, added once from the first-run list or Settings > Server > Add-ons (Ask first, Automatically or Never; `ZIMI_ADDONS`).
+- Home: Discover, then the apps as launcher squares, then Favorites and the Library, in one to four columns.
+- Home: compact tiles fit three to a full card at every width, with names up to three lines.
+- Every tile, row, card and app has one menu (⋯, right click or long press) with an About sheet.
+- Touch targets are 44 px across the top bar, pills, search and trays.
+- Home no longer downloads the Moon's map until the Almanac opens.
+- Home opens without the bar changing shape or a loading message blinking in.
+- A reload returns you to Manage's tab, the Catalog category, language and search, the Library filter and the Bookshelf place.
+- Downloads try Kiwix's mirrors in Kiwix's own order, give failed mirrors a second round, and continue on the same mirror after a pause.
+- Catalog: the openZIM project's community ZIMs are in one Community category with a corner mark; opening the catalog never reaches the network.
+- Ready for offline: one list of what needs a download first, essentials on top.
+- Split ZIMs (`.zimaa`, `.zimab`, ...) read as one book, and `.ZIM` and `.Zim` files are found.
+- Large entries are sent in pieces, so a big PDF or EPUB opens, and a refusal says why.
+- A book with no main page offers search and a random page.
+- Manage: Deep check, one cancellable checksum pass that names a split book's missing chunk.
+- Manage: Almanac HD is one row, older copies are listed in Storage instead of removed, and Library tidy lists extra copies of Zimi's own ZIMs.
+- Manage > Server: a debug log switch (`ZIMI_DEBUG_LOG`) writes the server's and open windows' events to a rolling file.
+- Settings > Voices: an accent per language, a speech cache setting, `ZIMI_VOICE_CACHE_DIR`, and a Set up button for a voice whose engine is missing.
+- A map for any place: an article with coordinates, Go to and the Almanac open the installed map that covers it, or offer the right one to download.
+- Reader View stays on across a reload or a copied link, and has a red night mode.
+- Read aloud reads a wiki main page's boxes.
+- Word of the Day skips vulgar words.
+- Create: a finished ZIM links to openZIM's instructions for sharing it.
+- MCP: `--tools` also takes tool names, for example `--tools search,read,list_entries`.
+- Search: "Did you mean" no longer corrects common words or a title that has an answer.
+- An app that is open when you change the language is drawn again in it.
+- Quick health check Cancel stops the check.
+- Older copies in Storage can no longer delete the live file.
+- Manage: each ZIM in the Installed list has a switch to leave that ZIM out of auto-update.
+- Create: each ZIM in the Made here table has a Download button.
+- Discover marks each card with the language of its text.
+- The book, Wikipedia and PDF readers keep their bars up while you read, scroll or turn pages; a tap in the middle hides them.
+- Backup asks merge or replace when data arrives, and older copies fold to one line.
+- Games and the Almanac are kept for offline on their own when the connection is not metered.
+- Settings shows only the display rows to anyone but the owner.
+- Home: the kind labels on a row of tiles line up at the tiles' foot.
+
+### Games
+
+- With a mouse, the shelf's rows scroll by pressing and dragging them; a drag does not open the card it ends over.
+- New dice games: Pig, Shut the Box, Ten Thousand; for children Color Trail; and Who Is It.
+- New card games: Go Fish, Old Maid, Snap, Oh Hell, Cheat, Courtier and Odd One Out.
+- Ten more solitaires: Yukon, Forty Thieves, Canfield, Scorpion, Aces Up, Accordion, Calculation, Beleaguered Castle, Eight Off and Monte Carlo.
+- New board games: Walls, Fourfold and Polyominoes.
+- The shelf opens on World favorites, then a Featured row that changes each day; games that use your library come last; Rooms are kept in the address.
+- The cards have a new face, and every game follows Zimi's Red night theme.
+- Games open in Zimi's language and direction, and the primary action docks at the bottom of a touch screen.
+- Boards and card games fit a phone on its side.
+- A board, dice or tile game left under way shows its table on the shelf.
+- Five Letters shows how to play; Snake has a Walls setting; Stats lists what you have reached.
+- A daily played past midnight counts for the day it began.
+- Watch and learn works again, and library games find their books in a real kiwix-serve.
+- Jigsaw's read button names its article.
+- ZimCity's money warning follows this year's taxes, and Canasta fits its melds on a short wide screen.
+- Janggi: a side in check may pass when the generals face each other, as Fairy-Stockfish allows.
+
+### Almanac
+
+- Stand here: tap a spot on a world and walk its ground at eye height, with real terrain, the body's own sky, and the Sun and planets where they truly are; a tap on the ground walks you there.
+- Stand where they landed: 44 landing sites and the Cape Canaveral pad as models on their real ground with the Sun's real shadows; See it on a site's card takes you down, and a tap on a part names it.
+- At a landing site the corner's name opens the site's own sheet.
+- Drive a rover: the Moon buggy or a Mars rover on any ground you stand on.
+- Missions: Apollo 11, Perseverance's landing at Jezero, and Voyager 1 and 2, with a timeline of named phases; Stand at the pad starts a launch from the ground.
+- UFO: a saucer you fly between the worlds, down to the ground and back, with W A S D or the arrows on a keyboard.
+- Sent: the craft launched from Earth that have a model, each flying you to where it is now.
+- Hubble and Chandra fly in Earth orbit as real craft, at their place from CelesTrak's elements, with their models.
+- Every satellite: all active satellites from CelesTrak's data, filtered by constellation, orbit and owner, with the passes over your place.
+- One solar system: tap a planet in the orrery and it lifts into the 3D view as one motion.
+- Go to is one sheet: a pinned search field and filter pills, a grid or list, and one drawer for the satellites' filters, passes and settings; tapping empty space hides the controls.
+- Landmarks and Orbits are round buttons on the right edge, over the locate button.
+- Flights keep the picture north-up.
+- An article on anything the 3D view shows has an Almanac button that opens the view there.
+- Every world sharp: Almanac HD in two sizes, HD in one file and Maximum at every source's full resolution.
+- More worlds to visit: Vesta, Phobos, Charon, Triton and six of Saturn's moons.
+- Spacecraft are shaded as foil, cells and aluminium, and are NASA's full models with Almanac HD.
+- Kepler, New Horizons, Europa Clipper, OSIRIS-APEX, Psyche and Lucy have their models without Almanac HD.
+- The Earth names its ranges, rivers, lakes, seas and cities at the zoom where each reads.
+- One time chip in every 3D view: the date and pace at a glance, and a tap opens a slider and Now.
+- A rover's whole journey is on the timeline, from NASA's waypoints.
+- The Almanac's PDF is made without the Browser add-on.
+- The Sun close up: prominences, flares and loops over sunspot groups.
+- The 3D view picks a level for the device (Auto, Light or Full in its gear) and steps down when frames run slow.
+- The live sky is the clear one everywhere, and one sky is shared by the card, Look and Stand here.
+- The Almanac opens at once; the clock and section pills stay pinned while you scroll.
+- The beach scene has glowing clouds after sunset and a helicopter.
+- A magnifier on a planet's tip opens the sky aimed at it.
+- Side by side points each world's axis at its north, so Venus and Uranus are seen turning backwards.
+- The reference's constants for the bodies, and their axes and orbits, are tables: a row per body, a column per figure.
+- Offline, the 3D view stops asking for map tiles instead of spinning.
+- The Golden Record names each picture's owner; 8 are NASA's and public domain, the rest are copyright their owners.
+
 ## [1.15.7]
 
 ### Highlights
@@ -58,6 +172,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ### Fixed
 
+- Pages that open many connections at once no longer have some reset on fast machines: the server, and the desktop app's, listen with a backlog of 128 instead of 5.
 - Voices on the portable Linux build: the helper it was missing is included, a first voice download sets up its engine with the machine's Python or uv, and a disk mounted noexec is named instead of failing (#151).
 - Settings > Language says why a voice can't be installed instead of doing nothing (#151).
 - Settings panes no longer grow wider than their card, so Capture's switches are no longer cut off, and they match the switches everywhere else (#150).

@@ -233,7 +233,7 @@ ok('the catalog door is allowed', /_APP_CATEGORY_KEYS = \[[^\]]*'wikipedia'[^\]]
 
 const TODAY_KEYS = ['wiki_on_this_day', 'wiki_featured', 'wiki_word', 'wiki_quote', 'wiki_place', 'wiki_book', 'wiki_text', 'wiki_course', 'wiki_news', 'wiki_species', 'wiki_did_you_know', 'wiki_picture', 'wiki_front', 'wiki_front_as_of'];
 ok('the shell hands the page Today\'s words', TODAY_KEYS.every(k => src.indexOf("'" + k + "'") >= 0));
-for (const lang of fs.readdirSync(path.join(root, 'i18n'))) {
+for (const lang of fs.readdirSync(path.join(root, 'i18n')).filter(f => f.endsWith('.json'))) {
   const d = JSON.parse(fs.readFileSync(path.join(root, 'i18n', lang), 'utf8'));
   if (d.wiki !== 'Zimipedia') ok('it is called Zimipedia in ' + lang, false);
   for (const k of ['wiki_search_placeholder', 'wiki_today', 'wiki_empty', 'app_empty_wiki', 'apps_count_wiki_other', 'wiki_search_heading', 'wiki_article', 'wiki_load_failed', 'wiki_search_failed', 'wiki_results_one', 'wiki_results_other', 'wiki_languages', 'wiki_read_more', 'wiki_search_all_languages', 'wiki_search_one_language', 'wiki_continue', 'wiki_trails']) if (!d[k]) ok(k + ' in ' + lang, false);

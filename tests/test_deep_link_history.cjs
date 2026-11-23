@@ -84,7 +84,7 @@ check(/history\.pushState/.test(open),
 // direction closed the reader on a forward and replaceState'd the URL back,
 // throwing the forward entry away: Forward appeared to do nothing.
 
-const pop = src.slice(src.indexOf("addEventListener('popstate'"),
+const pop = src.slice(src.indexOf("addEventListener('popstate', async"),
                       src.indexOf("// ── Util ──"));
 
 check(/var target = e\.state;/.test(pop),

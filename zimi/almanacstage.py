@@ -30,39 +30,72 @@ import shutil
 STATIC = os.path.join(os.path.dirname(os.path.abspath(__file__)), "static")
 HOST = os.path.join(os.path.dirname(os.path.abspath(__file__)), "builtin", "almanac")
 GAMES = os.path.join(os.path.dirname(os.path.abspath(__file__)), "builtin", "games")
-#: Taken from the Games' folder: Zimi's address (written only there) and its mark.
-FROM_GAMES = ("zimihome.js", "mark.svg")
+#: Zimi's footer, taken from static/ by name into each own ZIM (the Games' staging in ownzims too): the one definition Home
+#: also inlines (http.py), so the address and the wordmark are written only there.
+FOOTER = ("zimifooter.js", "zimifooter.css")
+
+
+def copy_footer(dest):
+    for fn in FOOTER:
+        shutil.copyfile(os.path.join(STATIC, fn), os.path.join(dest, fn))
+
 
 #: The Golden Record's pictures and their table (file, caption, credit, public domain or not).
 GOLDEN_RECORD = "golden-record"
 GOLDEN_CREDITS = os.path.join(GOLDEN_RECORD, "credits.json")
 #: zimi.txt's line about the pictures, and what it says in the community edition.
 GOLDEN_LINE_FULL = "all 49 shown, each with its credit; 8 are NASA photographs (public domain) and the other 41 are copyright their owners"
-GOLDEN_LINE_COMMUNITY = (
-    "the 8 public-domain NASA pictures are shown, and the other 41 are named in a list (number, title, credit), not shown. Their owners"
-)
+GOLDEN_LINE_COMMUNITY = "the 8 public-domain NASA pictures are shown, and the other 41 are named in a list (number, title, credit), not shown. Their owners"
 
 
 #: The page's languages, Zimi's ten: each one's strings are packed in (i18n/<code>.json), English standing under the rest.
 LANGUAGES = ("ar", "de", "en", "es", "fr", "he", "hi", "pt", "ru", "zh")
 
 #: What the Almanac loads, in order (they share one global scope). app.js's
-#: _ALMANAC_MODULES, then what it adds on open and on use.
+#: _ALMANAC_MODULES (index.html's head), then what it adds on open and on use.
 SCRIPTS = (
+    "capability.js",
     "almanac-links.js",
     "almanac-orrery.js",
     "almanac-sky.js",
     "almanac-skygl.js",
+    "almanac-onesky.js",
     "zone-places.js",
     "almanac-skyfacts.js",
+    "almanac-skyscene.js",
     "almanac.js",
+    "almanac-vsop87.js",
     "almanac-ephem.js",
     "almanac-earth.js",
 )
 #: Loaded later, on first use, by the Almanac itself (by relative URL).
 LAZY = (
+    "almanac-sun.js",
+    "almanac-staticglobe.js",
     "almanac-look.js",
+    "almanac-oneland.js",
+    "almanac-skyland.js",
     "almanac-skyfind.js",
+    "almanac-terrain.js",
+    "almanac-terrainshade.js",
+    "almanac-standlook.js",
+    "almanac-standhost.js",
+    "almanac-standgl.js",
+    "almanac-stand.js",
+    "almanac-oneair.js",
+    "almanac-sites.js",
+    "almanac-sites-ground.js",
+    "almanac-sites-drive.js",
+    "almanac-sites-launch.js",
+    "almanac-sites-trail.js",
+    "almanac-missions.js",
+    "almanac-missions-plan.js",
+    "almanac-sent.js",
+    "almanac-padview.js",
+    "almanac-sats.js",
+    "almanac-orrery3d.js",
+    "almanac-fly.js",
+    "almanac-debug3d.js",
     "almanac-tides.js",
     "almanac-tides.css",
     "almanac-reference.css",
@@ -74,6 +107,7 @@ STYLES = ("almanac.css",)
 #: Data and assets the pages fetch (files or whole folders under static/).
 DATA = (
     *(os.path.join("i18n", "%s.json" % lang) for lang in LANGUAGES),
+    *(os.path.join("i18n", "almanac", "%s.json" % lang) for lang in LANGUAGES),
     "tz-borders.json",
     "world-map.svg",
     "earth",
@@ -88,6 +122,7 @@ DATA = (
 SHELL_SEEDS = (
     "SK",
     "_copyText",
+    "_rawGet",
     "_sheetAboveKeyboard",
     "_MOON_ALBEDO_GAIN",
     "_MOON_ALBEDO_LIFT",
@@ -102,9 +137,11 @@ SHELL_SEEDS = (
     "_MOON_ROUGH_MU",
     "_MOON_TINT_B",
     "_MOON_TINT_R",
-    "_almVeilDown",
-    "_almVeilIsUp",
-    "_almVeilUp",
+    "ALM_PAINT_WAIT_MS",
+    "_afterPaint",
+    "_almFirstFrame",
+    "_almFirstFrameOff",
+    "_almHeadCard",
     "_localMoonName",
     "_moonAnimDurMs",
     "_moonAnimPhaseAt",
@@ -137,7 +174,9 @@ SHELL_SEEDS = (
 GUARDED = frozenset(
     (
         "_MAPS_SVG",
+        "_mapHere",
         "_armTapRelay",
+        "_chromeImmersive",
         "_chromeReset",
         "_getPrefLanguages",
         "_gearSvg",
@@ -153,7 +192,7 @@ GUARDED = frozenset(
     )
 )
 #: Classes the Almanac's markup uses that only app.css styles.
-SHELL_CLASSES = ("pill", "pills-row", "alm-veil", "alm-veil-moon")
+SHELL_CLASSES = ("pill", "pills-row")
 #: Names the Almanac's code uses as locals or object keys that app.js also
 #: happens to declare at top level.
 LOCALS = frozenset(("init", "mode", "q"))
@@ -167,6 +206,21 @@ _MORE_DECL = re.compile(r",\s*([A-Za-z_$][\w$]*)\s*=(?!=)")
 _WIRING = re.compile(r"^([A-Za-z_$][\w$]*)\s*(?:\.|\[|=[^=])")
 _IDENT = re.compile(r"(?<![\w$.])[A-Za-z_$][\w$]*")
 _ABS_STATIC = re.compile(r"""(['"(=])/static/""")
+#: tokens.css's one rule for every sideways scroller's bar, between these marks.
+HSCROLL_MARKS = ("/* hscroll:start", "/* hscroll:end */")
+
+
+def hscroll_rules():
+    """The scrollers' bar rule from tokens.css (hidden to a finger, shown on hover
+    to a mouse), which the Almanac's rows and pills read as they do in Zimi."""
+    with open(os.path.join(STATIC, "tokens.css"), encoding="utf-8") as f:
+        css = f.read().replace("\r\n", "\n")
+    start, end = (css.find(m) for m in HSCROLL_MARKS)
+    if start < 0 or end < start:
+        raise StageError("tokens.css has no hscroll block")
+    return "\n" + css[start : end + len(HSCROLL_MARKS[1])] + "\n"
+
+
 _REWRITTEN = (".js", ".css", ".html")
 
 
@@ -253,7 +307,11 @@ def host_defines(host_html, name):
     """Whether the host page declares ``name`` (a function, a variable, or a window property)."""
     n = re.escape(name)
     return bool(
-        re.search(r"(?:function\s+%s\s*\(|(?:var|let|const)\s+%s\b|window\.%s\s*=)" % (n, n, n), host_html)
+        re.search(
+            r"(?:function\s+%s\s*\(|(?:var|let|const)\s+%s\b|window\.%s\s*=)"
+            % (n, n, n),
+            host_html,
+        )
     )
 
 
@@ -303,7 +361,9 @@ def wiring(app_src, names):
 def shell_source(app_src, host_html):
     """shell.js: the pulled pieces of app.js, each once, then their wiring."""
     names = shell_names(app_src, host_html)
-    parts = ["// Pieces of Zimi's app.js the Almanac calls, pulled out by name at build time."]
+    parts = [
+        "// Pieces of Zimi's app.js the Almanac calls, pulled out by name at build time."
+    ]
     for n in names:
         piece = extract(app_src, n)
         if piece not in parts:  # two names declared in one statement
@@ -381,13 +441,21 @@ def _snapshots(dest):
     assets = os.path.join(os.path.dirname(os.path.abspath(__file__)), "assets")
     out = os.path.join(dest, "data")
     os.makedirs(out, exist_ok=True)
-    for name in ("satellites-snapshot.json", "tides-snapshot.json.gz"):
+    for name in (
+        "satellites-snapshot.json",
+        "satellites-all-snapshot.json.gz",
+        "tides-snapshot.json.gz",
+    ):
         if not os.path.exists(os.path.join(assets, name)):
             raise StageError("assets/%s is missing" % name)
     shutil.copyfile(
         os.path.join(assets, "satellites-snapshot.json"),
         os.path.join(out, "satellites-snapshot.json"),
     )
+    with gzip.open(os.path.join(assets, "satellites-all-snapshot.json.gz"), "rb") as f:
+        everything = f.read()
+    with open(os.path.join(out, "satellites-all-snapshot.json"), "wb") as f:
+        f.write(everything)
     with gzip.open(os.path.join(assets, "tides-snapshot.json.gz"), "rb") as f:
         raw = f.read()
     with open(os.path.join(out, "tides-snapshot.json"), "wb") as f:
@@ -403,7 +471,8 @@ def golden_record_images():
 def _community_golden_record(dest):
     """The community edition (openZIM/Kiwix take only free content): the copyrighted
     Golden Record pictures left out, each marked ``omitted`` in the staged table so the
-    gallery names it in its list (number, title, credit) instead of showing it, and zimi.txt says so."""
+    gallery names it in its list (number, title, credit) instead of showing it, and zimi.txt says so.
+    """
     path = os.path.join(dest, GOLDEN_CREDITS)
     with open(path, encoding="utf-8") as f:
         table = json.load(f)
@@ -436,13 +505,14 @@ def stage(dest, community=False):
         f.write(_relative(shell))
     with open(os.path.join(STATIC, "app.css"), encoding="utf-8") as f:
         shell_css = css_rules(f.read().replace("\r\n", "\n"))
-    with open(os.path.join(dest, "shell.css"), "w", encoding="utf-8", newline="\n") as f:
+    shell_css += hscroll_rules()
+    with open(
+        os.path.join(dest, "shell.css"), "w", encoding="utf-8", newline="\n"
+    ) as f:
         f.write(shell_css)
     for fn in os.listdir(HOST):
         shutil.copyfile(os.path.join(HOST, fn), os.path.join(dest, fn))
-    # The line naming Zimi outside it: the address and the mark are the Games' (one place each), the same in both ZIMs.
-    for fn in FROM_GAMES:
-        shutil.copyfile(os.path.join(GAMES, fn), os.path.join(dest, fn))
+    copy_footer(dest)
     _snapshots(dest)
     if community:
         _community_golden_record(dest)

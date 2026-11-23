@@ -473,9 +473,8 @@ def test_a_book_turning_pages(served):
             assert pg.evaluate(PAINTED)["zimi-hl-yellow"][0][0] == "reading 3.1 reading"
             assert pg.evaluate(HL_ON_SCREEN, "zimi-hl-yellow")
             _shot(served, "hl-book-pages-390.png", pg)
-            # Bigger type lays the book out again: the same words, still painted.
-            pg.touchscreen.tap(195, 520)
-            pg.wait_for_timeout(300)
+            # Bigger type lays the book out again: the same words, still painted. The bars stay up while reading
+            #, so Aa is already there; a tap in the middle would put them away.
             frame.locator(".zb-aa").click()
             pg.wait_for_timeout(300)
             frame.locator('[data-size="4"]').click()  # Larger

@@ -74,7 +74,7 @@
     }
     var pts = E.points(pos), names = G.names(sideName(0), sideName(1));
     score([names[0], names[1]], [T('cards.n.point', { n: pts[0] }), T('cards.n.point', { n: pts[1] }) + ' (+1.5)'], G.over ? -1 : turnIdx());
-    els.pass.disabled = !open || E.inCheck(pos);
+    els.pass.disabled = !open || !canPass();
     els.flip.setAttribute('aria-pressed', String(flipped()));
     G.setUndo(played.length > 0); G.setHint(open);
   }
@@ -170,8 +170,10 @@
     } else { sel = -1; targets = {}; }
     paint();
   }
+  // A side may pass whenever it is not in check, and in bikjang even when it is.
+  function canPass() { return !E.inCheck(pos) || E.movesOrPass(pos).indexOf(PASS) >= 0; }
   function passNow() {
-    if (G.over || G.thinking || !G.human(turnIdx()) || E.inCheck(pos)) return;
+    if (G.over || G.thinking || !G.human(turnIdx()) || !canPass()) return;
     play(PASS);
   }
   function undo() {

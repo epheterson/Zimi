@@ -1159,8 +1159,6 @@ class _RevStore:
 
     def load(self, name):
         """An account's copy; empty (rev 0) when it has none or it cannot be read."""
-        import json
-
         if _safe_userdata_key(name) is None:
             return self.doc(None)
         try:
@@ -1320,8 +1318,6 @@ class UserDataUnreadable(Exception):
 def _read_user_data(name):
     """A user's stored blob; fresh-empty when there is none. Raises
     UserDataUnreadable when the file is there but cannot be read."""
-    import json
-
     try:
         with open(_userdata_path(name), encoding="utf-8") as f:
             data = json.load(f)
@@ -1448,8 +1444,6 @@ def delete_user_data(name):
 def all_user_data():
     """Every per-user blob, keyed by casefold name — for the full-server backup.
     Keys are the on-disk filenames (already casefold), so restore round-trips."""
-    import json
-
     out = {}
     d = _userdata_dir()
     try:
@@ -1934,14 +1928,8 @@ def _display_path():
 
 
 def _load_displays():
-    import json
-
-    try:
-        with open(_display_path(), encoding="utf-8") as f:
-            got = json.load(f)
-        return {k: v for k, v in got.items() if isinstance(k, str) and isinstance(v, str)} if isinstance(got, dict) else {}
-    except (FileNotFoundError, ValueError, OSError):
-        return {}
+    got = _srv._read_json_dict(_display_path())
+    return {k: v for k, v in got.items() if isinstance(k, str) and isinstance(v, str)}
 
 
 def _default_display(owner):
@@ -2024,8 +2012,6 @@ def on_boards(kept):
 def _number(v):
     """``v`` when it is a real, finite number (a person's own synced data can
     hold anything JSON reads, Infinity and NaN included), else None."""
-    import math
-
     if isinstance(v, bool) or not isinstance(v, (int, float)) or not math.isfinite(v):
         return None
     return v
@@ -2076,8 +2062,6 @@ def _board_people():
 
 
 def _board_json(kept, key):
-    import json
-
     try:
         v = json.loads((kept.get(key) or {}).get("v") or "null")
     except ValueError:

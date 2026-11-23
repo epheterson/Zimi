@@ -62,7 +62,7 @@ def inline_text(fragment):
     prefix to the word a link starts ("ל<a>קיסר</a>" is one word), and
     Chinese and Japanese put no spaces between words at all."""
     text = re.sub(r"<!--.*?-->", "", fragment, flags=re.DOTALL)
-    text = re.sub(r"<(script|style)\b[^>]*>.*?(?:</\1\b[^>]*>|$)", "", text, flags=re.DOTALL)
+    text = _SCRIPT_OR_STYLE_RE.sub("", text)
     text = _BLOCK_TAG_RE.sub(" ", text)
     text = _TAG_RE.sub("", text)
     text = re.sub(r"<[^>]*>?", "", text)
@@ -891,6 +891,28 @@ _WIKT_SMALL_LABEL_RE = re.compile(
 )
 _ARABIC_MARKS_RE = re.compile(r"[ً-ٰٟ]")
 
+# What Wiktionary itself says about a sense a front card should not lead with:
+# the register labels it prints ("vulgar", "offensive", "derogatory") and the
+# categories every edition files such words under (English vulgarities,
+# Termes vulgaires, Вульгарные выражения, the Sex topic), in the editions'
+# own words.
+_CRUDE_WORDS = (
+    "vulg|offensive|derogator|pejorat|slur|obscen|obsc[eè]n|insult|swear|profan"
+    "|sexual|sex(?![a-z])|beleidigend|abwertend|schimpf|injur|grossier"
+    "|ofensiv|despectiv|palabrota|вульгар|грубы|бран|непристойн|ругател|секс"
+    "|粗|侮"
+)
+_WIKT_CRUDE_RE = re.compile(
+    r'Category:(?:[^"\'#]*?[:_/])?(?:%s)' % _CRUDE_WORDS
+    + r'|class="(?:ib-content|usage-label-sense)[^"]*"[^>]*>\s*(?:<[^>]+>\s*)*(?:%s)'
+    % _CRUDE_WORDS,
+    re.IGNORECASE,
+)
+
+# A mwoffliner page has no category links, only the page config's list in its head ("wgCategories":["Nouns",...,"Sex"]),
+# outside any language section: a crude category there marks the whole page.
+_WIKT_PAGE_CRUDE_RE = re.compile(r'"wgCategories":\[[^\]]*?"(?:[^"]*?[ :_/])?(?:%s)' % _CRUDE_WORDS, re.IGNORECASE)
+
 
 def _wiktionary_headings(html_str):
     """[(start, end, level, text)] for every heading of a page."""
@@ -1008,7 +1030,8 @@ def _extract_preview_wiktionary(html_str, zim_name, result, lang="", title=""):
 
     Populates result["part_of_speech"], result["blurb"], and the two flags
     the random endpoint uses to pass a pick over: result["boring"] (an
-    inflected form) and result["other_language"] (the page defines a word of
+    inflected form), result["crude"] (the wiki itself files the word as
+    vulgar, offensive or sexual) and result["other_language"] (the page defines a word of
     another language: it has no section in the wiki's own, or, in a language
     with a script of its own, its headword is written in another script)."""
     facts = _wikilang.wiktionary_facts(lang, zim_name) or {}
@@ -1017,6 +1040,9 @@ def _extract_preview_wiktionary(html_str, zim_name, result, lang="", title=""):
         result["other_language"] = True
         return
     section, heads = found
+    if _WIKT_CRUDE_RE.search(section) or _WIKT_PAGE_CRUDE_RE.search(html_str):
+        result["crude"] = True
+        return
     pos, is_form, start = _wiktionary_pos(section, heads, facts)
     if pos:
         result["part_of_speech"] = pos
@@ -1056,7 +1082,7 @@ def _extract_preview_blurb(html_str):
         re.IGNORECASE,
     )
     for pm in re.finditer(r"<p\b[^>]*>(.*?)</p>", html_str, re.DOTALL | re.IGNORECASE):
-        text = strip_html(pm.group(1))
+        text = strip_html_inline(pm.group(1))  # a link leaves no space before the mark that follows it
         # Chinese and Japanese say in 12 characters what takes 40 in English:
         # "鄞州区是浙江省宁波市的一个市辖区。" is a whole lead sentence.
         if len(text) > (12 if _CJK_RE.search(text) else 40) and not _skip_blurb.search(

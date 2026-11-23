@@ -82,7 +82,7 @@ check(/bcIcon\.setAttribute\('href', '\/w\/' \+ encodeURIComponent\(activeSource
 check(extractFn(appSrc, 'goHome').includes('_anchorNativeClick'), 'goHome lets native link gestures through');
 check(extractFn(appSrc, 'bcClick').includes('_anchorNativeClick'), 'bcClick lets native link gestures through');
 
-check(/<a class="discover-card" href="\/#almanac" onclick="return _spaNav\(event, openAlmanac\)"/.test(appSrc),
+check(/<a class="discover-card" href="\/#almanac"[^>]* onclick="return _spaNav\(event, openAlmanac\)"/.test(appSrc),
   'Almanac Today card is <a href="/#almanac">');
 check(/<a class="result" href="' \+ escAttr\(_articleDeepLinkPath\(r\.zim, r\.path\)\)/.test(appSrc),
   'search results are anchors carrying the article deep link');

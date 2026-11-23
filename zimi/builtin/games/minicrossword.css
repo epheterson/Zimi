@@ -33,3 +33,6 @@
 .cw-cols li button.done { color: var(--ink2); }
 .cw-main .ar-btn[aria-disabled="true"] { color: var(--ink3); cursor: default; }
 @media (max-width: 380px) { .cw-grid { --cell: min(54px, calc((100vw - 34px) / 5)); } }
+
+/* Ten keys across a phone are 36px wide with a gap: the box of each reaches into the gap, so a press never lands on nothing. */
+@media (pointer: coarse) { .cw-key { position: relative; } .cw-key::after { content: ""; position: absolute; inset: -3px -2px; } }

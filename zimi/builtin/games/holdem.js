@@ -391,7 +391,8 @@
       var potTag = Z.h('div', { class: 'c2-tag', style: 'left:' + Math.round(g.W / 2 - 100) + 'px;top:' + (boardY(g) - POT_H - 4) + 'px;width:200px;height:' + POT_H + 'px' }, [Z.h('span', { text: TX('holdem.pot', { n: totalPot(st), a: st.blinds[0], b: st.blinds[1] }) })]);
       d.getElementById('zc-table').appendChild(potTag); tags.push(potTag);
       // The pot is chips on the table, under the shared cards.
-      var pile = Z.h('div', { class: 'ct-pile', style: 'top:' + Math.round(boardY(g) + g.ch + 18) + 'px' });
+      // A short table has no room under the shared cards (the status line and your seat are there): the chips stand left of them.
+      var pile = Z.h('div', { class: 'ct-pile', style: g.short ? 'top:' + Math.round(boardY(g) + g.ch / 2 - 24) + 'px;left:' + Math.max(g.pad, Math.round(g.W / 2 - 2.6 * g.cw - 110)) + 'px;right:auto;width:90px' : 'top:' + Math.round(boardY(g) + g.ch + 18) + 'px' });
       if (totalPot(st) > 0) pile.appendChild(T.chipStack(totalPot(st)));
       d.getElementById('zc-table').appendChild(pile); tags.push(pile);
     }
@@ -482,7 +483,7 @@
       session.reset(fresh);
     }
     t = T.create({
-      id: 'holdem', name: 'Texas Hold’em', seats: seats, view: view, geo: geo, place: function (st, m, v) { syncView(st); return place(st, m, v); }, hud: hud, newGame: newGame, cols: 7, heightShare: 0.1,
+      id: 'holdem', name: 'Texas Hold’em', sidePanel: true, seats: seats, view: view, geo: geo, place: function (st, m, v) { syncView(st); return place(st, m, v); }, hud: hud, newGame: newGame, cols: 7, heightShare: 0.1,
       stat: function () { return ''; },   // the chips are the status line's (holdem.fact): in the bar they cut the name to "Texas H…"
       cascadeOrder: function (st) { return st.board.concat(st.players[seats.view()].hole).map(function (id) { return { id: id }; }); },
       winLines: function (sec, st) { return [TX('holdem.tookAll', { hands: Z.plural(st.handNo, 'hand') })]; },

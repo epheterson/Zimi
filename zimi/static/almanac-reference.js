@@ -39,27 +39,16 @@ var AR_MS_PER_HOUR = 3600000;
 
 function _arNorm360(d) { return ((d % 360) + 360) % 360; }
 
-// One coordinate of a VSOP87 series (almanac-navdata.js keeps each power's
-// terms flat: A, B, C, A, B, C...).
-function _arVsop(rows, tau) {
-  var total = 0, tp = 1;
-  for (var p = 0; p < rows.length; p++) {
-    var row = rows[p], s = 0;
-    for (var i = 0; i < row.length; i += 3) s += row[i] * Math.cos(row[i + 1] + row[i + 2] * tau);
-    total += s * tp;
-    tp *= tau;
-  }
-  return total;
-}
-
 // Heliocentric ecliptic rectangular coordinates (AU, ecliptic and equinox
-// of date): a planet from almanac-navdata.js, the Earth from almanac-earth.js.
+// of date): a planet from the VSOP87D every view draws it with
+// (almanac-vsop87.js, loaded with the ephemeris), the Earth from
+// almanac-ephem.js (the same series, truncated the same way).
 function _arHelioRect(l, b, r) {
   return [r * Math.cos(b) * Math.cos(l), r * Math.cos(b) * Math.sin(l), r * Math.sin(b)];
 }
 function _arPlanetHelio(name, tau) {
-  var s = AR_VSOP[name];
-  return _arHelioRect(_arVsop(s.L, tau), _arVsop(s.B, tau), _arVsop(s.R, tau));
+  var s = EPH_VSOP87D[name.charAt(0).toUpperCase() + name.slice(1)];
+  return _arHelioRect(_aeVsopSum(s[0], tau), _aeVsopSum(s[1], tau), _aeVsopSum(s[2], tau));
 }
 function _arEarthHelio(tau) {
   return _arHelioRect(_aeVsopSum(AE_VSOP_L, tau), _aeVsopSum(AE_VSOP_B, tau), _aeVsopSum(AE_VSOP_R, tau));

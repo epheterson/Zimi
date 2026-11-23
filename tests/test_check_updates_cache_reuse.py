@@ -103,6 +103,11 @@ def _env(tmp_path, monkeypatch):
     monkeypatch.setattr(lib, "_opds_disk_loaded", True)  # isolate from disk
     monkeypatch.setattr(lib, "_thumb_prefetch_started", True)
     monkeypatch.setattr(lib, "_OPDS_BG_REFRESH", False)  # no background threads
+    # The community catalog was asked for today: the update check may ask at most once a
+    # day, so a warm machine makes no request for it (monkeypatch restores the global).
+    monkeypatch.setattr(
+        lib, "_community", {"at": time.time(), "items": [], "etag": "", "fails": 0, "next_try": 0.0}
+    )
     lib._opds_cache.clear()
     lib._opds_refreshing.clear()
     lib._catalog_stale_ts = None

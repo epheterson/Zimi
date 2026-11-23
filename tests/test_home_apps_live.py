@@ -233,20 +233,26 @@ def test_the_order_governs_the_apps_and_their_title_opens_their_page(
             assert at["heading"] == apps and at["clickable"] and at["aboveApps"], at
             # Help now is its own pill between the heading and the row of apps.
             assert at["helpFirst"], at
-            assert at["sort"] and at["view"] and at["controls"] == 1, at
-            ctl, text, grid = at["ctl"], at["text"], at["grid"]
-            assert ctl["b"] <= grid["t"], "the controls sit above the apps"
+            # The order and the size together, in one place, on the first heading, the Apps.
+            assert at["controls"] == 1, at
+            assert at["sort"] and at["view"], "the order and the view chooser sit together on the Apps heading"
+            box = pg.evaluate(
+                "() => { const c = document.querySelector('#output .lib-controls'), b = c.getBoundingClientRect(),"
+                " r = document.createRange(); r.selectNodeContents(c.closest('.cat-heading').firstChild); const t = r.getBoundingClientRect();"
+                " return { l: b.left, r: b.right, tl: t.left, tr: t.right, vw: document.documentElement.clientWidth }; }"
+            )
             assert (
-                ctl["l"] >= 0 and ctl["r"] <= at["vw"]
+                box["l"] >= 0 and box["r"] <= box["vw"]
             ), "the controls are on the screen"
-            assert ctl["l"] >= text["r"] or ctl["r"] <= text["l"], "clear of the name"
+            assert box["l"] >= box["tr"] or box["r"] <= box["tl"], "clear of the name"
             assert at["scrollW"] <= at["vw"], "nothing pushes the page sideways"
+            text = at["text"]
             # Home shows only the apps with something inside; an empty one waits
             # on the Apps page (Eric, 2026-10-17: "hide apps that have no
             # backing zims").
             borders = pg.evaluate(
                 "() => Object.fromEntries(Array.from(document.querySelectorAll('#output .apps-grid .app-tile'))"
-                ".map(a => [a.dataset.app, getComputedStyle(a).borderTopStyle]))"
+                ".map(a => [a.dataset.app, getComputedStyle(a.closest('.pick-tiles') ? a.querySelector('.card-icon') : a).borderTopStyle]))"
             )
             assert "reddot" not in borders and "maps" not in borders, borders
             assert borders["tube"] == borders["books"] == "solid", borders
@@ -359,11 +365,15 @@ def test_opening_an_app_clears_its_dot(served, route):
     tile_dot = "() => !!document.querySelector(\"#output .apps-grid .app-tile[data-app='tube'] .rc-dot\")"
     with sync_playwright() as pw:
         br = pw.chromium.launch()
-        pg = br.new_context(viewport={"width": 390, "height": 844}, is_mobile=True, has_touch=True).new_page()
+        pg = br.new_context(
+            viewport={"width": 390, "height": 844}, is_mobile=True, has_touch=True
+        ).new_page()
         try:
             pg.goto(served + "/")
             pg.wait_for_function(HOME, timeout=30000)
-            assert pg.evaluate(tile_dot), "CrashCourse updated an hour ago: Tube wears the dot"
+            assert pg.evaluate(
+                tile_dot
+            ), "CrashCourse updated an hour ago: Tube wears the dot"
             if route == "tile":
                 pg.locator("#output .apps-grid .app-tile[data-app='tube']").click()
             elif route == "search":
@@ -382,20 +392,31 @@ def test_opening_an_app_clears_its_dot(served, route):
 @pytest.mark.parametrize("touch", [False, True], ids=["hover", "tap"])
 def test_the_dot_says_what_lit_it(served, touch):
     """Eric, 2026-11-04: "maybe if I hover on a dot show the updates that lead to it". Hover the dot (a
-    mouse), or tap the dot itself (a phone): a small list says what changed, here CrashCourse's update an
-    hour ago, and the tap does not open the app."""
+    mouse): a small list says what changed, here CrashCourse's update an hour ago. On a phone the dot is a mark only.
+    """
     from playwright.sync_api import sync_playwright
 
     dot = "#output .apps-grid .app-tile[data-app='tube'] .rc-dot"
     with sync_playwright() as pw:
         br = pw.chromium.launch()
-        size = {"width": 390, "height": 844} if touch else {"width": 1280, "height": 900}
+        size = (
+            {"width": 390, "height": 844} if touch else {"width": 1280, "height": 900}
+        )
         pg = br.new_context(viewport=size, is_mobile=touch, has_touch=touch).new_page()
         try:
             pg.goto(served + "/")
             pg.wait_for_function(HOME, timeout=30000)
             if touch:
-                pg.locator(dot).tap()
+                # On a square tile the dot is 7px, too small a target: on touch it is a mark only, and a tap anywhere on
+                # the tile opens the app (the tile's long press opens its menu).
+                assert (
+                    pg.evaluate(
+                        "(s) => getComputedStyle(document.querySelector(s)).pointerEvents",
+                        dot,
+                    )
+                    == "none"
+                )
+                return
             else:
                 # The pointer goes to the dot as a mouse does, with no scroll. Home redraws once more when its late data
                 # lands (_renderHomeSoon); a locator.hover() that meets the redraw retries by scrolling the page, and a
@@ -414,9 +435,16 @@ def test_the_dot_says_what_lit_it(served, touch):
                 arg=["CrashCourse", pg.evaluate("t('upd_updated')")],
                 timeout=10000,
             ).json_value()
-            assert not pg.evaluate("() => typeof _tubeOpen !== 'undefined' && _tubeOpen"), "the dot is not the tile"
+            assert not pg.evaluate(
+                "() => typeof _tubeOpen !== 'undefined' && _tubeOpen"
+            ), "the dot is not the tile"
             if os.environ.get("ZIMI_SHOTS"):
-                pg.screenshot(path=os.path.join(os.environ["ZIMI_SHOTS"], "dot-why-%s.png" % ("tap" if touch else "hover")))
+                pg.screenshot(
+                    path=os.path.join(
+                        os.environ["ZIMI_SHOTS"],
+                        "dot-why-%s.png" % ("tap" if touch else "hover"),
+                    )
+                )
         finally:
             br.close()
 
@@ -426,15 +454,22 @@ def test_about_says_when_it_last_changed_and_how(served):
 
     with sync_playwright() as pw:
         br = pw.chromium.launch()
-        pg = br.new_context(viewport={"width": 390, "height": 844}, is_mobile=True, has_touch=True).new_page()
+        pg = br.new_context(
+            viewport={"width": 390, "height": 844}, is_mobile=True, has_touch=True
+        ).new_page()
         try:
             pg.goto(served + "/")
             pg.wait_for_function(HOME, timeout=30000)
             pg.evaluate("_openZimAbout('crashcourse')")
-            pg.wait_for_function("() => !!document.querySelector('.zi-panel .zi-rows')", timeout=10000)
+            pg.wait_for_function(
+                "() => !!document.querySelector('.zi-panel .zi-rows')", timeout=10000
+            )
             text = pg.text_content(".zi-panel")
             assert pg.evaluate("t('zi_last_updated')") in text, text
             if os.environ.get("ZIMI_SHOTS"):
-                pg.screenshot(path=os.path.join(os.environ["ZIMI_SHOTS"], "about-updated.png"), full_page=True)
+                pg.screenshot(
+                    path=os.path.join(os.environ["ZIMI_SHOTS"], "about-updated.png"),
+                    full_page=True,
+                )
         finally:
             br.close()

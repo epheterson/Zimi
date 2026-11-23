@@ -30,7 +30,7 @@ def test_the_sheet_and_the_script_are_inlined_once_each():
     served = http._inline_apps_assets(raw)
     assert http._APPS_CSS_MARK not in served
     assert http._APPS_JS_MARK not in served
-    assert served.count(b"--amber:") == 3, "the light, the dark and the red night value"
+    assert served.count(b"--amber:") == 4, "the ground's dark, light (shell) and light (system) values, and the red night value"
     assert b"prefers-color-scheme: dark" in served
     assert served.index(b"<style>") < served.index(b"<body")
     assert served.count(b"function esc(") == 1

@@ -42,6 +42,7 @@ const code = [
   'var AE_EARTH_RADIUS_KM = 6378.137;',
   ['AE_PLACE_MAX', 'AE_PLACE_ARTICLE_KM', 'AE_PLACE_MATCH', 'AE_PLACE_ACCENTS'].map(extractVar).join('\n'),
   ['_aePlaceNorm', '_aePlaceMatch', '_aePlaceLandmarks', '_aePlaceTown', '_aePlaceMerge', '_aePlaceKm', '_aePlaceBest'].map(extractFn).join('\n'),
+  'function _aeLmEarthLoad() {}   // the landmark file is fetched by the view; here the list is set by hand',
   'this.api = { match: _aePlaceMatch, landmarks: _aePlaceLandmarks, merge: _aePlaceMerge, km: _aePlaceKm, best: _aePlaceBest, set: function (lm) { _aeLm = lm; }, max: AE_PLACE_MAX };',
 ].join('\n');
 const ctx = {};

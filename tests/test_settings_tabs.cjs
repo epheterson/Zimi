@@ -28,7 +28,7 @@ const msKeys = [...src.matchAll(/class="ms-nav-item[^"]*" data-ms="\w+"[^>]*>' \
 ok('both rows of tabs are found', manageKeys.length >= 5 && msKeys.length >= 4, manageKeys + ' / ' + msKeys);
 
 const dir = path.join(root, 'static', 'i18n');
-for (const f of fs.readdirSync(dir)) {
+for (const f of fs.readdirSync(dir).filter(f => f.endsWith('.json'))) {
   const d = JSON.parse(fs.readFileSync(path.join(dir, f), 'utf8'));
   const names = manageKeys.concat(msKeys).map((k) => (d[k] || '').trim().toLowerCase());
   const twice = names.filter((n, i) => n && names.indexOf(n) !== i);
@@ -41,7 +41,7 @@ ok('...and the Server pane keeps only the server\'s backup', /_serverBackupCardH
 
 // Cut: a keyboard key in the empty Saved panel (a phone has none), and the
 // Reader View switch's subtitle that only said its title again.
-for (const f of fs.readdirSync(dir)) {
+for (const f of fs.readdirSync(dir).filter(f => f.endsWith('.json'))) {
   const d = JSON.parse(fs.readFileSync(path.join(dir, f), 'utf8'));
   ok(f + ': the empty Saved panel names no key', !/\bB\b/.test(d.no_bookmarks || 'B'));
   ok(f + ': no "Open articles in Reader View" under "Always use Reader View"', !('reader_auto_hint' in d));

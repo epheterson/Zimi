@@ -21,8 +21,6 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 @pytest.fixture(scope="module")
 def served(tmp_path_factory):
-    from http.server import ThreadingHTTPServer
-
     import zimi.server as srv
     from conftest_zim import build_answer_fixture_zim, build_wiki_fixture_zim
     from zimi.http import ZimHandler
@@ -38,7 +36,7 @@ def served(tmp_path_factory):
     srv.ZIMI_DATA_DIR = str(tmp / "data")
     os.makedirs(srv.ZIMI_DATA_DIR, exist_ok=True)
     srv.load_cache(force=True)
-    httpd = ThreadingHTTPServer(("127.0.0.1", 0), ZimHandler)
+    httpd = srv.ZimiHTTPServer(("127.0.0.1", 0), ZimHandler)
     threading.Thread(target=httpd.serve_forever, daemon=True).start()
     yield "http://127.0.0.1:%d" % httpd.server_address[1]
     httpd.shutdown()

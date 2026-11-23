@@ -20,8 +20,7 @@
   [lang] { unicode-bidi: isolate; }
 
   /* Where you have been: the words that led here, each a step back. */
-  .trail { display: flex; align-items: center; gap: 2px 6px; flex-wrap: nowrap; overflow-x: auto; scrollbar-width: none; margin: 0 0 14px; font-size: 13px; color: var(--text2); white-space: nowrap; }
-  .trail::-webkit-scrollbar { display: none; }
+  .trail { display: flex; align-items: center; gap: 2px 6px; flex-wrap: nowrap; overflow-x: auto; margin: 0 0 14px; font-size: 13px; color: var(--text2); white-space: nowrap; }
   .trail button { border: 0; background: none; padding: 6px 2px; color: var(--text2); cursor: pointer; font: inherit; unicode-bidi: isolate; }
   .trail button:hover { color: var(--amber); }
   .trail .now { color: var(--text); font-weight: 600; padding: 6px 2px; unicode-bidi: isolate; }
@@ -39,7 +38,7 @@
   .lang { margin: 0 0 26px; }
   .lang > summary, .lang-h { list-style: none; display: flex; align-items: baseline; gap: 10px; padding: 10px 0 8px; border-top: 1px solid var(--border); cursor: default; }
   .lang > summary::-webkit-details-marker { display: none; }
-  .lang-h h2 { margin: 0; font-size: 13px; font-weight: 700; letter-spacing: .06em; text-transform: uppercase; color: var(--text2); }
+  .lang-h h2 { margin: 0; }
   .lang-h .peek { flex: 1; min-width: 0; font-size: 13.5px; color: var(--text2); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; unicode-bidi: plaintext; }
   .lang-h .peek:empty { display: none; }
   details.lang > summary { cursor: pointer; }
@@ -165,7 +164,6 @@
   .wotd-box .wotd:focus-visible { outline: 2px solid var(--amber); outline-offset: 2px; }
   .wotd-say { margin: 10px 0 2px; }
   .cloud .ml { margin-inline-start: 6px; font-size: 11px; color: var(--text2); }
-  .shelf-h h2 { font-size: 13px; font-weight: 700; letter-spacing: .06em; text-transform: uppercase; color: var(--text2); }
   .dicts { display: flex; flex-direction: column; gap: 2px; font-size: 13px; color: var(--text2); }
   .dicts div { display: flex; align-items: center; gap: 8px; padding: 4px 0; }
   .dicts img { width: 16px; height: 16px; border-radius: 4px; }

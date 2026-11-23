@@ -385,7 +385,9 @@ def test_rendered_page_timeout_ends_a_page_that_never_answers(fixture_server, tm
     started = time.monotonic()
     with pytest.raises(creator.CreateError, match="cannot render"):
         _site(tmp_path, "/hang", engine="rendered", page_timeout=1)
-    assert time.monotonic() - started < 4
+    # Far under the 45 s it waits by default (renderer.NAV_TIMEOUT); not tighter, since the browser's own start can queue
+    # behind the suite's cap on Chromiums at once (tests/browser_slots.py) on a busy machine.
+    assert time.monotonic() - started < 15
 
 
 def test_alive_hands_the_options_to_its_browser(monkeypatch, tmp_path):

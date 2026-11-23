@@ -77,3 +77,18 @@ def test_a_name_on_the_table_wraps_before_it_is_cut(browser, site, lang):
     if os.environ.get("SHOTS") and lang == "es":
         pg.screenshot(path=os.path.join(os.environ["SHOTS"], "shelf-table-es.png"))
     ctx.close()
+
+
+def test_the_table_stays_on_the_recent_tab(browser, site):
+    now = int(time.time() * 1000)
+    recent = [{"path": "sudoku.html", "title": "Sudoku", "at": now}, {"path": "minesweeper.html", "title": "Minesweeper", "at": now - 1000}]
+    ctx = browser.new_context(viewport={"width": 1100, "height": 844})
+    ctx.add_init_script("try { localStorage.setItem('zimi.games.recent', %s); } catch (e) {}" % json.dumps(json.dumps(recent)))
+    pg = ctx.new_page()
+    pg.goto(site + "index.html#lang=en")
+    pg.wait_for_selector(".ar-box", timeout=15000)
+    pg.wait_for_timeout(800)
+    pg.evaluate("() => document.querySelector('.sh-chip-recent').click()")
+    pg.wait_for_timeout(300)
+    assert pg.evaluate("() => { const c = document.querySelector('.ar-continue'); return !!c && !c.hidden && c.offsetHeight > 0; }")
+    ctx.close()

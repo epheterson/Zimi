@@ -135,7 +135,7 @@ function page(opts) {
   p.sb.document.activeElement = { tagName: 'INPUT', value: '' };
   check(p.sb._buildQuiet() === true, '...an empty, focused box is not');
 
-  check(/function _buildCheck\(\)[\s\S]{0,400}asset_version\) _buildHeard/.test(src) && /_liveOpen\(\);\n    _buildCheck\(\);/.test(src) && /_liveOpen\(\);\n  _buildCheck\(\);/.test(src), 'the build is asked for on load and on coming back, not only heard in the stream');
+  check(/function _buildCheck\(share\)[\s\S]{0,400}asset_version\) _buildHeard/.test(src) && /_liveOpen\(\);\n    _buildCheck\(\);/.test(src) && /_liveOpen\(\);\n  _buildCheck\(true\);/.test(src), 'the build is asked for on load and on coming back, not only heard in the stream');
   // Heard in the first moments of a load or a return: whatever view is up, unless something is in hand.
   const frameDoc = (active, playing) => ({ activeElement: active || null, querySelectorAll: () => (playing ? [{ paused: false }] : []) });
   p = page({ readerOpen: true, mode: 'reader' });

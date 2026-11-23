@@ -22,7 +22,7 @@ import urllib.request
 from datetime import datetime, timezone
 
 import zimi.server as _srv
-from zimi import libfolders, nomadapi, outbound
+from zimi import libfolders, nomadapi, outbound, zimparts
 from zimi.safety import join_inside, loggable
 
 log = logging.getLogger("zimi")
@@ -538,8 +538,6 @@ def _generate_api_token():
     Returns None when the token cannot be persisted (read-only media): a
     token handed out but not on disk would stop authenticating at the next
     restart, which is worse than a clean refusal now."""
-    import secrets
-
     token = secrets.token_urlsafe(32)
     if not _atomic_write_text(_api_token_file(), token):
         return None
@@ -1029,12 +1027,7 @@ def detect_install_type():
 
 
 def _read_app_update_cache():
-    try:
-        with open(_app_update_cache_path(), "r", encoding="utf-8") as f:
-            data = json.load(f)
-        return data if isinstance(data, dict) else {}
-    except (OSError, ValueError):
-        return {}
+    return _srv._read_json_dict(_app_update_cache_path())
 
 
 def _github_json(url):
@@ -1205,7 +1198,7 @@ def _catalog_copies():
     except OSError:
         names = []
     # Installed anywhere the library reads (subfolders, other folders), not only at the top of ZIM_DIR.
-    installed = {os.path.basename(p) for p in _srv.get_zim_files().values()}
+    installed = {zimparts.book_filename(p) for p in _srv.get_zim_files().values()}
     for name in names:
         zim = name[: -len(".torrent")]
         if name.endswith(".torrent") and zim not in installed and not os.path.exists(os.path.join(_srv.ZIM_DIR, zim)):
@@ -1324,8 +1317,11 @@ def _cache_info_payload():
     ]
     bar_total = sum(seg["size_bytes"] for seg in breakdown)
     copies = _catalog_copies()
+    from zimi import voices as _voices
+
     return {
         "caches": caches,
+        "voice_cache": _voices.cache_info(),
         "catalog_copies": {"count": len(copies), "size_bytes": sum(_file_size(p) for p in copies)},
         "total_bytes": sum(c["size_bytes"] for c in caches.values()),
         "data_dir_total_bytes": bar_total,
@@ -1540,6 +1536,8 @@ def _merge_collections(cur, incoming, overwrite):
     Returns (merged, counts)."""
     inc_fav = [f for f in incoming.get("favorites", []) if isinstance(f, str)]
     inc_cols = incoming.get("collections", {})
+    # What Replace would drop: collections here that the backup does not have (the preview runs as a merge).
+    only_here = sum(1 for name in cur.get("collections", {}) if name not in inc_cols)
     if overwrite:
         fav = list(dict.fromkeys(inc_fav))[:100]
         merged = {"version": 1, "favorites": fav, "collections": dict(inc_cols)}
@@ -1548,6 +1546,7 @@ def _merge_collections(cur, incoming, overwrite):
             "fav_dupes": 0,
             "col_added": len(inc_cols),
             "col_replaced": 0,
+            "col_dropped": only_here,
         }
         return merged, counts
     fav = list(cur.get("favorites", []))
@@ -1573,6 +1572,7 @@ def _merge_collections(cur, incoming, overwrite):
         "fav_dupes": dupes,
         "col_added": added,
         "col_replaced": replaced,
+        "col_dropped": only_here,
     }
     return merged, counts
 
@@ -2170,7 +2170,7 @@ def _activity_health_finish(actor):
         record_activity(
             "health",
             "",  # the whole library — the client names it in the reader's language
-            outcome="ok" if state.get("phase") == "done" else "failed",
+            outcome={"done": "ok", "cancelled": "interrupted"}.get(state.get("phase"), "failed"),
             detail=f"{healthy}/{total}" if total else "",
             actor=actor,
         )
@@ -2320,12 +2320,7 @@ def _read_create_defaults():
     write merges into. Readers that act on a value use ``_create_default``."""
     from zimi.crawler import create_defaults_path
 
-    try:
-        with open(create_defaults_path(), "r", encoding="utf-8") as f:
-            saved = json.load(f)
-    except (OSError, ValueError):
-        return {}
-    return saved if isinstance(saved, dict) else {}
+    return _srv._read_json_dict(create_defaults_path())
 
 
 def _create_default(key, fallback):
@@ -3493,12 +3488,16 @@ def _create_engine(value):
     # a form that lies.
     if name == "rendered" and not _create_browser_ready():
         raise ValueError(
-            "the rendered engine needs a browser this server does not have " "installed"
+            _addon_refusal(
+                "the rendered engine needs a browser this server does not have installed", "browser"
+            )
         )
     if name == "singlefile" and not _create_singlefile_ready():
         raise ValueError(
-            "the singlefile engine needs the SingleFile CLI, and this server "
-            "does not have it installed"
+            _addon_refusal(
+                "the singlefile engine needs the SingleFile CLI, and this server does not have it installed",
+                "singlefile",
+            )
         )
     if name == "zimit" and not _create_allows_private():
         # Its browser is in Docker, out of the capture proxy's reach.
@@ -3512,10 +3511,28 @@ def _create_engine(value):
         )
     if name == "alive" and not _create_alive_ready():
         raise ValueError(
-            "the alive engine needs both a browser and the warc2zim sidecar, "
-            "and this server is missing at least one of them"
+            _addon_refusal(
+                "the alive engine needs both a browser and the warc2zim sidecar, "
+                "and this server is missing at least one of them",
+                "browser",
+                "warc2zim",
+            )
         )
     return name
+
+
+def _addon_refusal(message, *keys):
+    """Words for a capture mode this server lacks. When an add-on supplies it: under Automatically the first missing
+    one starts installing now (the job is refused, not held for a download), otherwise the words say where to add it."""
+    from zimi import addons, outbound
+
+    missing = [k for k in keys if not addons.available(k)]
+    if not missing or not addons.supported() or addons.POLICY.mode()[0] == outbound.NEVER:
+        return message
+    if addons.POLICY.mode()[0] == outbound.AUTO:
+        addons.install(missing[0], None)
+        return message + "; adding it now, try again when it is ready"
+    return message + "; add it in Settings > Server > Add-ons"
 
 
 def _create_blocking_engine(engine):
@@ -5354,7 +5371,9 @@ def handle_manage_get(handler, parsed, params):
     if parsed.path == "/manage/thumb":
         # Thumbnails are public catalog data; <img> tags can't send Authorization headers
         url = param("url", "")
-        if not url or not url.startswith("https://library.kiwix.org/"):
+        from zimi import library as _thumbs
+
+        if not _thumbs.is_thumb_url(url):
             return handler._json(400, {"error": "invalid thumbnail URL"})
         data, ct = _srv._fetch_thumb(url)
         if data is None:
@@ -5486,6 +5505,9 @@ def handle_manage_get(handler, parsed, params):
         payload["coverage"] = _auto_update_coverage()
         return handler._json(200, payload)
 
+    elif parsed.path == "/manage/debuglog":
+        return handler._json(200, _debuglog_view())
+
     elif parsed.path == "/manage/creator":
         return handler._json(200, _creator_payload())
 
@@ -5614,6 +5636,17 @@ def handle_manage_get(handler, parsed, params):
                 ]
             total = len(fallback)
             items = fallback[start : start + count]
+        # Community ZIMs (Kiwix's second catalog) follow the main catalog's
+        # entries, so a page that runs past them takes the community's.
+        from zimi import library as _community
+
+        kiwix_total = total
+        community = _community.community_items(query, lang)
+        if community:
+            total += len(community)
+            if start + count > kiwix_total:
+                lo = max(start - kiwix_total, 0)
+                items = list(items) + community[lo : start + count - kiwix_total]
         # Optional client-side language filter — `ui_languages=en,fr` returns
         # only items whose normalized language code is in the set.
         ui_langs_raw = param("ui_languages", "")
@@ -5635,11 +5668,11 @@ def handle_manage_get(handler, parsed, params):
         # Once the browse pages in cache cover the whole catalog, write it
         # down as one file. No extra requests: the pages are already here.
         # This is what lets a machine that was online once browse forever.
-        if not err and total:
+        if not err and kiwix_total:
             try:
                 from zimi import library as _persist
 
-                _persist.maybe_persist_full_catalog(total)
+                _persist.maybe_persist_full_catalog(kiwix_total)
             except Exception:
                 pass  # caching is best effort; never fail a browse over it
         # Where each map is, so a map page can offer the maps of the spot on
@@ -6023,6 +6056,28 @@ def handle_manage_get(handler, parsed, params):
 
         return handler._json(200, {"zims": ownzims.catalog()})
 
+    elif parsed.path == "/manage/tidy":
+        # What the library keeps beside what it lists: the Almanac's data as one row, and the older copies no name serves.
+        from zimi import almanachd
+
+        older = _srv.older_copies()
+        listed = {o["file"] for o in older}
+        older += [o for o in almanachd.superseded() if o["file"] not in listed]   # what the size in use replaced
+        return handler._json(200, {"almanac_hd": almanachd.library_row(), "almanac_hd_error": almanachd.error(), "older": older})
+
+    elif parsed.path == "/manage/addons":
+        # Add-ons (addons.py): what can be added, what is there, the install under way, the setting.
+        from zimi import addons as _addons
+
+        return handler._json(200, _addons.status())
+
+    elif parsed.path == "/manage/offline-ready":
+        # The "Ready for offline" list: every piece that needs a download, what is here, the sizes (offline.py).
+        from zimi import offline as _offline
+
+        qs = urllib.parse.parse_qs(parsed.query)
+        return handler._json(200, _offline.readiness((qs.get("lang") or ["en"])[0][:12]))
+
     elif parsed.path == "/manage/outbound":
         # "What Zimi fetches from the internet": every destination, what sets
         # it off and whether it is on now. Read-only; each row names the
@@ -6110,8 +6165,13 @@ def handle_manage_get(handler, parsed, params):
         # says so, nothing to add.
         setting = p2p.torrent_env_setting() if not enabled else ""
         if setting:
-            hint_key = "bt_why_off"
-            hint_vars = {"v": setting}
+            # Offline mode is said in words; the other switches are the
+            # operator's own variables and are named as set.
+            if p2p.torrent_env_var() == "ZIMI_OFFLINE":
+                hint_key = "bt_why_offline"
+            else:
+                hint_key = "bt_why_off"
+                hint_vars = {"v": setting}
         elif status == "unavailable":
             import platform as _platform
             import sys as _sys
@@ -6404,6 +6464,13 @@ def access_answer(handler):
             else ""
         ),
     }
+
+
+def _debuglog_view():
+    """The debug log's state for the Manage switch: on, who decides, where it is kept."""
+    from zimi import debuglog
+
+    return {"on": debuglog.enabled(), "env_locked": debuglog.env_locked(), "path": debuglog.log_path()}
 
 
 def _handle_access(handler, data):
@@ -7079,6 +7146,10 @@ def handle_manage_post(handler, parsed, data):
         action = data.get("action", "")
         if action == "purge-catalog":
             return handler._json(200, {"status": "cleared", "target": "catalog", "freed_bytes": _purge_catalog_copies()})
+        if action == "clear-voices":
+            from zimi import voices as _voices
+
+            return handler._json(200, {"status": "cleared", "target": "voices", "freed_bytes": _voices.clear_cache()})
         if action == "clear-search":
             _srv._search_cache_clear()
             return handler._json(200, {"status": "cleared", "target": "search"})
@@ -7102,7 +7173,11 @@ def handle_manage_post(handler, parsed, data):
         # Kick off the library health report on a worker thread.
         from zimi import health as _health
 
-        started, msg = _health.start_check()
+        if data.get("cancel") is True:
+            return handler._json(200, {"cancelled": _health.cancel_check()})
+        # {"deep": true} reads every file for its checksum (minutes a
+        # hundred GB); the Check button sends nothing and stays quick.
+        started, msg = _health.start_check(deep=data.get("deep") is True)
         if started:
             _activity_after(
                 _health.get_state,
@@ -7218,7 +7293,16 @@ def handle_manage_post(handler, parsed, data):
 
     elif parsed.path == "/manage/delete":
         filename = data.get("filename", "")
-        if not filename or ".." in filename or "/" in filename:
+        # A path under the library root names exactly one file (Storage's older copies: the same name can be the
+        # file being served one folder up). A bare name is the usual lookup by name.
+        by_path = "/" in filename
+        if (
+            not filename
+            or ".." in filename
+            or filename.startswith("/")
+            or "\\" in filename
+            or filename.count("/") > 1
+        ):
             return handler._json(400, {"error": "Invalid filename"})
         if not filename.endswith(".zim"):
             return handler._json(400, {"error": "Only .zim files can be deleted"})
@@ -7228,7 +7312,7 @@ def handle_manage_post(handler, parsed, data):
 
         # Only the package's file: a copy of the same name in the library is an
         # ordinary ZIM (deleted below), unless the package's file holds the name.
-        own_name = _own.name_of_file(filename)
+        own_name = None if by_path else _own.name_of_file(filename)
         served = (_srv.get_zim_files() or {}).get(own_name) if own_name else None
         if served and (
             not _own.is_own_path(served) or os.path.basename(served) != filename
@@ -7248,10 +7332,23 @@ def handle_manage_post(handler, parsed, data):
         filepath = join_inside(_srv.ZIM_DIR, filename)
         if filepath is None:
             return handler._json(400, {"error": "Invalid filename"})
-        if not os.path.exists(filepath):
+        if by_path:
+            # Exactly this file, in this folder: never another of the same name, and never what is being served.
+            folder, base = os.path.split(filepath)
+            filepath = zimparts.path_of(folder, base)
+            if filepath is None or not os.path.exists(filepath):
+                return handler._json(404, {"error": f"File not found: {filename}"})
+            served = {os.path.realpath(p) for p in (_srv.get_zim_files() or {}).values()}
+            if os.path.realpath(filepath) in served:
+                return handler._json(409, {"error": "That file is in use"})
+            filename = base
+        elif not os.path.exists(filepath):
+            # A split book: name.zim stands for its chunks.
+            filepath = zimparts.path_of(_srv.ZIM_DIR, filename) or filepath
+        if not by_path and not os.path.exists(filepath):
             root = os.path.realpath(_srv.ZIM_DIR)
             for candidate in (_srv.get_zim_files() or {}).values():
-                if os.path.basename(candidate) != filename:
+                if zimparts.book_filename(candidate) != filename:
                     continue
                 label = libfolders.owner(candidate)
                 if (
@@ -7279,13 +7376,13 @@ def handle_manage_post(handler, parsed, data):
         try:
             file_size = 0
             try:
-                file_size = os.path.getsize(filepath)
+                file_size = zimparts.size(filepath)
             except OSError:
                 pass
             # Cache ZIM info before deletion so history shows proper title/icon
             zim_info = {}
             try:
-                for z in _srv._zim_list_cache or []:
+                for z in [] if by_path else _srv._zim_list_cache or []:
                     if z.get("file") == filename:
                         zim_info = {
                             "title": z.get("title", ""),
@@ -7313,7 +7410,12 @@ def handle_manage_post(handler, parsed, data):
                     loggable(filename),
                     loggable(e),
                 )
-            os.remove(filepath)
+            for part in zimparts.on_disk(filepath):
+                # Only a file inside the library folder is ever removed, whatever path got here.
+                safe = join_inside(_srv.ZIM_DIR, part) or join_inside(os.path.realpath(_srv.ZIM_DIR), part)
+                if safe is None:
+                    continue
+                os.remove(safe)
             log.info("Deleted ZIM: %s", loggable(filename))
             record_activity(
                 "delete",
@@ -7410,6 +7512,13 @@ def handle_manage_post(handler, parsed, data):
         return handler._json(
             200, {"status": "started", "count": len(started), "downloads": started}
         )
+
+    elif parsed.path == "/manage/debuglog":
+        from zimi import debuglog
+
+        if not debuglog.set_enabled(data.get("on") is True):
+            return handler._json(403, {"error": "env_controlled", "var": debuglog.ENV})
+        return handler._json(200, _debuglog_view())
 
     elif parsed.path == "/manage/auto-update":
         if _srv._auto_update_env_locked:
@@ -7544,16 +7653,35 @@ def handle_manage_post(handler, parsed, data):
     elif parsed.path == "/manage/almanac-hd":
         # Almanac HD: {"mode": "ask"|"auto"|"never"} saves the setting (the
         # env-lock contract: ZIMI_ALMANAC_HD or ZIMI_OFFLINE wins); {"start":
-        # true} queues the download, the Almanac's offer said yes.
+        # true} queues the download, the Almanac's offer said yes; {"start":
+        # true, "kind": "max"} the other size, which replaces the one installed once it is in and checked; {"cancel":
+        # true} stops what is being fetched (the installed size stays); {"remove": true, "kind": "hd"|"max"} takes
+        # the size off the disk (the one in use without a kind), never the Almanac's own ZIM.
         from zimi import almanachd as _hd
 
+        if data.get("cancel"):
+            _hd.cancel()
+            return handler._json(200, _hd.status())
+        if data.get("remove"):
+            kind = data.get("kind") or None
+            if kind is not None and kind not in _hd.KINDS:
+                return handler._json(400, {"error": "kind is hd or max"})
+            freed, err = _hd.remove(kind)
+            if err:
+                return handler._json(404, {"error": "Nothing to remove"})
+            return handler._json(200, dict(_hd.status(), freed=freed))
         if data.get("start"):
-            dl_id, err = _hd.start(activity_actor(handler))
+            kind = data.get("kind") or "hd"
+            if kind not in _hd.KINDS:
+                return handler._json(400, {"error": "kind is hd or max"})
+            dl_id, err = _hd.start(activity_actor(handler), kind=kind)
             if err == "never":
                 return handler._json(
                     409, {"error": "Almanac HD is set to never be fetched"}
                 )
             if err == "unavailable":
+                if (_hd.error() or {}).get("reason") == "network":
+                    return handler._json(502, {"error": "Could not reach this version's release"})
                 return handler._json(404, {"error": "No Almanac HD for this version"})
             if err and err != "installed":
                 return handler._json(500, {"error": "Could not start the download"})
@@ -7571,12 +7699,47 @@ def handle_manage_post(handler, parsed, data):
             return handler._json(500, {"error": "Could not save the setting"})
         return handler._json(200, _hd.status())
 
+    elif parsed.path == "/manage/addons":
+        # {"mode": "ask"|"auto"|"never"} saves the setting (ZIMI_ADDONS or ZIMI_OFFLINE wins); {"install": key}
+        # starts one in the background; {"cancel": true} stops it; {"remove": key} takes one away.
+        from zimi import addons as _addons
+
+        if data.get("install"):
+            ok, err = _addons.install(str(data["install"]), activity_actor(handler))
+            if err == "unknown":
+                return handler._json(404, {"error": "No such add-on"})
+            if err in ("never", "unsupported", "busy"):
+                return handler._json(409, {"error": "Cannot add it here" if err != "busy" else "Another add-on is installing"})
+            return handler._json(200, _addons.status())
+        if data.get("cancel"):
+            _addons.cancel()
+            return handler._json(200, _addons.status())
+        if data.get("remove"):
+            if not _addons.remove(str(data["remove"])):
+                return handler._json(409, {"error": "Nothing to remove"})
+            return handler._json(200, _addons.status())
+        _mode, err = _addons.POLICY.set(data.get("mode"))
+        if err == "invalid":
+            return handler._json(400, {"error": "mode is ask, auto or never"})
+        if err == outbound.LOCKED_OFFLINE:
+            return handler._json(403, {"error": "Zimi is offline (ZIMI_OFFLINE)"})
+        if err == outbound.LOCKED_ENV:
+            return handler._json(403, {"error": "Add-ons are controlled by the %s env var" % _addons.ENV})
+        if err:
+            return handler._json(500, {"error": "Could not save the setting"})
+        return handler._json(200, _addons.status())
+
     elif parsed.path == "/manage/satellites/refresh":
         # The Earth view's "Get fresh data": one CelesTrak fetch, waited for,
         # answered with the view's payload so it redraws from the answer.
         from zimi import satellites as _sats
 
-        payload, err = _sats.refresh_now()
+        if data.get("all"):
+            from zimi import satcatalog as _cat
+
+            payload, err = _cat.refresh_now()
+        else:
+            payload, err = _sats.refresh_now()
         if err == "never":
             return handler._json(
                 409, {"error": "Satellite data is set to never be fetched"}
@@ -7608,12 +7771,25 @@ def handle_manage_post(handler, parsed, data):
             return handler._json(500, {"error": "Could not save the setting"})
         return handler._json(200, _voices.manage_payload())
 
-    elif parsed.path == "/manage/voices/choose":
-        # Which engine says a language: {"lang": primary, "engine": name}, or
-        # engine null for the best here.
+    elif parsed.path == "/manage/voices/cache":
+        # How much said audio is kept: {"mb": 0|16|64|...}; 0 keeps it in memory only.
         from zimi import voices as _voices
 
-        if not _voices.set_choice(data.get("lang"), data.get("engine")):
+        if not _voices.set_cache_mb(data.get("mb")):
+            return handler._json(400, {"error": "mb is a whole number from 0 to %d" % _voices.CACHE_MAX_MB})
+        return handler._json(200, _voices.manage_payload())
+
+    elif parsed.path == "/manage/voices/choose":
+        # Which engine says a language: {"lang": primary, "engine": name}, or
+        # engine null for the best here. Or, with "region", which region's
+        # voice says it ({"lang": "en", "region": "GB"}, null for the home one).
+        from zimi import voices as _voices
+
+        if "region" in data:
+            ok = _voices.set_region(data.get("lang"), data.get("region"))
+        else:
+            ok = _voices.set_choice(data.get("lang"), data.get("engine"))
+        if not ok:
             return handler._json(
                 409, {"error": "That voice cannot say this language here"}
             )

@@ -203,10 +203,10 @@ def test_search_pages_are_not_mistaken_for_the_catalog(data_dir, monkeypatch):
     assert source != "cache"
 
 
-def test_a_cold_page_answers_from_the_snapshot_and_fetches_behind(data_dir, shipped, monkeypatch):
+def test_a_cold_page_answers_from_the_snapshot_and_fetches_nothing(data_dir, shipped, monkeypatch):
     """The first browse on a fresh install used to wait on Kiwix. Nothing
     cached, a snapshot in the package: the snapshot answers now, marked
-    stale, and the live fetch goes out behind it."""
+    stale, and nothing goes out: the update check brings the live catalog."""
     import threading
     import urllib.request
 
@@ -227,4 +227,4 @@ def test_a_cold_page_answers_from_the_snapshot_and_fetches_behind(data_dir, ship
     assert err is None
     assert total == 1 and [i["name"] for i in items] == ["from_snapshot"]
     assert lib._catalog_stale_ts
-    assert hit.wait(3), "the live fetch did not go out behind the answer"
+    assert not hit.wait(0.5), "opening the catalog reached for the network"

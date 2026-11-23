@@ -27,10 +27,11 @@ import pytest
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
+from browser_slots import WEBGL_ARGS
 GL_ARGS = (
     []
     if sys.platform == "darwin"
-    else ["--use-angle=swiftshader", "--enable-unsafe-swiftshader", "--disable-accelerated-2d-canvas"]
+    else WEBGL_ARGS + ['--disable-accelerated-2d-canvas']
 )
 VIEW = {"width": 390, "height": 844}
 PLACE = {"lat": 37.7749, "lon": -122.4194, "name": "San Francisco"}

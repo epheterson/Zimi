@@ -1,5 +1,6 @@
 """The table of where each optional feature comes from (zimi/runtimes.py)."""
 
+import os
 import re
 import subprocess
 import sys
@@ -93,3 +94,37 @@ def test_a_chosen_client_engine_makes_bittorrent_ready(monkeypatch):
     assert runtimes._bt() is False
     monkeypatch.setattr(p2p, "engine_name", lambda: "qbittorrent")
     assert runtimes._bt() is True
+
+
+# ── is the data folder kept? (a container without a /config volume loses its add-ons) ──
+
+MOUNTINFO = """\
+36 35 0:32 / / rw,relatime master:1 - overlay overlay rw,lowerdir=/x
+37 36 0:33 / /proc rw,nosuid - proc proc rw
+38 36 8:1 /srv/zimi-config /config rw,relatime - ext4 /dev/sda1 rw
+39 36 0:40 / /scratch rw - tmpfs tmpfs rw
+40 36 8:1 /srv/my\\040zims /my\\040zims rw - ext4 /dev/sda1 rw
+"""
+
+
+def test_the_mountinfo_parse_reads_mount_points_and_types():
+    mounts = runtimes.parse_mountinfo(MOUNTINFO)
+    assert ("/", "overlay") in mounts and ("/config", "ext4") in mounts and ("/scratch", "tmpfs") in mounts
+    assert ("/my zims", "ext4") in mounts, "an escaped space is a space"
+    assert runtimes.parse_mountinfo("") == [] and runtimes.parse_mountinfo("garbage\n\n") == []
+
+
+@pytest.mark.parametrize(
+    "data_dir, kept",
+    [
+        ("/config", True),  # its own mount
+        ("/config/.zimi", True),  # inside one
+        ("/my zims/data", True),
+        ("/app/data", False),  # the container's own layer
+        ("/scratch/data", False),  # a tmpfs goes with the container
+        ("/configuration", False),  # a prefix of a name is not a mount
+    ],
+)
+def test_the_data_folder_is_kept_only_on_a_mount_of_its_own(data_dir, kept, monkeypatch):
+    monkeypatch.setattr(os.path, "realpath", lambda p: p)
+    assert runtimes.data_dir_kept(data_dir, runtimes.parse_mountinfo(MOUNTINFO)) is kept

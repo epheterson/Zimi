@@ -25,10 +25,11 @@ import pytest
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
+from browser_slots import WEBGL_ARGS
 GL_ARGS = (
     []
     if sys.platform == "darwin"
-    else ["--use-angle=swiftshader", "--enable-unsafe-swiftshader", "--disable-accelerated-2d-canvas"]
+    else WEBGL_ARGS + ['--disable-accelerated-2d-canvas']
 )
 VIEW = {"width": 390, "height": 844}
 PLACE = {"lat": 37.7749, "lon": -122.4194, "name": "San Francisco"}
@@ -73,12 +74,12 @@ def browser(served):
         br.close()
 
 
-def _page(browser, served, place=True, locale="en-US"):
+def _page(browser, served, place=True, locale="en-US", desktop=False):
     ctx = browser.new_context(
-        viewport=VIEW,
+        viewport={"width": 1280, "height": 800} if desktop else VIEW,
         device_scale_factor=2,
-        has_touch=True,
-        is_mobile=True,
+        has_touch=not desktop,
+        is_mobile=not desktop,
         service_workers="block",
         locale=locale,
         timezone_id="America/Los_Angeles",
@@ -214,9 +215,10 @@ def test_the_moon_is_its_picture_and_the_solar_system_has_no_flown_view(
     ctx, pg, errors = _page(browser, served)
     try:
         # The 3D view is made ready when the Moon is touched, not behind the page (a page only looked at never loads it).
-        pg.evaluate(
-            "() => new Promise(r => { const t = setInterval(() => { if (typeof _almMoonPrepare === 'function') { clearInterval(t); _almMoonPrepare(); r(); } }, 50); })"
+        pg.wait_for_function(
+            "() => typeof _almMoonPrepare === 'function'", timeout=60_000
         )
+        pg.evaluate("_almMoonPrepare()")
         pg.wait_for_function(
             "() => typeof _aeReady === 'function' && _aeReady()",
             timeout=240_000,
@@ -257,7 +259,162 @@ def test_the_light_pollution_setting_is_named_for_what_it_does(browser, served):
         pg.evaluate("() => _skyToggleSettings(true)")
         text = pg.inner_text("#almanac-sky-set")
         assert "Light pollution" in text and "Darkness" not in text, text
-        assert "Dark site" in text and "City" in text, text
+        assert "Dark" in text and "City" in text, text
+    finally:
+        ctx.close()
+
+
+def test_the_light_pollution_slider_shows_the_dial_the_sky_is_drawn_with(browser, served):
+    """The dial starts at the place's own night lights, which can arrive after the panel was built: opening the panel shows it."""
+    ctx, pg, errors = _page(browser, served)
+    try:
+        pg.evaluate("() => { _skyToggleSettings(true); _skyToggleSettings(false); }")
+        pg.evaluate("() => { window._osPlaceDial = 0.6; _skyToggleSettings(true); }")
+        assert pg.evaluate("() => [_skySetting('dial'), document.querySelector('[data-sky-set=dial]').value]") == [0.6, "60"]
+        assert not errors, errors
+    finally:
+        ctx.close()
+
+
+def test_the_sky_sheet_has_three_scene_cards_a_life_switch_and_two_sizes(browser, served):
+    """Scene: Local, Beach, Horizon as cards (Local is the default), each with a line saying what it draws; Life is one saved switch
+    with a line saying what it shows; the Sun and Moon are Actual or Larger and the constellations Off, Lines or Names, as segmented
+    controls (no native dropdown); the light-pollution slider stays. Only what is chosen is saved."""
+    ctx, pg, errors = _page(browser, served)
+    try:
+        pg.evaluate("() => _skyToggleSettings(true)")
+        pg.wait_for_function("() => document.getElementById('almanac-sky-set').classList.contains('in')")
+        cards = pg.evaluate("() => Array.from(document.querySelectorAll('#almanac-sky-set [data-sky-skin]')).map(b => [b.dataset.skySkin, b.querySelector('span:nth-of-type(2)').textContent.trim(), b.getAttribute('aria-checked'), b.querySelector('[data-sky-sub]').textContent.trim()])")
+        assert [c[:3] for c in cards] == [["local", "Local", "true"], ["beach", "Beach", "false"], ["horizon", "Horizon", "false"]], cards
+        assert cards[1][3] == "Sea and sand" and cards[2][3] == "Sky only" and cards[0][3], cards
+        assert cards[0][3] not in ("Sea and sand", "Plain ground", "Flat, nothing"), "the place's own says its terrain: " + cards[0][3]
+        assert pg.evaluate("() => !document.querySelector('#almanac-sky-set select')")
+        sizes = pg.evaluate("() => Array.from(document.querySelectorAll('#almanac-sky-set [data-sky-seg=size]')).map(o => o.textContent)")
+        assert sizes == ["Actual", "Larger"], sizes
+        lines = pg.evaluate("() => Array.from(document.querySelectorAll('#almanac-sky-set [data-sky-seg=lines]')).map(o => o.textContent)")
+        assert lines == ["Off", "Lines", "Names"], lines
+        assert pg.evaluate("() => !!document.querySelector('#almanac-sky-set [data-sky-set=dial]')")
+        assert "Constellations" in pg.inner_text("#almanac-sky-set")
+        assert pg.evaluate("() => document.querySelector('[data-sky-set=life]').checked") is True
+        assert pg.inner_text("#alm-sky-life-sub").strip()
+        pg.click("[data-sky-seg=size][data-v=true]")
+        assert pg.evaluate("() => _skySetting('size')") == "true"
+        # An inland place (its land read as desert), so the Local card has its own scene to keep saying.
+        pg.evaluate("() => { _skyState.landKey = _osLandKey(_skyState); _skyState.land = { cls: 'desert', coast: false }; _skySyncSettings(document.getElementById('almanac-sky-set')); }")
+        assert pg.evaluate("() => document.querySelector('[data-sky-sub=local]').textContent") == "Desert"
+        local_sub = pg.evaluate("() => [document.querySelector('[data-sky-sub=local]').textContent, document.querySelector('[data-sky-skin=local] .alm-sky-skin-pic').style.background]")
+        pg.click("[data-sky-skin=beach]")
+        assert pg.evaluate("() => _skySetting('skin')") == "beach"
+        # Local keeps saying (and wearing) the place's own scene with the beach chosen: not "Coast" because the beach is drawn.
+        assert pg.evaluate("() => [document.querySelector('[data-sky-sub=local]').textContent, document.querySelector('[data-sky-skin=local] .alm-sky-skin-pic').style.background]") == local_sub
+        pg.click("[data-sky-set=life]")
+        assert pg.evaluate("() => [_skySetting('life'), JSON.parse(localStorage.getItem('zimi_sky_settings'))]") == ["off", {"size": "true", "skin": "beach", "life": "off"}]
+        pg.click("[data-sky-skin=horizon]")
+        assert pg.evaluate("() => !document.getElementById('alm-sky-life-row').classList.contains('dim') && !!_skyLifeOn()") is False   # life is off here (switched off above) but it is not dimmed: it works on every scene
+        pg.click("[data-sky-set=life]")
+        assert pg.evaluate("() => _skyLifeOn()"), "life is on over the plain horizon too"
+        assert "water" in pg.inner_text("#alm-sky-life-sub")
+        assert not errors, errors
+    finally:
+        ctx.close()
+
+
+def test_the_sky_sheet_moves_by_transform_alone_320_up_200_away_and_the_page_behind_does_not_move(browser, served):
+    """The sheet comes up from the foot of the screen in 320 ms and goes back in 200, by transform alone (no opacity, no height): the
+    card is scrolled to the top first and then no box behind the sheet changes size or place; a switch on life brings a plane or birds
+    at once."""
+    ctx, pg, errors = _page(browser, served)
+    try:
+        pg.evaluate("() => _skyToggleSettings(true)")
+        pg.wait_for_function("() => document.getElementById('almanac-sky-set').classList.contains('in')")
+        up = pg.evaluate("() => { var c = getComputedStyle(document.getElementById('almanac-sky-set')); return [c.transitionProperty, c.transitionDuration, c.position]; }")
+        assert up == ["transform", "0.32s", "fixed"], up
+        pg.wait_for_timeout(600)
+        before = pg.evaluate("() => { var r = document.querySelector('#almanac-view .almanac-sky-wrap').getBoundingClientRect(); return [r.top, r.height, document.getElementById('almanac-content').scrollTop]; }")
+        assert before[0] < 400, ("the card stands in view above the sheet", before)
+        pg.wait_for_timeout(600)
+        mid = pg.evaluate("() => { var r = document.querySelector('#almanac-view .almanac-sky-wrap').getBoundingClientRect(); return [r.top, r.height, document.getElementById('almanac-content').scrollTop]; }")
+        assert mid == before, (before, mid)
+        pg.evaluate("() => _skyToggleSettings(false)")
+        assert pg.evaluate("() => !document.getElementById('almanac-sky-set').classList.contains('in')")
+        away = pg.evaluate("() => { var c = getComputedStyle(document.getElementById('almanac-sky-set')); return [c.transitionProperty.split(',')[0], c.transitionDuration.split(',')[0]]; }")
+        assert away == ["transform", "0.2s"], away
+        pg.wait_for_function("() => document.getElementById('almanac-sky-set').hidden", timeout=2000)
+        pg.evaluate("() => { _skySet('life', 'off'); _skySet('life', 'on'); }")
+        pg.wait_for_function("() => _skyState && _skyState.actors.some(a => a.type === 'plane' || a.type === 'birds')", timeout=45000)   # spawned on the scene's own timer, which a slow renderer stretches
+        assert not errors, errors
+    finally:
+        ctx.close()
+
+
+def test_the_sky_sheet_closes_by_a_swipe_down_on_its_handle_a_tap_on_the_card_and_escape(browser, served):
+    ctx, pg, errors = _page(browser, served)
+    try:
+        def shut():
+            pg.wait_for_function("() => document.getElementById('almanac-sky-set').hidden", timeout=3000)
+            assert pg.evaluate("() => document.getElementById('almanac-sky-gear').getAttribute('aria-expanded')") == "false"
+
+        def open_():
+            pg.evaluate("() => _skyToggleSettings(true)")
+            pg.wait_for_function("() => document.getElementById('almanac-sky-set').classList.contains('in')")
+            pg.wait_for_timeout(500)
+
+        open_()
+        g = pg.evaluate("() => { var r = document.getElementById('alm-sky-set-grip').getBoundingClientRect(); return [r.left + r.width / 2, r.top + r.height / 2]; }")
+        pg.mouse.move(*g)
+        pg.mouse.down()
+        pg.mouse.move(g[0], g[1] + 30)
+        assert pg.evaluate("() => document.getElementById('almanac-sky-set').style.transform") == "translateY(30px)", "it follows the finger"
+        pg.mouse.move(g[0], g[1] + 20)
+        pg.mouse.up()
+        assert pg.evaluate("() => document.getElementById('almanac-sky-set').classList.contains('in')"), "a short drag springs back"
+        # The spring back takes 0.2 s: the handle is back under g only when it has finished (a slow runner starts the second grip mid-flight and misses it).
+        pg.wait_for_function(
+            "(g) => { var r = document.getElementById('alm-sky-set-grip').getBoundingClientRect(); return Math.abs(r.top + r.height / 2 - g[1]) < 1; }",
+            arg=g,
+            timeout=3000,
+        )
+        pg.mouse.move(*g)
+        pg.mouse.down()
+        pg.mouse.move(g[0], g[1] + 120)
+        pg.mouse.up()
+        shut()
+        open_()
+        pg.mouse.click(195, 150)   # the card behind
+        shut()
+        open_()
+        pg.keyboard.press("Escape")
+        shut()
+        assert pg.evaluate("() => document.activeElement && document.activeElement.id") == "almanac-sky-gear", "focus returns to the gear"
+        assert not errors, errors
+    finally:
+        ctx.close()
+
+
+def test_closing_the_almanac_with_the_sky_sheet_open_leaves_escape_alone(browser, served):
+    ctx, pg, errors = _page(browser, served)
+    try:
+        pg.evaluate("() => _skyToggleSettings(true)")
+        pg.wait_for_function("() => document.getElementById('almanac-sky-set').classList.contains('in')")
+        pg.evaluate("() => closeAlmanac()")
+        reached = pg.evaluate(
+            "() => { var n = 0; document.addEventListener('keydown', function () { n++; }); "
+            "var e = new KeyboardEvent('keydown', { key: 'Escape', bubbles: true, cancelable: true }); "
+            "document.dispatchEvent(e); return [n, e.defaultPrevented]; }"
+        )
+        assert reached == [1, False], "the sheet's Escape handler is gone with the Almanac"
+        assert not errors, errors
+    finally:
+        ctx.close()
+
+
+def test_the_sky_sheet_has_an_open_in_3d_row_with_the_rim_glyph(browser, served):
+    ctx, pg, errors = _page(browser, served)
+    try:
+        pg.evaluate("() => _skyToggleSettings(true)")
+        row = pg.evaluate("() => { var b = document.getElementById('alm-sky-open3d'); return [b.textContent.trim(), !!b.querySelector('.ae-rim-glyph'), b.getBoundingClientRect().height >= 44]; }")
+        assert row == ["Open in 3D", True, True], row
+        assert not errors, errors
     finally:
         ctx.close()
 
@@ -340,5 +497,24 @@ def test_opening_the_almanac_holds_still(browser, served, dark):
             pg.evaluate("closeAlmanac()")
             pg.wait_for_timeout(300)
         assert not errors, errors
+    finally:
+        ctx.close()
+
+
+def test_on_a_desktop_the_sky_settings_open_over_the_sky(browser, served):
+    """With a mouse and room the settings are a panel over the sky's corner, not a sheet up from the foot (the card
+    coming up from the bottom on a desktop is odd; over the sky was right)."""
+    ctx, pg, errors = _page(browser, served, desktop=True)
+    try:
+        pg.evaluate("() => _skyToggleSettings(true)")
+        pg.wait_for_function("() => document.getElementById('almanac-sky-set').classList.contains('in')")
+        pg.wait_for_timeout(400)
+        box, sky = pg.evaluate("() => [document.getElementById('almanac-sky-set'), document.querySelector('#almanac-view .almanac-sky-wrap')].map(e => { const r = e.getBoundingClientRect(); return [r.left, r.top, r.right, r.bottom]; })")
+        assert sky[0] <= box[0] and sky[1] <= box[1] and box[2] <= sky[2] and box[3] <= sky[3], (box, sky)
+        assert box[2] - box[0] <= 330, box
+        assert pg.evaluate("() => getComputedStyle(document.querySelector('#alm-sky-set-grip')).display") == "none"
+        pg.keyboard.press("Escape")
+        pg.wait_for_function("() => !document.getElementById('almanac-sky-set').classList.contains('in')")
+        assert errors == [], errors
     finally:
         ctx.close()

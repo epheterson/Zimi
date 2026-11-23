@@ -29,6 +29,8 @@ import zimi.server as _srv
 from zimi import bestanswer as _bestanswer
 from zimi import bookpages as _bookpages
 from zimi import changes as _changes
+from zimi import debuglog as _debuglog
+from zimi import zimparts
 from zimi import manage as _manage_mod
 from zimi import netguard as _netguard
 from zimi import sso as _sso
@@ -52,7 +54,9 @@ _games_start_logged = []
 def _log_games_start(data):
     now = time.time()
     _games_start_logged[:] = [t for t in _games_start_logged if now - t < 3600]
-    if len(_games_start_logged) >= _GAMES_START_LOG_PER_HOUR or not isinstance(data, dict):
+    if len(_games_start_logged) >= _GAMES_START_LOG_PER_HOUR or not isinstance(
+        data, dict
+    ):
         return
     _games_start_logged.append(now)
 
@@ -185,6 +189,7 @@ def _events_leave(ip):
         else:
             _events_open.pop(ip, None)
 
+
 RATE_LIMIT = int(
     os.environ.get("ZIMI_RATE_LIMIT", "60")
 )  # API requests per minute per IP (0 = disabled)
@@ -219,6 +224,9 @@ _rate_buckets_content = {}  # {ip: [timestamps]} — /w/ content
 KEEP_HEADER = "X-Zimi-Keep"
 _OWN_ZIM_PATH_PREFIX = "/w/zimi_"
 _rate_buckets_keep = {}  # {ip: [timestamps]}
+# Both apps whole are ~1,200 files (the games' puzzles and thumbnails included), kept in one burst: the keeper's budget
+# is a multiple of the page's, or the second app's pages came back 429 and its mark was never written.
+RATE_LIMIT_KEEP_FACTOR = 4
 # The Almanac's background lookups (/almanac-links, /almanac-place) fire on their own whenever it draws; on the
 # strict API budget they ate what the person's taps (search, read) needed, and answered 429 themselves. They
 # count in a bucket of their own (RATE_LIMIT_ALMANAC).
@@ -237,7 +245,9 @@ _rate_lock = threading.Lock()
 # replaced archive corrects itself before anybody files a bug — the ETag
 # carries the ZIM file's size and mtime, so the correction is automatic.
 ZIM_CONTENT_MAX_AGE = 60
-_OWN_ZIM_NAMES = frozenset(o.name for o in __import__("zimi.ownzims", fromlist=["OWN"]).OWN)
+_OWN_ZIM_NAMES = frozenset(
+    o.name for o in __import__("zimi.ownzims", fromlist=["OWN"]).OWN
+)
 
 
 def own_zims_version():
@@ -328,7 +338,10 @@ SESSION_COOKIE_MAX_AGE = 30 * 24 * 3600
 def games_day(now=None):
     """The server's day (YYYY-MM-DD) and its UTC offset in minutes, in its own time zone."""
     now = now or datetime.datetime.now().astimezone()
-    return {"day": now.date().isoformat(), "utcOffsetMin": int(now.utcoffset().total_seconds() // 60)}
+    return {
+        "day": now.date().isoformat(),
+        "utcOffsetMin": int(now.utcoffset().total_seconds() // 60),
+    }
 
 
 # Snippets ride the content bucket: one search fans out to ~10 snippet
@@ -341,6 +354,7 @@ _RATE_LIMITED_API_PATHS = (
     "/zim-updates",
     "/places",
     "/places/suggest",
+    "/map-for",
     "/tube",
     "/tube/play",
     "/exchange",
@@ -363,9 +377,11 @@ _RATE_LIMITED_API_PATHS = (
     "/almanac-ages",
     "/almanac-place",
     "/games-links",
+    "/almanac-view",
     "/games-search",
     "/own-offline",
     "/events",
+    "/debuglog",
 )
 
 # The apps' routes below their bare path (/exchange/question, /reddot/post):
@@ -477,8 +493,30 @@ def _open_at_the_door(path, surface):
 _CONTENT_PATHS = frozenset(("/snippet", "/wiki/article"))
 
 
+_HD_TILE_PREFIX = "/w/zimi_almanac_"
+
+
+def _is_almanac_hd_file(path):
+    """An Almanac HD tile or list of layers (any ZIM of the set, the flavour's hd/ folder included): small static files
+    the 3D view asks for by the dozen a second when it flies (six at a time, each a few dozen KB). They are the picture,
+    not a lookup: no budget, or a fast fly-through answered 429 and the globe went blind.
+    """
+    if not path.startswith(_HD_TILE_PREFIX) or not (
+        path.endswith(".webp") or path.endswith("/hd.json")
+    ):
+        return False
+    if not ("/hd/" in path or "_hd" in path):
+        return False
+    # Only a name of the data set: any other ZIM under this prefix is a lookup under the global lock, and limited.
+    from zimi.server import DATA_PACKS
+
+    return path[len("/w/") :].split("/", 1)[0] in DATA_PACKS
+
+
 def _rate_class(path):
     """(is_rate_limited, uses_content_bucket) for a GET path."""
+    if _is_almanac_hd_file(path):
+        return False, True
     is_content = path.startswith("/w/") or path in _CONTENT_PATHS or path in _POLL_PATHS
     limited = (
         is_content
@@ -675,7 +713,9 @@ def _with_fieldguide(answer, guide):
     misspelling: "lost" is not offered "lit"."""
     if not guide or answer.get("error"):
         return answer
-    return {k: v for k, v in answer.items() if k != "did_you_mean"} | {"fieldguide": guide}
+    return {k: v for k, v in answer.items() if k != "did_you_mean"} | {
+        "fieldguide": guide
+    }
 
 
 def _record_metric(endpoint, latency, error=False):
@@ -1024,11 +1064,7 @@ def _read_disk_space():
     try:
         usage = shutil.disk_usage(_srv.ZIM_DIR)
         total = usage.total
-        zim_size = sum(
-            os.path.getsize(os.path.join(_srv.ZIM_DIR, f))
-            for f in os.listdir(_srv.ZIM_DIR)
-            if f.endswith(".zim")
-        )
+        zim_size = sum(zimparts.size(p) for p in zimparts.in_folder(_srv.ZIM_DIR))
         return {
             "zim_dir": _srv.ZIM_DIR,
             "data_dir": _srv.ZIMI_DATA_DIR,
@@ -1120,6 +1156,30 @@ try:
 except FileNotFoundError:
     SEARCH_UI_HTML = "<html><body><h1>Zimi</h1><p>UI template not found. API endpoints are still available.</p></body></html>"
 
+# The design tokens (static/tokens.css) are declared once and inlined where they are read: here in the shell's head, and
+# in front of apps.css in each app page, so neither document asks for them. The footer's two files (static/zimifooter.*,
+# one definition for Home, the Almanac and the Games) go in the same way.
+_PKG_DIR = os.path.dirname(os.path.abspath(__file__))
+_TOKENS_MARK = "<!--@tokens.css@-->"
+_FOOTER_MARKS = (
+    ("<!--@zimifooter.css@-->", "zimifooter.css", "<style>\n", "</style>"),
+    ("<!--@zimifooter.js@-->", "zimifooter.js", "<script>\n", "</script>"),
+)
+try:
+    with open(os.path.join(_PKG_DIR, "static", "tokens.css"), encoding="utf-8") as f:
+        SEARCH_UI_HTML = SEARCH_UI_HTML.replace(
+            _TOKENS_MARK, "<style>\n" + f.read() + "</style>", 1
+        )
+except OSError as e:
+    log.warning("the shell is served without its design tokens: %s", e)
+for _mark, _name, _open, _close in _FOOTER_MARKS:
+    try:
+        with open(os.path.join(_PKG_DIR, "static", _name), encoding="utf-8") as f:
+            SEARCH_UI_HTML = SEARCH_UI_HTML.replace(_mark, _open + f.read() + _close, 1)
+    except OSError as e:
+        SEARCH_UI_HTML = SEARCH_UI_HTML.replace(_mark, "", 1)
+        log.warning("the shell is served without %s: %s", _name, e)
+
 # Where app.js takes the language-code table (server._ISO639_3_TO_1, from
 # assets/lang-codes.json): one table for both sides, put in as app.js is
 # served, so the file itself carries none of its own.
@@ -1201,16 +1261,56 @@ if os.path.isdir(_STATIC_DIR):
         hashlib.md5(
             b"".join(
                 open(os.path.join(_STATIC_DIR, "i18n", f), "rb").read()
-                for f in sorted(os.listdir(os.path.join(_STATIC_DIR, "i18n")))
+                # Home's words and the Almanac's (i18n/almanac/), in one name order.
+                for f in sorted(
+                    os.path.relpath(
+                        os.path.join(d, n), os.path.join(_STATIC_DIR, "i18n")
+                    )
+                    for d, _dirs, names in os.walk(os.path.join(_STATIC_DIR, "i18n"))
+                    for n in names
+                )
                 if f.endswith(".json")
             )
         ).hexdigest()[:8]
         if os.path.isdir(os.path.join(_STATIC_DIR, "i18n"))
         else "0"
     )
+    # The data files under /static that pages fetch at their own names (the 3D view's models, maps and tables, the stars, the world
+    # map). /static is sent immutable for a year, so a file whose content changed under the same name is only fetched afresh when its
+    # address changes: each carries its own content hash, which the page's _almAsset adds to the address as ?v=. A file that did not
+    # change keeps its cached copy across deploys.
+    _STATIC_DATA_DIRS = ("earth", "golden-record", "rosetta")
+    _STATIC_DATA_FILES = ("world-map.svg", "tz-borders.json")
+    _STATIC_DATA_EXT = ("bin", "json", "webp", "jpg", "jpeg", "png", "svg", "glb")
+
+    def _static_data_hashes():
+        out = {}
+        names = list(_STATIC_DATA_FILES)
+        for d in _STATIC_DATA_DIRS:
+            root = os.path.join(_STATIC_DIR, d)
+            for dirpath, _dirs, files in os.walk(root):
+                for f in files:
+                    if f.rsplit(".", 1)[-1] not in _STATIC_DATA_EXT:
+                        continue
+                    names.append(
+                        os.path.relpath(os.path.join(dirpath, f), _STATIC_DIR).replace(
+                            os.sep, "/"
+                        )
+                    )
+        for rel in sorted(names):
+            fp = os.path.join(_STATIC_DIR, rel)
+            if os.path.isfile(fp):
+                with open(fp, "rb") as fh:
+                    out[rel] = hashlib.md5(fh.read()).hexdigest()[:8]
+        return out
+
+    STATIC_DATA_HASHES = _static_data_hashes()
     SEARCH_UI_HTML = SEARCH_UI_HTML.replace(
         "discoverStamp:'disc6'", f"discoverStamp:'d{_build_stamp}'"
     ).replace("i18nHash:'0'", f"i18nHash:'{_i18n_hash}'")
+    SEARCH_UI_HTML = SEARCH_UI_HTML.replace(
+        "assets:{}", "assets:" + json.dumps(STATIC_DATA_HASHES, separators=(",", ":"))
+    )
     SEARCH_UI_HTML = SEARCH_UI_HTML.replace(
         "bestAnswer:0", f"bestAnswer:{int(_bestanswer.enabled())}"
     )
@@ -1225,7 +1325,13 @@ if os.path.isdir(_STATIC_DIR):
         (
             _static_hash("app.js")
             + _static_hash("app.css")
+            + _static_hash("tokens.css")
+            + _static_hash("zimifooter.css")
+            + _static_hash("zimifooter.js")
             + _static_hash("readaloud.js")  # Read aloud, fetched on first use
+            + _static_hash(
+                "debuglog.js"
+            )  # the debug log's recorder, fetched while the server's log is on
             + _static_hash("manage.js")  # the Library Manager, fetched on first use
             + _static_hash("almanac.js")
             + _static_hash("almanac.css")
@@ -1234,8 +1340,12 @@ if os.path.isdir(_STATIC_DIR):
             + _static_hash("almanac-orrery.js")
             + _static_hash("almanac-sky.js")
             + _static_hash("almanac-skygl.js")
+            + _static_hash("almanac-onesky.js")
             + _static_hash("almanac-skyfacts.js")
+            + _static_hash("almanac-skyscene.js")
+            + _static_hash("capability.js")
             + _static_hash("zone-places.js")
+            + _static_hash("almanac-vsop87.js")
             + _static_hash("almanac-ephem.js")
             + _static_hash("almanac-earth.js")
             + _static_hash("almanac-reference.js")
@@ -1254,8 +1364,34 @@ if os.path.isdir(_STATIC_DIR):
             + _static_hash("wiki-reader.js")
             + _static_hash("books.html")
             + _static_hash("dictionary.html")
+            + _static_hash("mapflow.js")
+            + _static_hash("almanac-maps.js")
             + _static_hash("almanac-look.js")
+            + _static_hash("almanac-oneland.js")
+            + _static_hash("almanac-skyland.js")
+            + _static_hash("almanac-sun.js")
+            + _static_hash("almanac-staticglobe.js")
             + _static_hash("almanac-skyfind.js")
+            + _static_hash("almanac-terrain.js")
+            + _static_hash("almanac-terrainshade.js")
+            + _static_hash("almanac-standlook.js")
+            + _static_hash("almanac-standhost.js")
+            + _static_hash("almanac-standgl.js")
+            + _static_hash("almanac-stand.js")
+            + _static_hash("almanac-oneair.js")
+            + _static_hash("almanac-sites.js")
+            + _static_hash("almanac-sites-ground.js")
+            + _static_hash("almanac-sites-drive.js")
+            + _static_hash("almanac-sites-launch.js")
+            + _static_hash("almanac-sites-trail.js")
+            + _static_hash("almanac-missions.js")
+            + _static_hash("almanac-missions-plan.js")
+            + _static_hash("almanac-sent.js")
+            + _static_hash("almanac-padview.js")
+            + _static_hash("almanac-sats.js")
+            + _static_hash("almanac-orrery3d.js")
+            + _static_hash("almanac-fly.js")
+            + _static_hash("almanac-debug3d.js")
             + _static_hash("almanac-gamesky.js")
             + _static_hash("fieldguide.html")
             + _static_hash("fieldguide-card.js")
@@ -1269,6 +1405,11 @@ if os.path.isdir(_STATIC_DIR):
             + _static_hash("pdfreader.css")
             + _static_hash("pdfreader.js")
             + _i18n_hash
+            + hashlib.md5(
+                json.dumps(STATIC_DATA_HASHES, sort_keys=True).encode()
+            ).hexdigest()[
+                :8
+            ]  # a data file's change is a new build
         ).encode()
     ).hexdigest()[:8]
 
@@ -1277,10 +1418,10 @@ if os.path.isdir(_STATIC_DIR):
 # run with no server. Read from the pages themselves, so the addresses carry
 # the content hashes the pages ask for; only the files named here are kept.
 _OFFLINE_SHELL_FILE = re.compile(
-    r"/static/((?:app\.(?:js|css)|almanac[\w-]*\.(?:js|css)|zone-places\.js"
+    r"/static/((?:app\.(?:js|css)|almanac[\w-]*\.(?:js|css)|capability\.js|zone-places\.js"
     r"|world-map\.svg|tz-borders\.json|fieldguide[\w-]*\.(?:html|json|js)|highlights\.js|find\.js|readaloud\.js|manage\.js"
     r"|keepstore\.js|keepworker\.js|zimreader\.js|fzstd\.js|rosetta/manifest\.json"
-    r"|earth/(?:moon-v1\.webp|stars-v1\.bin|stars-names-v1\.json|constellations-v1\.json|milkyway-v1\.webp"
+    r"|earth/(?:landmarks-v1\.json|landmarks-earth-v1\.json|landmarks-earth-names-[a-z]{2}-v1\.json|sites-v1\.json|site-thumbs-v1\.webp|sent-v1\.json|sent-thumbs-v1\.webp|go-discs-v2\.webp|go-maps-v1\.webp|traverses-v1\.json|moon-v1\.webp|moon-2k-v1\.webp|stars-v1\.bin|landcover-v1\.bin|nightlights-v1\.bin|stars-names-v1\.json|constellations-v1\.json|milkyway-v1\.webp"
     r"|satellite-[\d.]+\.min\.js|three-r\d+\.min\.js|earth-(?:day|night)-v1\.webp))"
     r"(?:\?v=[0-9a-z]+)?)"
 )
@@ -1289,7 +1430,7 @@ _OFFLINE_SHELL_FILE = re.compile(
 # the Almanac opened (sw.js ALMANAC_URLS), not on every visit after a deploy.
 # The 4096 Moon map is left to the first time it is shown.
 _ALMANAC_PACK_FILE = re.compile(
-    r"^/static/(?:almanac[\w-]*\.(?:js|css)|world-map\.svg|tz-borders\.json|rosetta/|earth/)"
+    r"^/static/(?:almanac[\w-]*\.(?:js|css)|capability\.js|world-map\.svg|tz-borders\.json|rosetta/|earth/)"
 )
 
 SATELLITES_PATH = "/almanac-satellites"
@@ -1319,6 +1460,24 @@ def _offline_urls():
         for src in sources
         for m in _OFFLINE_SHELL_FILE.finditer(src)
     }
+    # The landing sites' models are asked for by a name built at run time (craft-site-<model>-v1.bin), so no page
+    # spells them: every one is kept with the Almanac, for a visit with no network.
+    earth = os.path.join(_STATIC_DIR, "earth")
+    if os.path.isdir(earth):
+        found |= {
+            "/static/earth/" + n
+            for n in os.listdir(earth)
+            if n.startswith("craft-site-") and n.endswith(".bin")
+        }
+    # A data file is asked for as <path>?v=<its hash> (the page's _almAsset): kept at that address, so offline it is the exact one.
+    found = {
+        (
+            u + "?v=" + STATIC_DATA_HASHES[u[len("/static/") :]]
+            if "?" not in u and u[len("/static/") :] in STATIC_DATA_HASHES
+            else u
+        )
+        for u in found
+    }
     versioned = {u.split("?")[0] for u in found if "?" in u}
     found = {u for u in found if "?" in u or u not in versioned}
     if _srv.fieldguide_enabled():
@@ -1338,7 +1497,24 @@ def _almanac_pack_urls():
     """What the worker keeps when asked to (sw.js ALMANAC_URLS): the
     Almanac's files, the 3D Earth's, and the satellites' orbital elements
     (an answer, not a file: the server's freshest when it was kept)."""
-    return [u for u in _offline_urls() if _ALMANAC_PACK_FILE.match(u)] + [SATELLITES_PATH]
+    return (
+        [u for u in _offline_urls() if _ALMANAC_PACK_FILE.match(u)]
+        + _almanac_words_urls()
+        + [SATELLITES_PATH]
+    )
+
+
+def _almanac_words_urls():
+    """The Almanac's words in every language, at the address the page asks (app.js _i18nFetch, I18N_ALMANAC_DIR). Since
+    they left Home's file the Almanac opened with no network found none and did not open; the worker cannot know
+    which language the person reads in, so all of them (~340 KB compressed beside the Almanac's ~1 MB)."""
+    folder = os.path.join(_STATIC_DIR, "i18n", "almanac")
+    try:
+        names = sorted(n for n in os.listdir(folder) if n.endswith(".json"))
+    except OSError:
+        return []
+    ver = globals().get("_i18n_hash", "0")
+    return ["/static/i18n/almanac/%s?v=%s" % (n, ver) for n in names]
 
 
 def _asset_version():
@@ -1392,6 +1568,8 @@ _PRESENTED_METADATA_KEYS = frozenset(
         "Creator",
         "Publisher",
         "Source",
+        "License",
+        "Relation",
         "Scraper",
         "Flavour",
         "Tags",
@@ -1444,6 +1622,7 @@ def _random_pick_verdict(
         dull = (
             preview.get("other_language")
             or preview.get("boring")
+            or preview.get("crude")
             or not preview.get("blurb")
         )
         return "fallback" if dull else "accept"
@@ -1531,7 +1710,7 @@ def _kiwix_book(book):
     if book in names:
         return book
     for name, path in names.items():
-        if os.path.basename(path)[: -len(".zim")] == book:
+        if zimparts.book_filename(path)[: -len(".zim")] == book:
             return name
     base = _srv._zim_base_name(book + ".zim")
     return base if base in names else book
@@ -1545,7 +1724,7 @@ def _kiwix_alias(parsed, params, document, resolve=lambda book: book):
     given the page itself."""
     path = parsed.path
     if path.startswith(_KIWIX_CONTENT):
-        rest = path[len(_KIWIX_CONTENT):]
+        rest = path[len(_KIWIX_CONTENT) :]
         book, _, entry = rest.partition("/")
         if not book:
             return None
@@ -1560,7 +1739,10 @@ def _kiwix_alias(parsed, params, document, resolve=lambda book: book):
     if document and path == "/search" and "q" not in params and "pattern" in params:
         book = resolve((params.get("content") or params.get("books.name") or [""])[0])
         words = quote(params["pattern"][0], safe="")
-        return "redirect", ("/w/" + quote(book, safe="") if book else "/") + "?q=" + words
+        return (
+            "redirect",
+            ("/w/" + quote(book, safe="") if book else "/") + "?q=" + words,
+        )
     return None
 
 
@@ -1588,7 +1770,11 @@ def _mark_external(entries):
         if label:
             # Through NOMAD the page treats the ZIM as its own (Delete and
             # Update work, NOMAD does them); elsewhere it is read-only.
-            key = "via" if through_nomad and label == libfolders.NOMAD_LABEL else "external"
+            key = (
+                "via"
+                if through_nomad and label == libfolders.NOMAD_LABEL
+                else "external"
+            )
             extra[key] = label
             if z.get("entries") == "?":
                 extra["unreadable"] = libfolders.why_unreadable(path)
@@ -1927,6 +2113,9 @@ def _zim_info(name):
         "source": source,
         "scraper": meta.get("Scraper", ""),
         "flavour": meta.get("Flavour", ""),
+        "license": meta.get("License", ""),
+        # Another book this one goes with (openZIM's Relation), as written.
+        "relation": meta.get("Relation", ""),
         "tags": _split_tags(meta.get("Tags")),
         "history": history,
         "kind": _zimi_kind(meta),
@@ -2188,7 +2377,11 @@ def _mirrors_web_urls(zim_name, archive):
         try:
             answer = bool(archive.has_entry_by_path(_REPLAY_SHELL_ENTRY))
         except Exception as e:
-            log.debug("could not probe %s for a replay shell: %s", loggable(zim_name), loggable(e))
+            log.debug(
+                "could not probe %s for a replay shell: %s",
+                loggable(zim_name),
+                loggable(e),
+            )
     with _mirrors_urls_lock:
         _mirrors_urls_cache[zim_name] = (generation, answer)
     return answer
@@ -2256,7 +2449,12 @@ _NIGHT_STAMP = (
     b"localStorage.getItem('zimi_app_theme')==='red')}catch(e){}</script>\n"
 )
 _APP_ASSETS = (
-    (_APPS_CSS_MARK, "apps.css", _NIGHT_STAMP + b"<style>\n", b"</style>"),
+    (
+        _APPS_CSS_MARK,
+        ("tokens.css", "apps.css"),
+        _NIGHT_STAMP + b"<style>\n",
+        b"</style>",
+    ),
     (_APPS_JS_MARK, "apps.js", b"<script>\n", b"</script>"),
 )
 # The PDF viewer (pdf.js's page) with Zimi's own reading chrome, inlined the
@@ -2290,14 +2488,17 @@ _INLINED_PAGES[PDF_VIEWER] = _PDF_ASSETS
 def _inline_apps_assets(body, assets=_APP_ASSETS):
     """The shared stylesheet and script, inlined at their marks, so an app
     page (or the PDF viewer, with its own) is still one document."""
-    for mark, name, open_tag, close_tag in assets:
+    for mark, names, open_tag, close_tag in assets:
         try:
-            with open(os.path.join(_STATIC_DIR, name), "rb") as f:
-                body = body.replace(mark, open_tag + f.read() + close_tag, 1)
+            parts = []
+            for part in (names,) if isinstance(names, str) else names:
+                with open(os.path.join(_STATIC_DIR, part), "rb") as f:
+                    parts.append(f.read())
+            body = body.replace(mark, open_tag + b"".join(parts) + close_tag, 1)
         except OSError as e:
             # The page still serves, without its shared parts: say so in the
             # log rather than let a broken app page pass for a styling bug.
-            log.warning("app page served without %s: %s", name, e)
+            log.warning("app page served without %s: %s", names, e)
     return body
 
 
@@ -2337,8 +2538,8 @@ _HEADER_BREAK_RE = re.compile(r"[\r\n]")
 
 def _almanac_pdf_post(handler, data):
     """POST /almanac/pdf {html, paper, name}: the Almanac's print document
-    as a PDF (zimi/almanacpdf.py); answers {id, url}. 501 where there is no
-    Chromium, so the page prints it itself."""
+    as a PDF (zimi/almanacpdf.py, set by zimi/almanacbook.py); answers {id, url}.
+    501 where PyMuPDF is missing, so the page prints it itself."""
     from zimi import almanacpdf as _apdf
 
     html = data.get("html") if isinstance(data, dict) else None
@@ -2384,9 +2585,32 @@ def _almanac_pdf_get(handler, path):
     handler.end_headers()
     handler.wfile.write(data)
 
+
+class _NoBody:
+    """The response stream of a HEAD answered by do_GET: the headers went
+    out, the body is dropped, and the connection itself is left alone."""
+
+    def __init__(self, real):
+        self._real = real
+
+    def write(self, data):
+        return len(data)
+
+    def __getattr__(self, name):
+        return getattr(self._real, name)
+
+
 class ZimHandler(BaseHTTPRequestHandler):
     protocol_version = "HTTP/1.1"
     timeout = 30  # seconds — prevents slow-client DoS on POST bodies
+    # A HEAD of a /w/ entry: do_GET answers it, the body dropped after the
+    # headers, so the status, length and Accept-Ranges are the GET's own.
+    _head_only = False
+
+    def end_headers(self):
+        super().end_headers()
+        if self._head_only and not isinstance(self.wfile, _NoBody):
+            self.wfile = _NoBody(self.wfile)
 
     def send_header(self, keyword, value):
         """Every header Zimi sends, refused when its name or value carries a
@@ -2425,7 +2649,9 @@ class ZimHandler(BaseHTTPRequestHandler):
         just raise again. Real failures keep the traceback + generic 500."""
         if isinstance(e, _DISCONNECT_ERRS):
             log.debug(
-                "client disconnected mid-response: %s %s", loggable(self.command), loggable(self.path)
+                "client disconnected mid-response: %s %s",
+                loggable(self.command),
+                loggable(self.path),
             )
             return
         traceback.print_exc()
@@ -2442,6 +2668,14 @@ class ZimHandler(BaseHTTPRequestHandler):
     def do_HEAD(self):
         """Handle HEAD requests (Traefik health checks, uptime monitors)."""
         parsed = urlparse(self.path)
+        if parsed.path.startswith("/w/"):
+            self._head_only = True
+            try:
+                return self.do_GET()
+            finally:
+                self._head_only = False
+                if isinstance(self.wfile, _NoBody):
+                    self.wfile = self.wfile._real
         if parsed.path == "/health":
             self.send_response(200)
             self.send_header("Content-Type", "application/json")
@@ -2671,17 +2905,27 @@ class ZimHandler(BaseHTTPRequestHandler):
         limited, is_w_content = _rate_class(parsed.path)
         if limited:
             background = parsed.path in _ALMANAC_BACKGROUND_PATHS
-            limit = RATE_LIMIT_ALMANAC if background else (None if is_w_content else self._rate_limit_for_request())
+            limit = (
+                RATE_LIMIT_ALMANAC
+                if background
+                else (None if is_w_content else self._rate_limit_for_request())
+            )
             keeping = (
                 is_w_content
                 and parsed.path.startswith(_OWN_ZIM_PATH_PREFIX)
                 and self.headers.get(KEEP_HEADER) == "1"
             )
+            if keeping:
+                limit = RATE_LIMIT_CONTENT * RATE_LIMIT_KEEP_FACTOR
             retry_after = _check_rate_limit(
                 self._client_ip(),
                 content=is_w_content or background,
                 limit=limit,
-                buckets=_rate_buckets_keep if keeping else (_rate_buckets_almanac if background else None),
+                buckets=(
+                    _rate_buckets_keep
+                    if keeping
+                    else (_rate_buckets_almanac if background else None)
+                ),
             )
             if retry_after > 0:
                 with _metrics_lock:
@@ -2824,7 +3068,11 @@ class ZimHandler(BaseHTTPRequestHandler):
                 # Typed words that name a situation: the Field Guide's hint,
                 # in memory (see fieldguide.hint); not for a search inside
                 # one ZIM, which is not asking for help.
-                guide = _fieldguide_hint(q, param("ui") or "en") if filter_zim is None else None
+                guide = (
+                    _fieldguide_hint(q, param("ui") or "en")
+                    if filter_zim is None
+                    else None
+                )
                 if param("stream") == "1":
                     return self._search_stream(run, guide)
                 result = run(fast)
@@ -2982,7 +3230,13 @@ class ZimHandler(BaseHTTPRequestHandler):
 
                 from zimi import almanachd as _hd
 
-                payload = _sats.get()
+                if param("all"):
+                    # Every active satellite (satcatalog.py): the same setting and rules.
+                    from zimi import satcatalog as _cat
+
+                    payload = _cat.get()
+                else:
+                    payload = _sats.get()
                 payload["can_change"] = bool(
                     _srv.ZIMI_MANAGE and _users._request_is_admin(self)
                 )
@@ -2999,7 +3253,9 @@ class ZimHandler(BaseHTTPRequestHandler):
                 from zimi import almanachd as _hd
 
                 payload = _hd.on_almanac_open()
-                payload["can_change"] = bool(_srv.ZIMI_MANAGE and _users._request_is_admin(self))
+                payload["can_change"] = bool(
+                    _srv.ZIMI_MANAGE and _users._request_is_admin(self)
+                )
                 return self._json(200, payload)
 
             elif parsed.path.startswith("/almanac/pdf/"):
@@ -3015,7 +3271,10 @@ class ZimHandler(BaseHTTPRequestHandler):
                 zim = param("zim") or ""
                 return self._json(
                     200,
-                    {"paths": ownzims.offline_paths(zim), "version": ownzims.offline_version(zim)},
+                    {
+                        "paths": ownzims.offline_paths(zim),
+                        "version": ownzims.offline_version(zim),
+                    },
                 )
             elif parsed.path == "/games-links":
                 # ZimiGames <-> encyclopedia: which installed article carries
@@ -3023,19 +3282,39 @@ class ZimHandler(BaseHTTPRequestHandler):
                 from zimi import gamelinks
 
                 return self._json(200, gamelinks.links())
+            elif parsed.path == "/almanac-view":
+                # An article -> the Almanac's 3D view on what it is about (zimi/gamelinks.py almanac_view): asked by the
+                # reader once an article is shown, never on the way to it. {link: "v=...&x=..."} or {link: null}.
+                from zimi import gamelinks
+
+                return self._json(
+                    200,
+                    {
+                        "link": gamelinks.almanac_view(
+                            param("zim") or "", param("path") or ""
+                        )
+                    },
+                )
             elif parsed.path == "/games-day":
                 # ZimiGames' dailies: the server's day in its own time zone, so
                 # everyone on one Zimi plays the same edition and it turns over
                 # at the server's midnight, whatever a device's clock says. The
                 # offset lets a page work out that day itself until it asks again.
-                return self._send(200, json.dumps(games_day()).encode(), "application/json", cache="no-store")
+                return self._send(
+                    200,
+                    json.dumps(games_day()).encode(),
+                    "application/json",
+                    cache="no-store",
+                )
             elif parsed.path == "/games-search":
                 # The main search's Games row: every game's name in ?lang= and
                 # the words it is found by (zimi/gamelinks.py). Read once, a
                 # fixed file of the package; empty without the games ZIM.
                 from zimi import gamelinks
 
-                return self._json(200, {"games": gamelinks.search_index(param("lang") or "en")})
+                return self._json(
+                    200, {"games": gamelinks.search_index(param("lang") or "en")}
+                )
             elif parsed.path == "/almanac-place":
                 # Tide stations for the Almanac (zimi/placedata.py):
                 # the nearest to ?lat=&lon=, or those named like ?q=. Only
@@ -3055,7 +3334,9 @@ class ZimHandler(BaseHTTPRequestHandler):
 
             elif parsed.path == "/list":
                 # A data pack (server.DATA_PACKS) is a part of Zimi, not a book: not on Home, not in the grid.
-                result = [z for z in _srv.list_zims() if z.get("name") not in _srv.DATA_PACKS]
+                result = [
+                    z for z in _srv.list_zims() if z.get("name") not in _srv.DATA_PACKS
+                ]
                 # Per-ZIM category overrides win over the _categorize_zim
                 # heuristic (#37). Applied here, not baked into the disk cache,
                 # so clearing an override instantly reverts to the heuristic.
@@ -3097,14 +3378,27 @@ class ZimHandler(BaseHTTPRequestHandler):
                 if info is None:
                     return self._json(404, {"error": f"ZIM '{zim}' not found"})
                 # How it came to be what it is: About's Last updated and Update history.
-                return self._json(200, {**info, "updates": _srv.zim_updates(info.get("name") or zim)})
+                return self._json(
+                    200, {**info, "updates": _srv.zim_updates(info.get("name") or zim)}
+                )
 
             elif parsed.path == "/zim-updates":
                 # What lit a dot, asked only when someone opens the dot: each ZIM's arrivals and updates
                 # (zimi.server.zim_updates). Only the ZIMs this person may see.
-                names = [n for n in (param("zims") or "").split(",") if n][:_ZIM_UPDATES_ASK_MAX]
+                names = [n for n in (param("zims") or "").split(",") if n][
+                    :_ZIM_UPDATES_ASK_MAX
+                ]
                 history = _srv._load_history()  # read once for every name asked
-                return self._json(200, {"updates": {n: _srv.zim_updates(n, history) for n in names if _srv.zim_allowed(n)}})
+                return self._json(
+                    200,
+                    {
+                        "updates": {
+                            n: _srv.zim_updates(n, history)
+                            for n in names
+                            if _srv.zim_allowed(n)
+                        }
+                    },
+                )
 
             elif parsed.path == "/whoami":
                 return self._uncached(self._handle_whoami)
@@ -3128,6 +3422,10 @@ class ZimHandler(BaseHTTPRequestHandler):
                 return self._uncached(self._handle_board_get)
             elif parsed.path == "/events":
                 return self._handle_events()
+            elif parsed.path == "/debuglog":
+                return self._uncached(
+                    lambda: self._json(200, {"on": _debuglog.enabled()})
+                )
 
             elif parsed.path == "/languages":
                 # Installed language summary with native names and ZIM counts
@@ -3554,7 +3852,9 @@ class ZimHandler(BaseHTTPRequestHandler):
                 if not q:
                     return self._json(400, {"error": "missing ?q= parameter"})
                 t0 = time.time()
-                groups = _srv.find_places(q, near_at=_srv.parse_latlng(param("near_at")))
+                groups = _srv.find_places(
+                    q, near_at=_srv.parse_latlng(param("near_at"))
+                )
                 _record_metric("/places", time.time() - t0)
                 return self._json(
                     200, {"groups": groups, "elapsed": round(time.time() - t0, 3)}
@@ -3574,6 +3874,16 @@ class ZimHandler(BaseHTTPRequestHandler):
                 return self._json(
                     200, {"places": places, "elapsed": round(time.time() - t0, 4)}
                 )
+            elif parsed.path == "/map-for":
+                # The maps of a point: the installed ones that hold it, or the ones worth downloading.
+                from zimi import mapchoice
+
+                at = _srv.parse_latlng(f"{param('lat')},{param('lng')}")
+                if not at:
+                    return self._json(
+                        400, {"error": "missing ?lat= and ?lng= parameters"}
+                    )
+                return self._json(200, mapchoice.answer(_srv.list_zims(), at[0], at[1]))
             elif parsed.path == "/map-home":
                 # Where a map opens when nobody has been on it yet.
                 zim = param("zim")
@@ -3607,17 +3917,24 @@ class ZimHandler(BaseHTTPRequestHandler):
                         from zimi import gamelinks
 
                         card = (
-                            gamelinks.day_card(param("day"))
+                            gamelinks.day_card(param("day"), param("lang"))
                             if param("day")
-                            else gamelinks.random_card(param("not"), served=True)
+                            else gamelinks.random_card(
+                                param("not"), served=True, lang=param("lang")
+                            )
                         )
                         # Never an entry that is not a game: no card is an error, not a draw from the whole ZIM.
-                        return self._json(200, card) if card else self._json(404, {"error": "no games"})
+                        return (
+                            self._json(200, card)
+                            if card
+                            else self._json(404, {"error": "no games"})
+                        )
                     if param("day"):
                         from zimi import wiki as _wiki
 
                         card = _wiki.daily_card(zim, param("day"))
                         if card:
+                            _wiki.say_card_ahead(card)
                             return self._json(200, card)
                     pick_names = [zim]
                 else:
@@ -3763,6 +4080,22 @@ class ZimHandler(BaseHTTPRequestHandler):
                         chosen["author"] = best_preview["author"]
                     if best_preview.get("part_of_speech"):
                         chosen["part_of_speech"] = best_preview["part_of_speech"]
+                # The language the card's Say speaks: the same the server
+                # assigns the word on a Wiktionary/Wikiquote (the ISO 639-1
+                # code its Language metadata names), so the card need not
+                # guess it from the file name.
+                if is_wiktionary or is_wikiquote:
+                    from zimi import wiki as _wiki
+
+                    _rec = next(
+                        (
+                            x
+                            for x in (_srv._zim_list_cache or [])
+                            if x.get("name") == pick_name
+                        ),
+                        None,
+                    )
+                    chosen["lang"] = _wiki._language(_rec) if _rec else ""
                 # XKCD date lookup from archive page (available for clients that want it)
                 # Must hold _zim_lock — _xkcd_date_lookup reads ZIM entries via libzim C API
                 if "xkcd" in pick_name.lower() and param("with_date") == "1":
@@ -3772,7 +4105,10 @@ class ZimHandler(BaseHTTPRequestHandler):
                         chosen["date"] = xkcd_date
                 _record_metric("/random", dt)
                 log.info(
-                    "random zim=%s title=%s %.1fs", loggable(pick_name), loggable(repr(best_result["title"])), dt
+                    "random zim=%s title=%s %.1fs",
+                    loggable(pick_name),
+                    loggable(repr(best_result["title"])),
+                    dt,
                 )
                 return self._json(200, chosen)
 
@@ -3941,6 +4277,9 @@ class ZimHandler(BaseHTTPRequestHandler):
             if parsed.path.startswith("/manage/"):
                 return handle_manage_post(self, parsed, data)
 
+            if parsed.path == "/debuglog":
+                return self._handle_debuglog_post(data)
+
             if parsed.path == "/games/start-error":
                 _log_games_start(data)
                 return self._json(200, {"ok": True})
@@ -3963,7 +4302,9 @@ class ZimHandler(BaseHTTPRequestHandler):
                     200,
                     {
                         "warming": _voices.warm(langs, engine),
-                        "saying": _voices.presay(words) if isinstance(words, list) else 0,
+                        "saying": (
+                            _voices.presay(words) if isinstance(words, list) else 0
+                        ),
                     },
                 )
 
@@ -4042,7 +4383,9 @@ class ZimHandler(BaseHTTPRequestHandler):
                 # Batch Q-ID resolution (closed set) — same public, rate-limited
                 # read as /suggest; the almanac POSTs its full ~250-Q-ID set.
                 retry_after = _check_rate_limit(
-                    self._client_ip(), limit=RATE_LIMIT_ALMANAC, buckets=_rate_buckets_almanac
+                    self._client_ip(),
+                    limit=RATE_LIMIT_ALMANAC,
+                    buckets=_rate_buckets_almanac,
                 )
                 if retry_after > 0:
                     return self._json_rate_limited(retry_after)
@@ -4194,7 +4537,9 @@ class ZimHandler(BaseHTTPRequestHandler):
         sig = _srv.zim_signature(zim_name)
         if not sig:
             return ""
-        return header_value('"%s-%s-%s"' % (entry_path.rsplit("/", 1)[-1], int(sig[0]), sig[1]))
+        return header_value(
+            '"%s-%s-%s"' % (entry_path.rsplit("/", 1)[-1], int(sig[0]), sig[1])
+        )
 
     def _picture_not_modified(self, etag):
         self.send_response(304)
@@ -4242,7 +4587,7 @@ class ZimHandler(BaseHTTPRequestHandler):
         self.wfile.write(data)
 
     def _serve_zim_icon(self, zim_name, archive):
-        """Serve the ZIM's 48x48 illustration as a PNG.
+        """Serve the ZIM's icon as a PNG (server.illustration_png).
 
         A ZIM NAME is not a version. This used to tag the response
         ``"icon-<name>"`` and mark it ``immutable`` for a week — a promise that
@@ -4258,22 +4603,12 @@ class ZimHandler(BaseHTTPRequestHandler):
         digest costs a hash of a couple of kilobytes on a cache miss; the
         revalidation costs a 304 with no body. Neither is worth a week of
         showing the wrong picture."""
-        # @1 is the scale factor, and @1 is what openZIM's spec makes mandatory
-        # — but the library cache sets has_icon for ANY `Illustration_48x48*`
-        # key, so a ZIM carrying only @2 (a 2x asset, which some scrapers write)
-        # was advertised as having an icon and then 404'd when asked for it. The
-        # UI drew an <img> that could never load. Ask for the mandatory one,
-        # then for whatever else the file actually has.
-        icon_data = None
-        for key in ("Illustration_48x48@1", "Illustration_48x48@2"):
-            try:
-                icon_data = bytes(archive.get_metadata(key))
-                if icon_data:
-                    break
-            except Exception:
-                continue
+        # The 48x48, or the nearest size the book has: the library's has_icon
+        # is set for any illustration, so every book it promises an icon for
+        # gets one here.
+        icon_data = _srv.illustration_png(archive)
         if not icon_data:
-            log.debug("no 48x48 illustration in %s", loggable(zim_name))
+            log.debug("no illustration in %s", loggable(zim_name))
             # And a MISS is never remembered. A ZIM that gains an illustration
             # — rebuilt, replaced, re-captured — must not stay iconless in the
             # one browser that happened to ask a moment too early.
@@ -4474,12 +4809,55 @@ class ZimHandler(BaseHTTPRequestHandler):
             200, body.encode("utf-8"), "text/html; charset=utf-8", cache="no-store"
         )
 
-    def _send_entry_too_large(self, total_size):
-        """413 for an entry Zimi refuses to materialize. Used by every /w/
-        branch that can't be answered with a bounded window."""
+    def _windows(self, total_size):
+        """``(range_start, range_end, stream_whole, window)`` for an entry
+        sent in pieces (a video, or a big uncompressed file).
+
+        Every served window is capped at MAX_SERVE_BYTES, whether or not the
+        client asked for one. An entry fetched without a Range (curl, <a
+        download>, a chat app's link fetcher) used to be copied WHOLE into a
+        bytes object under _zim_lock: an OOM kill on a small box. A
+        satisfiable range is clamped to one window (bytes=0- is a request for
+        the whole item through the ranged door). No Range, or one too
+        malformed to honour, gets the whole item, written window by window
+        (stream_whole): answering the first window as a 206 was right for a
+        player and a silent truncation for curl -O, wget or <a download>,
+        which saved 8 MB of a 30 MB video with no error anywhere."""
+        window = min(_srv.STREAM_WINDOW_BYTES, _srv.MAX_SERVE_BYTES)
+        start, end = self._parse_range(self.headers.get("Range"), total_size)
+        if start is None or end is None:
+            return None, None, total_size > window, window
+        return start, min(end, start + window - 1), False, window
+
+    def _run_or_refuse(self, zim_name, item, total_size):
+        """``(path, offset)`` of an entry over the cap that is one
+        uncompressed run in its book (zimblob), to send in pieces; else the
+        413 is sent, with its true reason, and the offset is None."""
+        path = _srv.get_zim_files().get(zim_name, "")
+        at, why = _zimblob.find(path, getattr(item, "_index", None), total_size)
+        if at is None:
+            self._send_entry_too_large(total_size, why)
+        return path, at
+
+    def _send_entry_too_large(self, total_size, why=_zimblob.COMPRESSED):
+        """413 for an entry over the cap Zimi will not load whole, said in
+        words for a person opening it: stored compressed (libzim can only
+        hand it over all at once), or not laid out as one run of bytes."""
         self.send_response(413)
-        self.send_header("Content-Type", "text/plain")
-        msg = f"Entry too large ({total_size // (1024*1024)} MB). Max: {_srv.MAX_SERVE_BYTES // (1024*1024)} MB.".encode()
+        self.send_header("Content-Type", "text/plain; charset=utf-8")
+        size, cap = total_size // (1024 * 1024), _srv.MAX_SERVE_BYTES // (1024 * 1024)
+        if why == _zimblob.COMPRESSED:
+            text = (
+                f"This file is too large to send: {size} MB, stored compressed inside its ZIM. "
+                f"Zimi would have to load all of it into memory first, so it sends compressed "
+                f"files up to {cap} MB."
+            )
+        else:
+            text = (
+                f"This file is too large to send: {size} MB, and Zimi could not find it as one "
+                f"run of bytes in its ZIM to send in pieces. It sends such files up to {cap} MB."
+            )
+        msg = text.encode()
         self.send_header("Content-Length", str(len(msg)))
         self.end_headers()
         self.wfile.write(msg)
@@ -4705,10 +5083,20 @@ class ZimHandler(BaseHTTPRequestHandler):
                 if not epub_filename.endswith(".epub"):
                     epub_filename += ".epub"
                 # Size check BEFORE materializing: reading first and refusing
-                # afterwards is the OOM this cap exists to prevent.
+                # afterwards is the OOM this cap exists to prevent. Over it,
+                # sent in pieces when it is one uncompressed run.
                 if total_size > _srv.MAX_SERVE_BYTES:
-                    return self._send_entry_too_large(total_size)
-                content = bytes(item.content)
+                    direct_path, direct_at = self._run_or_refuse(
+                        zim_name, item, total_size
+                    )
+                    if direct_at is None:
+                        return
+                    range_start, range_end, stream_whole, window = self._windows(
+                        total_size
+                    )
+                    content = b""
+                else:
+                    content = bytes(item.content)
             else:
                 # ETag check BEFORE reading content — avoids materializing large
                 # blobs when client already has a cached copy
@@ -4743,38 +5131,10 @@ class ZimHandler(BaseHTTPRequestHandler):
                     return
 
                 if is_streamable:
-                    # Every served window is capped at MAX_SERVE_BYTES, whether
-                    # or not the client asked for one. A media entry fetched
-                    # without a Range — curl, <a download>, a chat app's link
-                    # fetcher — used to copy the WHOLE item into a bytes object
-                    # while holding _zim_lock; on a ZIM carrying a few hundred
-                    # MB of video that is an OOM kill on a small box, with
-                    # every other libzim request blocked behind it. Answering
-                    # the first window as 206 + Accept-Ranges costs a real
-                    # player nothing: it range-requests onward immediately.
-                    range_header = self.headers.get("Range")
-                    if range_header:
-                        range_start, range_end = self._parse_range(
-                            range_header, total_size
-                        )
-                    window = min(_srv.STREAM_WINDOW_BYTES, _srv.MAX_SERVE_BYTES)
-                    if range_start is None or range_end is None:
-                        # No Range, or one too malformed to honour. This used to
-                        # answer the first window as a 206 — correct for a
-                        # player, which range-requests onward, and a silent
-                        # truncation for everything else: curl -O, wget, an
-                        # <a download>, a chat app fetching a link all took the
-                        # 206 as the file and saved 8 MB of a 30 MB video with
-                        # no error anywhere. A whole request gets the whole
-                        # item, written window by window below so the memory
-                        # ceiling that motivated the window still holds.
-                        range_start = range_end = None
-                        if total_size > window:
-                            stream_whole = True
-                    else:
-                        # A satisfiable range still gets clamped — bytes=0- is
-                        # a request for the whole item through the ranged door.
-                        range_end = min(range_end, range_start + window - 1)
+                    # Windows, never the whole item at once (_windows says why).
+                    range_start, range_end, stream_whole, window = self._windows(
+                        total_size
+                    )
                     # The bytes come straight from the file when they are one
                     # uncompressed run (zimblob): item.content maps the whole
                     # entry, every time, under this lock.
@@ -4790,9 +5150,21 @@ class ZimHandler(BaseHTTPRequestHandler):
                         content = b""
                     else:
                         content = bytes(item.content)
+                elif total_size > _srv.MAX_SERVE_BYTES:
+                    # A big PDF or zip: sent in pieces like a video when its
+                    # bytes are one uncompressed run in the file. In a
+                    # compressed cluster libzim can only hand over all of it
+                    # at once, which is what the cap is there to prevent.
+                    direct_path, direct_at = self._run_or_refuse(
+                        zim_name, item, total_size
+                    )
+                    if direct_at is None:
+                        return
+                    range_start, range_end, stream_whole, window = self._windows(
+                        total_size
+                    )
+                    content = b""
                 else:
-                    if total_size > _srv.MAX_SERVE_BYTES:
-                        return self._send_entry_too_large(total_size)
                     content = bytes(item.content)
         # Lock released — safe to do slow I/O
         if direct_at is not None and not stream_whole:
@@ -4800,8 +5172,9 @@ class ZimHandler(BaseHTTPRequestHandler):
             end = range_end if range_end is not None else total_size - 1
             content = _zimblob.read(direct_path, direct_at, start, end)
 
-        # EPUB: write download response outside lock
-        if epub_filename:
+        # EPUB: write download response outside lock (one in pieces goes
+        # out by the windowed path below, still as a download)
+        if epub_filename and direct_at is None:
             self.send_response(200)
             self.send_header("Content-Type", mimetype)
             self.send_header("Content-Length", str(len(content)))
@@ -4810,8 +5183,8 @@ class ZimHandler(BaseHTTPRequestHandler):
             self.wfile.write(content)
             return
 
-        # Strip <base> tags from HTML
-        if mimetype.startswith("text/html"):
+        # Strip <base> tags from HTML (a page, never a piece of one)
+        if mimetype.startswith("text/html") and direct_at is None:
             text = content.decode("UTF-8", errors="replace")
             text = re.sub(r"<base\s[^>]*>", "", text, flags=re.IGNORECASE)
             if not self.headers.get("Sec-Fetch-Dest"):
@@ -4858,6 +5231,8 @@ class ZimHandler(BaseHTTPRequestHandler):
             self.send_response(200)
 
         self.send_header("Content-Type", mimetype)
+        if epub_filename:
+            self.send_header("Content-Disposition", self._attachment(epub_filename))
         # A short window, not "ask every time" and not "immutable".
         #
         # `no-cache` means "store, but ASK before serving", and it was right
@@ -4884,12 +5259,14 @@ class ZimHandler(BaseHTTPRequestHandler):
         # max-age, for hours) across a deploy.
         own = zim_name in _OWN_ZIM_NAMES
         self.send_header(
-            "Cache-Control", "private, no-cache" if own else f"private, max-age={ZIM_CONTENT_MAX_AGE}"
+            "Cache-Control",
+            "private, no-cache" if own else f"private, max-age={ZIM_CONTENT_MAX_AGE}",
         )
         self.send_header("Vary", "Sec-Fetch-Dest")
-        self.send_header("ETag", etag)
+        if etag:
+            self.send_header("ETag", etag)
 
-        if is_streamable:
+        if is_streamable or direct_at is not None:
             self.send_header("Accept-Ranges", "bytes")
 
         # Sandbox ZIM HTML (ZIM_HTML_CSP): inline styles and scripts run,
@@ -4897,12 +5274,15 @@ class ZimHandler(BaseHTTPRequestHandler):
         if mimetype.startswith("text/html"):
             self.send_header("Content-Security-Policy", ZIM_HTML_CSP)
 
-        if not stream_whole:
+        if not stream_whole and range_start is None:
+            # Never a piece: its Content-Range counts the bytes as they are.
             content = self._maybe_gzip(content, mimetype)
 
         if stream_whole:
             self.send_header("Content-Length", str(total_size))
             self.end_headers()
+            if self._head_only:
+                return
             # libzim is not thread-safe, so every window is read under the
             # lock — and the lock is released between windows, so a reader
             # of another article is never held behind a video download.
@@ -5149,11 +5529,18 @@ class ZimHandler(BaseHTTPRequestHandler):
         path = zims.get(name)
         if path is None:
             for p in zims.values():
-                if os.path.basename(p) == name:
+                if zimparts.book_filename(p) == name:
                     path = p
                     break
         if path is None or not os.path.isfile(path):
             return self._json(404, {"error": "ZIM not found"})
+        if zimparts.is_split(path):
+            # A split book is its chunks; a peer pulls one file. Refused, not
+            # served as its first chunk (a half book that would look whole).
+            return self._json(
+                409,
+                {"error": "split ZIMs are not shared", "error_key": "split_not_shared"},
+            )
 
         try:
             total_size = os.path.getsize(path)
@@ -5210,7 +5597,9 @@ class ZimHandler(BaseHTTPRequestHandler):
         except (BrokenPipeError, ConnectionResetError):
             return
         except OSError as e:
-            log.warning("peer file stream failed for %s: %s", loggable(name), loggable(e))
+            log.warning(
+                "peer file stream failed for %s: %s", loggable(name), loggable(e)
+            )
 
     def _dictionary_voice(self, sub, param):
         """The Dictionary's Say (voices.py). /dictionary/voices: what the
@@ -5235,9 +5624,13 @@ class ZimHandler(BaseHTTPRequestHandler):
             payload["can_change"] = bool(
                 _srv.ZIMI_MANAGE and _users._request_is_admin(self)
             )
-            if not payload["can_change"] and isinstance(payload.get("downloading"), dict):
+            if not payload["can_change"] and isinstance(
+                payload.get("downloading"), dict
+            ):
                 # Why a set-up failed can quote pip or a path: the admin's to read, not every reader's.
-                payload["downloading"] = {k: v for k, v in payload["downloading"].items() if k != "reason"}
+                payload["downloading"] = {
+                    k: v for k, v in payload["downloading"].items() if k != "reason"
+                }
             return self._uncached(lambda: self._json(200, payload))
         text, lang, accent, engine = (
             param("text") or "",
@@ -5982,7 +6375,12 @@ class ZimHandler(BaseHTTPRequestHandler):
         # Anonymous. Expose a first-login hint ONLY when the default username
         # applies — no custom username AND no named users configured. This is
         # not an info leak: "the default username is admin" is in the docs.
-        resp = {"role": "anonymous", "account": _users.request_data_owner(self), "games": None, "apps": apps}
+        resp = {
+            "role": "anonymous",
+            "account": _users.request_data_owner(self),
+            "games": None,
+            "apps": apps,
+        }
         if not _manage._get_manage_user() and not _users.list_users():
             resp["default_username"] = "admin"
         # Tell the SPA how the public-access policy shapes its view: ``private``
@@ -6108,7 +6506,9 @@ class ZimHandler(BaseHTTPRequestHandler):
         name, refused = self._games_owner(data.get("account"))
         if refused:
             return self._json(*refused)
-        ok, err, doc = _users.GAMES.change(name, data.get("changes") or {}, by=data.get("client"))
+        ok, err, doc = _users.GAMES.change(
+            name, data.get("changes") or {}, by=data.get("client")
+        )
         if not ok:
             return self._json(503 if err == "write failed" else 400, {"error": err})
         return self._json(200, doc)
@@ -6122,10 +6522,17 @@ class ZimHandler(BaseHTTPRequestHandler):
         if not viewer:
             return self._json(401, {"error": "sign in required"})
         page, day = self._query_param("page"), self._query_param("day")
-        got = _users.leaderboard(page, day, viewer) if page else _users.leaderboards_today(day, viewer)
+        got = (
+            _users.leaderboard(page, day, viewer)
+            if page
+            else _users.leaderboards_today(day, viewer)
+        )
         if got is None:
             return self._json(400, {"error": "invalid board"})
-        got["you"] = {"name": _users.display_name(viewer), "on": _users.on_boards(_users.GAMES.load(viewer)["settings"])}
+        got["you"] = {
+            "name": _users.display_name(viewer),
+            "on": _users.on_boards(_users.GAMES.load(viewer)["settings"]),
+        }
         return self._json(200, got)
 
     def _handle_display_post(self, data):
@@ -6138,8 +6545,31 @@ class ZimHandler(BaseHTTPRequestHandler):
             return self._json(*refused)
         ok, err, shown = _users.set_display_name(name, data.get("display"))
         if not ok:
-            return self._json(409 if err == "name taken" else 503 if err == "write failed" else 400, {"error": err})
+            return self._json(
+                409 if err == "name taken" else 503 if err == "write failed" else 400,
+                {"error": err},
+            )
         return self._json(200, {"display": shown})
+
+    def _handle_debuglog_post(self, data):
+        """POST /debuglog: {client, events: [...]} from a window while the server's
+        debug log is on (debuglog.py). People signed in only; off, there is no such route.
+        """
+        if not _debuglog.enabled():
+            return self._json(404, {"error": "not found"})
+        name = _users.request_data_owner(self)
+        if not name:
+            return self._json(401, {"error": "sign in required"})
+        retry_after = _check_rate_limit(
+            self._client_ip(), limit=self._rate_limit_for_request()
+        )
+        if retry_after > 0:
+            return self._json_rate_limited(retry_after)
+        data = data if isinstance(data, dict) else {}
+        kept = _debuglog.append(
+            name, _asset_version(), data.get("client"), data.get("events")
+        )
+        return self._json(200, {"kept": kept})
 
     def _handle_events(self):
         """GET /events — what an open window should hear as server-sent
@@ -6162,7 +6592,9 @@ class ZimHandler(BaseHTTPRequestHandler):
             if refused:
                 return self._json(*refused)
         ip = self._client_ip()
-        if not _events_enter(ip, per_client=RATE_LIMIT_EXPLICIT or not self._is_direct_private_client()):
+        if not _events_enter(
+            ip, per_client=RATE_LIMIT_EXPLICIT or not self._is_direct_private_client()
+        ):
             with _metrics_lock:
                 _metrics["rate_limited"] += 1
             return self._json(
@@ -6187,12 +6619,19 @@ class ZimHandler(BaseHTTPRequestHandler):
         self.send_header("X-Content-Type-Options", "nosniff")
         self.end_headers()
         self.close_connection = True
+
         # Every write carries the stream's place (``id``), which the window
         # keeps and sends back on reopening; a ``tick`` says only that.
-        tick = json.dumps({"build": _asset_version()}).encode()
+        def tick():
+            # The build the page is, and whether the server keeps a debug log now.
+            return json.dumps(
+                {"build": _asset_version(), "debuglog": _debuglog.enabled()}
+            ).encode()
+
         place = _changes.place(max(after, 0)).encode()
         self.wfile.write(
-            b"retry: %d\nid: %s\nevent: tick\ndata: %s\n\n" % (_EVENTS_RETRY_MS, place, tick)
+            b"retry: %d\nid: %s\nevent: tick\ndata: %s\n\n"
+            % (_EVENTS_RETRY_MS, place, tick())
         )
         self.wfile.flush()
         ends = time.monotonic() + _EVENTS_MAX_S
@@ -6202,10 +6641,15 @@ class ZimHandler(BaseHTTPRequestHandler):
             # Each change carries its own place, so a drop after one resumes just after it.
             out = b"".join(
                 b"id: %s\nevent: change\ndata: %s\n\n"
-                % (_changes.place(seq).encode(), json.dumps(c, separators=(",", ":")).encode())
+                % (
+                    _changes.place(seq).encode(),
+                    json.dumps(c, separators=(",", ":")).encode(),
+                )
                 for seq, c in got
             )
-            self.wfile.write(out or b"id: %s\nevent: tick\ndata: %s\n\n" % (place, tick))
+            self.wfile.write(
+                out or b"id: %s\nevent: tick\ndata: %s\n\n" % (place, tick())
+            )
             self.wfile.flush()
 
     def log_message(self, format, *args):

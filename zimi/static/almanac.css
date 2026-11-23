@@ -20,7 +20,9 @@
 /* The page's last line, clear of a phone's home indicator: the inset is the
    footer's, not the scroller's padding, which would lift the docked time
    machine off the screen's edge too. */
-.alm-footer { margin-top: 40px; padding-bottom: env(safe-area-inset-bottom, 0px); text-align: center; font-size: 11px; color: var(--text3); }
+.alm-footer { margin-top: 40px; text-align: center; font-size: 11px; color: var(--text3); }
+/* Zimi's footer ends the page (zimifooter.css): it takes the safe area the sentence above used to. */
+.alm-footer + .footer { padding-bottom: calc(16px + env(safe-area-inset-bottom, 0px)); }
 
 .alm-cards { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; margin-bottom: 20px; }
 .alm-card { background: var(--surface); border: 1px solid var(--border); border-radius: 10px; padding: 10px 8px; text-align: center; }
@@ -128,8 +130,25 @@
 .almanac-moon-open.alm-moon-waking .almanac-moon { animation: alm-moon-wake 1.1s ease-in-out infinite alternate; }
 @keyframes alm-moon-wake { to { opacity: .8; } }
 @media (prefers-reduced-motion: reduce) { .almanac-moon-open.alm-moon-waking .almanac-moon { animation: none; } }
+#almanac-orrery.alm-orrery-waking { cursor: progress; animation: alm-moon-wake 1.1s ease-in-out infinite alternate; }
+@media (prefers-reduced-motion: reduce) { #almanac-orrery.alm-orrery-waking { animation: none; } }
 .almanac-moon-open:focus-visible { outline: 2px solid var(--amber); outline-offset: 6px; }
-.almanac-moon-sprite { display: block; width: 100%; height: 100%; }
+.almanac-moon-sprite { display: block; width: 100%; height: 100%; transition: opacity .3s ease; }
+/* Until the Moon's map is in (almanac.js draw), the disc holds its place clear and comes in over it. */
+body.alm-moon-wait .almanac-moon-sprite, body.alm-moon-wait .almanac-moon-sprite.alm-in { opacity: 0; animation: none; }   /* the disc's fade-in waits for its map: an animation's opacity would win over this 0 */
+@media (prefers-reduced-motion: reduce) { .almanac-moon-sprite { transition: none; } }
+/* The first frame (app.js _almFirstFrame): the disc is a clear square, the values the page works out are quiet dashes,
+   the sky is its place with the hour's colour; almanac.js draws the same head over it in the same boxes. */
+.alm-first .almanac-moon-sprite, .alm-first .almanac-moon-glow { visibility: hidden; }   /* nothing, then the Moon */
+.alm-first .alm-ph { opacity: 0.3; }
+.alm-first .alm-sky-cap { min-height: 57px; }
+.alm-first .alm-ph-invite { min-height: 68px; }   /* the ask for a place, under the tiles, when none is chosen */
+@keyframes almFadeIn { from { opacity: 0; } to { opacity: 1; } }
+.alm-first #almanac-sky-canvas { background: #0b1226; }
+.almanac-moon-sprite.alm-in, .almanac-moon-glow.alm-in { animation: almFadeIn 0.35s ease; }
+@keyframes almFadeOut { from { opacity: 1; } to { opacity: 0; } }
+.almanac-sky-wrap.alm-sky-in::after { content: ""; position: absolute; inset: 0; border-radius: 12px; background: var(--sky-pre); pointer-events: none; animation: almFadeOut 0.45s ease forwards; }
+@media (prefers-reduced-motion: reduce) { .almanac-moon-sprite.alm-in, .almanac-moon-glow.alm-in { animation: none; } .almanac-sky-wrap.alm-sky-in::after { display: none; } }
 .almanac-moon-glow { position: absolute; width: 280px; height: 280px; border-radius: 50%; top: 50%; left: 50%; transform: translate(-50%, -50%); pointer-events: none; z-index: -1; }
 .almanac-moon-name { margin-top: 16px; font-size: 18px; font-weight: 500; color: var(--text); }
 /* Said only when the disc stands celestial north up (no place chosen). */
@@ -141,7 +160,8 @@
 .almanac-moon-anim { position: absolute; top: 0; left: 50%; width: 200px; height: 200px; transform: translateX(-50%); pointer-events: none; }
 @media (prefers-reduced-motion: reduce) { .almanac-moon-anim { display: none; } }
 .almanac-section { margin-top: 32px; border-top: 1px solid var(--border); padding-top: 24px; }
-.almanac-section-title { font-size: 14px; font-weight: 600; color: var(--text); margin-bottom: 16px; text-transform: uppercase; letter-spacing: 0.06em; }
+/* The section label, as Zimi's tokens.css draws it (the standalone ZIM has no tokens, so the values are written out; a test keeps them equal). */
+.almanac-section-title { font-size: 13px; font-weight: 600; color: var(--text2); margin-bottom: 16px; text-transform: uppercase; letter-spacing: 0.06em; }
 /* The section bar (almanac.js, _almSecBar*): a zero-height host sticks to the
    scroller's top edge (the scroller's padding is where sticky counts from); the bar hangs from it across the scroller's width. 44px is
    ALM_SECBAR_H. The pills are the app's own .pills-row/.pill. */
@@ -149,8 +169,12 @@
 /* The pinned strip: the clock over the section bar, one surface with one hairline under it. */
 .alm-pin { position: absolute; top: 0; inset-inline: -16px; background: var(--bg); border-bottom: 1px solid var(--border); box-shadow: 0 10px 18px -14px rgba(0, 0, 0, 0.9); animation: fadeIn 0.15s ease; }
 .alm-pin[hidden] { display: none; }
+/* The clock arrives with the scroll (almanac.js _almPinProgress): the strip fades in with it, the date from its header size. */
+.alm-pin-arriving { opacity: var(--alm-pin-p, 1); }
+.alm-pin-clock { opacity: var(--alm-pin-p, 1); }
+.alm-pin-clock .alm-ck-d { transform-origin: left center; transform: scale(calc(1 + 0.57 * (1 - var(--alm-pin-p, 1)))); }
 .alm-pin-clock { height: 60px; box-sizing: border-box; padding: 6px 16px 0; }
-.alm-pin-bare .alm-pin-clock { display: none; }   /* the clock at rest: the strip is the section bar alone */
+.alm-pin-rest .alm-pin-clock { height: 36px; }   /* ALM_PIN_CLOCK_REST_H: at rest the clock is the date and time alone */
 .alm-secbar { height: 44px; box-sizing: border-box; display: flex; align-items: center; gap: 8px; padding: 0 16px; border-top: 1px solid var(--border); position: relative; }
 .alm-secbar[hidden] { display: none; }
 .alm-secbar-nav { flex: 1; min-width: 0; }
@@ -170,10 +194,10 @@
 .alm-secbar-list button { display: block; width: 100%; padding: 10px 12px; background: none; border: 0; border-radius: 8px; color: var(--text2); font: inherit; font-size: 14px; text-align: start; cursor: pointer; }
 .alm-secbar-list button:hover { background: var(--amber-glow); color: var(--text); }
 .alm-secbar-list button[aria-current] { color: var(--amber); font-weight: 600; }
-/* A titled section scrolls to the top, under the bar, which is then its
-   heading; one without a title stops just below the bar. */
-.alm-group { scroll-margin-top: 48px; }
-#almanac-calendar, #almanac-sunmap, #almanac-onthisday { scroll-margin-top: var(--alm-pin-h, 106px); }
+/* A section lands with its own title just below the pinned rows (the clock and the pill row), never behind them. */
+.alm-group { scroll-margin-top: var(--alm-pin-h, 106px); }
+/* A pill lands its section with the section's own title just below the pinned rows, never behind them. */
+#almanac-calendar, #almanac-sunmap, #almanac-onthisday, #almanac-orrery, #almanac-tonight, #almanac-starchart, #almanac-analemma, #almanac-meteors, #almanac-events, #almanac-astro, #almanac-deeptime, #almanac-rosetta, #almanac-place .almanac-section, .almanac-section { scroll-margin-top: var(--alm-pin-h, 106px); }
 @media (prefers-reduced-motion: reduce) { .alm-secbar { animation: none; } .alm-secbar-more svg { transition: none; } }
 /* About this data: closed until asked for; a reference, not a panel. */
 .alm-about summary.almanac-section-title { cursor: pointer; margin-bottom: 0; list-style-position: inside; }
@@ -248,14 +272,14 @@
 /* The subjects: app.css's own pill row, run to the screen's edges like the tiles. */
 .alm-subject-chips { width: auto; margin: 4px -16px 0; padding: 2px 16px; scroll-padding-inline: 16px; }
 .alm-tiles[hidden], .alm-tiles-h[hidden], .alm-tile[hidden] { display: none; }
-.alm-tiles-h { margin: 22px 0 8px; font-size: 12px; font-weight: 600; letter-spacing: 0.06em; text-transform: uppercase; color: var(--text2); }
+.alm-tiles-h { margin: 22px 0 8px; font-size: 13px; font-weight: 600; letter-spacing: 0.06em; text-transform: uppercase; color: var(--text2); }
 .alm-group-title + .alm-tiles-h { margin-top: 4px; }
 .alm-subject-chips + .alm-tiles-h { margin-top: 14px; }
 /* A title with its icons at its right: Copy, Share, Print for everything
-   the chips show. The icons' own edge lines up with the page's. */
+   the chips show. The last icon's box ends on the page's content edge. */
 .alm-group-head { display: flex; align-items: center; gap: 8px; margin: 0 0 12px; }
 .alm-group-head .alm-group-title { flex: 1; min-width: 0; margin: 0; }
-.alm-book-bar { display: inline-flex; flex: none; margin-inline-end: -13px; }
+.alm-book-bar { display: inline-flex; flex: none; }  /* the last button's box (the tinted square) ends on the content edge */
 /* An icon button (here, and in each table's own bar): a 44px target, quiet,
    amber when reached for. */
 .alm-doc-btn { display: inline-flex; align-items: center; justify-content: center; flex: none; width: 44px; height: 44px; padding: 0; border: 0; border-radius: 10px; background: none; color: var(--text2); cursor: pointer; transition: color 0.2s, background 0.2s; }
@@ -269,7 +293,7 @@
 @media (prefers-reduced-motion: reduce) { .alm-doc-btn.alm-busy::after { animation-duration: 2.4s; } }
 .alm-tiles {
   display: flex; gap: 10px; overflow-x: auto; overscroll-behavior-x: contain; -webkit-overflow-scrolling: touch;
-  margin: 0 -16px; padding: 2px 16px 10px; scroll-snap-type: x proximity; scroll-padding-inline: 16px; scrollbar-width: thin;
+  margin: 0 -16px; padding: 2px 16px 10px; scroll-snap-type: x proximity; scroll-padding-inline: 16px;
 }
 .alm-tile {
   flex: 0 0 152px; display: flex; flex-direction: column; align-items: flex-start; gap: 6px; min-height: 124px; padding: 14px 12px 12px;
@@ -331,13 +355,18 @@
    open while the pointer crosses the box toward the link or the button (the
    traversal a pointer-transparent box once lost; almanac-orrery.js _overTip). */
 #orrery-tooltip { position: absolute; display: none; z-index: 10; pointer-events: none; background: rgba(0,0,0,0.78); color: #ccc; font-size: 11px; line-height: 1.5; padding: 4px 8px; border-radius: 5px; white-space: nowrap; backdrop-filter: blur(4px); }
-#orrery-tooltip .alm-link, #orrery-tooltip .orrery-tip-btn, #orrery-tooltip .alm-dismiss-x { pointer-events: auto; }
+#orrery-tooltip .alm-link, #orrery-tooltip .orrery-tip-btn, #orrery-tooltip .orrery-tip-find, #orrery-tooltip .alm-dismiss-x { pointer-events: auto; }
 .orrery-tip-info { display: block; }
+/* Find it in the sky: a small round magnifier at the end of the name's line (a 40px target on a phone). */
+.orrery-tip-find { display: inline-flex; align-items: center; justify-content: center; width: 22px; height: 22px; margin-inline-start: 6px; padding: 0; vertical-align: middle; background: none; border: 1px solid var(--amber-border); border-radius: 50%; color: var(--amber); cursor: pointer; }
+.orrery-tip-find:focus-visible { outline: 2px solid var(--amber-border); outline-offset: 2px; }
+@media (hover: hover) { .orrery-tip-find:hover { background: var(--amber-glow); } }
 .orrery-tip-line { display: block; color: #bbb; white-space: normal; max-width: 230px; }
 /* The tip's one action (Fly there, See the Earth up close) is the loudest
    thing in it: filled amber, the tip's full width. A tinted outline read as
    one more line of text, and a phone gave no other sign a planet flies. */
 .orrery-tip-btn { display: block; width: 100%; margin-top: 6px; padding: 3px 12px; background: var(--amber); border: 1px solid var(--amber); border-radius: 999px; color: #000; font: inherit; font-weight: 600; cursor: pointer; }
+.orrery-tip-btn.orrery-tip-quiet { background: none; border-color: transparent; color: var(--amber); font-weight: 500; }
 .orrery-tip-btn:focus-visible { outline: 2px solid var(--amber-border); outline-offset: 2px; }
 @media (hover: hover) { .orrery-tip-btn:hover { filter: brightness(1.1); } }
 /* The x every overlay gets on a phone (almanac.js _almDismissX): a 44px target round a small glyph. */
@@ -349,6 +378,7 @@
   .orrery-tip-info { padding-inline-end: 30px; }
   #orrery-tooltip { font-size: 12px; padding: 6px 10px; border-radius: 8px; }
   .orrery-tip-btn { min-height: 40px; padding: 6px 16px; font-size: 14px; }
+  .orrery-tip-find { width: 36px; height: 36px; }
 }
 /* Under the orrery, until each has been done once: what a tap does. Touch
    only; a pointer finds it by hovering (almanac-orrery.js _orreryRenderHint). */
@@ -386,11 +416,10 @@
 .almanac-sky-wrap { width: 100%; max-width: 600px; margin: 0 auto; position: relative; }
 /* The sky's two corner buttons (settings, Look): small, so the sky is the picture; the touch target
    stays 44 px through an invisible ring around each. */
-:is(.alm-sky-look, .alm-sky-gear) { position: absolute; top: 4px; z-index: 2; width: 44px; height: 44px; border-radius: 22px; border: 0; background: none; color: #fff; display: flex; align-items: center; justify-content: center; padding: 0; cursor: pointer; isolation: isolate; }
-:is(.alm-sky-look, .alm-sky-gear)::before { content: ""; position: absolute; inset: 6px; z-index: -1; border-radius: 16px; border: 1px solid rgba(255,255,255,.22); background: rgba(8,10,16,.55); backdrop-filter: blur(6px); -webkit-backdrop-filter: blur(6px); }
-:is(.alm-sky-look, .alm-sky-gear) svg { width: 17px; height: 17px; }
-.alm-sky-look { right: 4px; }
-[dir=rtl] .alm-sky-look { right: auto; left: 4px; }
+:is(.alm-sky-look, .alm-sky-gear, .alm-sky-stand) { position: absolute; top: 4px; z-index: 2; width: 44px; height: 44px; border-radius: 22px; border: 0; background: none; color: #fff; display: flex; align-items: center; justify-content: center; padding: 0; cursor: pointer; isolation: isolate; }
+:is(.alm-sky-look, .alm-sky-gear, .alm-sky-stand)::before { content: ""; position: absolute; inset: 6px; z-index: -1; border-radius: 16px; border: 1px solid rgba(255,255,255,.22); background: rgba(8,10,16,.55); backdrop-filter: blur(6px); -webkit-backdrop-filter: blur(6px); }
+:is(.alm-sky-look, .alm-sky-gear, .alm-sky-stand) svg { width: 17px; height: 17px; }
+.alm-sky-stand[hidden], .look-stand[hidden] { display: none !important; }   /* no WebGL2, no ground: a hidden button stays hidden whatever its class sets */
 .almanac-sky-wrap canvas { width: 100%; display: block; border-radius: 12px; touch-action: pan-y; }
 /* The sky is its final size before its first frame (almanac-sky.js sets the same height once it starts, from
    SKY_ASPECT and SKY_ASPECT_PHONE under SKY_PHONE_MAX_W): a canvas waiting at its default 2:1 grew when the
@@ -430,16 +459,59 @@
 }
 .alm-about-credit { margin: 14px 0 0; font-size: 11px; color: var(--text3); }
 .alm-sky-gear { left: 4px; }
+/* Look, Stand here and There and then: one row of round buttons, 44 px each and equally spaced, at the picture's far corner (its start in a right-to-left language). */
+.alm-sky-bar { position: absolute; top: 4px; inset-inline-end: 4px; z-index: 2; display: flex; }
+.alm-sky-bar > button { position: relative; top: 0; }
 .alm-sky-gear[aria-expanded="true"] { color: var(--amber); }
 .alm-sky-gear[aria-expanded="true"]::before { border-color: var(--amber-border); }
 [dir=rtl] .alm-sky-gear { left: auto; right: 4px; }
 /* The settings: a small panel over the sky, under the gear. */
-.alm-sky-set { position: absolute; top: 50px; left: 8px; z-index: 3; width: min(300px, calc(100% - 16px)); padding: 10px 14px 6px; font-size: 12px; color: var(--text2); background: var(--surface2); border: 1px solid var(--border); border-radius: 12px; box-shadow: 0 12px 40px rgba(0,0,0,.45); }
-[dir=rtl] .alm-sky-set { left: auto; right: 8px; }
+.alm-sky-set { position: fixed; inset-inline: 0; bottom: 0; z-index: 30; box-sizing: border-box; max-width: 560px; max-height: min(80dvh, 680px); margin-inline: auto; padding: 0 16px calc(10px + env(safe-area-inset-bottom)); overflow-y: auto; overscroll-behavior: contain; font-size: 12px; color: var(--text2); background: var(--surface2); border: 1px solid var(--border); border-bottom: 0; border-radius: 16px 16px 0 0; box-shadow: 0 -12px 40px rgba(0,0,0,.45);
+  transform: translateY(105%); visibility: hidden; pointer-events: none; transition: transform 200ms ease-in, visibility 0s 200ms; }   /* away: 200 ms, by transform alone */
 .alm-sky-set[hidden] { display: none; }
-.alm-sky-set-title { font-size: 11px; font-weight: 600; letter-spacing: .06em; text-transform: uppercase; color: var(--text3); }
+.alm-sky-set.in { transform: none; visibility: visible; pointer-events: auto; transition: transform 320ms cubic-bezier(.2, .8, .2, 1); }   /* up: 320 ms ease-out */
+@media (prefers-reduced-motion: reduce) { .alm-sky-set, .alm-sky-set.in { transition: none; } }
+/* With a mouse and room, a panel over the sky's corner instead of a sheet from below (the card coming
+   up from the foot is odd on a desktop; over the sky was right). The sky stays seen beside it; a click outside, Escape or the
+   gear close it. */
+@media (hover: hover) and (pointer: fine) and (min-width: 700px) {
+  .alm-sky-set { position: absolute; inset-inline: 8px auto; top: 50px; bottom: auto; width: min(320px, calc(100% - 16px)); max-height: calc(100% - 58px); margin: 0; padding: 4px 14px 8px; border-bottom: 1px solid var(--border); border-radius: 12px; box-shadow: 0 12px 40px rgba(0,0,0,.45);
+    opacity: 0; transform: translateY(-8px); transition: opacity 200ms ease-in, transform 200ms ease-in, visibility 0s 200ms; }
+  .alm-sky-set.in { opacity: 1; transform: none; transition: opacity 200ms ease-out, transform 200ms ease-out; }
+  .alm-sky-set .alm-sky-set-grip { display: none; }
+}
+@media (hover: hover) and (pointer: fine) and (min-width: 700px) and (prefers-reduced-motion: reduce) { .alm-sky-set, .alm-sky-set.in { transition: none; transform: none; } }
+.alm-sky-set-grip { position: sticky; top: 0; z-index: 1; display: flex; justify-content: center; align-items: center; height: 28px; margin: 0 -16px; background: var(--surface2); touch-action: none; cursor: grab; }
+.alm-sky-set-grip i { width: 36px; height: 4px; border-radius: 2px; background: var(--border-strong, var(--text3)); }
+.alm-sky-open3d { display: flex; align-items: center; gap: 10px; width: 100%; min-height: 44px; margin-top: 4px; padding: 0; border: 0; border-top: 1px solid var(--border); background: none; color: var(--text); font: inherit; font-size: 14px; text-align: start; cursor: pointer; }
+.alm-sky-open3d[hidden] { display: none; }
+.alm-sky-open3d svg { width: 22px; height: 22px; flex: none; fill: none; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
+.alm-sky-open3d .ae-rim-glyph path { stroke: var(--amber); }
+.alm-sky-open3d .ae-rim-glyph circle { fill: var(--amber); stroke: none; }
+.alm-sky-open3d:focus-visible { outline: 2px solid var(--amber); outline-offset: 2px; }
+.alm-sky-set-cap { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }   /* names the scene cards for a screen reader; the pictures say it to the eye */
+.alm-sky-skins { display: flex; gap: 8px; }
+.alm-sky-skin { flex: 1 1 0; min-width: 0; min-height: 44px; padding: 0 0 6px; display: flex; flex-direction: column; gap: 6px; align-items: center; background: none; border: 1px solid var(--border); border-radius: 10px; overflow: hidden; color: var(--text2); font: inherit; font-size: 12px; cursor: pointer; }
+.alm-sky-skin-pic { align-self: stretch; height: 46px; }
+.alm-sky-skin-sub { margin-top: -4px; padding: 0 4px; font-size: 11px; line-height: 1.25; color: var(--text3); text-align: center; }
+.alm-sky-skin[aria-checked="true"] .alm-sky-skin-sub { color: var(--text2); }
+.alm-sky-set-lbl { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.alm-sky-set-sub { font-size: 11px; line-height: 1.3; color: var(--text3); }
+.alm-sky-seg { display: inline-flex; flex: none; padding: 2px; gap: 2px; border: 1px solid var(--border); border-radius: 10px; }
+.alm-sky-seg button { position: relative; min-height: 32px; padding: 0 10px; border: 1px solid transparent; border-radius: 8px; background: none; color: var(--text2); font: inherit; font-size: 12px; font-weight: 600; cursor: pointer; }
+.alm-sky-seg button::after { content: ""; position: absolute; inset: -6px -1px; }
+.alm-sky-seg button[aria-checked="true"] { color: var(--amber); border-color: var(--amber-border); background: var(--amber-glow); }
+.alm-sky-seg button:focus-visible { outline: 2px solid var(--amber); outline-offset: 1px; }
+.alm-sky-skin[aria-checked="true"] { border-color: var(--amber-border); color: var(--amber); }
+.alm-sky-skin:focus-visible, .alm-sky-set input:focus-visible { outline: 2px solid var(--amber); outline-offset: 2px; }
+.alm-sky-set input[type="checkbox"] { appearance: none; -webkit-appearance: none; flex: none; position: relative; width: 40px; height: 24px; margin: 0; border-radius: 12px; background: var(--border-strong, var(--border)); cursor: pointer; transition: background .15s; }
+.alm-sky-set input[type="checkbox"]::after { content: ""; position: absolute; top: 3px; inset-inline-start: 3px; width: 18px; height: 18px; border-radius: 50%; background: var(--text); transition: transform .15s; }
+.alm-sky-set input[type="checkbox"]:checked { background: var(--amber); }
+.alm-sky-set input[type="checkbox"]:checked::after { transform: translateX(16px); background: var(--on-amber, #000); }
+[dir=rtl] .alm-sky-set input[type="checkbox"]:checked::after { transform: translateX(-16px); }
+@media (prefers-reduced-motion: reduce) { .alm-sky-set input[type="checkbox"], .alm-sky-set input[type="checkbox"]::after { transition: none; } }
+@media (pointer: coarse) { .alm-sky-set-row { min-height: 44px; box-sizing: border-box; } }
 .alm-sky-set-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 7px 0; }
-.alm-sky-set-row select { max-width: 55%; background: var(--surface2); color: var(--text); border: 1px solid var(--border); border-radius: 6px; padding: 4px 6px; font: inherit; }
 .alm-sky-dial { display: flex; align-items: center; gap: 6px; flex: 1; max-width: 240px; }
 .alm-sky-dial input { flex: 1; min-width: 0; }
 .alm-sky-dial small { font-size: 10px; color: var(--text3); }
@@ -447,10 +519,10 @@
 .almanac-sky-wrap.sky-red canvas { background: #000; }
 .alm-sky-info.sky-red :is(.alm-sky-sub, .alm-card-lbl) { color: var(--text2); }
 .almanac-sky-wrap.sky-red .alm-sky-sub, .almanac-sky-wrap.sky-red .alm-sky-set,
-.almanac-sky-wrap.sky-red .alm-card-lbl, .almanac-sky-wrap.sky-red .alm-sky-set-title { color: var(--text2); }
+.almanac-sky-wrap.sky-red .alm-card-lbl { color: var(--text2); }
 .almanac-sky-wrap.sky-red .alm-sky-dial small, .almanac-sky-wrap.sky-red .alm-sky-set-row { color: var(--text2); }
 .almanac-sky-wrap.sky-red input { accent-color: var(--text2); }
-.almanac-sky-wrap.sky-red .alm-sky-set select { background: var(--surface2); color: var(--text2); border-color: var(--border); }
+.almanac-sky-wrap.sky-red .alm-sky-seg button, .almanac-sky-wrap.sky-red .alm-sky-skin-sub, .almanac-sky-wrap.sky-red .alm-sky-set-sub { color: var(--text2); }
 /* A tapped body's name: the orrery tip's look, with room for a few lines. */
 .alm-sky-tip { position: absolute; z-index: 10; max-width: min(480px, calc(100% - 12px)); background: rgba(0,0,0,0.8); color: #ccc; font-size: 11px; line-height: 1.5; padding: 5px 9px; border-radius: 6px; backdrop-filter: blur(4px); }
 .alm-sky-tip[hidden] { display: none; }
@@ -469,7 +541,8 @@
 .almanac-eclipse-row:last-child { border-bottom: none; }
 .almanac-eclipse-type { font-weight: 500; color: var(--text); }
 .almanac-eclipse-date { color: var(--text2); font-size: 12px; }
-.almanac-eclipse-until { color: var(--amber); font-size: 12px; font-weight: 500; }
+.almanac-eclipse-until { color: var(--amber); font-size: 12px; font-weight: 500; white-space: nowrap; flex-shrink: 0; padding-inline-start: 12px; }  /* "33 days" is one line in every row */
+.almanac-eclipse-moon { white-space: nowrap; }  /* the Moon's mark stays with its word */
 .almanac-eclipse-peak { flex: 0 0 auto; margin-left: 10px; padding: 2px 9px; border-radius: 999px; font-size: 11px; font-weight: 700; letter-spacing: 0.02em; color: #000; background: var(--amber); }
 /* On This Day — year gutter + milestone text */
 .alm-otd-row { display: flex; align-items: baseline; padding: 8px 0; border-bottom: 1px solid var(--border); }
@@ -603,11 +676,43 @@
 .alm-crossref-active { background: var(--surface2); }
 .alm-crossref-active .alm-crossref-label { color: var(--amber); }
 
+/* A finger's hit area (44px, the shell's rule in app.css): a control short of 44 either way gets an invisible box that
+   brings it up to 44 and centres it, so nothing drawn or laid out moves. A control already 44 gets none (the
+   percentages are its own size). Not for neighbours with no gap between them (a strip of bars, a stack of rows): their
+   boxes would take each other's room, so those wait for a layout change. */
+@media (pointer: coarse) {
+  :is(.alm-arrow, .alm-scope-btn, .alm-invite-btn, .alm-month, .alm-year, .almanac-location-link,
+      .at-link, .alm-about summary.almanac-section-title, .alm-spd-mark, .alm-tz-star)::after {
+    content: ''; position: absolute; inset: calc(max(0px, 44px - 100%) / -2);
+  }
+  :is(.alm-arrow, .alm-scope-btn, .alm-invite-btn, .alm-month, .alm-year, .almanac-location-link,
+      .at-link, .alm-about summary.almanac-section-title) { position: relative; }
+  /* The name is clipped to its width (an ellipsis), and so clips its own box: it grows by padding and gives it back in margin. */
+  #almanac-loc-name { padding-block: 14px; margin-block: -14px; }
+  /* The clock's and date's parts take the room above and below (their own box already reaches 4px to each side). */
+  .ep::before { inset: calc(max(0px, 44px - 100%) / -2) -4px; }
+  /* Layout for touch, where neighbours leave no room for a hidden box: the two location marks 14px apart, the wrapped
+     translation pills 16px between rows, the tide units 44px tall. The calendar names stay tight, as on a desktop. */
+  .alm-here-icon { margin-left: 14px; }
+  .rosetta-pills { row-gap: 16px; }
+  .at-unit { min-height: 44px; }
+  /* The star sits in its tile's corner: its box takes the tile's room, not the neighbours'. */
+  .alm-tz-star::after { inset: -2px -22px -22px -2px; }
+  /* The speed marks hang under the slider: their box takes the room below. */
+  .alm-spd-mark::after { inset: 0 -8px -26px; }
+  /* The pills scroll sideways and so clip their own box: the row takes the room above and below, and gives it back in margin. */
+  #almanac-content .pills-row { padding-block: 8px; margin-block: -8px; }
+  #almanac-content .alm-subject-chips { margin-block: -2px -6px; }   /* its own 4px above and 2px of padding, given back */
+}
+
 /* ── Almanac mobile ── */
 @media (max-width: 600px) {
-  body.almanac-mode .topbar-more { display: none !important; }
-  body.almanac-mode .lang-selector-btn { display: flex !important; }
-  body.almanac-mode .manage-btn { display: flex !important; }
+  /* The Almanac's header is the shell's: the Zimi crumb is the way out, language is in the ⋯ menu (app.js), and the X and the globe the phone
+     bar used to force on here are gone, so the search box has the room (it was left 70px, a placeholder cut to "Se"). The Almanac's name and its icon (the back arrow leads home) give their room up, and the gaps shrink. */
+  body.almanac-mode .topbar { gap: 6px; }
+  body.almanac-mode .bc-sep, body.almanac-mode .bc-icon { display: none !important; }
+  body.almanac-mode .topbar-search { margin-inline-start: 0; }
+  body.almanac-mode .topbar-search input { padding-inline: 32px 8px; }
   .alm-cards { grid-template-columns: repeat(2, 1fr); }
   .alm-tz-wrap { gap: 12px; width: 100%; }
   .alm-tz-clock-side { width: 100%; gap: 12px; }
@@ -627,6 +732,8 @@
   .alm-cell { min-height: 52px; padding: 3px 3px; }
   .alm-num { font-size: 12px; }
   .alm-ev { font-size: 8px; }
+  /* The city clock's name is one line by design; a notch smaller keeps "Johannesburg" whole at 390px. */
+  .alm-tz-city-name { font-size: 10px; }
   .alm-title { font-size: 15px; min-width: 140px; }
 }
 
@@ -707,7 +814,7 @@
    color: var(--amber); font-size: 13px; font-weight: 600; line-height: 1; }
 .alm-ck-r:empty { display: none; }
 .alm-ck-r:not(:empty) + .alm-ck-now { margin-inline-start: 0; }
-.alm-ck-now { flex: none; margin: 0; margin-inline-start: 6px; padding: 4px 10px; border: 1px solid var(--amber-border); border-radius: 999px; background: var(--amber-glow); color: var(--amber); font: inherit; font-size: 12px; line-height: 1; cursor: pointer; transition: background .15s, border-color .15s; }
+.alm-ck-now { flex: none; margin: 0; margin-inline-start: 8px; padding: 4px 10px; border: 1px solid var(--amber-border); border-radius: 999px; background: var(--amber-glow); color: var(--amber); font: inherit; font-size: 12px; line-height: 1; cursor: pointer; transition: background .15s, border-color .15s; }
 .alm-ck-now[hidden] { display: none; }
 @media (hover: hover) { .alm-ck-now:hover { background: var(--amber-border); } }
 .alm-ck-now:focus-visible, .alm-spd-play:focus-visible { outline: 2px solid var(--amber); outline-offset: 2px; }
@@ -742,7 +849,19 @@
 .alm-ck-pill { display: flex; flex: 0 1 auto; min-width: 0; align-items: center; padding: 1px 10px; border: 1px solid var(--border); border-radius: 999px; color: var(--text2); }
 /* At rest (now, 1x, not opened) the clock is the plain date and time: nothing underlined, no slider. */
 .alm-ck-rest .ep { text-decoration-color: transparent; }
+/* At rest (at now, running at 1x) the date and time are ONE large tap area: no part is a target, none highlights, none selects. A tap opens the
+   slider (almanac.js _almClockClick); the parts are editable once it is out. */
+.alm-ck-rest { user-select: none; -webkit-user-select: none; -webkit-tap-highlight-color: transparent; cursor: pointer; }
+.alm-ck-rest .ep { pointer-events: none; text-decoration: none; outline: none; cursor: inherit; }
+.alm-ck-rest .ep::before { display: none; }
+:root.night-red .ep { text-decoration-color: color-mix(in srgb, var(--text) 30%, transparent); }
 .alm-ck-rest .alm-spd { display: none; }
+/* The slider comes and goes with a short ease (opacity and transform only): in on its own, out while the clock rests but still holds it. */
+.alm-clock:not(.alm-ck-rest) .alm-spd { animation: alm-spd-in .18s ease-out; }
+.alm-ck-rest.alm-spd-fade .alm-spd { display: block; animation: alm-spd-out .18s ease-in forwards; pointer-events: none; }
+@keyframes alm-spd-in { from { opacity: 0; transform: translateY(-6px); } to { opacity: 1; transform: none; } }
+@keyframes alm-spd-out { from { opacity: 1; transform: none; } to { opacity: 0; transform: translateY(-6px); } }
+@media (prefers-reduced-motion: reduce) { .alm-clock:not(.alm-ck-rest) .alm-spd, .alm-ck-rest.alm-spd-fade .alm-spd { animation: none; } }
 
 /* The slider, in the look of Read aloud's speed slider (app.css .tts-speed-range): a 3px track, amber fill, a round thumb,
    marks under it, a tap each. Differences, all forced by the job: the fill grows from the middle (real time), the thumb is
@@ -754,7 +873,8 @@
    reaches --spd-up above and --spd-down below its --spd-h box (the marks under it keep their own taps, so there the reach
    is upward) as padding, the track and thumb drawn in the content box where they always were; negative margins give the
    room back (flow-root: they must not fold into the slider's own margin), so nothing moves. */
-.alm-spd-range { -webkit-appearance: none; appearance: none; display: block; box-sizing: content-box; width: 100%; height: var(--spd-h); margin: calc(-1 * var(--spd-up)) 0 calc(-1 * var(--spd-down)); padding: var(--spd-up) 0 var(--spd-down); cursor: pointer; touch-action: none; border-radius: 2px;
+/* Above the marks: where a mark's 44 px hit area (bd25b92dc) reaches into the slider's own box, the thumb's band wins; below it the marks keep their taps. */
+.alm-spd-range { position: relative; z-index: 1; -webkit-appearance: none; appearance: none; display: block; box-sizing: content-box; width: 100%; height: var(--spd-h); margin: calc(-1 * var(--spd-up)) 0 calc(-1 * var(--spd-down)); padding: var(--spd-up) 0 var(--spd-down); cursor: pointer; touch-action: none; border-radius: 2px;
   background: linear-gradient(to right, transparent calc(var(--spd-thumb) / 2 + var(--lo) * (100% - var(--spd-thumb))), var(--amber) 0, var(--amber) calc(var(--spd-thumb) / 2 + var(--hi) * (100% - var(--spd-thumb))), transparent 0) no-repeat center / 100% var(--spd-track),
               linear-gradient(var(--spd-rail), var(--spd-rail)) no-repeat center / 100% var(--spd-track);
   background-origin: content-box; }
@@ -840,7 +960,7 @@ body.look-open { overflow: hidden; }
 .look-sky { position: absolute; inset: 0; overflow: hidden; background: #080b12; }
 .look-sky .look-wrap { position: absolute; inset: 0; width: auto; max-width: none; margin: 0; }
 .look-sky .look-wrap canvas { position: absolute; left: 0; top: 0; width: 100%; border-radius: 0; touch-action: none; }
-.look-sky .look-wrap :is(.alm-sky-look, .alm-sky-gear, .alm-sky-set, .alm-sky-cap) { display: none; }
+.look-sky .look-wrap :is(.alm-sky-look, .alm-sky-gear, .alm-sky-stand, .alm-sky-set, .alm-sky-cap) { display: none; }
 .look-top { position: absolute; top: calc(10px + env(safe-area-inset-top)); left: 12px; right: 12px; display: flex; align-items: center; gap: 12px; pointer-events: none; }
 .look-top > * { pointer-events: auto; }
 .look-btn { flex: none; width: 44px; height: 44px; border-radius: 22px; border: 1px solid rgba(255,255,255,.22); background: rgba(8,10,16,.6); color: #fff; display: flex; align-items: center; justify-content: center; padding: 0; cursor: pointer; }
@@ -858,16 +978,17 @@ body.look-open { overflow: hidden; }
    :root.night-red) and nothing else. Hard-coded warm, violet and white tones of the tiles, clocks,
    time machine, buttons and the Look view's own marks become the palette's red. The sky and the
    pictures turn red themselves (canvas[data-red], the canvas filter chain). */
-:root.night-red #almanac-view :is(.alm-card-golden, .alm-card-super, .alm-ev, .almanac-eclipse-type, [class*="alm-tz-glyph"], .alm-sky-look, .alm-sky-gear) { color: var(--text2); }
+:root.night-red #almanac-view :is(.alm-card-golden, .alm-card-super, .alm-ev, .almanac-eclipse-type, [class*="alm-tz-glyph"], .alm-sky-look, .alm-sky-gear, .alm-sky-stand) { color: var(--text2); }
 /* The clocks' day, dawn, dusk and night tints (amber, coral, violet, blue) are one dim red wash in Red;
    the glyph (sun, moon) still says which part of the day it is. */
 :root.night-red #almanac-view :is(.alm-tz-day, .alm-tz-dawn, .alm-tz-dusk, .alm-tz-night) { background: linear-gradient(180deg, var(--amber-glow), var(--surface) 70%); border-color: var(--border); }
 :root.night-red #almanac-view .alm-tz-glyph { color: var(--text2) !important; }
 :root.night-red #almanac-view :is(.alm-tz-city-card) { border-color: var(--border); }
-:root.night-red #almanac-view :is(.alm-sky-look, .alm-sky-gear)::before { border-color: var(--border); background-color: var(--amber-glow); }
+:root.night-red #almanac-view :is(.alm-sky-look, .alm-sky-gear, .alm-sky-stand)::before { border-color: var(--border); background-color: var(--amber-glow); }
 :root.night-red #almanac-view .alm-cell { background-color: var(--amber-glow); }
 :root.night-red #almanac-view .alm-tz-hand { background-color: var(--amber); }
 :root.night-red #almanac-view input { background-color: var(--surface2); accent-color: var(--amber); }
+:root.night-red #almanac-view input.alm-spd-range { background-color: transparent; }   /* the speed slider draws its own track: no box behind it */
 :root.night-red #almanac-view :is(svg circle, svg path)[stroke] { stroke: currentColor; }
 /* The clock in Red: the palette's own red, the pinned strip and the pop-up on the palette's dark. */
 :root.night-red #almanac-view :is(.alm-pin, .alm-ck-pop) { background: var(--bg); border-color: var(--border); box-shadow: none; }

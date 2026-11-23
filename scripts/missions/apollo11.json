@@ -1,0 +1,40 @@
+{
+ "id": "apollo11",
+ "name": "Apollo 11",
+ "zero": "1969-07-16T13:32:00Z",
+ "sources": {
+  "MR": "Apollo 11 Mission Report, MSC-00171, NASA NTRS 19710015566 (1971)",
+  "MR7-II": "MR table 7-II, Trajectory parameters (p. 73)",
+  "MR7-VII": "MR table 7-VII, Entry interface conditions",
+  "MR5": "MR section 5.7, Landing point (0 41 15 N, 23 26 E; targeted 0 43 53 N, 23 38 51 E)",
+  "LROC": "LRO Camera, the descent stage's surveyed position (0.67408 N, 23.47297 E)",
+  "MR7-REC": "MR section 7, recovery: splashdown at 13 18 N, 169 9 W, 1.69 miles from the target"
+ },
+ "notes": "Times are seconds from range zero. Altitudes in nautical miles (Earth: over the oblate Earth; Moon: over landing site 2's radius, MR table 7-I). Velocity is space-fixed, ft/s; flight-path and heading angles in degrees (heading east of north). The 3D view draws Columbia and Eagle from this mission's fitted flight; a check compares every event below against it within its tolerance.",
+ "tolerance_notes": "Every event is checked against its place (ground distance; 0.5 degree of arc unless it says), height (5 nautical miles), space-fixed speed (50 ft/s), flight-path angle and heading (1 degree). Coasts land on the report's next state, so the gaps that remain are the burns' and the profiles'.",
+ "events": [
+  {"key": "tli_ign", "label": "S-IVB second ignition", "vehicle": "stack", "body": "earth", "t": 9856.2, "lat": -8.03, "lon": 172.55, "alt": 105.8, "v": 25562, "fpa": 0.02, "heading": 57.78, "src": "MR7-II"},
+  {"key": "tli_cut", "label": "S-IVB second cut-off", "vehicle": "stack", "body": "earth", "t": 10203.2, "lat": 9.52, "lon": -165.61, "alt": 173.3, "v": 35567, "fpa": 6.91, "heading": 59.93, "src": "MR7-II", "tol": {"deg": 3.0, "alt": 25.0, "v": 120.0, "fpa": 1.5}, "why": "The report's ignition and cut-off rows lie 29.0 degrees of arc apart; a 347 s burn from 7.79 to 10.84 km/s covers about 27.4, so no steering meets both. The ignition state anchors the burn; its cut-off is the burn's best fit to the report's, and the coast after it lands on the report's midcourse state."},
+  {"key": "tli", "label": "Translunar injection", "vehicle": "stack", "body": "earth", "t": 10213.2, "lat": 9.98, "lon": -164.84, "alt": 180.6, "v": 35546, "fpa": 7.37, "heading": 60.07, "src": "MR7-II", "tol": {"deg": 3.0, "alt": 25.0, "v": 120.0, "fpa": 1.5}, "why": "The report's ignition and cut-off rows lie 29.0 degrees of arc apart; a 347 s burn from 7.79 to 10.84 km/s covers about 27.4, so no steering meets both. The ignition state anchors the burn; its cut-off is the burn's best fit to the report's, and the coast after it lands on the report's midcourse state."},
+  {"key": "mcc2_ign", "label": "Midcourse correction (ignition)", "vehicle": "csmlm", "body": "earth", "t": 96298.7, "lat": 5.99, "lon": -11.16, "alt": 109475.3, "v": 5025.0, "fpa": 77.05, "heading": 120.88, "src": "MR7-II"},
+  {"key": "mcc2", "label": "Midcourse correction (cut-off)", "vehicle": "csmlm", "body": "earth", "t": 96301.8, "lat": 6.0, "lon": -11.17, "alt": 109477.2, "v": 5010.0, "fpa": 76.88, "heading": 120.87, "src": "MR7-II"},
+  {"key": "loi1_ign", "label": "Lunar orbit insertion ignition", "vehicle": "csmlm", "body": "moon", "t": 272990.4, "lat": -1.57, "lon": -169.58, "alt": 86.7, "v": 8250.0, "fpa": -9.99, "heading": -62.8, "src": "MR7-II"},
+  {"key": "loi1_cut", "label": "Lunar orbit insertion cut-off", "vehicle": "csmlm", "body": "moon", "t": 273348.0, "lat": 0.16, "lon": 167.13, "alt": 60.1, "v": 5479.0, "fpa": -0.2, "heading": -66.89, "src": "MR7-II"},
+  {"key": "loi2_ign", "label": "Circularization ignition", "vehicle": "csmlm", "body": "moon", "t": 288696.8, "lat": -0.02, "lon": 170.09, "alt": 61.8, "v": 5477.3, "fpa": -0.49, "heading": -66.55, "src": "MR7-II"},
+  {"key": "loi2_cut", "label": "Circularization cut-off", "vehicle": "csmlm", "body": "moon", "t": 288713.5, "lat": -0.02, "lon": 169.16, "alt": 61.6, "v": 5338.3, "fpa": 0.32, "heading": -66.77, "src": "MR7-II"},
+  {"key": "undock", "label": "Undocking", "vehicle": "eagle", "body": "moon", "t": 360720.0, "lat": 1.11, "lon": 116.21, "alt": 62.9, "v": 5333.8, "fpa": 0.16, "heading": -89.13, "src": "MR7-II"},
+  {"key": "sep_ign", "label": "Separation manoeuvre (ignition)", "vehicle": "columbia", "body": "moon", "t": 362392.9, "lat": 0.99, "lon": 31.86, "alt": 62.7, "v": 5332.7, "fpa": -0.13, "heading": -106.89, "src": "MR7-II"},
+  {"key": "sep_cut", "label": "Separation manoeuvre (cut-off)", "vehicle": "columbia", "body": "moon", "t": 362401.9, "lat": 1.05, "lon": 31.41, "alt": 62.5, "v": 5332.2, "fpa": -0.16, "heading": -106.9, "src": "MR7-II"},
+  {"key": "doi_ign", "label": "Descent orbit insertion ignition", "vehicle": "eagle", "body": "moon", "t": 365774.0, "lat": -1.12, "lon": -140.2, "alt": 56.4, "v": 5364.9, "fpa": 0.1, "heading": -75.7, "src": "MR7-II"},
+  {"key": "doi_cut", "label": "Descent orbit insertion cut-off", "vehicle": "eagle", "body": "moon", "t": 365804.0, "lat": -1.16, "lon": -141.88, "alt": 57.8, "v": 5284.9, "fpa": -0.06, "heading": -75.19, "src": "MR7-II"},
+  {"key": "pdi", "label": "Powered descent initiation", "vehicle": "eagle", "body": "moon", "t": 369185.0, "lat": 1.02, "lon": 39.39, "alt": 6.4, "v": 5564.9, "fpa": 0.03, "heading": -104.23, "src": "MR7-II"},
+  {"key": "landing", "label": "Landing", "vehicle": "eagle", "body": "moon", "t": 369939.9, "lat": 0.67408, "lon": 23.47297, "alt": 0.0, "v": 0.0, "src": "LROC"},
+  {"key": "asc_cut", "label": "Lunar ascent engine cut-off", "vehicle": "eagle_asc", "body": "moon", "t": 448155.7, "lat": 0.73, "lon": 12.99, "alt": 10.0, "v": 5537.9, "fpa": 0.28, "heading": -108.15, "src": "MR7-II"},
+  {"key": "dock2", "label": "Docking in lunar orbit", "vehicle": "columbia", "body": "moon", "t": 460980.0, "lat": 1.18, "lon": 67.31, "alt": 60.6, "v": 5341.5, "fpa": 0.16, "heading": -87.63, "src": "MR7-II"},
+  {"key": "tei_ign", "label": "Transearth injection ignition", "vehicle": "columbia", "body": "moon", "t": 487422.3, "lat": -0.16, "lon": 164.02, "alt": 52.4, "v": 5376.0, "fpa": -0.03, "heading": -62.77, "src": "MR7-II"},
+  {"key": "tei_cut", "label": "Transearth injection cut-off", "vehicle": "columbia", "body": "moon", "t": 487573.7, "lat": 0.5, "lon": 154.02, "alt": 58.1, "v": 8589.0, "fpa": 5.13, "heading": -62.6, "src": "MR7-II"},
+  {"key": "cm_sm_sep", "label": "Command module / service module separation", "vehicle": "cm", "body": "earth", "t": 701352.7, "lat": -35.09, "lon": 122.54, "alt": 1778.3, "v": 29615.5, "fpa": -35.26, "heading": 69.27, "src": "MR7-II"},
+  {"key": "entry", "label": "Entry interface (400,000 ft)", "vehicle": "cm", "body": "earth", "t": 702185.7, "lat": -3.19, "lon": 171.96, "alt": 65.8, "v": 36194.4, "fpa": -6.48, "heading": 50.18, "src": "MR7-VII", "tol": {"v": 120.0}, "why": "The entry is drawn as a profile through the report's points, over the turning Earth; its speed at the interface is within 30 m/s of the report's."},
+  {"key": "splash", "label": "Splashdown", "vehicle": "cm", "body": "earth", "t": 703115.0, "lat": 13.3, "lon": -169.15, "alt": 0.0, "src": "MR7-REC"}
+ ]
+}

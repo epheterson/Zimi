@@ -50,8 +50,10 @@ import re
 import shutil
 import subprocess
 import sys
+import tempfile
 import threading
 import time
+import unicodedata
 import urllib.parse
 import urllib.request
 
@@ -197,6 +199,9 @@ POLICY = outbound.FetchPolicy(
 # engine}, beside the setting in the same prefs file. Eric: "Options couldn't
 # hurt once it's built." No choice: the best here, in ENGINES order.
 CHOICES_KEY = "voice_engines"
+# Which region's voice says a language (English: US or GB) when nothing asks
+# for one, {primary: REGION}, in the same prefs file.
+REGIONS_KEY = "voice_regions"
 
 # A word or a short phrase, never a paragraph: what the Dictionary says.
 TEXT_MAX = 64
@@ -230,7 +235,13 @@ FAILURES_MAX = 256  # words an engine could not say, remembered for the page
 # it; no answer this time (busy, too slow, the worker died); and, from a
 # worker only, a helper with no serve mode (each word runs it afresh).
 OK, FAILED, LOST, UNSERVED = "ok", "failed", "lost", "unserved"
-CACHE_MAX_BYTES = 64 * 1024 * 1024  # a word is ~40 KB: well over a thousand
+BYTES_PER_MB = 1000 * 1000  # decimal, as every size Zimi shows (a 64 MB cap is not 67 MB)
+CACHE_DEFAULT_MB = 64  # a word is ~40 KB: well over a thousand
+CACHE_MAX_MB = 4096
+CACHE_CHOICES_MB = (0, 16, 64, 256, 1024)  # Settings' sizes; 0 = not kept on disk
+RAM_CACHE_BYTES = 16 * BYTES_PER_MB  # what a reading needs while it plays, with the cache off
+CACHE_KEY = "voice_cache_mb"
+CACHE_DIR_ENV = "ZIMI_VOICE_CACHE_DIR"  # said audio goes here instead of beside the voices
 FETCH_TIMEOUT_S = 30
 FETCH_CHUNK = 256 * 1024
 WAV_HEADER_BYTES = 44
@@ -338,6 +349,8 @@ _found = {}
 _download = {}
 _fetcher = None  # the thread fetching a voice, while one is
 _choices = None  # CHOICES_KEY as last read or written: no file read per word
+_region_choices = None  # REGIONS_KEY, likewise
+_cache_mb = None  # CACHE_KEY, likewise
 _timings = None  # {"fp", "engines"} as last read or written (timings())
 _timings_lock = threading.Lock()
 _timings_dirty = False  # samples in _timings not yet in timings.json
@@ -345,7 +358,7 @@ _timings_timer = None  # the pending flush, while one is
 
 
 def _reset_for_tests():
-    global _choices, _timings, _timings_dirty, _timings_timer
+    global _choices, _region_choices, _cache_mb, _timings, _timings_dirty, _timings_timer
     _stop_workers()
     with _lock:
         _found.clear()
@@ -353,6 +366,8 @@ def _reset_for_tests():
         _failures.clear()
         _sampled.clear()
         _choices = None
+        _region_choices = None
+        _cache_mb = None
     with _timings_lock:
         _timings = None
         _timings_dirty = False
@@ -379,8 +394,93 @@ def _piper_dir():
     return _engine_dir(PIPER)
 
 
+def cache_mb():
+    """The size of the voice cache in MB, as set in Settings > Voices: 64 unless
+    changed, 0 for audio kept only in memory (a RAM disk, never the data folder)."""
+    global _cache_mb
+    with _lock:
+        if _cache_mb is not None:
+            return _cache_mb
+    from zimi import manage
+
+    saved = manage._read_app_update_prefs().get(CACHE_KEY)
+    ok = isinstance(saved, int) and not isinstance(saved, bool) and 0 <= saved <= CACHE_MAX_MB
+    with _lock:
+        _cache_mb = saved if ok else CACHE_DEFAULT_MB
+        return _cache_mb
+
+
+def set_cache_mb(mb):
+    """Keep up to ``mb`` MB of said audio; 0 keeps none on disk and removes what is.
+    False for anything that is not a whole number of MB in range."""
+    global _cache_mb
+    if isinstance(mb, bool) or not isinstance(mb, int) or not 0 <= mb <= CACHE_MAX_MB:
+        return False
+    from zimi import manage
+
+    manage._write_app_update_prefs(**{CACHE_KEY: mb})
+    with _lock:
+        _cache_mb = mb
+    if mb == 0:
+        shutil.rmtree(_dir("cache"), ignore_errors=True)
+    return True
+
+
+def _ram_cache_root():
+    """A folder in memory where the OS has one (Linux's /dev/shm), else the temp folder."""
+    base = "/dev/shm" if os.access("/dev/shm", os.W_OK) else tempfile.gettempdir()
+    return os.path.join(base, "zimi-voices-%d" % os.getuid() if hasattr(os, "getuid") else "zimi-voices")
+
+
+def _cache_root():
+    """Where said audio is kept: beside the voices; where ZIMI_VOICE_CACHE_DIR
+    puts it (a RAM disk such as /dev/shm keeps an SD card from being written);
+    or, with the cache set to 0, in memory only."""
+    if os.environ.get(CACHE_DIR_ENV):
+        # A folder of our own inside it: Clear and the trim remove what is in the cache root, and
+        # the folder named (/dev/shm, say) holds other programs' files too.
+        return os.path.join(os.environ[CACHE_DIR_ENV], "zimi-voices")
+    return _dir("cache") if cache_mb() else _ram_cache_root()
+
+
+def cache_info():
+    """{"count", "size_bytes"} of the said audio kept now."""
+    count = size = 0
+    for root, _dirs, names in os.walk(_cache_root()):
+        for n in names:
+            try:
+                size += os.path.getsize(os.path.join(root, n))
+                count += 1
+            except OSError:
+                pass
+    return {"count": count, "size_bytes": size}
+
+
+_CACHE_USED_TTL_S = 5  # Settings polls while a voice downloads; the walk is not repeated each second
+_cache_used = (0.0, 0)  # (when measured, bytes)
+
+
+def cache_used_bytes():
+    """The said audio kept now, for Settings: measured at most every few seconds."""
+    global _cache_used
+    at, size = _cache_used
+    if time.monotonic() - at > _CACHE_USED_TTL_S:
+        size = cache_info()["size_bytes"]
+        _cache_used = (time.monotonic(), size)
+    return size
+
+
+def clear_cache():
+    """Remove every said word and sentence; the bytes freed."""
+    global _cache_used
+    freed = cache_info()["size_bytes"]
+    shutil.rmtree(_cache_root(), ignore_errors=True)
+    _cache_used = (0.0, 0)
+    return freed
+
+
 def _cache_dir(engine, voice):
-    return _dir("cache", engine + "-" + _UNSAFE_RE.sub("_", voice))
+    return os.path.join(_cache_root(), engine + "-" + _UNSAFE_RE.sub("_", voice))
 
 
 def _primary(tag):
@@ -1518,6 +1618,66 @@ def set_choice(lang, engine):
     return True
 
 
+def region_choices():
+    """{primary: REGION}: the region chosen in Settings for each language."""
+    global _region_choices
+    with _lock:
+        if _region_choices is not None:
+            return dict(_region_choices)
+    from zimi import manage
+
+    saved = manage._read_app_update_prefs().get(REGIONS_KEY)
+    saved = {
+        k: v.upper()
+        for k, v in (saved if isinstance(saved, dict) else {}).items()
+        if isinstance(k, str) and isinstance(v, str) and _REGION_RE.match(v)
+    }
+    with _lock:
+        _region_choices = saved
+    return dict(saved)
+
+
+def pinned_regions(primary):
+    """Every region of a language some voice can say, here or fetchable:
+    {REGION: the Piper tag that fetches it, or None}."""
+    out = {}
+    for engine in ENGINES:
+        for r in _voices(engine).get(primary) or {}:
+            if r:
+                out.setdefault(r, None)
+    for tag in VOICES:
+        if tag != KOKORO_TAG and _primary(tag) == primary and "-" in tag:
+            out[tag.split("-", 1)[1].upper()] = tag
+    for tag in KOKORO_LANGS:
+        if _primary(tag) == primary and "-" in tag:
+            out.setdefault(tag.split("-", 1)[1].upper(), None)
+    return out
+
+
+def set_region(lang, region):
+    """Have ``lang`` said in ``region``'s voice from now on (English: GB);
+    None or the home region goes back to the default. False when no voice,
+    here or fetchable, has that region."""
+    global _region_choices
+    primary = _primary(lang)
+    if not _LANG_RE.match(primary or ""):
+        return False
+    region = str(region).upper() if region else None
+    if region is not None and region not in pinned_regions(primary):
+        return False
+    from zimi import manage
+
+    saved = region_choices()
+    if region is None or region == _HOME_REGION.get(primary, primary.upper()):
+        saved.pop(primary, None)
+    else:
+        saved[primary] = region
+    manage._write_app_update_prefs(**{REGIONS_KEY: saved})
+    with _lock:
+        _region_choices = saved
+    return True
+
+
 def _engine_order(primary):
     """ENGINES, the chosen one for this language first. A chosen engine
     that can no longer say it (its voice removed) is simply passed over."""
@@ -1533,6 +1693,7 @@ def choose(lang, accent="", engine=None):
     Dictionary's Other voices)."""
     primary = _primary(lang)
     region = (accent or (lang.split("-", 1)[1] if "-" in lang else "")).upper()
+    region = region or region_choices().get(primary, "")
     order = (engine,) if engine else _engine_order(primary)
     tables = [(e, _voices(e).get(primary) or {}) for e in order]
     if region:
@@ -1568,6 +1729,81 @@ def can_say():
 
 
 # ── saying a word ─────────────────────────────────────────────────────────
+
+
+# The scripts an engine can say for a language besides Latin (names, brands).
+# A letter of any other script is not said by an engine of this language: espeak-ng
+# spells it out ("Chinese letter", "Cyrillic letter") in place of the words.
+_LANG_SCRIPTS = {
+    "zh": ("CJK", "BOPOMOFO"),
+    "ja": ("CJK", "HIRAGANA", "KATAKANA"),
+    "ko": ("HANGUL", "CJK"),
+    "hi": ("DEVANAGARI",),
+    "mr": ("DEVANAGARI",),
+    "ne": ("DEVANAGARI",),
+    "ar": ("ARABIC",),
+    "fa": ("ARABIC",),
+    "ur": ("ARABIC",),
+    "he": ("HEBREW",),
+    "ru": ("CYRILLIC",),
+    "uk": ("CYRILLIC",),
+    "bg": ("CYRILLIC",),
+    "sr": ("CYRILLIC",),
+    "el": ("GREEK",),
+    "th": ("THAI",),
+}
+_ALWAYS_SCRIPTS = ("LATIN", "COMBINING", "MODIFIER")
+# Languages written in Latin letters, where any other script is filler. A language in
+# neither table is one whose script is not known here (Tamil, Georgian...): its text
+# is kept, except Han, which an engine of such a language spells out.
+_LATIN_LANGS = frozenset(
+    "en fr de es pt it nl sv da no nb nn fi pl cs sk sl hr hu ro tr id ms vi ca eu gl "
+    "cy ga is et lv lt sq af sw la eo".split()
+)
+
+
+def _allowed_scripts(lang):
+    """The scripts an engine of ``lang`` says, or None when the language's script is unknown."""
+    lang = _primary(lang)
+    if lang in _LANG_SCRIPTS:
+        return _ALWAYS_SCRIPTS + _LANG_SCRIPTS[lang]
+    return _ALWAYS_SCRIPTS if lang in _LATIN_LANGS else None
+
+
+def _says(ch, allowed):
+    script = _script_of(ch)
+    return script in allowed if allowed is not None else script != "CJK"
+
+
+def _script_of(ch):
+    """The first word of a letter's Unicode name: LATIN, CJK, CYRILLIC..."""
+    try:
+        return unicodedata.name(ch).split(" ", 1)[0]
+    except ValueError:
+        return ""
+
+
+def script_ok(word, lang):
+    """Whether every letter of ``word`` is in a script an engine of ``lang`` says."""
+    allowed = _allowed_scripts(lang)
+    return all(_says(c, allowed) for c in word if c.isalpha())
+
+
+def speakable(text, lang):
+    """``text`` without what an engine of ``lang`` would spell out as filler: letters
+    of a script it does not speak, and symbols and pictographs (a star is "star
+    symbol"). None when nothing to say is left."""
+    allowed = _allowed_scripts(lang)
+    keep = []
+    for c in text:
+        if c.isalpha():
+            if not _says(c, allowed):
+                c = " "
+        elif unicodedata.category(c) == "So":
+            c = " "
+        keep.append(c)
+    out = _SPACES_RE.sub(" ", "".join(keep)).strip()
+    return out if any(c.isalnum() for c in out) else None
 
 
 def clean_text(text, limit=TEXT_MAX):
@@ -1708,6 +1944,7 @@ def _audio(text, lang, accent="", engine=None, limit=TEXT_MAX):
     """(engine, voice, text, path): who says the word and where its audio
     is kept, or None when no engine here can say it."""
     text = clean_text(text, limit)
+    text = text and speakable(text, lang)
     if text is None or not valid_lang(lang, accent):
         return None
     if engine is not None and engine not in ENGINES:
@@ -1942,9 +2179,10 @@ def _cached(path):
 
 def _trim_cache(limit=None):
     """Oldest-said first, until the cache is under its cap."""
-    limit = CACHE_MAX_BYTES if limit is None else limit
+    if limit is None:
+        limit = cache_mb() * BYTES_PER_MB or RAM_CACHE_BYTES
     files = []
-    for root, _dirs, names in os.walk(_dir("cache")):
+    for root, _dirs, names in os.walk(_cache_root()):
         for n in names:
             p = os.path.join(root, n)
             try:
@@ -2266,12 +2504,12 @@ def _drop_audio(engine, rec):
     within the model (Kokoro)."""
     name = os.path.basename(_cache_dir(engine, rec["id"]))
     try:
-        folders = os.listdir(_dir("cache"))
+        folders = os.listdir(_cache_root())
     except OSError:
         return
     for f in folders:
         if f == name or f.startswith(name + "-"):
-            shutil.rmtree(_dir("cache", f), ignore_errors=True)
+            shutil.rmtree(os.path.join(_cache_root(), f), ignore_errors=True)
 
 
 def _delete_voice_files(rec):
@@ -2345,6 +2583,7 @@ def _stamp(have):
     carries them: either changing is a new address."""
     parts = sorted(_stamp_part(t, r) for t, r in have.items())
     parts += sorted("%s=%s" % kv for kv in choices().items())
+    parts += sorted("%s:%s" % kv for kv in region_choices().items())
     return "-".join(parts) or "none"
 
 
@@ -2394,6 +2633,31 @@ def _piper_tags(primary):
     return sorted(tags, key=lambda t: t not in (primary, home))
 
 
+def _region_options(primary, have):
+    """A language's regions for its picker, [] when there is only one:
+    [{"region", "here", "engines", "tag", "bytes"}], home first;
+    ``engines`` are the ones here with that region's voice. ``tag`` is the Piper
+    voice that would fetch a region not here."""
+    pins = pinned_regions(primary)
+    if len(pins) < 2:
+        return []
+    saying = {e: set(_voices(e).get(primary) or {}) for e in ENGINES}
+    rows = []
+    for r in _home_first(primary, pins):
+        engines = [e for e in ENGINES if r in saying[e]]
+        tag = None if engines else pins[r]
+        rows.append(
+            {
+                "region": r,
+                "here": bool(engines),
+                "engines": engines,
+                "tag": tag,
+                "bytes": _offer_bytes(tag) if tag else 0,
+            }
+        )
+    return rows
+
+
 def _lang_row(primary, have, chosen, fetch_ok):
     """One language in Settings > Languages: the engines here that
     say it (best first) and the one that does; the Piper voice it could
@@ -2419,6 +2683,8 @@ def _lang_row(primary, have, chosen, fetch_ok):
         "engines": options,
         "engine": picked[0] if picked else None,
         "chosen": chosen.get(primary) if chosen.get(primary) in options else None,
+        "regions": _region_options(primary, have),
+        "region": region_choices().get(primary),
         "pinned": bool(tags) or primary in _KOKORO_PRIMARIES,
         "piper": offer,
         "remove": here[0] if here else None,
@@ -2454,4 +2720,10 @@ def manage_payload():
         ),
         "timings": timings(),
         "testing": testing(),
+        "cache": {
+            "mb": cache_mb(),
+            "used": cache_used_bytes(),
+            "choices": list(CACHE_CHOICES_MB),
+            "env": bool(os.environ.get(CACHE_DIR_ENV)),
+        },
     }

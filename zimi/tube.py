@@ -750,8 +750,6 @@ _POSTER_RE = re.compile(r"<video\b[^>]*?\bposter=['\"]([^'\"]+)['\"]", re.I | re
 
 def _resolve_path(page, ref):
     """A path relative to the page's folder, as a ZIM path."""
-    import posixpath
-
     ref = ref.split("#")[0].split("?")[0]
     if not ref or "://" in ref or ref.startswith("/"):
         return ""

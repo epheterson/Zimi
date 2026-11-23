@@ -11,6 +11,7 @@ which installs kiwix-tools first), where a missing binary fails.
 Run: pytest tests/test_own_zims_kiwix_serve.py -v
 """
 
+import contextlib
 import json
 import os
 import shutil
@@ -27,12 +28,8 @@ sys.path.insert(0, ROOT)
 sys.path.insert(0, os.path.join(ROOT, "scripts"))
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
-GL_ARGS = [
-    "--use-angle=swiftshader",
-    "--enable-unsafe-swiftshader",
-    "--disable-accelerated-2d-canvas",
-    "--ignore-gpu-blocklist",
-]
+from browser_slots import WEBGL_ARGS
+GL_ARGS = WEBGL_ARGS + ['--disable-accelerated-2d-canvas']
 VIEW = {"width": 390, "height": 844}
 PLACE = '{"lat":37.77,"lon":-122.42,"name":"San Francisco"}'
 READY_MS = 240_000
@@ -65,6 +62,37 @@ def _free_port():
     with socket.socket() as s:
         s.bind(("127.0.0.1", 0))
         return s.getsockname()[1]
+
+
+@contextlib.contextmanager
+def _kiwix_serving(binary, zims):
+    """kiwix-serve over every .zim in `zims`: yields its base address, stops it afterwards."""
+    port = _free_port()
+    proc = subprocess.Popen(
+        [binary, "--address=127.0.0.1", "--port=%d" % port]
+        + sorted(str(p) for p in zims.glob("*.zim")),
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.PIPE,
+    )
+    base = "http://127.0.0.1:%d" % port
+    deadline = time.time() + 30
+    while True:
+        try:
+            urllib.request.urlopen(base + "/catalog/v2/entries", timeout=2).read()
+            break
+        except OSError:
+            if proc.poll() is not None or time.time() > deadline:
+                proc.kill()
+                pytest.fail(
+                    "kiwix-serve did not start: %s"
+                    % proc.stderr.read().decode(errors="replace")[-500:]
+                )
+            time.sleep(0.2)
+    try:
+        yield base
+    finally:
+        proc.terminate()
+        proc.wait(timeout=10)
 
 
 @pytest.fixture(scope="module")
@@ -102,30 +130,8 @@ def kiwix(tmp_path_factory):
         ownzims.write_zim(own["zimi_almanac"], str(zims / (books["almanac"] + ".zim")))
         _build_hd(str(tmp / "stage"), str(tmp / "tiles.zim"))
         build_almanac_maxi.build(str(tmp / "tiles.zim"), str(zims), month=MONTH)
-    port = _free_port()
-    proc = subprocess.Popen(
-        [binary, "--address=127.0.0.1", "--port=%d" % port]
-        + sorted(str(p) for p in zims.glob("*.zim")),
-        stdout=subprocess.DEVNULL,
-        stderr=subprocess.PIPE,
-    )
-    base = "http://127.0.0.1:%d" % port
-    deadline = time.time() + 30
-    while True:
-        try:
-            urllib.request.urlopen(base + "/catalog/v2/entries", timeout=2).read()
-            break
-        except OSError:
-            if proc.poll() is not None or time.time() > deadline:
-                proc.kill()
-                pytest.fail(
-                    "kiwix-serve did not start: %s"
-                    % proc.stderr.read().decode(errors="replace")[-500:]
-                )
-            time.sleep(0.2)
-    yield {"base": base, "books": books}
-    proc.terminate()
-    proc.wait(timeout=10)
+    with _kiwix_serving(binary, zims) as base:
+        yield {"base": base, "books": books}
 
 
 @pytest.fixture(scope="module")
@@ -279,3 +285,59 @@ def test_kiwix_random_lands_on_a_front_article(kiwix, kind):
     ], seen
     if kind != "games":
         assert seen == {"index.html"}, seen
+
+
+@pytest.fixture(scope="module")
+def kiwix_games(tmp_path_factory):
+    """kiwix-serve over the Games ZIM alone, built fresh (or the ZIMI_KIWIX_TEST_FILES games file): {base, book}."""
+    binary = _kiwix_serve()
+    from zimi import ownzims
+
+    zims = tmp_path_factory.mktemp("kiwix_games")
+    given = dict(
+        kv.split("=", 1)
+        for kv in os.environ.get("ZIMI_KIWIX_TEST_FILES", "").split(",")
+        if "=" in kv
+    )
+    if "games" in given:
+        book = os.path.basename(given["games"])[: -len(".zim")]
+        shutil.copyfile(given["games"], str(zims / (book + ".zim")))
+    else:
+        book = "zimi_games_%s" % MONTH
+        own = {o.name: o for o in ownzims.OWN}
+        ownzims.write_zim(own["zimi_games"], str(zims / (book + ".zim")))
+    with _kiwix_serving(binary, zims) as base:
+        yield {"base": base, "book": book}
+
+
+#: How far the framed page's bottom edge is from the window's bottom, and whether the viewer's toolbar is out of the way.
+FRAME_GAP = """() => { const f = document.getElementById('content_iframe'), bar = document.getElementById('kiwixtoolbar');
+  const vv = window.visualViewport ? window.visualViewport.height : window.innerHeight;
+  return { gap: Math.round(vv - f.getBoundingClientRect().bottom), hidden: bar.style.position === 'fixed' }; }"""
+
+
+def test_a_game_fills_the_height_under_kiwix_viewer_toolbar(browser, kiwix_games):
+    """kiwix-serve's viewer sizes the frame to the window minus the toolbar and 4px, and slides the toolbar away without sizing the
+    frame again once the page inside scrolls: a white strip under a table that fills the screen (Blackjack's felt). The page keeps
+    the frame to the bottom of the window, toolbar shown or gone."""
+    book = kiwix_games["book"]
+    ctx, pg, errors = _page(browser)
+    try:
+        pg.goto(kiwix_games["base"] + "/viewer#%s/blackjack.html" % book, wait_until="load")
+        fr = _content_frame(pg, book)
+        fr.wait_for_function("() => document.documentElement.classList.contains('gs-ready')", timeout=60_000)
+        pg.wait_for_function("() => document.getElementById('content_iframe').style.height !== ''", timeout=10_000)
+        assert pg.evaluate(FRAME_GAP)["gap"] == 0
+        # The shelf scrolls: the viewer takes its toolbar away, and the frame still reaches the bottom.
+        pg.goto(kiwix_games["base"] + "/viewer#%s/index.html" % book, wait_until="load")
+        fr = _content_frame(pg, book)
+        fr.wait_for_function("() => document.documentElement.classList.contains('gs-js')", timeout=60_000)
+        # (The shelf has to be tall enough to scroll that far: its rows are drawn after the script is ready, later on a slow runner.)
+        fr.wait_for_function("() => document.documentElement.scrollHeight > innerHeight + 400", timeout=60_000)
+        fr.evaluate("() => window.scrollTo(0, 400)")
+        pg.wait_for_function("() => document.getElementById('kiwixtoolbar').style.position === 'fixed'", timeout=30_000)
+        pg.wait_for_function("(js) => (%s)().gap === 0" % FRAME_GAP.strip(), timeout=10_000)
+        assert pg.evaluate(FRAME_GAP) == {"gap": 0, "hidden": True}
+        assert _not_viewer(errors) == [], errors
+    finally:
+        ctx.close()

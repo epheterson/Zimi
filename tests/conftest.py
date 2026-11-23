@@ -68,6 +68,13 @@ def pytest_configure(config):
     under it (FileNotFoundError .../popen-gwN). Workers inherit the
     controller's directory from xdist."""
     _register_shard(config)
+    import sys
+
+    if os.path.dirname(os.path.abspath(__file__)) not in sys.path:
+        sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+    import browser_slots
+
+    browser_slots.install()  # at most ZIMI_TEST_BROWSERS Chromiums at once on this machine, whatever -n says
     if getattr(config, "workerinput", None) is not None or config.option.basetemp:
         return
     import tempfile
@@ -289,6 +296,19 @@ def _fresh_search_state():
         _search._suggest_cache.clear()
     for name in list(_search._title_db_pool):
         _search._close_title_db(name)
+    yield
+
+
+@pytest.fixture(autouse=True)
+def _no_community_catalog(monkeypatch):
+    """The community catalog (Kiwix's second OPDS feed) joins every /manage/catalog
+    answer: no test reaches for it. tests/test_catalog_community.py supplies its own."""
+    try:
+        from zimi import library as _library
+    except Exception:
+        yield
+        return
+    monkeypatch.setattr(_library, "community_items", lambda query="", lang="": [])
     yield
 
 

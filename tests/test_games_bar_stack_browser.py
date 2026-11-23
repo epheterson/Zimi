@@ -54,3 +54,23 @@ def test_snake_keeps_its_name_whole_when_pause_turns_to_resume(browser, served):
     assert not got["cut"], got
     assert got["h"] == 56 and got["right"] <= 390 - 16 + 1, got
     ctx.close()
+
+
+def test_snake_title_keeps_its_size_while_playing(browser, served):
+    """"Snake" beside "Apples 12 · Best 34" at 390 px was stepped down to 14px to squeeze in, which read as a cut title: the stat
+    goes under the title first, and the title stays at the size every other game's has."""
+    ctx = browser.new_context(viewport={"width": 390, "height": 844}, has_touch=True, is_mobile=True)
+    page = ctx.new_page()
+    page.goto("%s/snake.html#lang=en&dir=ltr" % served)
+    page.wait_for_selector(".gs-sp-play")
+    page.click(".gs-sp-play")
+    for stat in ("Apples 0 · Best 0", "Apples 12 · Best 34", "Apples 100 · Best 100"):
+        page.evaluate("s => { document.getElementById('sn-stat').textContent = s; }", stat)
+        page.wait_for_timeout(250)
+        got = page.evaluate(
+            "() => { const h = document.querySelector('.ar-bar h1'); return { px: h.style.fontSize, "
+            "natural: parseFloat(getComputedStyle(h).fontSize), cut: h.scrollWidth > h.clientWidth + 0.5, "
+            "stack: document.querySelector('.ar-bar').classList.contains('gs-bar-stack') }; }"
+        )
+        assert got["px"] == "" and not got["cut"] and got["stack"], (stat, got)
+    ctx.close()

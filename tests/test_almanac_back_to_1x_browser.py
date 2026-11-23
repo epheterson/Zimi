@@ -16,12 +16,8 @@ import pytest
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, ROOT)
 
-GL_ARGS = [
-    "--use-angle=swiftshader",
-    "--enable-unsafe-swiftshader",
-    "--disable-accelerated-2d-canvas",
-    "--ignore-gpu-blocklist",
-]
+from browser_slots import WEBGL_ARGS
+GL_ARGS = WEBGL_ARGS + ['--disable-accelerated-2d-canvas']
 VIEW = {"width": 390, "height": 844}
 PLACE = '{"lat":40.71,"lon":-74.0,"name":"New York"}'
 READY_MS = 240_000
@@ -129,7 +125,7 @@ def test_back_to_real_time_by_touch(served, dpr):
             pg.goto(served + "/#almanac", wait_until="load")
             pg.wait_for_selector("#almanac-head-date", timeout=60_000)
             pg.wait_for_function(
-                "() => typeof _almClockSetRate === 'function' && (document.getElementById('alm-veil') || {}).hidden !== false",
+                "() => typeof _almClockSetRate === 'function' && _almShownAt > 0",
                 timeout=60_000,
             )
             head = "#almanac-head"
@@ -194,10 +190,13 @@ def test_back_to_real_time_by_touch(served, dpr):
                 _fast(pg)
                 pg.evaluate("_aePreset('mars')")
                 pg.wait_for_function("() => !!_ae.fly", timeout=10_000)
-                # A person looks, then reaches: the foot has settled into its flight layout.
+                # A person looks, then reaches: the foot has settled into its flight layout. The time chip is shut until it is
+                # tapped open (3d45ceedb): open, it holds the slider.
                 pg.wait_for_timeout(400)
+                pg.evaluate("_aePinSet(true)")
+                pg.wait_for_timeout(250)
                 g = pg.evaluate(GEOM, "#ae-clock")
-                assert g["grab"] >= GRAB_PX, str(g)
+                assert g["grab"] >= PIN_GRAB_PX, str(g)   # the strip along the top: its slider is the page strip's, between its date and the search pill
                 assert pg.evaluate("!!_ae.fly"), "the flight was over before the tap"
                 pg.touchscreen.tap(g["px"] + dx, g["cy"] + dy)
                 pg.wait_for_timeout(250)

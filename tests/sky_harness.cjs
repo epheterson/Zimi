@@ -34,6 +34,7 @@ function makeSky() {
     cancelAnimationFrame: () => {},
   };
   vm.createContext(S);
+  S._almAsset = (p) => p;   // app.js: a /static address with its version; here, as it is
   vm.runInContext(require("./sk.cjs")(), S);
   vm.runInContext(
     'var _MOON_EQUATOR_TILT_DEG = 1.54242; var JD_UNIX_EPOCH = 2440587.5; var JD_J2000 = 2451545.0; var MS_PER_DAY = 86400000;' +
@@ -51,8 +52,10 @@ function makeSky() {
   vm.runInContext(read('almanac-orrery.js'), S);
   vm.runInContext(read('almanac-sky.js'), S);
   vm.runInContext(read('almanac-skygl.js'), S);
+  vm.runInContext(read('almanac-onesky.js'), S);
   vm.runInContext(read('zone-places.js'), S);
   vm.runInContext(read('almanac-skyfacts.js'), S);
+  vm.runInContext(read('almanac-skyscene.js'), S);
   return { S, timers, frames, els, run: (code) => vm.runInContext(code, S) };
 }
 

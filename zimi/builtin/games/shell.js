@@ -64,8 +64,34 @@
     for (var i = 0; i < bytes.length; i++) { hash ^= bytes.charCodeAt(i); hash = Math.imul(hash, 0x01000193) >>> 0; }
     return hash >>> 0;
   }
-  // Node (the tests, recent.js and librarykit.js there) asks for the hash alone.
-  if (!root.document && typeof module !== 'undefined' && module.exports) { module.exports = { hash: fnv1a }; return; }
+  // ── Rooms: one definition each ─────────────────────────────────────────────────────────────────────────────────────────────
+  // A room is a place with its own light: a filter over what games.json says of a game (shelf.js reads it), a name (shelf.room.<id>),
+  // and two token sets, light and dark, that replace the shared custom properties while the room is on. Nothing else changes per room:
+  // no game's CSS names a room. ground..ink3, accent and the table are what the neutrals and the felt of a card table already are;
+  // glow, lift and texture are the shelf's own light (games.css); wood is the shelf's table. tests/test_games_rooms_theme.py holds
+  // every text pair here to WCAG AA.
+  var GRAIN = 'url("data:image/svg+xml,%3Csvg xmlns=\'http://www.w3.org/2000/svg\' width=\'160\' height=\'160\'%3E%3Cfilter id=\'n\'%3E%3CfeTurbulence type=\'fractalNoise\' baseFrequency=\'.9\' numOctaves=\'2\' stitchTiles=\'stitch\'/%3E%3CfeColorMatrix values=\'0 0 0 0 .45 0 0 0 0 .38 0 0 0 0 .25 0 0 0 .09 0\'/%3E%3C/filter%3E%3Crect width=\'160\' height=\'160\' filter=\'url(%23n)\'/%3E%3C/svg%3E")';
+  var ROOMS = [
+    { id: 'all', key: 'shelf.room.all', filter: null, tokens: null },
+    { id: 'kids', key: 'shelf.room.kids', filter: { kind: 'kids', also: ['fourinarow.html', 'dotsandboxes.html', 'crazyeights.html', 'higherlower.html', 'jigsaw.html', 'ludo.html'] }, favorites: ['fourinarow.html', 'memory.html', 'noughts.html', 'snakesandladders.html', 'ludo.html', 'dotsandboxes.html', 'crazyeights.html', 'jigsaw.html'], tokens: {
+      light: { ground: '#faefd6', surface: '#fff6dd', surface2: '#fffce2', line: '#ded3bb', strong: '#7f7358', ink: '#191731', ink2: '#4a4968', ink3: '#585776', accent: '#b12d26', accentInk: '#ffffff', table: '#214f7c', tableDeep: '#0b3c67', wood: '#e3bf86', woodDark: '#c79b57', glow: 'radial-gradient(50% 35% at 12% 0%, rgba(255,205,60,.34), transparent 70%), radial-gradient(45% 30% at 96% 6%, rgba(110,180,255,.26), transparent 70%)', lift: '2px 2px 0 var(--line-strong)', texture: GRAIN },
+      dark: { ground: '#17112a', surface: '#221d37', surface2: '#2c2642', line: '#3b3653', strong: '#787198', ink: '#f1ebd5', ink2: '#b7b19c', ink3: '#9e9884', accent: '#f9d544', accentInk: '#0a0a0c', table: '#002a4e', tableDeep: '#00183b', wood: '#7a5c36', woodDark: '#553d22', glow: 'radial-gradient(50% 35% at 12% 0%, rgba(255,214,70,.15), transparent 70%), radial-gradient(45% 30% at 96% 6%, rgba(140,120,255,.22), transparent 70%)', lift: '2px 2px 0 rgba(0,0,0,.45)', texture: GRAIN }
+    } },
+    { id: 'arcade', key: 'shelf.room.arcade', filter: { kind: 'arcade' }, favorites: ['snake.html', 'stacker.html', 'pinball.html', 'bricks.html', 'paddles.html', 'rocks.html', 'hopper.html', 'muncher.html'], tokens: {
+      light: { ground: '#efeafa', surface: '#f9f4ff', surface2: '#fef9ff', line: '#d6d1e1', strong: '#777182', ink: '#1c152f', ink2: '#4f4866', ink3: '#5d5574', accent: '#b01474', accentInk: '#ffffff', table: '#462e69', tableDeep: '#341b55', wood: '#5b3f8f', woodDark: '#3d2766', glow: 'radial-gradient(60% 40% at 6% -4%, rgba(210,40,150,.15), transparent 70%), radial-gradient(55% 38% at 100% 0%, rgba(40,160,220,.13), transparent 70%)', lift: '0 2px 0 var(--accent-line)', texture: 'none' },
+      dark: { ground: '#060212', surface: '#0e081b', surface2: '#171226', line: '#2a253b', strong: '#797291', ink: '#ede8f7', ink2: '#b3aebc', ink3: '#9a96a3', accent: '#4ae9f9', accentInk: '#0a0a0c', table: '#271143', tableDeep: '#17002f', wood: '#2f1d58', woodDark: '#190e36', glow: 'radial-gradient(60% 40% at 6% -4%, rgba(255,40,160,.26), transparent 70%), radial-gradient(55% 38% at 100% 0%, rgba(40,230,250,.17), transparent 70%)', lift: '0 0 0 1px rgba(74,233,249,.2), 0 0 20px -2px rgba(74,233,249,.24)', texture: 'none' }
+    } },
+    { id: 'night', key: 'shelf.room.night', filter: { minPlayers: 3 }, favorites: ['hearts.html', 'holdem.html', 'bridge.html', 'spades.html', 'dominoes.html', 'yacht.html', 'ludo.html', 'mahjong4.html'], tokens: {
+      light: { ground: '#f8e3c1', surface: '#ffedcb', surface2: '#fff4d2', line: '#d5c1a0', strong: '#87714b', ink: '#2c1302', ink2: '#634632', ink3: '#715440', accent: '#983e1b', accentInk: '#ffffff', table: '#682229', tableDeep: '#520c17', wood: '#8a5a33', woodDark: '#5e3a1e', glow: 'radial-gradient(75% 55% at 50% -10%, rgba(255,196,100,.55), rgba(255,196,100,.14) 55%, transparent 76%)', lift: '0 10px 20px -12px rgba(80,40,0,.5)', texture: 'none' },
+      dark: { ground: '#180b03', surface: '#211409', surface2: '#2b1d12', line: '#392a1f', strong: '#887363', ink: '#f8e9d2', ink2: '#bdaf99', ink3: '#a49680', accent: '#eeb154', accentInk: '#0a0a0c', table: '#430610', tableDeep: '#2f0003', wood: '#5a3a26', woodDark: '#38220f', glow: 'radial-gradient(75% 55% at 50% -10%, rgba(255,184,92,.28), rgba(255,160,60,.07) 55%, transparent 76%)', lift: 'inset 0 1px 0 rgba(255,225,170,.13), 0 12px 22px -10px rgba(0,0,0,.7)', texture: 'none' }
+    } },
+    { id: 'solo', key: 'shelf.room.solo', filter: { maxPlayers: 1, notKind: 'arcade' }, favorites: ['solitaire.html', 'sudoku.html', 'minesweeper.html', '2048.html', 'mahjong.html', 'freecell.html'], tokens: {
+      light: { ground: '#e9e8df', surface: '#f0efe6', surface2: '#f5f4eb', line: '#cfcec5', strong: '#76756b', ink: '#363631', ink2: '#595853', ink3: '#64635e', accent: '#2c6454', accentInk: '#ffffff', table: '#23504e', tableDeep: '#0d3d3b', wood: '#cdbf9d', woodDark: '#b5a581', glow: 'radial-gradient(80% 45% at 50% 0%, rgba(255,255,255,.45), transparent 72%)', lift: 'none', texture: 'repeating-linear-gradient(0deg, rgba(60,50,20,.035) 0 1px, transparent 1px 3px), repeating-linear-gradient(90deg, rgba(60,50,20,.028) 0 1px, transparent 1px 3px)' },
+      dark: { ground: '#0f1516', surface: '#161d1e', surface2: '#1d2425', line: '#282f31', strong: '#70797b', ink: '#cacbc6', ink2: '#9e9f9a', ink3: '#8b8d88', accent: '#8ebea8', accentInk: '#0a0a0c', table: '#022d2b', tableDeep: '#001c1b', wood: '#44504f', woodDark: '#2e3837', glow: 'radial-gradient(80% 45% at 50% 0%, rgba(255,255,255,.045), transparent 72%)', lift: 'none', texture: 'repeating-linear-gradient(0deg, rgba(255,255,255,.022) 0 1px, transparent 1px 3px), repeating-linear-gradient(90deg, rgba(255,255,255,.018) 0 1px, transparent 1px 3px)' }
+    } },
+  ];
+  // Node (the tests, recent.js and librarykit.js there) asks for the hash and the rooms.
+  if (!root.document && typeof module !== 'undefined' && module.exports) { module.exports = { hash: fnv1a, rooms: ROOMS }; return; }
   var d = root.document;
   // ZimiText first (text.js beside this file): it must exist before anything below draws a string. A page
   // that did not load it writes the tag here, synchronously, so the strings are ready before the first paint.
@@ -201,6 +227,29 @@
   if (kiwixJs && d.documentElement.style) d.documentElement.style.setProperty('--host-bottom', KIWIX_JS_TOOLBAR_PX + 'px');
   Shell.kiwixJs = kiwixJs;
 
+  // kiwix-serve's viewer: this page in its #content_iframe under its own toolbar. The viewer sizes the frame to the window minus
+  // the toolbar and 4px, and when the page inside scrolls it slides the toolbar away without sizing the frame again: a strip (4px,
+  // then 45px) of the viewer's white under the page, which shows on a table that fills the screen. The frame is sized here to
+  // reach the bottom of the window wherever the toolbar is. Another origin has no toolbar to reach.
+  function fillKiwixViewer() {
+    var frame, bar, win;
+    try {
+      win = root.parent;
+      frame = win.document.getElementById('content_iframe');
+      bar = win.document.getElementById('kiwixtoolbar');
+    } catch (e) { return; }
+    if (!frame || !bar || frame.contentWindow !== root) return;
+    function size() {
+      var vv = win.visualViewport, h = (vv ? vv.height : win.innerHeight) - frame.getBoundingClientRect().top;
+      if (h > 0) frame.style.height = h + 'px';
+    }
+    size();
+    if (win.MutationObserver) new win.MutationObserver(size).observe(bar, { attributes: true, attributeFilter: ['style', 'class'] });
+    if (win.visualViewport) win.visualViewport.addEventListener('resize', size);
+    win.addEventListener('resize', size);
+  }
+  if (d && root.parent !== root && String(root.location && root.location.pathname).indexOf('/content/') >= 0) fillKiwixViewer();
+
   // ── the daily edition ──
   // A page opened with ?daily=YYYY-MM-DD plays that day's edition: the same deal, board or puzzle for everyone on that date,
   // on every Zimi, at the one difficulty the game keeps for its dailies. The date travels in the address, so the edition never
@@ -214,6 +263,8 @@
   //   'WxH..' a Simon Tatham puzzle: the type its dailies are, written as its game IDs write it
   var DAILY = {
     'solitaire.html': true, 'spider.html': true, 'freecell.html': true, 'pyramid.html': true, 'golf.html': true, 'tripeaks.html': true,
+    'yukon.html': true, 'fortythieves.html': true, 'canfield.html': true, 'scorpion.html': true, 'acesup.html': true, 'accordion.html': true,
+    'calculation.html': true, 'beleaguered.html': true, 'eightoff.html': true, 'montecarlo.html': true,
     'mahjong.html': true, 'sudoku.html': true, 'minesweeper.html': true, 'codebreaker.html': true, 'memory.html': true, '2048.html': true,
     'stacker.html': true, 'snake.html': true, 'blast.html': true, 'echo.html': true, 'rocks.html': true, 'lastline.html': true,
     'muncher.html': true, 'crossing.html': true, 'quest.html': true,
@@ -258,6 +309,59 @@
   Shell.DAILY = DAILY;
   Shell.dailySeed = dailySeed;
   Shell.hash = fnv1a;
+
+  // ── Rooms, applied ──
+  // The room is in the page's hash ("#lang=fr&room=kids"), so Back and a bookmark return to it; the shelf, which remembers its last room,
+  // also reads that. A game takes it from the tile that opened it. Tokens reach the page as one style element, made the first time a room
+  // is on, so a page in no room carries none of this.
+  var ROOM_FADE_MS = 360, ROOM_KEY = 'zimi.games.room';
+  var roomNow = 'all', roomFadeTimer = 0;
+  function roomById(id) { for (var i = 0; i < ROOMS.length; i++) if (ROOMS[i].id === id) return ROOMS[i]; return null; }
+  function rgbOf(hex) { return parseInt(hex.slice(1, 3), 16) + ',' + parseInt(hex.slice(3, 5), 16) + ',' + parseInt(hex.slice(5, 7), 16); }
+  function roomDecls(t, dark) {
+    var a = rgbOf(t.accent);
+    return '--ground:' + t.ground + ';--surface:' + t.surface + ';--surface2:' + t.surface2 + ';--line:' + t.line + ';--line-strong:' + t.strong +
+      ';--ink:' + t.ink + ';--ink2:' + t.ink2 + ';--ink3:' + t.ink3 + ';--accent:' + t.accent + ';--accent-ink:' + t.accentInk +
+      ';--accent-glow:rgba(' + a + ',' + (dark ? 0.14 : 0.1) + ');--accent-line:rgba(' + a + ',0.3)' +
+      ';--shadow-popup:0 8px 32px ' + (dark ? 'rgba(0,0,0,0.55)' : 'rgba(' + rgbOf(t.ink) + ',0.16)') + ';--scrim:rgba(' + rgbOf(t.ground) + ',' + (dark ? 0.7 : 0.55) + ')' +
+      ';--room-table:' + t.table + ';--room-table-deep:' + t.tableDeep + ';--room-wood:' + t.wood + ';--room-wood-dark:' + t.woodDark +
+      ';--room-glow:' + t.glow + ';--room-lift:' + t.lift + ';--room-texture:' + t.texture;
+  }
+  // Light, then dark by the device and by the page's own choice (data-theme), each beating the shared neutrals' same-scheme rule.
+  function roomCss() {
+    return ROOMS.filter(function (r) { return r.tokens; }).map(function (r) {
+      var at = 'html:not(.night-red)[data-room="' + r.id + '"]', dark = roomDecls(r.tokens.dark, true);
+      return at + '{' + roomDecls(r.tokens.light, false) + '}@media (prefers-color-scheme:dark){' + at + ':not([data-theme="light"]){' + dark + '}}' + at + '[data-theme="dark"]{' + dark + '}';
+    }).join('');
+  }
+  function hashWith(id) {
+    var keep = String(root.location.hash || '').replace(/^#/, '').split('&').filter(function (kv) { return kv && kv.indexOf('room=') !== 0; });
+    if (id !== 'all') keep.push('room=' + id);
+    return keep.length ? '#' + keep.join('&') : '';
+  }
+  function roomOfPage() {
+    var m = /(?:^|[#&])room=([a-z]+)/.exec(root.location.hash || '');
+    if (m && roomById(m[1])) return m[1];
+    if (d.querySelector('meta[name="zimi-games-host"]')) { try { var v = root.localStorage.getItem(ROOM_KEY); if (roomById(v)) return v; } catch (e) { /* blocked */ } }
+    return 'all';
+  }
+  // animate: the light changes over ROOM_FADE_MS (games.css), unless Animation is Off.
+  Shell.setRoom = function (id, animate) {
+    var r = roomById(id) || ROOMS[0], html = d.documentElement;
+    if (r.id === roomNow) return;
+    if (r.tokens && !d.getElementById('gs-rooms')) { var st = d.createElement('style'); st.id = 'gs-rooms'; st.textContent = roomCss(); d.head.appendChild(st); }
+    if (animate && !reducedMotion()) {
+      html.classList.add('gs-room-fade');
+      root.clearTimeout(roomFadeTimer);
+      roomFadeTimer = root.setTimeout(function () { html.classList.remove('gs-room-fade'); }, ROOM_FADE_MS + 80);
+    }
+    if (r.tokens) html.setAttribute('data-room', r.id); else html.removeAttribute('data-room');
+    roomNow = r.id;
+  };
+  Shell.room = function () { return roomNow; };
+  Shell.rooms = ROOMS;
+  Shell.roomHash = hashWith;
+  Shell.setRoom(roomOfPage(), false);
   Shell.isDay = isDay;
   Shell.daily = DAILY[PAGE] && isDay(askedDay) ? { day: askedDay, seed: dailySeed(askedDay, PAGE), kind: DAILY[PAGE] } : null;
   // The day this page plays: the daily's, else the server's (worked out from its last answer), else the device's (outside Zimi).
@@ -348,6 +452,21 @@
   }
   load(); apply();
   d.documentElement.classList.add('gs');
+  // Red, the shell's night-vision theme: the shell keeps the choice under zimi_app_theme in this origin's storage, so inside Zimi
+  // this page reads it (and follows a change); in Kiwix, another origin, the key is absent and the page stays as it was.
+  // Red is dark underneath (data-theme), and leaving it puts back what the page had pinned.
+  var RED_KEY = 'zimi_app_theme', redOn = false, pinnedTheme = null;
+  function followRed() {
+    var on = false, r = d.documentElement;
+    try { on = root.localStorage.getItem(RED_KEY) === 'red'; } catch (e) { /* blocked: no Red */ }
+    if (on === redOn) return;   // outside Zimi, and in every theme but Red, the page is not touched
+    redOn = on;
+    r.classList[on ? 'add' : 'remove']('night-red');
+    if (on) { pinnedTheme = r.getAttribute('data-theme'); r.setAttribute('data-theme', 'dark'); }
+    else if (pinnedTheme) r.setAttribute('data-theme', pinnedTheme); else r.removeAttribute('data-theme');
+  }
+  followRed();
+  root.addEventListener('storage', function (e) { if (e.key === RED_KEY || e.key === null) followRed(); });
   // Rapid taps on a board, a pad or a key (ZimiKart, Echo, the arcade) double-tapped into a text selection and the iOS callout.
   // Nothing on a game page is for selecting but its reading: How to play and About, its text, and its fields.
   if (d.head) {
@@ -479,7 +598,7 @@
   var bar, menuBtn, newBtn, extras = [], holder, hasUndo = false;
   function isNewLike(b) { return /(^|-)(new|menu|level|newgame)$/.test(b.id) || /^new\b/i.test(b.textContent.trim()); }
   // data-gs-bar: a page's own button that stays in the bar (like Undo), and is absent while disabled (the puzzles' Redo).
-  function keepInBar(b) { return /undo$/.test(b.id) || /pause$/.test(b.id) || b.id === 'ms-flagmode' || (b.hasAttribute('data-gs-bar') && !inZimi()); }   // in Zimi's own bar only Undo or Pause fit: the rest go to the Menu
+  function keepInBar(b) { return /undo$/.test(b.id) || /pause$/.test(b.id) || b.id === 'ms-flagmode' || b.hasAttribute('data-gs-help') || (b.hasAttribute('data-gs-bar') && !inZimi()); }   // in Zimi's own bar only Undo or Pause fit: the rest go to the Menu
   function buildBar() {
     bar = d.querySelector('.ar-bar');
     if (!bar) return false;
@@ -499,7 +618,11 @@
     Array.prototype.forEach.call(d.querySelectorAll(TIMER_SELECTOR), function (t) { t.setAttribute('data-gs-timer', ''); });
     // Back is one 44 px target with a name for screen readers; the page's own chevron text stays unseen.
     var backLink = bar.querySelector('.ar-back');
-    if (backLink) backLink.setAttribute('aria-label', T('shell.back'));
+    if (backLink) {
+      backLink.setAttribute('aria-label', T('shell.back'));
+      // Back returns to the room the game was opened from.
+      if (roomNow !== 'all') backLink.setAttribute('href', String(backLink.getAttribute('href') || 'index.html').replace(/#.*$/, '') + hashWith(roomNow));
+    }
     menuBtn = h('button', { class: 'ar-btn gs-menu-btn', type: 'button', 'aria-haspopup': 'dialog', text: T('shell.menu') });
     menuBtn.addEventListener('click', openMenu);
     // The clock sits before the buttons, the Menu last.
@@ -590,8 +713,9 @@
   // A long name ("International Draughts") beside Undo and Menu on a phone: the title steps down a pixel at a time to
   // TITLE_MIN_PX before it is cut with an ellipsis.
   var TITLE_MIN_PX = 12;
-  // A stat that still leaves the title cut ("2048" as "2." beside "24 · Bestwert 24" at 390 px in German) goes on a second
-  // line under the title (gs-bar-stack), the way a daily's tag does, and the title gets the stat's width.
+  // A stat that would leave the title cut ("2048" as "2." beside "24 · Bestwert 24" at 390 px in German) goes on a second
+  // line under the title (gs-bar-stack), the way a daily's tag does, and the title gets the stat's width; only then does a long
+  // name step down.
   function fitTitle() {
     var h1 = d.querySelector('.ar-bar h1');
     if (!h1) return;
@@ -603,8 +727,10 @@
       while (cut() && px > TITLE_MIN_PX) { px -= 1; h1.style.fontSize = px + 'px'; }
     };
     bar.classList.remove('gs-bar-stack');
+    h1.style.fontSize = '';
+    // The stat goes under the title before the title is made small: "Snake" at 14px beside "Apples 3 · Best 12" read as cut.
+    if (cut() && !hosted && stat && stat.offsetWidth && stat.textContent.trim()) bar.classList.add('gs-bar-stack');
     shrink();
-    if (cut() && !hosted && stat && stat.offsetWidth && stat.textContent.trim()) { bar.classList.add('gs-bar-stack'); shrink(); }
   }
   // The bar changes as the game goes (a score grows, Pause becomes Resume, a button shows or hides): it is laid out again.
   // fitTitle itself changes only the title's style and the bar's class, which are not watched.
@@ -772,8 +898,10 @@
   // A loss is dignified: no motion over the board, the sheet settles in softly. A draw is plain. A tap, a key or the
   // sheet being asked for early skips the beat; under reduced motion there is none and the sheet is there at once.
   var BEAT_MS = 1800, LOSS_BEAT_MS = 1100, COUNT_MS = 600, MOMENT_OUT_MS = 300, SKIP_SETTLE_MS = 250, SKIP_GRACE_MS = 450, SCATTER = 14, SCATTER_REACH = 120, CONFETTI = 44, CONFETTI_COLOURS = 5, GOLDEN = 2.399963, HAPTIC = { win: [14, 70, 26], lose: [30] };
+  // A game that comes back to its end sheet on reload has had no tap yet: the browser refuses a buzz then and logs an error, so none is tried.
+  function touched() { var ua = root.navigator && root.navigator.userActivation; return !ua || ua.hasBeenActive; }
   function haptic(result) {
-    try { if (HAPTIC[result] && root.navigator && root.navigator.vibrate && !reducedMotion()) root.navigator.vibrate(HAPTIC[result]); } catch (e) { /* no haptics here */ }
+    try { if (HAPTIC[result] && root.navigator && root.navigator.vibrate && touched() && !reducedMotion()) root.navigator.vibrate(HAPTIC[result]); } catch (e) { /* no haptics here */ }
   }
   Shell.haptic = haptic;
   // A note, only when the player has turned Sound on (Settings), made only after a tap: one shared context, a soft sine with a short attack.
@@ -787,6 +915,22 @@
       o.type = 'sine'; o.frequency.value = freq;
       g.gain.setValueAtTime(0.0001, t); g.gain.exponentialRampToValueAtTime(peak, t + TONE_ATTACK_S); g.gain.exponentialRampToValueAtTime(0.0001, t + len);
       o.connect(g); g.connect(audio.destination); o.start(t); o.stop(t + len + 0.05);
+    } catch (e) { /* no audio on this device: play on silently */ }
+  };
+  // A card's sound: a short burst of noise through a band-pass, the snap of card on card. 'lift' is higher and quieter than
+  // 'place'. Only with Sound on, on the same shared context as the notes.
+  var CLICK = { lift: { hz: 3200, gain: 0.05, ms: 22 }, place: { hz: 1900, gain: 0.09, ms: 30 } }, CLICK_Q = 1.4;
+  Shell.click = function (kind) {
+    var c = CLICK[kind] || CLICK.place;
+    if (!Shell.sound()) return;
+    try {
+      audio = audio || new (root.AudioContext || root.webkitAudioContext)();
+      if (audio.state === 'suspended') audio.resume();
+      var n = Math.ceil(audio.sampleRate * c.ms / MS_PER_S), buf = audio.createBuffer(1, n, audio.sampleRate), data = buf.getChannelData(0), i;
+      for (i = 0; i < n; i++) data[i] = (Math.random() * 2 - 1) * Math.pow(1 - i / n, 3);
+      var src = audio.createBufferSource(), bp = audio.createBiquadFilter(), g = audio.createGain();
+      src.buffer = buf; bp.type = 'bandpass'; bp.frequency.value = c.hz; bp.Q.value = CLICK_Q; g.gain.value = c.gain;
+      src.connect(bp); bp.connect(g); g.connect(audio.destination); src.start();
     } catch (e) { /* no audio on this device: play on silently */ }
   };
   // The end's notes: three rising for a win, two falling for a loss (C5 E5 G5; G4 D4), quiet.
@@ -910,7 +1054,8 @@
   }
   // Counted once a game: the player touched it since the page opened or since the last count (a finished game that comes back from
   // its save shows its end sheet again, uncounted), and a Watch and learn demo is never the player's.
-  var touched = false;
+  // A round counts for the day it began: an own-daily game played across midnight is still that day's.
+  var touched = false, roundDay = null;
   if (d) ['pointerdown', 'keydown'].forEach(function (t) {
     d.addEventListener(t, function (e) {
       if (e.target && e.target.closest && e.target.closest('.ar-bar, .ar-sheet')) return;
@@ -921,7 +1066,9 @@
   function countResult(result) {
     if (!touched || (Shell.isWatching && Shell.isWatching())) return null;
     touched = false;
-    var day = roundDaily(), all = readStats();
+    var day = roundDaily() && (roundDay || roundDaily());   // still a daily round, and the day it began
+    roundDay = null;
+    var all = readStats();
     if (day && all.days[day] && all.days[day][PAGE]) return day;   // the day's daily is counted once, however often it is opened
     all = addResult(all, PAGE, result, day);
     try { root.localStorage.setItem(STATS_KEY, JSON.stringify(all)); } catch (e) { /* full or blocked: play on */ }
@@ -942,8 +1089,9 @@
     } catch (e) { /* full or blocked: the board goes without it */ }
   }
   function dayStarted() {
-    var day = roundDaily();   // an own-daily game's round too, opened from its ordinary page
+    var day = roundDay || roundDaily();   // an own-daily game's round too, opened from its ordinary page
     if (!day || (Shell.isWatching && Shell.isWatching())) return;
+    roundDay = day;
     var runs = dayRuns(day);
     if (runs[PAGE]) return;
     runs[PAGE] = { start: Date.now() };
@@ -1278,7 +1426,7 @@
 
   // A pane is a function that fills the card: show(fn) pushes it, back() pops.
   function show(fn) { paneStack.push(fn); render(); }
-  function back() { paneStack.pop(); render(); }
+  function back() { if (paneStack.length <= 1) { closeMenu(); return; } paneStack.pop(); render(); }   // the first pane's back closes
   function render() {
     var fn = paneStack[paneStack.length - 1];
     card.textContent = '';
@@ -1464,7 +1612,7 @@
     if (hasHints()) row('hints');
     if (game.settings) { var own = null; try { own = game.settings(); } catch (e) { own = null; } (own || []).forEach(function (n) { card.appendChild(n); }); }
     row('anim', deviceReducedMotion() && !settings.explicit('anim') ? T('shell.set.reducedNote') : '');
-    if (game.sound) row('sound');
+    // The Sound setting is hidden until a game plays one (none does yet); the preference code and Shell.sound stay for when sounds ship.
     if (newBtn) row('confirm');
     if (hasBacks()) {
       card.appendChild(h('div', { class: 'gs-row' }, [h('label', { text: T('shell.set.cardBack') }), h('button', { class: 'ar-btn', type: 'button', text: T('shell.choose'), onclick: function () { closeMenu(); root.ZimiCards.backsSheet(); } })]));
@@ -1489,19 +1637,25 @@
     var own = game.help ? game.help() : null;
     return own ? Object.assign({}, base, own) : base;
   }
-  var HELP_PARTS = [['goal', 'shell.help.goal'], ['turn', 'shell.help.turn'], ['end', 'shell.help.end'], ['tip', 'shell.help.tip']];
   function keysLine() {
     var p = d.querySelector('.bg-help'), s = '';
     if (!p) return '';
     (p.textContent.match(/[^.]+\./g) || []).forEach(function (t) { if (/\bkeys?\b|\bEnter\b|\bpress\b/i.test(t)) s += t.trim() + ' '; });
     return s.trim();
   }
-  // The Goal / Your turn / The end / Tip list of a game's help (the shelf's long-press menu shows the same list).
+  // How to play, one shape for every game (after Wordle's): the goal as one line, what you do and how it
+  // ends as bullets, the game's own examples under their label, then the tip and the keys as quiet notes. No Goal / Your
+  // turn labels: the shape says which is which. The shelf's long-press menu shows the same, without the examples.
+  // A game hands examples over with ZimiShell.game({ help: fn -> { examples: [node, ...] } }).
   function helpList(hp, keys) {
-    var dl = h('dl', { class: 'gs-help' });
-    HELP_PARTS.forEach(function (p) { if (hp[p[0]]) { dl.appendChild(h('dt', { text: T(p[1]) })); dl.appendChild(h('dd', { text: hp[p[0]] })); } });
-    if (keys) { dl.appendChild(h('dt', { text: T('shell.help.keys') })); dl.appendChild(h('dd', { text: keys })); }
-    return dl;
+    var box = h('div', { class: 'gs-help gs-how' });
+    if (hp.goal) box.appendChild(h('p', { class: 'gs-how-line', text: hp.goal }));
+    var steps = ['turn', 'end'].filter(function (f) { return hp[f]; });
+    if (steps.length) box.appendChild(h('ul', { class: 'gs-how-list' }, steps.map(function (f) { return h('li', { text: hp[f] }); })));
+    if (hp.examples && hp.examples.length) box.appendChild(h('div', { class: 'gs-how-ex' }, [h('h3', { text: T('shell.help.examples') })].concat(hp.examples)));
+    if (hp.tip) box.appendChild(h('p', { class: 'gs-how-note', text: hp.tip }));
+    if (keys) box.appendChild(h('p', { class: 'gs-how-note', text: keys }));
+    return box;
   }
   function helpPane() {
     head(T('shell.menu.how'), false);
@@ -1509,6 +1663,8 @@
     card.appendChild(helpList(hp, hp.keys || keysLine()));
     (hp.extra || []).forEach(function (n) { card.appendChild(n); });   // a game's own addition, e.g. a piece key
   }
+  // Straight to How to play (a game's ? button, and its first visit): the Menu opens on that pane.
+  Shell.showHelp = function () { if (!helpFor(ID)) return false; openMenu(); paneStack = []; show(helpPane); return true; };
   // For a page that is not the game (the shelf): the list for game `id`, or null when it has no help.
   Shell.helpList = function (id) { var hp = helpFor(id); return hp ? helpList(hp, hp.keys) : null; };
 
@@ -1695,7 +1851,7 @@
     var at = 'content:"";position:absolute;pointer-events:none;width:' + MARK_PX + 'px;height:' + MARK_PX + 'px;background:url(' + url + ') center/contain no-repeat;';
     // While a sheet is up the mark is not shown: it sits 12px in from the corner, where the sheet's rounded corner lets it peek out.
     return 'html.gs-hosted body:has(.ar-sheet:not([hidden]))::before, html.gs-hosted body:has(.ar-sheet:not([hidden])) .zc-table::before{opacity:0}' +
-      'html.gs-hosted body:has(> .ar-bar) .zc-table::before{' + at + 'z-index:0;right:' + MARK_GAP + 'px;bottom:' + MARK_GAP + 'px}' +
+      'html.gs-hosted body:has(> .ar-bar) .zc-table::before{' + at + 'z-index:-1;right:' + MARK_GAP + 'px;bottom:' + MARK_GAP + 'px}' +
       'html.gs-hosted body:has(> .ar-bar):not(:has(.zc-table))::before{' + at.replace('absolute', 'fixed') + 'z-index:-1;right:' + MARK_GAP + 'px;bottom:calc(' + MARK_GAP + 'px + var(--safe-b, 0px))}' +
       ':root[data-theme="dark"].gs-hosted body:has(> .ar-bar):not(:has(.zc-table))::before{filter:drop-shadow(1px 0 0 var(--mark-ring)) drop-shadow(-1px 0 0 var(--mark-ring)) drop-shadow(0 1px 0 var(--mark-ring)) drop-shadow(0 -1px 0 var(--mark-ring))}' +
       '@media (prefers-color-scheme:dark){:root:not([data-theme="light"]).gs-hosted body:has(> .ar-bar):not(:has(.zc-table))::before{filter:drop-shadow(1px 0 0 var(--mark-ring)) drop-shadow(-1px 0 0 var(--mark-ring)) drop-shadow(0 1px 0 var(--mark-ring)) drop-shadow(0 -1px 0 var(--mark-ring))}}';
@@ -1745,19 +1901,21 @@
     var hostStyle = d.createElement('style'); hostStyle.textContent = HOST_CSS + hostMarkCss(HOME + 'mark.svg'); d.head.appendChild(hostStyle);
   }
   // ── where this came from ──
-  // Outside Zimi (Kiwix, a browser tab) one credit line: "© <year> [mark] Zimi", the mark and the name one link to Zimi's
-  // address (zimihome.js's ZIMI_HOME_MARK puts the mark after the name, or leaves it out).
-  // Inside Zimi it is noise and is never drawn. The address is zimihome.js's (written once there); the year is the build's
-  // (zimibuild.js, which ownzims writes into the ZIM; never the reader's clock; a page read from its folder has none and says
-  // "© Zimi"). Both load only out here. The shelf's last line, and the foot of a game's Menu.
-  var COPYRIGHT = '©';
+  // The page ends on Zimi's footer, the line Home ends on: "Zimi <version> · Powered by Kiwix" (zimifooter.js, the one
+  // definition, with zimifooter.css beside it). Inside Zimi it says the version, read from the page that holds this one; read
+  // from a file or from Kiwix it says the version the ZIM was built with (zimibuild.js, which ownzims writes into the ZIM; never the
+  // reader's clock; a page read from its folder has none and says no year). The shelf's last line, and the foot of a game's Menu.
+  function footerOpts() {
+    var version = '';
+    if (hosted) { try { version = (root.parent && root.parent._zimiVersion) || ''; } catch (e) { /* not reachable */ } }
+    version = version || root.ZIMI_BUILT_VERSION || '';
+    return { version: version, year: version ? '' : root.ZIMI_BUILT_YEAR, poweredBy: T('shell.footer.powered') };
+  }
   function homeLine() {
-    var url = root.ZIMI_HOME;
-    if (hosted || !url) return null;
-    var year = root.ZIMI_BUILT_YEAR, at = root.ZIMI_HOME_MARK;
-    var mark = at === 'before' || at === 'after' ? h('img', { src: HOME + 'mark.svg', alt: '', width: '13', height: '13', class: at === 'after' ? 'gs-mark-end' : '' }) : null;
-    var link = h('a', { href: url, target: '_blank', rel: 'noopener' }, at === 'after' ? ['Zimi', mark] : [mark, 'Zimi']);
-    return h('div', { class: 'gs-home' }, [h('span', {}, [COPYRIGHT + ' ' + (year ? year + ' ' : ''), link])]);
+    if (!root.ZimiFooter) return null;
+    var box = d.createElement('div');
+    box.innerHTML = root.ZimiFooter.html(footerOpts());
+    return box.firstChild;
   }
   Shell.homeLine = homeLine;
   // Not loadScript: that name is the page's own loader above (Watch and learn), and a second declaration would replace it.
@@ -1767,16 +1925,16 @@
     s.onload = s.onerror = then;
     d.head.appendChild(s);
   }
-  if (!hosted && d.head) {
+  if (d.head) {
+    var footerCss = d.createElement('link'); footerCss.rel = 'stylesheet'; footerCss.href = HOME + 'zimifooter.css'; d.head.appendChild(footerCss);
     // The shelf's very last line, under Credits: the page ends on it.
     var placeHome = function () {
       var shelf = d.querySelector('.ar-shelf'), line = shelf && homeLine();
       if (line) shelf.appendChild(line);
     };
     // The files can arrive before the shelf's header is parsed (shell.js runs in the head): then it waits for the page.
-    loadHomeScript('zimihome.js', function () {
-      loadHomeScript('zimibuild.js', function () { if (d.readyState === 'loading') d.addEventListener('DOMContentLoaded', placeHome); else placeHome(); });
-    });
+    var drawn = function () { if (d.readyState === 'loading') d.addEventListener('DOMContentLoaded', placeHome); else placeHome(); };
+    loadHomeScript('zimifooter.js', function () { if (hosted) drawn(); else loadHomeScript('zimibuild.js', drawn); });
   }
   // Measured now, again once the page is laid out (before that a phone may still report the default 980 px layout's
   // height), and whenever the window changes (turning the phone, a browser bar coming or going).
@@ -1835,8 +1993,15 @@
     x.drawImage(c, Math.round((SNAP_W - w) / 2), Math.round((SNAP_H - hh) / 2), w, hh);
     return pixel ? out.toDataURL('image/png') : out.toDataURL('image/jpeg', SNAP_JPEG_QUALITY);
   }
+  // A game built from page elements (squares, pieces, dice) has no canvas: tablesnap.js paints its table as an svg.
+  // It loads once the page is up, when the game has neither a snapshot() nor a canvas, so a game left at once still has it.
+  function loadTableSnap() {
+    if (game.snapshot || bigCanvas() || root.ZimiTableSnap || !shellSrc || d.querySelector('script[data-tablesnap]')) return;
+    var s = d.createElement('script'); s.src = new root.URL('tablesnap.js', shellSrc).href; s.setAttribute('data-tablesnap', '');
+    d.head.appendChild(s);
+  }
   function takeSnapshot() {
-    var src = game.snapshot ? game.snapshot() : bigCanvas();
+    var src = game.snapshot ? game.snapshot() : bigCanvas() || (root.ZimiTableSnap && root.ZimiTableSnap.picture(d, game.table));
     if (!src) return null;
     if (typeof src === 'string') return /^\s*<svg[\s>]/.test(src) ? { svg: src } : null;
     try { return { img: canvasPicture(src) }; } catch (e) { return null; }   // a tainted or lost canvas: no picture
@@ -1880,7 +2045,7 @@
     if (hosted) hostReady();
     if (!built) return;
     DIRTY_EVENTS.forEach(function (t) { d.addEventListener(t, markDirty, true); });
-    watchSnapshots(); watchBlur(); watchRecords(); markStatusLines();
+    watchSnapshots(); loadTableSnap(); watchBlur(); watchRecords(); markStatusLines();
     d.documentElement.classList.add('gs-ready');
     // A daily says so under the game's name, so the player knows this board is the day's, not one of their own.
     var h1 = Shell.daily && d.querySelector('.ar-bar h1');

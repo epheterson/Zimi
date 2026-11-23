@@ -1,0 +1,45 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Ten Thousand - ZimiGames</title>
+<link rel="stylesheet" href="games.css">
+<link rel="stylesheet" href="play.css">
+<link rel="stylesheet" href="tenthousand.css">
+<!-- zimi-shell --><script src="shell.js"></script><!-- /zimi-shell -->
+</head>
+<body>
+<header class="ar-bar">
+  <a class="ar-back" href="index.html" data-t-aria="shell.back" aria-label="Back">&lsaquo;</a>
+  <h1 data-t="game.tenthousand.title">Ten Thousand</h1>
+  <button class="ar-btn" id="tt-new" type="button" hidden data-t="shell.menu.new">New game</button>
+</header>
+
+<main class="pl-main">
+  <div class="tt-sides">
+    <div class="tt-side tt-turn" id="tt-a"><small id="tt-a-name">You</small><b id="tt-a-score">0</b><span class="tt-meter" aria-hidden="true"><i id="tt-a-bank"></i></span></div>
+    <div class="tt-side" id="tt-b"><small id="tt-b-name">Zimi</small><b id="tt-b-score">0</b><span class="tt-meter" aria-hidden="true"><i id="tt-b-bank"></i></span></div>
+  </div>
+  <p class="tt-goal" id="tt-goal"></p>
+  <div class="tt-table" id="tt-table" role="group" data-t-aria="tenthousand.table" aria-label="The dice">
+    <div class="tt-dice" id="tt-dice"></div>
+    <div class="pl-hud tt-hud">
+      <div class="pl-stat"><small data-t="tenthousand.chosen">Chosen</small><b id="tt-pick">0</b></div>
+      <div class="pl-stat"><small data-t="pig.turnTotal">Turn total</small><b id="tt-pot">0</b></div>
+    </div>
+  </div>
+  <p class="pl-msg" id="tt-msg"></p>
+  <div class="tt-actions">
+    <button class="ar-btn gs-primary" id="tt-roll" type="button" data-t="backgammon.roll">Roll</button>
+    <button class="ar-btn" id="tt-bank" type="button" data-t="tenthousand.bank">Bank</button>
+  </div>
+</main>
+
+<script src="util.js"></script>
+<script src="playkit.js"></script>
+<script src="tenthousand.js"></script>
+<!-- zimi-recent --><script defer src="recent.js"></script><!-- /zimi-recent -->
+<!-- zimi-about --><footer class="gm-about"><a href="about.html?qid=Q5435387">About Ten Thousand</a></footer><!-- /zimi-about -->
+</body>
+</html>

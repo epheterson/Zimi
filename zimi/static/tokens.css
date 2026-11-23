@@ -1,0 +1,119 @@
+/* One scale for type, radius, spacing, touch and motion, declared once. The shell gets it inlined in its <head>
+   (http.SEARCH_UI_HTML) and each app page in front of apps.css (http._inline_apps_assets), so neither pays a request.
+   The ground (neutrals and amber) is here too, so the shell and the app pages draw on the same paper and the same night;
+   the rest of each theme stays with its stylesheet. */
+:root {
+  --fs-caption: 11px; --fs-small: 13px; --fs-body: 15px; --fs-title: 17px; --fs-sheet: 20px; --fs-brand: 26px; --fs-display: 32px;
+  --fw-regular: 400; --fw-strong: 600;
+  --r-chip: 6px; --r-sheet: 14px; --r-full: 999px;
+  --sp-1: 4px; --sp-2: 8px; --sp-3: 12px; --sp-4: 16px; --sp-5: 24px; --gutter: 16px;
+  --target: 44px;
+  --pill-h: 28px;   /* a pill: 28 drawn, a 44 hit area (app.css .pill and the 3D view's row of chips) */
+  /* Small controls that float over a live scene (the 3D view's round buttons and chips): glass. 32px drawn, a 44px hit area.
+     What is behind them changes every frame, so they show it through and keep the ink readable; text sits on opaque surfaces. */
+  --round: 32px;
+  --glass-bg: rgba(14, 14, 16, 0.62); --glass-line: rgba(255, 255, 255, 0.14); --glass-ink: #e8e8ed;
+  --glass-blur: blur(16px) saturate(140%);
+  /* A sheet (the 3D view's Go to, cards, settings): opaque, never glass, so the words on it never sit on a moving scene. */
+  --sheet-bg: #141416;
+  --dur-press: 120ms; --dur-settle: 200ms; --dur-travel: 320ms;
+  --ease-press: ease-out; --ease-settle: cubic-bezier(.25, 1, .5, 1); --ease-travel: ease-in-out;
+}
+@media (prefers-reduced-motion: reduce) { :root { --dur-press: 0.001ms; --dur-settle: 0.001ms; --dur-travel: 0.001ms; } }
+/* The section label: what every list's heading looks like, on Home and in every app (13, strong, caps, the quiet ink).
+   A page's own title (.head h2) is a different thing and stays a title. */
+:is(.cat-heading, .discover-label, .shelf-h h2, .section-h, .sec-h h2, .lang-h h2, .fg-h2) {
+  font-family: inherit; font-size: var(--fs-small); font-weight: var(--fw-strong); line-height: 1.5; letter-spacing: 0.06em; text-transform: uppercase; color: var(--text2);
+}
+/* hscroll:start Every sideways scroller's bar, one rule ("on Macs, the scroll bar usually shows up when
+   you hover over a scrollable area"). A finger swipes and sees no bar. A mouse gets a thin bar that is always there but
+   clear, and takes the thumb's colour on hover: the room is the same either way, so a row never jumps when it shows. A new scroller adds .hscroll, or its name here; one that
+   floats over the 3D scene in a fixed height (.hscroll-none) keeps no bar, as a bar would sit on the picture.
+   The Almanac ZIM and the games ZIM carry this block too (almanacstage.py, games.css). */
+:root { --hs-thumb: var(--text2); }
+@supports (color: color-mix(in srgb, red, blue)) { :root { --hs-thumb: color-mix(in srgb, var(--text2) 60%, transparent); } }
+.hscroll, .pills-row, .lang-pills, .catalog-lang-scroll, .games-row-list, .manage-tabs, .voice-default,
+  .discover-scroll, .chips, .strip, .trail, .am-ev, .ap-row, .tb-tabs, .tk-seg, .tb-eq-m, .alm-tiles,
+  .hscroll-none, .ae-chips, .ae-go-pills, .as-strip, #ae-views { scrollbar-width: none; }
+.hscroll::-webkit-scrollbar, .pills-row::-webkit-scrollbar, .lang-pills::-webkit-scrollbar,
+  .catalog-lang-scroll::-webkit-scrollbar, .games-row-list::-webkit-scrollbar,
+  .manage-tabs::-webkit-scrollbar, .voice-default::-webkit-scrollbar, .discover-scroll::-webkit-scrollbar,
+  .chips::-webkit-scrollbar, .strip::-webkit-scrollbar, .trail::-webkit-scrollbar, .am-ev::-webkit-scrollbar,
+  .ap-row::-webkit-scrollbar, .tb-tabs::-webkit-scrollbar, .tk-seg::-webkit-scrollbar,
+  .tb-eq-m::-webkit-scrollbar, .alm-tiles::-webkit-scrollbar, .hscroll-none::-webkit-scrollbar,
+  .ae-chips::-webkit-scrollbar, .ae-go-pills::-webkit-scrollbar, .as-strip::-webkit-scrollbar,
+  #ae-views::-webkit-scrollbar { display: none; }
+@media (hover: hover) and (pointer: fine) {
+  /* Chrome and Safari: a ::-webkit-scrollbar of our own is a classic bar, drawn even where the system's bars are overlays
+     (macOS), and always there, so it never changes the row's height. The standard properties go back to auto here: once
+     either is set, Chrome ignores ::-webkit-scrollbar. The thumb reads its colour from a property of the row, set on
+     hover: Chrome does not repaint a thumb styled by row:hover::-webkit-scrollbar-thumb, but it does when the row's own
+     style changes. */
+  .hscroll, .pills-row, .lang-pills, .catalog-lang-scroll, .games-row-list, .manage-tabs, .voice-default,
+    .discover-scroll, .chips, .strip, .trail, .am-ev, .ap-row, .tb-tabs, .tk-seg, .tb-eq-m, .alm-tiles { scrollbar-width: auto; scrollbar-color: auto; --hs-now: transparent; }
+  .hscroll:hover, .pills-row:hover, .lang-pills:hover, .catalog-lang-scroll:hover, .games-row-list:hover,
+    .manage-tabs:hover, .voice-default:hover, .discover-scroll:hover, .chips:hover, .strip:hover,
+    .trail:hover, .am-ev:hover, .ap-row:hover, .tb-tabs:hover, .tk-seg:hover, .tb-eq-m:hover,
+    .alm-tiles:hover { --hs-now: var(--hs-thumb); }
+  .hscroll::-webkit-scrollbar, .pills-row::-webkit-scrollbar, .lang-pills::-webkit-scrollbar,
+    .catalog-lang-scroll::-webkit-scrollbar, .games-row-list::-webkit-scrollbar,
+    .manage-tabs::-webkit-scrollbar, .voice-default::-webkit-scrollbar, .discover-scroll::-webkit-scrollbar,
+    .chips::-webkit-scrollbar, .strip::-webkit-scrollbar, .trail::-webkit-scrollbar,
+    .am-ev::-webkit-scrollbar, .ap-row::-webkit-scrollbar, .tb-tabs::-webkit-scrollbar,
+    .tk-seg::-webkit-scrollbar, .tb-eq-m::-webkit-scrollbar, .alm-tiles::-webkit-scrollbar { display: block; width: 6px; height: 6px; background: transparent; }
+  .hscroll::-webkit-scrollbar-thumb, .pills-row::-webkit-scrollbar-thumb, .lang-pills::-webkit-scrollbar-thumb,
+    .catalog-lang-scroll::-webkit-scrollbar-thumb, .games-row-list::-webkit-scrollbar-thumb,
+    .manage-tabs::-webkit-scrollbar-thumb, .voice-default::-webkit-scrollbar-thumb,
+    .discover-scroll::-webkit-scrollbar-thumb, .chips::-webkit-scrollbar-thumb,
+    .strip::-webkit-scrollbar-thumb, .trail::-webkit-scrollbar-thumb, .am-ev::-webkit-scrollbar-thumb,
+    .ap-row::-webkit-scrollbar-thumb, .tb-tabs::-webkit-scrollbar-thumb, .tk-seg::-webkit-scrollbar-thumb,
+    .tb-eq-m::-webkit-scrollbar-thumb, .alm-tiles::-webkit-scrollbar-thumb { background: var(--hs-now); border-radius: 3px; }
+  /* Firefox, which has no ::-webkit-scrollbar: the standard thin bar, clear until hover. */
+  @supports not selector(::-webkit-scrollbar) {
+    .hscroll, .pills-row, .lang-pills, .catalog-lang-scroll, .games-row-list, .manage-tabs, .voice-default,
+      .discover-scroll, .chips, .strip, .trail, .am-ev, .ap-row, .tb-tabs, .tk-seg, .tb-eq-m, .alm-tiles { scrollbar-width: thin; scrollbar-color: transparent transparent; }
+    .hscroll:hover, .pills-row:hover, .lang-pills:hover, .catalog-lang-scroll:hover, .games-row-list:hover,
+      .manage-tabs:hover, .voice-default:hover, .discover-scroll:hover, .chips:hover, .strip:hover,
+      .trail:hover, .am-ev:hover, .ap-row:hover, .tb-tabs:hover, .tk-seg:hover, .tb-eq-m:hover,
+      .alm-tiles:hover { scrollbar-color: var(--hs-thumb) transparent; }
+  }
+}
+/* hscroll:end */
+/* Grids of things to pick, one layout wherever a person picks among things (Home's library and apps today; written for the
+   Games shelf, Bookshelf and ZimiTube to take as they are). .pick-grid: cards that keep a card's width (--pick-card) and
+   are never stretched past it by much: as many as fit, so 1 on a phone, 2 at 820, 3 at 1280 and 4 at --pick-max, where
+   the page stops. .pick-tiles: launcher tiles, one size on every screen (a rounded
+   icon square over a one-word name), packed from the start edge at one gap and never stretched to fill the row.
+   A tile is .pick-tile > .pick-ic + .pick-name, drawn as a tile only inside .pick-tiles (the same markup is a row elsewhere). Reading views, Settings and forms keep their own widths. */
+:root { --pick-max: 1600px; --pick-card: 360px; --pick-tile: 84px; --pick-icon: 56px; --pick-gap: 8px; }
+.pick-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, var(--pick-card)), 1fr)); }
+.pick-tiles { display: grid; grid-template-columns: repeat(auto-fill, var(--pick-tile)); gap: var(--sp-4) var(--pick-gap); justify-content: start; }
+.pick-tiles .pick-tile { display: flex; flex-direction: column; align-items: center; gap: var(--sp-2); min-width: 0; width: var(--pick-tile); text-align: center; }
+.pick-tiles .pick-ic { width: var(--pick-icon); height: var(--pick-icon); flex: none; border-radius: var(--r-sheet); display: flex; align-items: center; justify-content: center; }
+.pick-tiles .pick-name { max-width: 100%; font-size: var(--fs-small); font-weight: var(--fw-regular); line-height: 1.35; letter-spacing: -0.01em; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+/* The ground, dark. The shell stamps data-theme on <html>; an app page has none and follows the system. */
+:root {
+  --bg: #0a0a0b; --surface: #141416; --surface2: #1c1c20; --border: #27272b; --text: #e8e8ed; --text2: #8a8a94;
+  --amber: #f59e0b; --amber2: #d97706; --on-amber: #000;
+  --amber-glow: rgba(245, 158, 11, 0.08); --amber-border: rgba(245, 158, 11, 0.25);
+}
+/* Light: warm paper, the amber deepened to clear AA as text on it (5.35:1), ink on a fill flips to white. */
+:root[data-theme="light"] {
+  --bg: #f2efe8; --surface: #fbfaf6; --surface2: #ffffff; --border: #e4dfd4; --text: #26241f; --text2: #6a675e;
+  --amber: #9d4a08; --amber2: #92400e; --on-amber: #fff;
+  --amber-glow: rgba(180, 83, 9, 0.10); --amber-border: rgba(180, 83, 9, 0.28);
+}
+@media (prefers-color-scheme: light) {
+  :root:not([data-theme]) {
+    --bg: #f2efe8; --surface: #fbfaf6; --surface2: #ffffff; --border: #e4dfd4; --text: #26241f; --text2: #6a675e;
+    --amber: #9d4a08; --amber2: #92400e; --on-amber: #fff;
+    --amber-glow: rgba(180, 83, 9, 0.10); --amber-border: rgba(180, 83, 9, 0.28);
+  }
+}
+
+/* Glass needs a backdrop to filter: without one, or when the person asked for less transparency, the control is the near-opaque
+   disc it always was. */
+@supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) { :root { --glass-bg: rgba(18, 18, 20, 0.92); } }
+@media (prefers-reduced-transparency: reduce) { :root { --glass-bg: rgba(18, 18, 20, 0.92); --glass-blur: none; } }
+/* Red night light: no glass (the scene is already dimmed) and no white hairline, the brightest thing in the frame. */
+:root.night-red { --sheet-bg: #000; --glass-bg: rgba(0, 0, 0, 0.6); --glass-line: #5c0e06; --glass-ink: #ff2a14; --glass-blur: none; }

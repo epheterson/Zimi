@@ -165,7 +165,9 @@ function load(storageInit) {
   check(kindButtons[0].attrs['aria-pressed'] === 'true' && kindButtons[1].attrs['aria-pressed'] === 'false', 'the computer is the default');
   check(rows[1].kids[2].hidden === true && rows[0].kids[2].hidden === true, 'name boxes stay hidden while one person plays');
   kindButtons[1].handlers.click();
-  check(seats.person(1) && rows[0].kids[2].hidden === false && rows[1].kids[2].hidden === false, 'a second person: names appear');
+  check(!seats.person(1) && rows[0].kids[2].hidden === false && rows[1].kids[2].hidden === false, 'a second person: names appear, the seat in play unchanged');
+  seats.begin();
+  check(seats.person(1), 'the seat change takes effect at the next deal');
   check(rows[2].kids[2].hidden === true, 'a computer seat has no name box');
 }
 

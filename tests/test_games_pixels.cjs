@@ -107,14 +107,14 @@ const server = http.createServer((q, r) => {
   // 5. The index's top: flat ranks start at the 5.5 inset and rounds overshoot it by under 0.3, never touching the edge.
   const cb = await browser2.newContext({ deviceScaleFactor: 1 }).then(c => c.newPage());
   await cb.goto(base + '/h.html');
-  // 4b. The number cards' pips sit inside the court frame with air round them: the sparse pips' outer ink is 30..70, 8 units in from
-  // the frame (22..78), in a box of their own so a count never runs into the corner suit, and clear of the index column, and their rows sit within 7 units of its height (27..113), every card (the pips of
-  // one card are measured with the index's column cut away).
-  const pipInk = await cb.evaluate(async () => {
+  // 4b. A French number card has one suit in its body (no pip grid: the face is made for a 50 px card). Its ink is centred across
+  // the card within a quarter unit, starts below the deepest fan strip (FAN_UP_SHARE of the height, so a fanned card shows its index
+  // and clean paper, never a cut shape) and below the index, and ends inside the side margin (FACE.side, 8 units).
+  const bodyInk = await cb.evaluate(async () => {
     const S = 8, out = {};
-    for (const [name, id] of [['7H', 6 + 26], ['7C', 6], ['6S', 5 + 39], ['3H', 2 + 26], ['10H', 9 + 26], ['10C', 9]]) {
+    for (const [name, id] of [['7H', 6 + 26], ['7C', 6], ['6S', 5 + 39], ['3H', 2 + 26], ['10H', 9 + 26], ['10C', 9], ['AS', 39], ['AD', 13]]) {
       const doc = new DOMParser().parseFromString(ZimiCards.faceMarkup(id, true), 'image/svg+xml'), root = doc.documentElement;
-      root.querySelectorAll('.zc-idx-std').forEach(g => g.remove()); root.setAttribute('width', 100 * S); root.setAttribute('height', 140 * S);
+      root.querySelectorAll('.zc-ix-row, .zc-ix-col').forEach(g => g.remove()); root.setAttribute('width', 100 * S); root.setAttribute('height', 140 * S);
       const svg = new XMLSerializer().serializeToString(root);
       const img = new Image(); img.src = 'data:image/svg+xml;utf8,' + encodeURIComponent(svg); await img.decode();
       const cv = document.createElement('canvas'); cv.width = 100 * S; cv.height = 140 * S; const cx = cv.getContext('2d'); cx.drawImage(img, 0, 0);
@@ -126,11 +126,11 @@ const server = http.createServer((q, r) => {
       }
       out[name] = [x0 / S, x1 / S, y0 / S, y1 / S];
     }
-    return out;
+    return { out, fan: ZimiCards.FAN_UP_SHARE };
   });
-  for (const [name, [x0, x1, y0, y1]] of Object.entries(pipInk)) {
-    ok('pips of ' + name + ' stay within the court frame\'s width and 7 units of its height', x0 >= 21.4 && x1 <= 78.6 && y0 >= 20 && y1 <= 120, [x0, x1, y0, y1].join(' '));
-    if (name === '7H' || name === '7C') ok('outer pips of ' + name + ' stand 8 units in from the frame (30 and 70) within a unit', Math.abs(x0 - 30) <= 1 && Math.abs(x1 - 70) <= 1, [x0, x1].join(' '));
+  for (const [name, [x0, x1, y0, y1]] of Object.entries(bodyInk.out)) {
+    ok('the body of ' + name + ' is centred across the card', Math.abs((x0 + x1) / 2 - 50) <= 0.25, ((x0 + x1) / 2).toFixed(2));
+    ok('the body of ' + name + ' starts below the deepest fan strip and stays inside the margins', y0 >= bodyInk.fan * 140 && x0 >= 8 && x1 <= 92 && y1 <= 132, [x0, x1, y0, y1].join(' '));
   }
 
   const tops = await cb.evaluate(async () => {
@@ -141,14 +141,18 @@ const server = http.createServer((q, r) => {
       const img = new Image(); img.src = 'data:image/svg+xml;utf8,' + encodeURIComponent(svg); await img.decode();
       const cv = document.createElement('canvas'); cv.width = 100 * S; cv.height = 140 * S; const cx = cv.getContext('2d'); cx.drawImage(img, 0, 0);
       const d = cx.getImageData(0, 0, 100 * S, 30 * S).data; let top = 1e9;
-      for (let y = 3 * S; y < 30 * S; y++) for (let x = 3 * S; x < 30 * S; x++) { const i = (y * 100 * S + x) * 4; if (d[i] < 100 && d[i + 1] < 100 && d[i + 2] < 100 && y < top) top = y; }
+      for (let y = 3 * S; y < 40 * S; y++) for (let x = 3 * S; x < 40 * S; x++) { const i = (y * 100 * S + x) * 4; if (d[i] < 100 && d[i + 1] < 100 && d[i + 2] < 100 && y < top) top = y; }
       out[r] = top / S;
     }
     return out;
   });
+  // The rank's cap line is FACE.top (8 units) at a cap height of 26; an optical size (cards.js OPTICAL: the 10 at 93%, Q 95%, K 97%,
+  // J 102%) keeps the baseline, so its cap line moves by the cap's difference. Barlow's A and 4 are flat at the cap line, and its rounds
+  // (2 3 5 6 8 9 0 Q) overshoot it by up to 0.5 units at this scale (1.86).
+  const OPTICAL = { T: 0.93, Q: 0.95, K: 0.97, J: 1.02 };
   for (const [r, t] of Object.entries(tops)) {
-    // Barlow's A and 4 are flat at the cap line, and its rounds (2 3 5 6 8 9 0 Q) overshoot it by up to 0.3 units (at 1.2 scale).
-    ok('index ' + r + ' top inset', t >= 5.5 - 0.3 && t <= 5.5 + 0.13, t.toFixed(2));
+    const want = 8 + 26 * (1 - (OPTICAL[r] || 1));
+    ok('index ' + r + ' top inset', t >= want - 0.5 && t <= want + 0.13, t.toFixed(2) + ' (cap line ' + want.toFixed(2) + ')');
   }
 
   // 6. The index has a column of its own: on every court (French, Spanish), no art or frame ink comes within
@@ -164,8 +168,8 @@ const server = http.createServer((q, r) => {
     };
     const variant = (markup, keep) => {
       const doc = new DOMParser().parseFromString(markup, 'image/svg+xml'), svg = doc.documentElement;
-      if (keep === 'index') [...svg.children].forEach(c => { if (!/zc-idx-std/.test(c.getAttribute('class') || '') && c.tagName !== 'defs' && c.tagName !== 'rect') c.remove(); });
-      else svg.querySelectorAll('.zc-idx-std').forEach(g => g.remove());
+      if (keep === 'index') [...svg.children].forEach(c => { if (!/zc-idx-std|zc-ix-row/.test(c.getAttribute('class') || '') && c.tagName !== 'defs' && c.tagName !== 'rect') c.remove(); });
+      else svg.querySelectorAll('.zc-idx-std, .zc-ix-row').forEach(g => g.remove());
       svg.setAttribute('width', W); svg.setAttribute('height', H);
       return new XMLSerializer().serializeToString(svg);
     };
@@ -176,8 +180,17 @@ const server = http.createServer((q, r) => {
     for (let id = 0; id < 40; id++) if (id % 10 > 6) cases.push(['Spanish ' + id, ZimiCards.spanishFaceMarkup(id, true)]);
     for (const [name, markup] of cases) {
       const idx = await render(variant(markup, 'index')), art = await render(variant(markup, 'art'));
-      const rows = []; for (let y = 3 * S; y < 70 * S; y++) { let a = 1e9, b = -1; for (let x = 3 * S; x < 50 * S; x++) if (dark(idx, x, y)) { a = Math.min(a, x); b = Math.max(b, x + 1); } if (b >= 0) rows.push([y, a, b]); }
-      const parts = [[]]; rows.forEach((r, i) => { if (i && r[0] - rows[i - 1][0] > 1.5 * S) parts.push([]); parts[parts.length - 1].push(r); });
+      // The Spanish index is a column (glyph, then the suit below it, parts split by rows); the French one is a row across the top (the
+      // rank on the left, the suit on the right, parts split by columns).
+      const french = /^French/.test(name), xEnd = (french ? 97 : 50) * S;
+      const rows = []; for (let y = 3 * S; y < 70 * S; y++) { let a = 1e9, b = -1; for (let x = 3 * S; x < xEnd; x++) if (dark(idx, x, y)) { a = Math.min(a, x); b = Math.max(b, x + 1); } if (b >= 0) rows.push([y, a, b]); }
+      let parts = [[]]; rows.forEach((r, i) => { if (i && r[0] - rows[i - 1][0] > 1.5 * S) parts.push([]); parts[parts.length - 1].push(r); });
+      if (french && rows.length) {
+        const y0 = rows[0][0], y1 = rows[rows.length - 1][0];
+        const cols = []; for (let x = 3 * S; x < xEnd; x++) { let on = false; for (let y = y0; y <= y1 && !on; y++) on = dark(idx, x, y); cols.push(on); }
+        const spans = []; cols.forEach((on, i) => { if (on) { const x = i + 3 * S; if (spans.length && x - spans[spans.length - 1][1] <= 1.5 * S) spans[spans.length - 1][1] = x + 1; else spans.push([x, x + 1]); } });
+        parts = spans.map(sp => { const p = []; for (let y = y0; y <= y1; y++) { let on = false; for (let x = sp[0]; x < sp[1] && !on; x++) on = dark(idx, x, y); if (on) p.push([y, sp[0], sp[1]]); } return p; });
+      }
       let worst = 1e9;
       parts.forEach(p => {
         const x0 = Math.min(...p.map(r => r[1])) - CLEAR * S, x1 = Math.max(...p.map(r => r[2])) + CLEAR * S, y0 = p[0][0] - CLEAR * S, y1 = p[p.length - 1][0] + 1 + CLEAR * S;
@@ -286,8 +299,9 @@ const server = http.createServer((q, r) => {
     for (const id of [0, 1, 2, 3, 4, 5, 6, 7, 8, 9]) cases.push(['French ' + 'A23456789 '.charAt(id).trim() + (id === 9 ? '10' : ''), s => ZimiCards.faceMarkup(id, s), id === 9 ? 2 : 1, false]);
     [7, 8, 9].forEach(k => cases.push(['Spanish ' + (k + 3), s => ZimiCards.spanishFaceMarkup(k, s), 2, false]));
     for (let m = 0; m < 12; m++) cases.push(['Hanafuda ' + (m + 1), s => ZimiCards.hanafudaFaceMarkup(m * 4, s), m >= 9 ? 2 : 1, true]);
-    for (const [name, make, digits, hana] of cases) for (const grp of ['zc-idx-std', 'zc-idx-row']) {
-      const markup = make(grp === 'zc-idx-std').replace(/^<svg (?!xmlns)/, '<svg xmlns="http://www.w3.org/2000/svg" '), label = name + (grp === 'zc-idx-row' ? ' (row)' : '');
+    // The French face has its two arrangements (row, column) in every face; the other decks a standard index and a small card's row.
+    for (const [name, make, digits, hana] of cases) for (const grp of /^French/.test(name) ? ['zc-ix-row', 'zc-ix-col'] : ['zc-idx-std', 'zc-idx-row']) {
+      const markup = make(grp === 'zc-idx-std').replace(/^<svg (?!xmlns)/, '<svg xmlns="http://www.w3.org/2000/svg" '), label = name + (grp === 'zc-idx-row' || grp === 'zc-ix-row' ? ' (row)' : grp === 'zc-ix-col' ? ' (column)' : '');
       const scale = +markup.match(new RegExp(grp + '[^>]*>(?:<circle[^>]*\\/>)?<path class="zc-gl" transform="[^"]*scale\\(([\\d.]+)\\)"'))[1], stroke = DIGIT_GAP * scale;
       for (const [cw, dpr] of [[200, 1], [200, 2], [200, 3], [52, 1], [52, 2], [52, 3], [800, 1]]) {
         const w = cw * dpr, ppu = w / 100;

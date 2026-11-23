@@ -54,6 +54,7 @@ const sandbox = {
 };
 vm.createContext(sandbox);
 vm.runInContext(
+  extract(/const ZIMI_COMMUNITY_PREFIX = .*;/, 'ZIMI_COMMUNITY_PREFIX').replace('const ', 'var ') + '\n' +
   extract(/function _flavorToken\(url\)\s*\{[\s\S]*?\n\}/, '_flavorToken') + '\n' +
   extract(/function _newestPerFlavor\(list\)\s*\{[\s\S]*?\n\}/, '_newestPerFlavor') + '\n' +
   extract(/function variantLabel\(url, siblingUrls\)\s*\{[\s\S]*?\n\}/, 'variantLabel') + '\n' +

@@ -83,8 +83,11 @@
 
   // With nothing played yet the table offers these, in this order.
   var CLASSICS = ['chess.html', 'solitaire.html', 'checkers.html'];
+  // World favorites: the best-known games of the world that ours play best (the shelf's lead after the table). Featured never
+  // picks one of these, so the two rows cannot carry the same game on the same day.
+  var WORLD = CLASSICS.concat(['sudoku.html', 'minesweeper.html', 'backgammon.html', 'go.html', 'hearts.html', 'mahjong.html', '2048.html', 'fourinarow.html', 'dominoes.html', 'blackjack.html']);
 
-  var api = { dailyOrder: dailyOrder, ALIAS: ALIAS, canon: canon, KEY: KEY, SNAPS_KEY: SNAPS_KEY, snapSrc: snapSrc, CAP: CAP, fnv1a: fnv1a, uniqueByPath: uniqueByPath, dayPick: dayPick, record: record, read: read, localDay: localDay, tilt: tilt, ago: ago };
+  var api = { dailyOrder: dailyOrder, ALIAS: ALIAS, canon: canon, KEY: KEY, SNAPS_KEY: SNAPS_KEY, snapSrc: snapSrc, CAP: CAP, fnv1a: fnv1a, uniqueByPath: uniqueByPath, dayPick: dayPick, record: record, read: read, localDay: localDay, tilt: tilt, ago: ago, WORLD: WORLD, newestCount: newestCount, featuredPicks: featuredPicks };
   if (typeof module !== 'undefined' && module.exports) { module.exports = api; return; }
   root.ZimiRecent = api;
 
@@ -164,6 +167,7 @@
     var tile = tilesAt(canon(game.path))[0];
     if (!tile) return null;
     var el = tile.cloneNode(true);
+    el.removeAttribute('hidden');   // the shelf may have hidden the original (a room, a search); a copy answers for itself
     var text = el.querySelector('.ar-game-text');
     var line = text && text.querySelector('span');
     if (line && game.line) line.textContent = game.line;
@@ -217,27 +221,58 @@
     return a;
   }
 
-  // The table: the games played lately, newest on top and nearest. Idle, a few classics.
-  function table(games, idle, now) {
-    var s = doc.createElement('section');
-    s.className = 'ar-section ar-continue' + (idle ? ' ar-table-idle' : '');
-    var h = doc.createElement('h2');
-    h.textContent = idle ? T('shelf.table.idle') : T('shelf.table.played');
+  // The rooms' own lists (shell.js): a room's best-known games, in order. A game in a list carries where, as data-fav="room:place,..."
+  // ("all" is the unfiltered shelf), so one row serves every room and the shelf only picks (shelf.js).
+  function roomLists() {
+    var rooms = (root.ZimiShell && root.ZimiShell.rooms) || [];
+    return rooms.filter(function (r) { return r.favorites; }).map(function (r) { return { id: r.id, list: r.favorites }; });
+  }
+  function withFavs(lists) {
+    var order = [], at = {};
+    lists.forEach(function (l) {
+      l.list.forEach(function (p, i) {
+        if (!at[p]) { at[p] = []; order.push(p); }
+        at[p].push(l.id + ':' + i);
+      });
+    });
+    return order.map(function (p) { return { path: p, fav: at[p].join(',') }; });
+  }
+  // With nothing played in a room the table offers three of its best-known games; in no room, the three classics.
+  var IDLE_N = 3;
+  function idleGames(byPath) {
+    var lists = [{ id: 'all', list: CLASSICS }].concat(roomLists().map(function (l) { return { id: l.id, list: l.list.slice(0, IDLE_N) }; }));
+    return withFavs(lists).map(function (g) { return { path: g.path, fav: g.fav, title: named(g.path, 'title', (byPath[g.path] || {}).title) }; });
+  }
+
+  // One shelf of boxes: the games played lately (newest on top and nearest), or the ones offered with nothing played.
+  function tableNav(games, kind, now) {
     var tbl = doc.createElement('nav');
     tbl.className = 'ar-table';
-    tbl.setAttribute('aria-label', h.textContent);
+    tbl.dataset.kind = kind;
     var inner = doc.createElement('div');
     inner.className = 'ar-table-in';
     games.forEach(function (g, i) {
-      var b = box(g, i, idle ? T('shelf.table.classic') : ago(now, g.at), !idle);
-      if (b) inner.appendChild(b);
+      var b = box(g, i, kind === 'idle' ? T('shelf.table.classic') : ago(now, g.at), kind === 'played');
+      if (!b) return;
+      if (g.fav) b.dataset.fav = g.fav;
+      inner.appendChild(b);
     });
-    tbl.appendChild(inner);
-    s.appendChild(h);
-    s.appendChild(tbl);
     if (!inner.children.length) return null;
+    tbl.appendChild(inner);
     // Laid out once it is on the page, and again whenever its width changes (a turn, a view, a language's names).
     if (root.ResizeObserver) new root.ResizeObserver(function () { fitNames(inner); }).observe(inner);
+    return tbl;
+  }
+  // The table: what was played lately and what is offered, both drawn; the shelf shows the one that fits the room and says which in the heading.
+  function table(played, idle, now) {
+    var s = doc.createElement('section');
+    s.className = 'ar-section ar-continue' + (played.length ? '' : ' ar-table-idle');
+    var h = doc.createElement('h2');
+    h.textContent = played.length ? T('shelf.table.played') : T('shelf.table.idle');
+    s.appendChild(h);
+    var navs = [played.length ? tableNav(played, 'played', now) : null, tableNav(idle, 'idle', now)].filter(Boolean);
+    if (!navs.length) return null;
+    navs.forEach(function (n) { n.setAttribute('aria-label', h.textContent); s.appendChild(n); });
     return s;
   }
   // A name on the table never breaks inside a word ("Checker s" on a 390 px phone, where the boxes overlap): a word wider
@@ -266,7 +301,80 @@
     tiles.forEach(function (t) { nav.appendChild(t); });
     s.appendChild(h);
     s.appendChild(nav);
+    mouseRow(s, nav);
     return s;
+  }
+
+  // A row a mouse can scroll (discussion #156: at 1367px each row stopped at the right edge, its scrollbar hidden, and a
+  // mouse had no way to the rest). With a pointer that hovers: a chevron at each end, shown only while there is more that
+  // way, pages by one visible width; the wheel turns sideways over the row until the row is at its end, then the page
+  // scrolls on. Touch keeps its swipe and none of this.
+  var FINE = root.matchMedia ? root.matchMedia('(hover: hover) and (pointer: fine)') : null;
+  var CHEV = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9 6l6 6-6 6"/></svg>';
+  function mouseRow(s, nav) {
+    if (!FINE || !FINE.matches) return;
+    var rtl = function () { return getComputedStyle(nav).direction === 'rtl'; };
+    var btn = function (cls, key, dir) {
+      var b = doc.createElement('button');
+      b.type = 'button'; b.className = 'ar-row-btn ' + cls; b.hidden = true; b.innerHTML = CHEV;
+      b.setAttribute('aria-label', T(key));
+      b.addEventListener('click', function () { nav.scrollBy({ left: dir * (rtl() ? -1 : 1) * nav.clientWidth * 0.9, behavior: 'smooth' }); });
+      s.appendChild(b);
+      return b;
+    };
+    var prev = btn('ar-row-prev', 'shelf.rowPrev', -1), next = btn('ar-row-next', 'shelf.rowNext', 1);
+    s.classList.add('ar-row');
+    function update() {
+      var at = Math.abs(nav.scrollLeft), max = nav.scrollWidth - nav.clientWidth;
+      prev.hidden = at <= 1;
+      next.hidden = at >= max - 1;
+    }
+    nav.addEventListener('scroll', update, { passive: true });
+    if (root.ResizeObserver) new root.ResizeObserver(update).observe(nav);
+    nav.addEventListener('wheel', function (e) {
+      if (e.ctrlKey || Math.abs(e.deltaX) >= Math.abs(e.deltaY)) return;   // a trackpad's own sideways swipe, or a zoom
+      var before = nav.scrollLeft;
+      nav.scrollLeft += (rtl() ? -1 : 1) * e.deltaY * (e.deltaMode === 1 ? 16 : 1);
+      if (nav.scrollLeft !== before) e.preventDefault();
+    }, { passive: false });
+    mouseDrag(nav);
+    root.requestAnimationFrame ? root.requestAnimationFrame(update) : update();
+  }
+
+  // Pressing and dragging a row with a mouse scrolls it (a finger already does). Past DRAG_PX the press is a drag: the
+  // row's snapping steps aside until release and the click that ends the drag is swallowed, so the card under the
+  // pointer does not open. A press that stays under DRAG_PX is a plain click.
+  var DRAG_PX = 5;
+  function mouseDrag(nav) {
+    var down = null, dragged = false;
+    nav.addEventListener('pointerdown', function (e) {
+      if (e.pointerType !== 'mouse' || e.button !== 0) return;
+      down = { x: e.clientX, left: nav.scrollLeft, id: e.pointerId };
+      dragged = false;
+    });
+    nav.addEventListener('pointermove', function (e) {
+      if (!down || e.pointerId !== down.id) return;
+      var dx = e.clientX - down.x;
+      if (!dragged) {
+        if (Math.abs(dx) <= DRAG_PX) return;
+        dragged = true;
+        nav.style.scrollSnapType = 'none';
+        nav.style.userSelect = 'none';
+        try { nav.setPointerCapture(e.pointerId); } catch (x) { /* a pointer that is already gone */ }
+      }
+      nav.scrollLeft = down.left - dx;
+    });
+    var end = function (e) {
+      if (!down || e.pointerId !== down.id) return;
+      down = null;
+      nav.style.scrollSnapType = '';
+      nav.style.userSelect = '';
+      if (dragged) root.setTimeout(function () { dragged = false; }, 0);   // after the click this release makes
+    };
+    nav.addEventListener('pointerup', end);
+    nav.addEventListener('pointercancel', end);
+    nav.addEventListener('click', function (e) { if (dragged) { e.preventDefault(); e.stopPropagation(); } }, true);
+    nav.addEventListener('dragstart', function (e) { e.preventDefault(); });   // a tile's link or art is not a drag to drop
   }
 
   // The Daily row: today's edition of every game that has one (ZimiShell.DAILY in shell.js), each tile opening it with the
@@ -322,7 +430,7 @@
       var line = doc.createElement('span');
       line.className = 'ar-daily-line';
       // How many of the everyday dailies are done (the rest are extra): the shelf calls it again when a room leaves fewer.
-      s.dailyLine = function (n, total) { line.textContent = T('shelf.daily.done', { n: n, total: total }) + (streak > 1 ? ' \u00b7 ' + T('daily.streak', { n: streak }) : ''); };
+      s.dailyLine = function (n, total) { line.textContent = (total ? T('shelf.daily.done', { n: n, total: total }) : '') + (streak > 1 ? (total ? ' \u00b7 ' : '') + T('daily.streak', { n: streak }) : ''); };
       s.dailyLine(s.querySelectorAll('a.ar-daily-main.ar-done').length, s.querySelectorAll('a.ar-daily-main').length);
       var stats = doc.createElement('button');
       stats.type = 'button';
@@ -346,32 +454,67 @@
   }
   // World favorites: the best-known games of the world that ours play best, the shelf's lead after the table (Eric: the games
   // that use your library are not the ones to open on). A game the shelf has no tile of is left out.
-  var WORLD = CLASSICS.concat(['sudoku.html', 'minesweeper.html', 'backgammon.html', 'go.html', 'hearts.html', 'mahjong.html', '2048.html', 'fourinarow.html', 'dominoes.html', 'blackjack.html']);
   function worldSection() {
     var tiles = [];
-    WORLD.forEach(function (p) { var t = tileFor({ path: p }); if (t) tiles.push(ownIds(t)); });   // the idle table's three classics are here too: a person looking for chess finds it
+    // The unfiltered shelf's list, then each room's own (a game in both is one tile): a room shows its list, in its order.
+    withFavs([{ id: 'all', list: WORLD }].concat(roomLists())).forEach(function (g) {
+      var t = tileFor({ path: g.path });   // the idle table's three classics are here too: a person looking for chess finds it
+      if (t) { t.dataset.fav = g.fav; tiles.push(ownIds(t)); }
+    });
     if (!tiles.length) return null;
     var s = section('ar-world', T('shelf.world'), tiles);
     if (root.ZimiShell && root.ZimiShell.localizeTiles) root.ZimiShell.localizeTiles(s);
     return s;
   }
-  // New: the games that arrived with the release this shelf shipped in, one row under the table. Absent when no row has an `added`.
-  function newSection(rows) {
+  // What the New row's list was: the games the release this shelf shipped in added, one row that changed only when a new
+  // release landed. Featured keeps that row's size, so a fresh ZIM shows the same richness; it is the count, nothing more.
+  function newestCount(rows) {
     var latest = '';
     (rows || []).forEach(function (r) { if (r && r.added && (!latest || newer(r.added, latest))) latest = r.added; });
-    if (!latest) return null;
-    // Dealt one kind at a time (ten solitaires in a row would be one picture), the smallest kinds leading.
-    var kinds = {}, tiles = [];
-    uniqueByPath(rows).forEach(function (g) {
-      var t = g.added === latest ? tileFor(g) : null;
-      if (t) (kinds[g.kind || ''] = kinds[g.kind || ''] || []).push(ownIds(t));
+    var n = 0;
+    uniqueByPath(rows).forEach(function (g) { if (g.added === latest) n++; });
+    return n;
+  }
+  // One small seeded shuffle (util.js mulberry32, the generator the daily deals use): the same day deals the same row everywhere.
+  function shuffled(seed, arr) {
+    var rng = root.ZimiUtil.mulberry32(seed), out = arr.slice();
+    for (var i = out.length - 1; i > 0; i--) {
+      var j = Math.floor(rng() * (i + 1));
+      var t = out[i]; out[i] = out[j]; out[j] = t;
+    }
+    return out;
+  }
+  // The day's row (".ar-featured"): a deterministic pick of `n` games seeded by the day (the Daily row's day, shell.js) so a
+  // day is one row for everyone. Half the picks come from the newest third of games.json, half from the rest, so over time
+  // every game is featured. A game the World favorites open on is never here. Exported so the tests hold it to the same numbers.
+  function featuredPicks(rows, day) {
+    var games = uniqueByPath(rows), world = {};
+    WORLD.forEach(function (p) { world[p] = 1; });
+    var pool = games.filter(function (g) { return !world[g.path]; });
+    var n = Math.min(newestCount(rows), pool.length);
+    if (!n) return [];
+    var seed = fnv1a(day);
+    var third = Math.max(1, Math.floor(pool.length / 3)), newest = pool.slice(pool.length - third), rest = pool.slice(0, pool.length - third);
+    var half = Math.ceil(n / 2);
+    // Paths, not rows: featuredSection looks each pick's row up by it, so a pick is an address tileFor can load.
+    return shuffled(seed, newest).slice(0, half).concat(shuffled(seed ^ 0x9e3779b9, rest).slice(0, n - half)).slice(0, n).map(function (g) { return g.path; });
+  }
+  // Featured: the day's row, a held pick of the library that changes once a day. Absent when no game says which release added it.
+  function featuredSection(rows) {
+    var S = root.ZimiShell;
+    if (!S || !S.serverDay) return Promise.resolve(null);
+    return S.serverDay().then(function (day) {
+      var tiles = [], byPath = {};
+      uniqueByPath(rows).forEach(function (r) { byPath[r.path] = r; });
+      featuredPicks(rows, day).forEach(function (p) {
+        var g = byPath[p], t = g && tileFor(g);
+        if (t) tiles.push(ownIds(t));
+      });
+      if (!tiles.length) return null;
+      var s = section('ar-featured', T('shelf.featured'), tiles);
+      if (root.ZimiShell && root.ZimiShell.localizeTiles) root.ZimiShell.localizeTiles(s);
+      return s;
     });
-    var lanes = Object.keys(kinds).map(function (k) { return kinds[k]; }).sort(function (a, b) { return a.length - b.length; });
-    for (var i = 0; lanes.some(function (l) { return i < l.length; }); i++) lanes.forEach(function (l) { if (i < l.length) tiles.push(l[i]); });
-    if (!tiles.length) return null;
-    var s = section('ar-new', T('shelf.new'), tiles);
-    if (root.ZimiShell && root.ZimiShell.localizeTiles) root.ZimiShell.localizeTiles(s);
-    return s;
   }
   function markDone(t) {
     t.classList.add('ar-done');
@@ -383,22 +526,35 @@
     t.appendChild(tick);
   }
 
+  // games.json, once: [] when it cannot be read (a page opened from a place that cannot fetch).
+  function fetchRows() {
+    return fetch(new URL('games.json', base).href).then(function (r) { return r.ok ? r.json() : []; }).catch(function () { return []; });
+  }
+  // A cold cache or a service worker still starting can fail that one request, and the Featured row and Game of the day are drawn from
+  // it: the table and World favorites are drawn at once, and the answer is asked for again (twice, a moment apart) until it comes.
+  var ROWS_RETRIES = 2, ROWS_RETRY_MS = 800;
+  function rowsWithRetry(tries, got) {
+    return fetchRows().then(function (rows) {
+      if (rows.length || tries <= 0) return got(rows);
+      root.setTimeout(function () { rowsWithRetry(tries - 1, got); }, ROWS_RETRY_MS);
+    });
+  }
+
   function shelf() {
     var first = doc.querySelector('.ar-section');
     if (!first) return;
     liveTiles();
-    // games.json is the shelf's own data (a file of this ZIM): the day's game
-    // and the lines of games that have no tile. Without it (a page opened from
-    // a place that cannot fetch) the table is still drawn, and Game of the day is left out.
-    fetch(new URL('games.json', base).href).then(function (r) { return r.ok ? r.json() : []; }).catch(function () { return []; }).then(function (rows) {
+    // games.json is the shelf's own data (a file of this ZIM): the day's game and the lines of games that have no tile. Without
+    // it the table is still drawn, and Game of the day is left out.
+    var drawn = false;
+    function drawRows(rows) {
       var byPath = {};
       uniqueByPath(rows).forEach(function (r) { byPath[r.path] = r; });
       var now = Date.now();
       var played = read(root.localStorage).filter(function (e) { return e && e.path; }).slice(0, CAP).map(function (e) {
         return { path: e.path, title: named(e.path, 'title', e.title), at: e.at };
       });
-      var idle = !played.length;
-      var t = table(idle ? CLASSICS.map(function (p) { return { path: p, title: named(p, 'title', (byPath[p] || {}).title) }; }) : played, idle, now);
+      var t = table(played, idleGames(byPath), now);
       if (t) first.parentNode.insertBefore(t, first);
       // shelf.js lays the sections out per view; it is told when they are in.
       doc.dispatchEvent(new Event('zimi-shelf-today'));
@@ -407,18 +563,35 @@
         first.parentNode.insertBefore(world, first);
         doc.dispatchEvent(new Event('zimi-shelf-today'));
       }
-      var fresh = newSection(rows);
-      if (fresh) {
-        first.parentNode.insertBefore(fresh, first);
+    }
+    // What games.json adds: the Featured row and the Daily row, each once (both wait on the server's day).
+    function drawFromRows(rows) {
+      featuredSection(rows).then(function (s) {
+        if (!s) return;
+        first.parentNode.insertBefore(s, first);
         doc.dispatchEvent(new Event('zimi-shelf-today'));
-      }
-      return dailySection(rows);
-    }).then(function (s) {
-      if (!s) return;
-      first.parentNode.insertBefore(s, first);
-      doc.dispatchEvent(new Event('zimi-shelf-today'));
+      });
+      dailySection(rows).then(function (s) {
+        if (!s) return;
+        first.parentNode.insertBefore(s, first);
+        doc.dispatchEvent(new Event('zimi-shelf-today'));
+      });
+    }
+    rowsWithRetry(ROWS_RETRIES, function (rows) {
+      if (!drawn) { drawn = true; drawRows(rows); }
+      if (rows.length) drawFromRows(rows);
     });
   }
 
-  if (doc.querySelector('.ar-shelf')) shelf(); else note();
+  // shelf.js reads the page's sections when it runs, and it runs after this file. On a slow phone, or a cold cache, games.json can
+  // answer before shelf.js has even arrived: the rows would be put in the page first and shelf.js would take them for sections of
+  // games (and stop). So the rows wait for every script of the page to have run; a page that is already past that draws now.
+  function afterScripts(fn) {
+    var once = false;
+    function go() { if (!once) { once = true; fn(); } }
+    if (doc.readyState === 'complete') return go();
+    doc.addEventListener('DOMContentLoaded', go);
+    root.addEventListener('load', go);
+  }
+  if (doc.querySelector('.ar-shelf')) afterScripts(shelf); else note();
 })(typeof window !== 'undefined' ? window : globalThis);

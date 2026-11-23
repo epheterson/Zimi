@@ -220,10 +220,34 @@ def test_video_flags_force_the_video_path(monkeypatch):
 
 
 def test_missing_ytdlp_gives_install_hint(monkeypatch, tmp_path):
+    from zimi import addons
+
     monkeypatch.setitem(sys.modules, "yt_dlp", None)
     monkeypatch.delenv("ZIMI_OFFLINE", raising=False)
+    monkeypatch.setattr(addons, "ensure", lambda key, say=None: False)
     with pytest.raises(video.CreateError, match="pip install yt-dlp"):
         video.create_video_zim(PLAYLIST_URL, out_dir=str(tmp_path))
+
+
+def test_missing_ytdlp_asks_the_video_addon_first(monkeypatch, tmp_path):
+    """Under Automatically a fresh machine installs the video add-on and the job goes on."""
+    from zimi import addons
+
+    monkeypatch.delenv("ZIMI_OFFLINE", raising=False)
+    monkeypatch.setattr(addons, "supported", lambda: True)
+    asked = []
+
+    def ensure(key, say=None):
+        asked.append(key)
+        _install_fake_ytdlp(monkeypatch, _videos())  # the add-on's install puts yt_dlp on the path
+        return True
+
+    monkeypatch.setitem(sys.modules, "yt_dlp", None)
+    monkeypatch.setattr(addons, "ensure", ensure)
+    info = video.create_video_zim(
+        PLAYLIST_URL, out_dir=str(tmp_path / "out"), work_dir=str(tmp_path)
+    )
+    assert asked == ["video"] and info["videos"] == 3
 
 
 # ── the build, end to end against a real ZIM ────────────────────────────────

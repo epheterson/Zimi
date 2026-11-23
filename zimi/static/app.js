@@ -46,6 +46,16 @@ window.addEventListener('unhandledrejection', function(e) {
 // ── Config (injected by server via inline script) ──
 var _cfg = window.__ZIMI_CONFIG || {};
 var _i18nVer = _cfg.i18nHash || '0';
+// A /static data file's address with the version of the file: the server sends /static as immutable for a year, so a file whose
+// content changed under the same name (the 3D view's models and maps did, from 1.15 to 1.16) is only fetched afresh when its address
+// changes. The server gives the page each data file's content hash (__ZIMI_CONFIG.assets, by path under static/); a file it does not
+// list takes the build's. A query on the address is replaced by it; the Almanac inside its own ZIM has no
+// config and keeps its relative paths as they are.
+function _almAsset(path) {
+  var base = String(path).replace(/[?#].*$/, ''), c = window.__ZIMI_CONFIG || {};
+  var rel = base.replace(/^\/?static\//, ''), v = (c.assets && c.assets[rel]) || c.build || '';
+  return v ? base + '?v=' + encodeURIComponent(v) : base;
+}
 
 // ── Storage Keys ──
 var SK = {
@@ -73,6 +83,7 @@ var SK = {
   LIBRARY_TAB: 'zimi_library_tab',
   // Home library layout: 'list' (default full cards) | 'tiles' (compact grid).
   LIBRARY_VIEW: 'zimi_library_view',
+  // Home's width on a wide screen: 'compact' (the narrow centred column) | default wide.
   // How the home screen orders the ZIMs inside a category. Alphabetical by
   // default (#67): it matches Settings > Library, and it is the order you can
   // predict when you are looking for a title you already know. Article count
@@ -191,8 +202,10 @@ var SK = {
   ALM_UNITS: 'zimi_almanac_units',
   ALM_SKY: 'zimi_sky_settings',
   ALM_ORBITS: 'zimi_ae_orbits',
+  ALM_SATS_ALL: 'zimi_ae_sats_all',
   ALM_LANDMARKS: 'zimi_alm_landmarks',
   ALM_SPIN_FACES: 'zimi_alm_spin_faces',
+  ALM_HINT_CONTROLS: 'zimi_alm_hint_controls',   // sessionStorage: the 3D view's "tap to show or hide controls" line, said once
   ALM_HD_LATER: 'zimi_alm_hd_later',
   ALM_ORRERY_TRIED: 'zimi_orrery_tried',
   // The app pages' choices (apps.js prefWrite, pdfreader.js): they cannot read SK
@@ -234,7 +247,7 @@ var _PREF_KEYS = [
   SK.APP_THEME, SK.APP_THEME_BEFORE_RED, SK.ARTICLE_THEME, SK.DARKEN_ARTICLES,
   SK.LIBRARY_SORT, SK.TTS_RATE, SK.BOOK_PREFS, SK.WIKI_PREFS,
   SK.READER_COACH, SK.TTS_SUGGESTED, SK.WELCOME_DISMISSED, SK.MAPS_SOURCE,
-  SK.ALMANAC_PLACE, SK.ALM_CLOCKS, SK.ALM_CLOCKS_VIEW, SK.ALM_UNITS, SK.ALM_SKY, SK.ALM_ORBITS, SK.ALM_LANDMARKS, SK.ALM_SPIN_FACES,
+  SK.ALMANAC_PLACE, SK.ALM_CLOCKS, SK.ALM_CLOCKS_VIEW, SK.ALM_UNITS, SK.ALM_SKY, SK.ALM_ORBITS, SK.ALM_SATS_ALL, SK.ALM_LANDMARKS, SK.ALM_SPIN_FACES,
   SK.ALM_HD_LATER, SK.ALM_ORRERY_TRIED,
   SK.WIKI_VIEW, SK.WIKI_LANG, SK.PDF_DARK, SK.PDF_SPREAD, SK.PDF_VIEW,
   SK.TUBE_SORT, SK.TUBE_AUTOPLAY, SK.TUBE_THEATER, SK.REDDOT_FOLLOW,
@@ -375,6 +388,24 @@ function _resolveAppTheme(mode) {
   return _prefersLight() ? 'light' : 'dark';
 }
 function _appThemeIsDark() { return _resolveAppTheme() === 'dark'; }
+// The colour the browser paints behind the notch and the status bar: black in
+// Red, and while a PDF is read the colour of its top bar (the reader's own
+// --bg), so the band under the notch is the bar's and stays so. Otherwise none.
+function _themeColorNow() {
+  if (_nightRedOn()) return NIGHT_THEME_COLOR;
+  if (typeof _pdfReading !== 'undefined' && _pdfReading) return getComputedStyle(document.documentElement).getPropertyValue('--bg').trim() || null;
+  return null;
+}
+function _syncThemeColor() {
+  var c = _themeColorNow();
+  var meta = document.querySelector('meta[name="theme-color"]');
+  if (c && !meta) {
+    meta = document.createElement('meta');
+    meta.name = 'theme-color';
+    document.head.appendChild(meta);
+  }
+  if (meta) { if (c) meta.content = c; else meta.remove(); }
+}
 function _applyAppTheme() {
   var t = _resolveAppTheme();
   var el = document.documentElement;
@@ -385,13 +416,7 @@ function _applyAppTheme() {
   // on tab re-activation. Mirrors the head bootstrap.
   el.style.colorScheme = t;
   el.classList.toggle(NIGHT_CLASS, red);
-  var meta = document.querySelector('meta[name="theme-color"]');
-  if (red && !meta) {
-    meta = document.createElement('meta');
-    meta.name = 'theme-color';
-    document.head.appendChild(meta);
-  }
-  if (meta) { if (red) meta.content = NIGHT_THEME_COLOR; else meta.remove(); }
+  _syncThemeColor();
   var btn = document.getElementById('night-btn');
   if (btn) btn.setAttribute('aria-pressed', red ? 'true' : 'false');
   _syncFrameNight(null);
@@ -778,7 +803,7 @@ function _applyArticleDarken(doc) {
   if (scheme === 'dark' && paintsDark) _darkenLightIslands(doc);
   // Red is for night vision: a page that has no dark mode is darkened whatever
   // the setting says, a captured site included, and its pictures are dimmed.
-  var red = _nightRedOn() && loc.indexOf('/static/') !== 0 && !_docIsOurOwnPage(doc);
+  var red = _nightRedOn() && loc.indexOf('/static/') !== 0 && !_docIsOurOwnPage(doc) && !_docBroughtRed(doc);
   var simulate = _shouldSimulateDark(dark, _darkenArticlesOn() || red, _darkenArticlesExplicit() || red,
                                      _readerViewOn, loc, _articleIsWebCapture(), paintsDark);
   if (doc.head && (simulate || red)) {
@@ -1345,15 +1370,30 @@ function _voiceRowHtml(x, isOn, last) {
     (busy ? '<div class="lang-dl">' + _voiceBarHtml() + '</div>' : '') + '</div>';
 }
 // The downloads setting, an admin's, one quiet line under the voices.
+// A foot row of Settings > Voices: its label, then a few short choices (the segmented selector, not a menu).
+// opts: [{ v, label }]; `call` is the JS each button runs with its value.
+function _voiceFootSegHtml(id, labelKey, opts, cur, call, disabled) {
+  return '<div class="voice-foot"><span>' + tH(labelKey) + '</span><div class="app-theme-seg voice-foot-seg" id="' + id + '" role="radiogroup" aria-label="' + escAttr(t(labelKey)) + '">' +
+    opts.map(function(o) {
+      var on = o.v === cur;
+      return '<button type="button" class="app-theme-btn' + (on ? ' active' : '') + '" role="radio" aria-checked="' + on + '"' + (disabled ? ' disabled' : '') +
+        ' onclick="' + escAttr(call + '(' + JSON.stringify(o.v) + ')') + '"><span>' + esc(o.label) + '</span></button>';
+    }).join('') + '</div></div>';
+}
 function _voicesModeHtml(s) {
-  var opts = (s.choices || ['ask', 'auto', 'never']).map(function(m) {
-    return _appUpdateOption(m, t('alm_earth_sat_' + m), m === s.mode);
-  }).join('');
+  var opts = (s.choices || ['ask', 'auto', 'never']).map(function(m) { return { v: m, label: t('alm_earth_sat_' + m) }; });
   var note = s.locked ? (s.locked === 'offline' ? t('net_offline') : t('env_controlled', { v: s.env || 'ZIMI_VOICE_DOWNLOADS' })) : '';
-  return '<div class="voice-foot"><label for="' + _VOICES_MODE_ID + '">' + tH('voices_mode') + '</label>' +
-    '<select id="' + _VOICES_MODE_ID + '"' + (s.locked ? ' disabled' : '') +
-    ' onchange="_voicesSetMode(this.value)">' + opts + '</select></div>' +
+  return _voiceFootSegHtml(_VOICES_MODE_ID, 'voices_mode', opts, s.mode, '_voicesSetMode', !!s.locked) +
     (note ? '<div class="ms-hint">' + esc(note) + '</div>' : '');
+}
+
+// Cache voices for faster playback: how much said audio is kept; Off keeps
+// it in memory only (nothing written to the data folder, a kindness to an SD card).
+function _voiceCacheHtml(c) {
+  var opts = (c.choices || []).map(function(mb) { return { v: mb, label: mb ? mb + ' MB' : t('net_state_off') }; });
+  return _voiceFootSegHtml('voices-cache', 'voices_cache', opts, c.mb, '_voicesSetCache', !!c.env) +
+    (c.mb && typeof c.used === 'number' ? '<div class="ms-hint voice-cache-used">' + esc(t('voices_cache_used', { used: fmtBytes(c.used), cap: c.mb + ' MB' })) + '</div>' : '') +
+    '<div class="ms-hint">' + esc(c.env ? t('env_controlled', { v: 'ZIMI_VOICE_CACHE_DIR' }) : t('voices_cache_desc')) + '</div>';
 }
 
 // Under the engines, which flavor says which language here (Eric,
@@ -1429,6 +1469,36 @@ function _vgCellHtml(lang, e, name) {
   }
   return '<span class="vg-cell' + (off ? ' off' : '') + '" role="cell">' + inner + '</span>';
 }
+// A language with more than one accent (English: United States, United
+// Kingdom) lets an admin pick which says it; one not here is fetched on the pick.
+function _regionName(r) {
+  try { return new Intl.DisplayNames([_currentLang || 'en'], { type: 'region' }).of(r) || r; } catch (e) { return r; }
+}
+function _vgRegionHtml(lang) {
+  var row = _voiceRowFor(lang), opts = (row && row.regions) || [];
+  if (opts.length < 2 || !_voicesHere.can_change) return '';
+  var cur = row.region || opts[0].region, busy = _voicesDl().tag, label = escAttr(t('voices_region'));
+  var curOpt = opts.filter(function(o) { return o.region === cur; })[0];
+  // The region's two letters, its name and what it costs on hover; each says only the voices that have it.
+  var seg = '<div class="app-theme-seg vg-accent" role="radiogroup" aria-label="' + label + '">' + opts.map(function(o) {
+    var mb = o.tag && _voicesMayFetch() ? ' (' + _voiceMb(o.bytes) + ' MB)' : '';
+    var on = o.region === cur, title = escAttr(_regionName(o.region) + mb);
+    return '<button type="button" class="app-theme-btn' + (on ? ' active' : '') + '" role="radio" aria-checked="' + on + '"' +
+      ' aria-label="' + title + '" title="' + title + '"' + (busy || (o.tag && !_voicesMayFetch()) ? ' disabled' : '') +
+      ' onclick="' + escAttr('_voiceRegionPick(' + JSON.stringify(lang) + ', ' + JSON.stringify(o.region) + ')') + '"><span>' + esc(o.region) + '</span></button>';
+  }).join('') + '</div>';
+  // Which voices the accent reaches, when more than one says this language: the rest keep their own.
+  var by = curOpt && curOpt.engines || [];
+  var note = (row.engines || []).length > 1 && by.length
+    ? '<span class="vg-accent-note">' + esc(t('voices_accent_in', { voices: by.map(_voiceEngineName).join(', ') })) + '</span>' : '';
+  return '<span class="vg-accent-wrap">' + seg + note + '</span>';
+}
+function _voiceRegionPick(lang, region) {
+  var o = (((_voiceRowFor(lang) || {}).regions) || []).filter(function(x) { return x.region === region; })[0];
+  _voicesSend('/manage/voices/choose', { lang: lang, region: region }, t('voices_failed')).then(function() {
+    if (o && o.tag) _voicesSend('/manage/voices/download', { lang: o.tag }, t('voices_failed'));
+  });
+}
 // A row; the first row with a download coming carries its bar and Cancel.
 function _vgRowHtml(lang, flavors, state) {
   var own = _langOwnName(lang), named = _langDisplayName(lang) || lang, dl = _voicesDl();
@@ -1438,7 +1508,7 @@ function _vgRowHtml(lang, flavors, state) {
     // In Zimi's language, the language's own name small after it (Eric,
     // 2026-10-05: "You know my language").
     '<span class="vg-name" role="rowheader"><span class="vg-own">' + esc(named) + '</span>' +
-    (named !== own ? '<span class="vg-zimi" lang="' + escAttr(lang) + '">' + esc(own) + '</span>' : '') + '</span>' +
+    (named !== own ? '<span class="vg-zimi" lang="' + escAttr(lang) + '">' + esc(own) + '</span>' : '') + _vgRegionHtml(lang) + '</span>' +
     flavors.map(function(e) { return _vgCellHtml(lang, e, named); }).join('') + '</div>' +
     (busy ? '<div class="lang-dl vg-dl">' + _voiceBarHtml() +
       (_voicesHere && _voicesHere.can_change ? _voiceAction('/manage/voices/cancel', dl.tag, tH('cancel')) : '') + '</div>' : '');
@@ -1661,7 +1731,7 @@ function _voicePickHtml(on, labelKey, cur, field, cls, reads) {
       ' onclick="' + escAttr('_setVoicePrefs(' + JSON.stringify(change) + ')') + '"><span>' + esc(label) + '</span></button>';
   };
   // A row of the card, as every Settings section draws one: its title, then the choices under it.
-  return '<div class="share-row set-row voice-pick"><span class="share-row-title">' + tH(labelKey) + '</span>' +
+  return '<div class="share-row set-row voice-choice"><span class="share-row-title">' + tH(labelKey) + '</span>' +
     '<div class="app-theme-seg voice-default ' + cls + '" role="radiogroup" aria-label="' + escAttr(t(labelKey)) + '">' +
     opt('', t('voices_default_auto')) + on.map(function(x) { return opt(x.engine, _voiceEngineName(x.engine)); }).join('') + '</div></div>';
 }
@@ -1706,6 +1776,7 @@ function _voicePrefsHtml() {
   var why = _voicesHere && (_voicesHere.problem || (_voicesHere.downloading && _voicesHere.downloading.reason));
   if (why) h += '<div class="ms-hint voice-problem" role="alert">' + esc(why) + '</div>';
   if (_voicesHere && _voicesHere.can_change && _voicesHere.setting) h += _voicesModeHtml(_voicesHere.setting);
+  if (_voicesHere && _voicesHere.can_change && _voicesHere.cache) h += _voiceCacheHtml(_voicesHere.cache);
   return h + '<div class="ms-hint">' + tH('voices_say_remembers') + '</div>';
 }
 // Drawn again only when something in it changed: the browser names its voices
@@ -1793,6 +1864,9 @@ function _voicesPost(path, tag, btn) {
   return String(tag).split(' ').reduce(function(done, one) {
     return done.then(function() { return _voicesSend(path, { lang: one }, fail); });
   }, Promise.resolve());
+}
+function _voicesSetCache(mb) {
+  _voicesSend('/manage/voices/cache', { mb: mb }, t('voices_failed'));
 }
 function _voicesSetMode(mode) {
   _voicesSend('/manage/voices', { mode: mode }, t('env_controlled', { v: 'ZIMI_VOICE_DOWNLOADS' }));
@@ -2186,7 +2260,8 @@ function _loadingHtml(key) { return '<div class="loading"><span class="spinner-i
 // confirmation should be in app ui"). Reuses the password overlay's shell so
 // it themes correctly on both palettes. Resolves true only on the primary
 // button; overlay tap, Cancel, and Escape all resolve false.
-function _appConfirm(message, okLabel) {
+// A third button (altLabel) answers 'alt'; Cancel and Escape answer false.
+function _appConfirm(message, okLabel, altLabel) {
   return new Promise(function(resolve) {
     var overlay = document.createElement('div');
     overlay.className = 'pw-overlay open pw-confirm';
@@ -2195,6 +2270,7 @@ function _appConfirm(message, okLabel) {
         '<h3>' + esc(message) + '</h3>' +
         '<div class="pw-actions">' +
           '<button type="button" id="ac-cancel">' + tH('cancel') + '</button>' +
+          (altLabel ? '<button type="button" id="ac-alt">' + esc(altLabel) + '</button>' : '') +
           '<button type="button" class="pw-primary" id="ac-ok">' + esc(okLabel || t('ok')) + '</button>' +
         '</div>' +
       '</div>';
@@ -2210,6 +2286,8 @@ function _appConfirm(message, okLabel) {
     document.addEventListener('keydown', onKey, true);
     document.body.appendChild(overlay);
     overlay.querySelector('#ac-cancel').onclick = function() { done(false); };
+    var alt = overlay.querySelector('#ac-alt');
+    if (alt) alt.onclick = function() { done('alt'); };
     var ok = overlay.querySelector('#ac-ok');
     ok.onclick = function() { done(true); };
     ok.focus();
@@ -2222,25 +2300,51 @@ function _appConfirm(message, okLabel) {
 // to them instead of leaving every label its key (Eric, 2026-10-03: the
 // Dictionary and the search box read "dictionary_say", "search").
 var _I18N_KEPT = 'zimi_i18n_kept_';
-async function _i18nFetch(lang) {
+// dir: '' for Home's words, I18N_ALMANAC_DIR for the Almanac's (its own file, so Home does not download them).
+var I18N_ALMANAC_DIR = 'almanac/';
+async function _i18nFetch(lang, dir) {
+  dir = dir || '';
   try {
-    var res = await fetch('/static/i18n/' + lang + '.json?v=' + _i18nVer);
+    var res = await fetch('/static/i18n/' + dir + lang + '.json?v=' + _i18nVer);
     if (res.ok) {
       var words = await res.json();
       if (words && typeof words === 'object' && Object.keys(words).length) {
-        try { localStorage.setItem(_I18N_KEPT + lang, JSON.stringify(words)); } catch (e) {}
+        try { localStorage.setItem(_I18N_KEPT + dir + lang, JSON.stringify(words)); } catch (e) {}
         return words;
       }
     }
   } catch (e) {}
-  try { var kept = JSON.parse(localStorage.getItem(_I18N_KEPT + lang) || 'null'); if (kept) return kept; } catch (e) {}
+  try { var kept = JSON.parse(localStorage.getItem(_I18N_KEPT + dir + lang) || 'null'); if (kept) return kept; } catch (e) {}
   return null;
+}
+// The Almanac's words (alm_, tb_, ref_), asked for with the first thing of the Almanac's that runs and from then on
+// with every language load. One load per language, however many ask; dropped when it fails so the next ask tries again.
+var _almWordsWanted = false;
+var _almWordsLoading = null;
+async function _mergeAlmanacWords(lang) {
+  var got = await Promise.all([_i18nFetch('en', I18N_ALMANAC_DIR), lang === 'en' ? null : _i18nFetch(lang, I18N_ALMANAC_DIR)]);
+  if (got[0]) Object.assign(_i18nFallback, got[0]);
+  if (got[1] && _i18n !== _i18nFallback) Object.assign(_i18n, got[1]);
+  return !!got[0];
+}
+function _loadAlmanacWords() {
+  _almWordsWanted = true;
+  if (!_almWordsLoading) {
+    var lang = _currentLang;
+    _almWordsLoading = _mergeAlmanacWords(lang).then(function(ok) {
+      if (!ok) _almWordsLoading = null;
+      else if (lang !== _currentLang) { _almWordsLoading = null; return _loadAlmanacWords(); }
+    }, function() { _almWordsLoading = null; });
+  }
+  return _almWordsLoading;
 }
 async function _loadI18n(lang) {
   // English is every language's fallback; the language itself alongside it.
   var got = await Promise.all([_i18nFetch('en'), lang === 'en' ? null : _i18nFetch(lang)]);
   if (got[0]) _i18nFallback = got[0];
   _i18n = (lang !== 'en' && got[1]) || _i18nFallback;
+  // The Almanac's words were in the language that was left: bring them in the new one.
+  if (_almWordsWanted) { _almWordsLoading = null; await _loadAlmanacWords(); }
 }
 
 function _detectLanguage() {
@@ -2313,6 +2417,7 @@ async function setLanguage(lang) {
     } catch (e) {}
   }
   if (_isDictPage()) _dictFollowLanguage(lang);
+  else _appFollowLanguage();
   // Sync almanac: re-render all content with new translations
   if (typeof _onGlobalLanguageChanged === 'function') _onGlobalLanguageChanged(lang);
   if (_almanacOpen && typeof _renderAlmanacContent === 'function') _renderAlmanacContent();
@@ -2358,6 +2463,7 @@ function _applyI18nToDOM() {
     el.textContent = t(el.dataset.i18n);
   });
   document.querySelectorAll('[data-i18n-placeholder]').forEach(function(el) {
+    if (el === q) return;   // the search box's words are fitted to its room below, never set whole and then cut a frame later
     el.placeholder = t(el.dataset.i18nPlaceholder);
   });
   document.querySelectorAll('[data-i18n-title]').forEach(function(el) {
@@ -2476,6 +2582,8 @@ var BYTES_PER_GB = 1000 * 1000 * 1000;
 // Where GB stops carrying a decimal: below ten a tenth says something about a
 // ZIM, above it "115 GB" reads better than "115.5 GB" down a list.
 var GB_WHOLE_FROM = 10;
+// MB likewise: from a hundred, "285 MB" says all a list needs and "285.0 MB" only adds a zero.
+var MB_WHOLE_FROM = 100;
 
 // Biggest unit first. English keeps the units Finder and the server print
 // (KB, not CLDR's kB); every other language takes its own (1,5 Go, 1,5 ГБ).
@@ -2488,7 +2596,7 @@ function fmtBytes(bytes, html) {
   var b = Math.max(0, Number(bytes) || 0);
   var u = _SIZE_UNITS.filter(function(x) { return b >= x.per; })[0] || _SIZE_UNITS[_SIZE_UNITS.length - 1];
   var v = b / u.per;
-  var tenths = u.per === 1 || (u.per === BYTES_PER_GB && v >= GB_WHOLE_FROM) ? 0 : 1;
+  var tenths = u.per === 1 || (u.per === BYTES_PER_GB && v >= GB_WHOLE_FROM) || (u.per === BYTES_PER_MB && v >= MB_WHOLE_FROM) ? 0 : 1;
   var en = String(_currentLang || 'en').split('-')[0] === 'en';
   var parts = _intl('NumberFormat', { style: 'unit', unit: u.unit, minimumFractionDigits: tenths,
     maximumFractionDigits: tenths, useGrouping: false }).formatToParts(v);
@@ -2565,9 +2673,9 @@ const output = document.getElementById('output');
 // alone doesn't survive a double-quote in attribute position).
 output.addEventListener('click', function(e) {
   var link = e.target.closest('.did-you-mean a[data-sugg]');
-  if (!link) return;
-  e.preventDefault();
-  applyDidYouMean(link.getAttribute('data-sugg'));
+  if (link) { e.preventDefault(); applyDidYouMean(link.getAttribute('data-sugg')); return; }
+  var typed = e.target.closest('.did-you-mean a[data-typed]');
+  if (typed) { e.preventDefault(); searchTypedInstead(typed.getAttribute('data-typed')); }
 });
 const mainView = document.getElementById('main-view');
 const statsBar = document.getElementById('stats-bar');
@@ -2692,6 +2800,16 @@ async function _refreshAfterAuthChange() {
   else route(false);
 }
 
+// Who is asking: asked at the start of the boot, beside the words and the password probe, and read by _bootAuthGate.
+var _bootWho = null;
+function _fetchWhoami() {
+  // Present any stored admin token so whoami can authenticate a token-admin.
+  if (!_manageToken) { var saved = _readManageToken(); if (saved) _manageToken = saved; }
+  return serverFetch('/whoami', {
+    credentials: 'same-origin',
+    headers: _manageToken ? _authHeaders() : {},
+  }).then(function(r) { return r.json(); });
+}
 // Boot-time auth probe + gate. Runs BEFORE the library renders so a private
 // instance paints the login form as its FIRST frame (no empty-chrome flash),
 // and a token-authed admin is recognised without a spurious re-gate on reload.
@@ -2704,15 +2822,9 @@ async function _refreshAfterAuthChange() {
 // `anonymous + login_required`, and used to bounce a just-signed-in admin
 // straight back to the login screen ("login wouldn't stick").
 async function _bootAuthGate() {
-  // Present any stored admin token so whoami can authenticate a token-admin.
-  if (!_manageToken) { var saved = _readManageToken(); if (saved) _manageToken = saved; }
   var j;
   try {
-    var r = await serverFetch('/whoami', {
-      credentials: 'same-origin',
-      headers: _manageToken ? _authHeaders() : {},
-    });
-    j = await r.json();
+    j = await (_bootWho || _fetchWhoami());
   } catch (e) {
     // Unreachable server: we cannot know whether this instance is private, so
     // we do NOT gate. Fall through to the normal boot, where /list will fail
@@ -3239,7 +3351,10 @@ function updateTopbar() {
     // PWA — in a plain browser tab you're already in a browser, so it's hidden
     // (the close X takes the slot back).
     var hasNewtab = !_almanacOpen && readerOpen && _isStandalonePWA();
-    manageBtnEl.style.display = (hasSaveBtn || hasNewtab) ? 'none' : 'flex';
+    // On a phone the Almanac's way out is the Zimi crumb (and the arrow, one step back), as in every other world: the X would be a
+    // second door.
+    var phoneAlmanac = _almanacOpen && _isNarrow();
+    manageBtnEl.style.display = (hasSaveBtn || hasNewtab || phoneAlmanac) ? 'none' : 'flex';
     _setCloseBtn(_almanacOpen ? closeAlmanac : function() { closeReader(); goHome(); }, false);
   } else {
     manageBtnEl.style.display = 'flex';
@@ -3337,7 +3452,8 @@ function updateTopbar() {
   // !important, which no inline display can outrank.
   document.body.classList.toggle('creating', !!_createOpen);
   _syncTopbarMore();
-  document.getElementById('lang-selector-btn').style.display = _langMenuHidden() ? 'none' : '';
+  // On a phone the language lives in the ⋯ menu (the Almanac too: one header in every world).
+  document.getElementById('lang-selector-btn').style.display = (_langMenuHidden() || (_almanacOpen && _isNarrow())) ? 'none' : '';
   _updateLibraryBtnIcon();
 
   _syncGameHead();
@@ -3353,6 +3469,8 @@ function updateTopbar() {
   _renderSelectionBar();
 
   document.body.classList.toggle('in-manage', mode === 'manage');
+  // Home's grids take the room the screen has (up to --pick-max); search, a source and Manage keep their column.
+  document.body.classList.toggle('on-home', mode === 'home');
   // Reading an article: the inline Reader View / font / read-aloud controls fold
   // into the ⋯ menu (desktop too, matching mobile), and CSS `order` pins the
   // close X to the far right with ⋯ just before it. No DOM is moved — display
@@ -3595,6 +3713,16 @@ function _scheduleConnProbe() {
   }, delay);
 }
 
+// /health, read once for everyone who asks within HEALTH_SHARE_MS (the footer's version and the build check both come in the
+// first moments: one request, not two). Resolves to the answer, or null when it did not come.
+var _healthInFlight = null, _healthAt = 0, HEALTH_SHARE_MS = 5000;
+function _healthOnce(share) {   // `share`: the first moments' asks, which take an answer a few seconds old; coming back to the front asks afresh
+  if (!share || !_healthInFlight || performance.now() - _healthAt > HEALTH_SHARE_MS) {
+    _healthAt = performance.now();
+    _healthInFlight = fetch('/health', { cache: 'no-store' }).then(function (r) { return r.ok ? r.json() : null; }).catch(function () { return null; });
+  }
+  return _healthInFlight;
+}
 // One reachability check. The cache-busting query is deliberate: /health is a
 // network-first route, so a plain request could be answered from the SW cache
 // and report a dead server as alive.
@@ -3729,6 +3857,10 @@ async function init() {
   _currentLang = _detectLanguage();
   _applyRTL(_currentLang);
   _bootHasPw = _fetchHasPw();
+  _bootWho = _fetchWhoami();
+  _bootWho.catch(function() {});   // read (and its failure handled) by _bootAuthGate, which a fresh install never reaches
+  // Booting into the Almanac, its files come down while the words and the answers below are on their way.
+  if (_ALM_BOOT_HASH.test(location.hash)) _almPreloadFiles();
   await _loadI18n(_currentLang);
   // A fresh install opens once its owner says who can change settings.
   var _hp = await _bootHasPw;
@@ -3754,13 +3886,19 @@ async function init() {
   // authority once /list and the manage probe land, and corrects anything the
   // hint got wrong.
   updateTopbar();
-  output.innerHTML = '<div class="loading"><span class="spinner-inline"></span>' + tH('loading_library') + '</div>';
+  // Late: a library that answers at once goes from nothing to Home, with no message blinking in between.
+  output.innerHTML = '<div class="loading loading-late"><span class="spinner-inline"></span>' + tH('loading_library') + '</div>';
   // Only block on /list — everything else loads in background.
   // A failure here must NOT collapse into "the library is empty": zimsCache
   // stays a safe [] for the hundreds of call sites that iterate it, but
   // _libraryKnown records that the emptiness is our ignorance, not a fact.
+  // Booting into the Almanac, it does not wait for the library: it is on its way before the list is asked for, and home
+  // is drawn behind it once the Almanac's page has run (the list is the slowest thing on a big library).
+  var bootAlmanac = _ALM_BOOT_HASH.test(location.hash);
+  var listing = _fetchList();
+  if (bootAlmanac) _openAlmanacFromAddress();
   try {
-    zimsCache = await _fetchList();
+    zimsCache = await listing;
     _libraryKnown = true;
   } catch(e) {
     zimsCache = [];
@@ -3786,11 +3924,16 @@ async function init() {
   // is what is on screen now, and drawing the address's page would wipe it.
   // Nor the Almanac, open or on its way: route() would open it a second time
   // and rewrite its history entry, dropping a step Look had pushed on top.
-  if (mode === 'home' && !_almanacOpen && !_almanacModulesLoading) route(false);
+  if (bootAlmanac) {
+    Promise.resolve(_almanacModulesLoading).catch(function() {}).then(function() {
+      setTimeout(function() { if (mode === 'home') renderHome(); }, 0);   // drawn, not entered: the person may be in the 3D view by now
+    });
+  } else if (mode === 'home' && !_almanacOpen && !_almanacModulesLoading) route(false);
   _desktopCheckOnboarding();
   // Register service worker
   if ('serviceWorker' in navigator) {
     navigator.serviceWorker.register('/static/sw.js', { scope: '/' }).catch(function() { _swPrimed = true; });
+    _keepOwnAheadWhenIdle();
     // The first visit's answers went by before the worker was in charge: ask
     // for the ones the next start cannot do without once it is, so that start
     // can draw the library from the phone when the server does not answer.
@@ -3890,9 +4033,8 @@ async function _initSecondary() {
       if (cres.ok) { collectionsCache = await cres.json(); needsRerender = true; }
     }).catch(function(){}),
     // Version for footer
-    fetch('/health').then(async hres => {
-      if (hres.ok) {
-        const hdata = await hres.json();
+    _healthOnce(true).then(hdata => {
+      if (hdata) {
         if (hdata.version) { _zimiVersion = hdata.version; document.getElementById('footer-version').textContent = hdata.version + ' '; }
         _extServerOffline = !!hdata.offline;
       }
@@ -3926,6 +4068,17 @@ async function _initSecondary() {
   if (needsRerender) _renderHomeSoon();
 }
 
+var _ALM_BOOT_HASH = /^#almanac(\?|$)/;
+function _openAlmanacFromAddress() {
+  openAlmanac(true);
+  // Backstop: if the almanac never comes up (a module error mid-parse slips
+  // past the loader's onerror), drop the boot gate so the library isn't left
+  // permanently hidden behind an empty shell.
+  setTimeout(function () {
+    if (!_almanacOpen) { document.documentElement.classList.remove('almanac-boot'); _almFirstFrameOff(); }
+  }, 8000);
+}
+
 function route(push) {
   const path = location.pathname;
   const search = location.search;
@@ -3934,15 +4087,9 @@ function route(push) {
   // already stamped html.almanac-boot, so the home render below stays invisible
   // and the dark almanac shell is what the first paint shows.
   // #almanac, or #almanac?... (the address almanac.js keeps up to date as the person moves; it is read there).
-  if (/^#almanac(\?|$)/.test(location.hash)) {
+  if (_ALM_BOOT_HASH.test(location.hash)) {
     enterHome(false);
-    openAlmanac(true);
-    // Backstop: if the almanac never comes up (a module error mid-parse slips
-    // past the loader's onerror), drop the boot gate so the library isn't left
-    // permanently hidden behind an empty shell.
-    setTimeout(function () {
-      if (!_almanacOpen) { document.documentElement.classList.remove('almanac-boot'); _almVeilDown(true); }
-    }, 8000);
+    _openAlmanacFromAddress();
     return;
   }
   // Same for the Create page (#create). Opened optimistically: whether this
@@ -3963,6 +4110,7 @@ function route(push) {
   }
   if (location.hash === '#wiki') { enterHome(false); openWiki(true); return; }
   if (location.hash === '#books') { enterHome(false); openBooks(true); return; }
+  if (params.get('books')) { enterHome(false); openBooks(true, params.get('books')); return; }
   if (location.hash === '#dictionary') { enterHome(false); openDictionary(true, ''); return; }
   if (location.hash === '#reddot' || location.hash.indexOf('#reddot?') === 0) {
     enterHome(false);
@@ -4016,6 +4164,7 @@ function route(push) {
   // (see _articleDeepLink). Split on the first '/' — zim names never contain one.
   var aParam = params.get('a');
   if (aParam) {
+    _readerViewFromAddress = params.get('rv') === '1';
     var aSlash = aParam.indexOf('/');
     var aZim = aSlash === -1 ? aParam : aParam.slice(0, aSlash);
     var aPath = aSlash === -1 ? '' : aParam.slice(aSlash + 1);
@@ -4125,6 +4274,11 @@ async function _bootDeepLinkArticle(zim, path, query) {
 var _TOAST_UNDO_MS = 6000;
 var _toastUndoLast = null;
 var _TOAST_GAP_PX = 12;
+// A toast stays up as long as its words take to read: 3 s for a few words,
+// longer for a sentence that says why and what to do (a noexec disk's is ~200
+// characters), about 15 characters a second, the slow end of reading on a screen.
+var _TOAST_MIN_MS = 3000, _TOAST_MS_PER_CHAR = 65;
+function _toastMs(msg) { return Math.max(_TOAST_MIN_MS, String(msg || '').length * _TOAST_MS_PER_CHAR); }
 function _showToast(msg, duration, undo, actionLabel) {
   var toast = document.createElement('div');
   toast.style.cssText = 'position:fixed;bottom:20px;left:50%;transform:translateX(-50%);background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);padding:10px 16px;font-size:13px;color:var(--text2);z-index:300;box-shadow:0 4px 16px rgba(0,0,0,0.3)';
@@ -4151,9 +4305,60 @@ function _showToast(msg, duration, undo, actionLabel) {
     live.textContent = '';
     setTimeout(function() { live.textContent = msg; }, 50);
   }
-  setTimeout(function() { if (toast.parentNode) toast.remove(); }, duration || 3000);
+  setTimeout(function() { if (toast.parentNode) toast.remove(); }, duration || _toastMs(msg));
 }
 
+// ── One tap to get what a feature needs ──
+// Wherever a feature stops for a missing add-on, the stop offers the install right there, one tap
+// wherever it is needed: an admin gets "Get it (285 MB)" with progress and the feature carries on
+// by itself once the add-on is in; anyone else is told to ask their admin and keeps the fallback. One helper, the
+// existing /manage/addons; callers pass what to say and what to do next.
+var ADDON_POLL_MS = 1000;
+// The add-ons' status as an admin sees it, or null for anyone else (or no answer). Polling an install asks this once
+// someone is signed in.
+function _addonStatus() {
+  return manageFetch('/manage/addons').then(function(r) { return r.ok ? r.json() : null; }).catch(function() { return null; });
+}
+// The first look, without the sign-in box: {code, st}. 401 is an admin who is not signed in yet (tapping Get asks them
+// to); another refusal is someone who is not an admin.
+function _addonProbe() {
+  return authedFetch('/manage/addons').then(function(r) {
+    return r.ok ? r.json().then(function(st) { return { code: 200, st: st }; }) : { code: r.status, st: null };
+  }).catch(function() { return { code: 0, st: null }; });
+}
+function _addonRowOf(st, key) {
+  return ((st && st.addons) || []).filter(function(a) { return a.key === key; })[0] || null;
+}
+// Why this server cannot add it, or '' when it can: offline, the setting (Never), or an install that brings its own.
+function _addonWhyNot(st) {
+  if (st.locked === 'offline') return 'offline';
+  if (!st.supported) return 'unsupported';
+  return st.mode === 'never' ? 'never' : '';
+}
+// Install ``key`` and wait for it: ``onProgress(percent)`` as it comes; resolves true when it is in, false when it is not.
+function _addonInstallWait(key, onProgress) {
+  var step = function() {
+    return _addonStatus().then(function(st) {
+      var row = _addonRowOf(st, key);
+      if (!row) return false;
+      if (row.ready) return true;
+      var p = row.progress;
+      if (p && !p.active && p.error && p.error !== 'cancelled') return false;
+      if (onProgress && p && p.total) onProgress(Math.min(99, Math.round(100 * p.done / p.total)));
+      return new Promise(function(r) { setTimeout(r, ADDON_POLL_MS); }).then(step);
+    });
+  };
+  return manageFetch('/manage/addons', {
+    method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ install: key })
+  }).then(function(r) {
+    if (r.ok) return step();
+    // Busy: this same add-on may already be coming (Automatically started it): follow it; another one's is not ours to wait for.
+    return _addonStatus().then(function(st) {
+      var row = _addonRowOf(st, key);
+      return row && row.progress && row.progress.active ? step() : false;
+    });
+  }).catch(function() { return false; });
+}
 // True when Zimi is running as an installed/standalone app surface (iOS/Android
 // home-screen PWA, or a desktop PWA window) rather than a plain browser tab.
 // "Open in browser" is only meaningful here (and in the desktop app).
@@ -4379,7 +4584,7 @@ function goBack() {
   // The Almanac's tables as a PDF, over the Almanac (almanac-tables.js).
   if (typeof _tbPdfBack === 'function' && _tbPdfBack()) return;
   if (_createOpen) { closeCreate(); return; }
-  if (typeof _aeIsOpen !== 'undefined' && _aeIsOpen) { _aeClose(); return; }   // the 3D view over the Almanac first
+  if (typeof _aeIsOpen !== 'undefined' && _aeIsOpen) { _aeBack(); return; }   // the 3D view over the Almanac first, one level at a time
   if (_almanacOpen) { closeAlmanac(); return; }
   if (_isAppPage()) {
     // A thing inside the app is a history step: take it back. Otherwise ask
@@ -4607,7 +4812,14 @@ function enterScope(type, label, zimNames, push) {
   renderHome();
 }
 
+// A row that names a ZIM opens what a person means by it: Zimi's own Almanac is the dark Almanac page, not its files in the reader.
+function openZimOrApp(name) {
+  if (name === _ALMANAC_ZIM) openAlmanac();
+  else enterSource(name, true);
+}
 async function enterSource(name, push) {
+  // Every card or row a person taps (Installed, catalog, search chips) lands the Almanac on its page, not its files.
+  if (push && name === _ALMANAC_ZIM && !_isModClick()) { openAlmanac(); return; }
   const info = _zimInfo(name);
   if (!info) {
     // The library is not known (no server, nothing kept of its list) but the
@@ -4717,6 +4929,25 @@ function _currentReorderSections() {
   });
   if (hasOther) sections.push({ key: OTHER_KEY, label: t('cat_other'), other: true });
   return _orderSections(sections);
+}
+
+// Take a ZIM's .zim file with you (the card menu's Download and the Created table's).
+// A navigation carries no auth headers, so authorization travels as a
+// one-time two-minute ticket minted here (POST /manage/dl-ticket) and
+// spent by the URL — without it a passworded instance answered the
+// navigation with an HTML refusal Safari saved as name.zim.html.
+function _downloadZimFile(zim) {
+  var zdl = _zimInfo(zim);
+  var dlFile = (zdl && zdl.file) || zim;
+  manageFetch('/manage/dl-ticket', {
+    method: 'POST', headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({file: dlFile})
+  }).then(function(r) { return r.json(); }).then(function(d) {
+    location.href = '/dl/' + encodeURIComponent(dlFile) +
+      (d && d.ticket ? '?t=' + encodeURIComponent(d.ticket) : '');
+  }).catch(function() {
+    location.href = '/dl/' + encodeURIComponent(dlFile);
+  });
 }
 
 // Manage-row gear → the compact Move to… menu, anchored under the button.
@@ -5487,6 +5718,16 @@ function _langBadge(z, force, full) {
   return '<span class="lang-badge" title="' + escAttr(name) + '">' + esc(info.code) + '</span>';
 }
 
+// A Discover card's body is its ZIM's own text, so a card under a heading in the person's language but written in
+// another says which: the language's code, as search rows do. Nothing for a card in the person's language or a
+// ZIM in several. Zimi's own ZIMs (the games, the Almanac) are drawn in the person's language whatever
+// language their metadata names, so their cards say nothing. Every Discover card's source line asks here.
+function _cardLangBadge(zim) {
+  if (zim && _OWN_ZIM_APP[zim.name]) return '';
+  var info = zim && _zimLangBadgeInfo(zim);
+  return info && info.code ? _langBadge(zim) : '';
+}
+
 // New/Updated badges (#34). A badge flags a ZIM the user hasn't looked at since
 // it appeared or changed. It clears the moment they open the ZIM (tracked per
 // browser), and as a backstop auto-expires after a week even if never opened —
@@ -5672,8 +5913,8 @@ function _runRecentSearch(query, zim) {
 }
 
 // Home library layout: compact "tiles" vs the default full-card "list". A
-// per-browser preference (localStorage) so it survives reloads; default is the
-// current card list.
+// per-browser preference (localStorage) so it survives reloads. One chooser for
+// the whole page; the apps are always square tiles.
 function _getLibraryView() {
   return localStorage.getItem(SK.LIBRARY_VIEW) === 'tiles' ? 'tiles' : 'list';
 }
@@ -5879,17 +6120,19 @@ function _libSortHtml() {
     ' onclick="event.stopPropagation()">' + opts + '</select></label>';
 }
 
-// Place the segmented view toggle on the first section header (the Apps, which
-// the order governs too (#100), else Favorites or the first category or
-// collection) — a global control that reuses the first header's line rather
-// than a bar of its own. No-op when there is no header to host it.
+function _addHeadingControls(heading, html) {
+  heading.classList.add('has-view-toggle');
+  heading.insertAdjacentHTML('beforeend', '<span class="lib-controls">' + html + '</span>');
+}
+// Order and view together on the first section header (the Apps when there is
+// an Apps row, else the first heading of the library), even though the view
+// chooser changes nothing for the always-square apps (the controls sit up
+// next to Apps all the same). No-op when there is no header to host them.
 function _placeViewToggle() {
   if (!zimsCache || !zimsCache.length) return;
-  var heading = output.querySelector('.cat-heading');
-  if (!heading || heading.querySelector('.lib-view-toggle')) return;
-  heading.classList.add('has-view-toggle');
-  heading.insertAdjacentHTML('beforeend',
-    '<span class="lib-controls">' + _libSortHtml() + _libViewToggleHtml() + '</span>');
+  var heads = Array.prototype.slice.call(output.querySelectorAll('.cat-heading'));
+  if (!heads.length || output.querySelector('.lib-controls')) return;
+  _addHeadingControls(heads[0], _libSortHtml() + _libViewToggleHtml());
 }
 
 // ── About this ZIM: provenance badges, and the panel behind them ────────────
@@ -6242,6 +6485,8 @@ function _ziBodyHtml(info) {
     _ziRow('zi_creator', esc(info.creator)) +
     _ziRow('zi_publisher', esc(info.publisher)) +
     _ziRow('zi_source', _ziSourceHtml(info.source)) +
+    _ziRow('zi_license', esc(info.license)) +
+    _ziRow('zi_relation', esc(info.relation)) +
     _ziRow('zi_scraper', esc(info.scraper)) +
     _ziRow('zi_flavour', esc(info.flavour)) +
     _ziRow('zi_tags', _ziTagsHtml(info.tags)) +
@@ -6266,7 +6511,7 @@ function _ziBodyHtml(info) {
   // What the ZIM is made of, out of the same reply as everything else. Absent
   // until the background worker has measured this file, and absent reads as no
   // bar — which is right, because nobody has established the fact yet.
-  var shape = _ziShapeHtml(info.shape);
+  var shape = _ziShapeHtml(info.shape, info);
   // Whatever else the publisher wrote goes last, under its own keys: a field
   // this build has no row for is still a field the file carries, but it is a
   // footnote to the story the timeline tells, not a preface to it.
@@ -6282,7 +6527,11 @@ function _ziBodyHtml(info) {
 // million gives proportions worth drawing and totals that are estimates, and a
 // panel that printed the estimate in the same voice as a measurement would be
 // doing the thing this release spent a day removing.
-function _ziShapeHtml(shape) {
+// A document collection (zimgit's PDFs, or a ZIM tagged pdf) holds PDFs: the bar's "Documents" says so.
+function _ziIsPdfZim(info) {
+  return /^zimgit/i.test(info.name || '') || (info.tags || []).some(function (g) { return /^pdf$/i.test(String(g)); });
+}
+function _ziShapeHtml(shape, info) {
   if (!shape || !shape.breakdown || !shape.breakdown.length) return '';
   if (typeof _segBarHtml !== 'function') return '';
   var segs = shape.breakdown.slice().sort(function (a, b) {
@@ -6292,8 +6541,9 @@ function _ziShapeHtml(shape) {
   // because a ZIM is compressed. Two honest numbers rather than one bar
   // pretending its segments add up to the file size.
   var inner = segs.reduce(function (a, x) { return a + (x.size_bytes || 0); }, 0);
+  var pdfs = info && _ziIsPdfZim(info);
   var bar = _segBarHtml(segs, inner, _CREATE_KIND_COLORS, function (k) {
-    return tH('create_kind_' + k);
+    return tH(pdfs && k === 'documents' ? 'create_kind_pdfs' : 'create_kind_' + k);
   }, t('create_inside_title'));
   if (!bar) return '';
   var note = shape.sampled
@@ -6505,6 +6755,29 @@ function _afterZimDeleted(zim) {
   } catch (e) {}
   _ownForgotten[zim] = true;
   _swSay({ type: 'forget-own', zim: zim });
+}
+// Whether this device may keep the games and the Almanac ahead of time (sw.js keepOwnAhead): a download of tens of MB nobody asked
+// for is not for a metered connection. In the order the cases are judged:
+//  - Data Saver (conn.saveData) is the person saying no: nothing ahead of time, wherever they are;
+//  - a LAN or localhost server (a private address, .lan, .local) is not a cellular download in any meaningful sense;
+//  - the browser knows the connection (conn.type): Wi-Fi, Ethernet and the rest are fine, cellular is not;
+//  - it does not say (iOS Safari exposes nothing, nor do desktop browsers): an installed app (standalone) is a device the
+//    person has chosen to keep Zimi on, so yes; a browser tab keeps what it keeps today (once the games or the Almanac are
+//    opened, or anything is kept on the device).
+var _PRIVATE_HOST_RE = /^(localhost|127\.\d+\.\d+\.\d+|\[?::1\]?|10\.\d+\.\d+\.\d+|192\.168\.\d+\.\d+|172\.(1[6-9]|2\d|3[01])\.\d+\.\d+|169\.254\.\d+\.\d+|.+\.(lan|local))$/i;
+var _KEEP_AHEAD_IDLE_MS = 5000;   // after the page has loaded and gone idle, so Home's own load never waits on it
+function _keepAheadAllowed(conn, host, standalone) {
+  if (conn && conn.saveData) return false;
+  if (_PRIVATE_HOST_RE.test(String(host || ''))) return true;
+  if (conn && conn.type && conn.type !== 'unknown') return conn.type !== 'cellular';
+  return !!standalone;
+}
+function _keepOwnAheadWhenIdle() {
+  var ask = function() {
+    if (_keepAheadAllowed(navigator.connection, location.hostname, _isStandalonePWA())) _swSay({ type: 'keep-own-ahead' });
+  };
+  var settle = function() { setTimeout(function() { (window.requestIdleCallback || setTimeout)(ask); }, _KEEP_AHEAD_IDLE_MS); };
+  if (document.readyState === 'complete') settle(); else window.addEventListener('load', settle, { once: true });
 }
 function _swSay(msg) {
   if (!('serviceWorker' in navigator)) return;
@@ -7029,25 +7302,46 @@ function _keepWarmWhenIdle(kept) {
   if (window.requestIdleCallback) requestIdleCallback(go, { timeout: 4000 }); else setTimeout(go, 1500);
 }
 
-function _closeZimAbout() {
+// The ⋯ that raised a menu or a sheet: focus goes back to it when the sheet closes,
+// and the page's Back closes the sheet before it leaves the page (a step in history,
+// the way the Almanac's Look is, almanac-look.js).
+var _moreOpener = null;
+function _rememberMore(el) { _moreOpener = el || null; }
+function _refocusMore() {
+  var el = _moreOpener;
+  _moreOpener = null;
+  if (el && el.isConnected && typeof el.focus === 'function') el.focus({ preventScroll: true });
+}
+var _ziSwallow = false;
+function _ziPop(e) {
+  if (_ziSwallow) { _ziSwallow = false; return true; }
+  if (document.getElementById(_ZI_OVERLAY_ID) && !(e.state && e.state.ziAbout)) { _closeZimAbout(true); return true; }
+  return false;
+}
+function _closeZimAbout(fromHistory) {
   var ov = document.getElementById(_ZI_OVERLAY_ID);
   if (ov && ov.parentNode) ov.parentNode.removeChild(ov);
+  if (ov && fromHistory !== true && history.state && history.state.ziAbout) { _ziSwallow = true; history.back(); }
   _ziUnlockPage();
   document.removeEventListener('keydown', _ziKeydown);
+  if (ov) _refocusMore();
 }
 
-// Opens the panel immediately with a loading line, then fills it — the fetch
-// opens the archive, and on a cold library that is not instant. Every write
-// re-finds the body, so a panel closed mid-flight is never resurrected.
-function _openZimAbout(zim) {
-  _closeZimAbout();
+// The sheet About opens, with a loading line in it; returns the writer that fills its body.
+// Every write re-finds the body, so a sheet closed mid-flight is never resurrected.
+function _ziOpenPanel(titleKey) {
+  var opener = _moreOpener;
+  _closeZimAbout(true);
+  _moreOpener = opener;
+  var ae = document.activeElement;
+  if (ae && ae !== document.body && ae.blur && /^(input|textarea)$/i.test(ae.tagName)) ae.blur();  // the keyboard goes down first
   var ov = document.createElement('div');
   ov.className = 'zi-overlay';
   ov.id = _ZI_OVERLAY_ID;
   ov.innerHTML =
-    '<div class="zi-panel" role="dialog" aria-modal="true" aria-label="' + escAttr(t('about_zim')) + '">' +
-    '<div class="zi-head"><span class="zi-head-title">' + tH('about_zim') + '</span>' +
-    '<button class="zi-close" aria-label="' + escAttr(t('close')) + '" onclick="_closeZimAbout()">✕</button>' +
+    '<div class="zi-panel" role="dialog" aria-modal="true" aria-label="' + escAttr(t(titleKey)) + '">' +
+    '<div class="zi-head"><span class="zi-head-title">' + tH(titleKey) + '</span>' +
+    '<button class="zi-close" aria-label="' + escAttr(t('close')) + '" onclick="_closeZimAbout()">\u2715</button>' +
     '</div><div class="zi-body"><div class="zi-none">' + tH('loading') + '</div></div></div>';
   document.body.appendChild(ov);
   // Freeze the library behind the panel. Without this the page kept scrolling
@@ -7055,12 +7349,19 @@ function _openZimAbout(zim) {
   _ziLockPage();
   ov.addEventListener('click', function (e) { if (e.target === ov) _closeZimAbout(); });
   document.addEventListener('keydown', _ziKeydown);
+  if (!(history.state && history.state.ziAbout)) history.pushState(Object.assign({}, history.state, { ziAbout: 1 }), '', location.href);
   var closeBtn = ov.querySelector('.zi-close');
   if (closeBtn) closeBtn.focus({ preventScroll: true });
-  var write = function (html) {
+  return function (html) {
     var body = document.querySelector('#' + _ZI_OVERLAY_ID + ' .zi-body');
     if (body) body.innerHTML = html;
   };
+}
+
+// Opens the panel immediately with a loading line, then fills it: the fetch
+// opens the archive, and on a cold library that is not instant.
+function _openZimAbout(zim) {
+  var write = _ziOpenPanel('about_zim');
   // A ZIM only the phone has (copied from Files): its About is the phone's own.
   var local = !_zimInfo(zim) && _keepMeta(zim);
   if (local && local.complete) {
@@ -7148,10 +7449,16 @@ function _shortAge(tsSec) {
 
 var _FAV_MARK_SVG = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3.5l2.6 5.3 5.9.9-4.3 4.1 1 5.8L12 16.9l-5.2 2.7 1-5.8-4.3-4.1 5.9-.9z" fill="currentColor"/></svg>';
 var _CARD_MORE_SVG = '<svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="6" cy="12" r="1.7"/><circle cx="12" cy="12" r="1.7"/><circle cx="18" cy="12" r="1.7"/></svg>';
+// The one ⋯: on every tile and row of Home, and on a Discover card (cls 'dc-more').
+function _cardMoreHtml(cls) {
+  return '<button type="button" class="' + (cls || 'card-more') + '" aria-label="' + escAttr(t('more_actions')) + '" title="' + escAttr(t('more_actions')) +
+    '" onclick="event.preventDefault();event.stopPropagation();_cardMore(this)">' + _CARD_MORE_SVG + '</button>';
+}
 // The card's ⋯: its menu, opened under the button.
 function _cardMore(btn) {
   var card = btn.closest('[data-zim]'), r = btn.getBoundingClientRect();
   if (!card) return;
+  _rememberMore(btn);
   var app = card.getAttribute('data-app');
   _openZimMenu(app ? (_OWN_APP_ZIM[app] || '') : card.getAttribute('data-zim'), r.left, r.bottom + 4, false, card, app);
 }
@@ -7159,19 +7466,24 @@ function _cardMore(btn) {
 // ``countOf(z)``: the count on a card's line, _zimCountHtml's by default (the
 // Apps page counts what each app shows, _appItemsHtml); '' leaves it out.
 // tail: cards that are not ZIMs (the Almanac offline), drawn in the same grid.
+// A card's icon. It is lazy, and until it draws the tile shows the card's own surface, not the white the picture
+// stands on (a dark Almanac icon read as a blank white square on first paint): `.ld`, set on load, brings the white back.
+function _cardIconImg(name) {
+  return '<img src="/w/' + encodeURIComponent(name) + '/-/icon" alt="" width="48" height="48" loading="lazy" class="iw" onload="this.classList.add(\'ld\')">';
+}
 function renderCardGrid(items, showStars, showCategory, countOf, tail) {
   items = items || [];
   if (!items.length && !tail) return '';
   countOf = countOf || _zimCountHtml;
   const favs = (collectionsCache && collectionsCache.favorites) || [];
   const isTiles = _getLibraryView() === 'tiles';
-  const gridCls = isTiles ? 'stats-grid tiles' : 'stats-grid';
+  const gridCls = isTiles ? 'stats-grid tiles' : 'stats-grid pick-grid';
   // Export cards carry a download slot that fills only when peer-share is live
   // (see _fillCardDlSlots) — probed after the caller's synchronous insert.
   // Download-this-ZIM is right-click / Manage-⋯ only; no card pill.
   return '<div class="' + gridCls + '">' + items.map(z => {
     const icon = z.has_icon
-      ? '<img src="/w/' + encodeURIComponent(z.name) + '/-/icon" alt="" width="48" height="48" loading="lazy">'
+      ? _cardIconImg(z.name)
       : '<span class="icon-letter">' + esc(z.title || z.name)[0].toUpperCase() + '</span>';
     const isFav = favs.includes(z.name);
     // A card has one control, ⋯, and it opens the card's menu (Favorite, Keep
@@ -7181,9 +7493,7 @@ function renderCardGrid(items, showStars, showCategory, countOf, tail) {
     // anchor (#49), and a click inside a link otherwise follows its href.
     const favMark = showStars && isFav
       ? '<span class="fav-mark" role="img" aria-label="' + escAttr(t('favorites')) + '" title="' + escAttr(t('favorites')) + '">' + _FAV_MARK_SVG + '</span>' : '';
-    const moreBtn = showStars
-      ? '<button type="button" class="card-more" aria-label="' + escAttr(t('more_actions')) + '" title="' + escAttr(t('more_actions')) + '" onclick="event.preventDefault();event.stopPropagation();_cardMore(this)">' + _CARD_MORE_SVG + '</button>'
-      : '';
+    const moreBtn = showStars ? _cardMoreHtml() : '';
     const catPrefix = showCategory && z.category ? '<span class="card-cat">' + esc(z.category) + '</span> &middot; ' : '';
     const badge = _langBadge(z, false, isTiles);
     const qidIcon = _canSwitchLanguage(z)
@@ -7218,7 +7528,7 @@ function renderCardGrid(items, showStars, showCategory, countOf, tail) {
 }
 
 // ── Discover: computed cards first, random fill to ~4 ──
-// Slot order: 1) Today (always), 2) APOD (if installed), 3) On This Day (if Wikipedia), 4+) 🎲 Random
+// Slot order: 1) Today (always), 2) APOD (if installed), 3) On This Day (if Wikipedia), 4+) Random
 var _discoverLoading = false;
 var DISCOVER_RETRY_MS = 10000;  // a cold start's partial row asks again once, this much later
 var _discoverRetried = {};      // the day's cache keys already asked again in this page
@@ -7327,13 +7637,16 @@ function _localMoonName(name) { return _MOON_PHASE_I18N[name] ? t(_MOON_PHASE_I1
 // one whole-disc rotation, so a sprite depends only on the phase and the
 // libration and stays cacheable while the sky wheels around it.
 //
-// Two maps. The 1024 one (54 KB) comes with app.js and paints the first disc.
-// The 4096 one (730 KB) is asked for only once the page has painted and gone
-// idle (_moonAfterFirstPaint), and from then on every disc wide enough to
-// show it is drawn from it; the Today card's disc is too small to.
-var _MOON_MAP_URL = '/static/earth/moon-v1.webp';
-var _MOON_MAP_HI_URL = '/static/earth/moon-4k-v1.webp';
+// Three maps. The 1024 one (54 KB) comes with app.js and paints the first disc.
+// The 2048 one (200 KB) is asked for once the page has painted and gone idle
+// (_moonAfterFirstPaint): the hero, at its drawn size, needs no more, and the
+// Today card's disc is too small to use it. The 4096 one (730 KB) is asked for
+// only by what is wider than that: the 3D Moon (almanac-earth.js).
+var _MOON_MAP_URL = _almAsset('/static/earth/moon-v1.webp');
+var _MOON_MAP_MID_URL = _almAsset('/static/earth/moon-2k-v1.webp');
+var _MOON_MAP_HI_URL = _almAsset('/static/earth/moon-4k-v1.webp');
 var _MOON_TEX = new Image();
+var _MOON_TEX_MID = null;         // the 2048 map's Image, once it has loaded and its tone table is built
 var _MOON_TEX_HI = null;          // the 4096 map's Image, once it has loaded
 var _moonTexReady = false;
 _MOON_TEX.onload = function() {
@@ -7366,6 +7679,7 @@ var _MOON_TINT_B = [1.18, -0.18];
 // (a disc N wide spans pi * N map pixels round the whole Moon), doubling from
 // the small map's width up to the 4096 one's once that is in.
 var _MOON_MAP_FULL_W = 1024;
+var _MOON_MAP_MID_W = 2048;
 var _MOON_MAP_HI_W = 4096;
 var _MOON_MAP_SMALL_W = 256;
 var _MOON_MAP_SMALL_UPTO_PX = 160;
@@ -7474,13 +7788,37 @@ function quietBreath() {
 // one decode. Resolves with the Image, or null if it could not be had.
 var _moonHiLoad = null;
 var _MOON_SLICE_MS = 12;   // the longest a slice of background drawing runs before it lets the page breathe
+var _moonMidLoad = null;
+var _MOON_TEX_MID_IMG = null;  // the 2048 map's Image while its tone table is built; _MOON_TEX_MID once it is
 var _MOON_TEX_HI_IMG = null;   // the 4096 map's Image while its tone tables are built; _MOON_TEX_HI once they are
 function _moonIdle(fn, priority) { whenQuiet(fn, { priority: priority == null ? QUIET_PRI_LOAD : priority }); }
+var _MOON_HI_TEXTURE_PX = 4096;   // the map's width: a device whose capability level allows less never fetches it (capability.js)
+// The 2048 map: what a disc the hero's size is drawn from, asked for after the first paint. Same road as the 4096 one.
+function _moonLoadMidMap() {
+  if (_moonMidLoad) return _moonMidLoad;
+  var im = new Image();
+  im.src = _MOON_MAP_MID_URL;
+  _moonMidLoad = im.decode().then(function () {
+    _MOON_TEX_MID_IMG = im;
+    _moonMapDataSliced(_MOON_MAP_MID_W).then(function () {
+      _MOON_TEX_MID = im;
+      return repaintMoonsSliced();
+    });
+    return im;
+  }, function () { return null; });
+  return _moonMidLoad;
+}
 function _moonLoadHiMap() {
   if (_moonHiLoad) return _moonHiLoad;
+  _moonHiLoad = _loadScript(_CAPABILITY_JS).then(function () {
+    return typeof ZimiCap === 'undefined' || ZimiCap.textureOk(_MOON_HI_TEXTURE_PX) ? _moonLoadHiMapNow() : null;
+  });
+  return _moonHiLoad;
+}
+function _moonLoadHiMapNow() {
   var im = new Image();
   im.src = _MOON_MAP_HI_URL;
-  _moonHiLoad = im.decode().then(function () {
+  return im.decode().then(function () {
     _MOON_TEX_HI_IMG = im;
     // Discs switch to the 4096 map only once its tone tables exist: a disc drawn in between would build them whole,
     // in one task, in the middle of whatever the person was doing.
@@ -7490,7 +7828,6 @@ function _moonLoadHiMap() {
     });
     return im;
   }, function () { return null; });   // without it every disc keeps the 1024 map
-  return _moonHiLoad;
 }
 function _moonAfterFirstPaint(fn) {
   var go = function () {
@@ -7501,7 +7838,11 @@ function _moonAfterFirstPaint(fn) {
   if (document.readyState === 'complete') go();
   else window.addEventListener('load', go, { once: true });
 }
-_moonAfterFirstPaint(_moonLoadHiMap);
+// The 2048 map is asked for by the first disc that needs it (wider than the 1024 map carries sharply: the Almanac's
+// hero), not by every page load: Home's Moon is a small disc, and a slow machine pays for the decode and tone table.
+var _MOON_MID_FROM_PX = _MOON_MAP_FULL_W / Math.PI;
+var _moonMidAsked = false;
+function _moonWantMid(N) { if (N > _MOON_MID_FROM_PX && !_moonMidAsked) { _moonMidAsked = true; _moonAfterFirstPaint(_moonLoadMidMap); } }
 
 // Hermite ease between two edges. Also used by the lazy-loaded almanac
 // scripts, which app.js always loads first.
@@ -7534,8 +7875,8 @@ var _MOON_DISPLAY_GAMMA = 2.2;
 // (a Lambert sphere's phase function), as a camera sees it: a faint dark
 // side beside a crescent, gone at full Moon, where only a trace of the dark
 // limb shows against the sky.
-var _MOON_EARTHSHINE_MAX = 0.01;     // linear, against the full Moon's 1
-var _MOON_EARTHSHINE_FLOOR = 0.0015; // linear; the dark limb's outline
+var _MOON_EARTHSHINE_MAX = 0.04;     // linear, against the full Moon's 1 (more than a camera's: the eye sees the dark side plainly; 0.01 left a black disc with unreadable labels)
+var _MOON_EARTHSHINE_FLOOR = 0.004;  // linear; the dark limb's outline
 
 function _moonLunarL(cosAlpha) {
   var a = Math.acos(Math.max(-1, Math.min(1, cosAlpha))) * 180 / Math.PI;
@@ -7587,9 +7928,9 @@ function _moonSpriteN(sizePx) {
 function _moonMapWidthFor(N) {
   if (!_moonTexReady) return 0;
   if (N <= _MOON_MAP_SMALL_UPTO_PX) return _MOON_MAP_SMALL_W;
-  if (!_MOON_TEX_HI) return _MOON_MAP_FULL_W;
+  var widest = _MOON_TEX_HI ? _MOON_MAP_HI_W : _MOON_TEX_MID ? _MOON_MAP_MID_W : _MOON_MAP_FULL_W;
   var W = _MOON_MAP_FULL_W;
-  while (W < Math.PI * N && W < _MOON_MAP_HI_W) W *= 2;
+  while (W < Math.PI * N && W < widest) W *= 2;
   return W;
 }
 
@@ -7611,7 +7952,12 @@ function _moonMapBand(m, y0, y1) {
   var src = m.ctx.getImageData(0, y0, m.w, y1 - y0).data, g = m.g, o = y0 * m.w;
   for (var i = 0, n = (y1 - y0) * m.w; i < n; i++) g[o + i] = Math.min(255, _MOON_ALBEDO_LIFT + _MOON_ALBEDO_GAIN * src[i * 4]);
 }
-function _moonMapSource(W) { return W > _MOON_MAP_FULL_W ? _MOON_TEX_HI_IMG || _MOON_TEX_HI : _MOON_TEX; }
+function _moonMapSource(W) {
+  if (W <= _MOON_MAP_FULL_W) return _MOON_TEX;
+  // The 2048 width from the 2048 picture when it is in (the 4096 one is the 3D Moon's, and may not be).
+  if (W <= _MOON_MAP_MID_W && (_MOON_TEX_MID_IMG || _MOON_TEX_MID)) return _MOON_TEX_MID_IMG || _MOON_TEX_MID;
+  return _MOON_TEX_HI_IMG || _MOON_TEX_HI;
+}
 function _moonMapData(W) {
   if (_moonMapCache[W]) return _moonMapCache[W];
   var m = _moonMapPlan(W, _moonMapSource(W));
@@ -7684,6 +8030,7 @@ function _moonSpritePlan(v, sizePx) {
   var ctx = cv.getContext('2d', { willReadFrequently: true });
   var img = ctx.createImageData(N, N);
   var data = img.data;
+  _moonWantMid(N);
   var mapW = _moonMapWidthFor(N);
   var map = mapW ? _moonMapData(mapW) : null;
 
@@ -8042,6 +8389,14 @@ function _quickMoonView(date) {
   return ll ? _moonView(date, ll.lat, ll.lon) : _moonView(date, null, null);
 }
 
+// An English name the Today teaser knows ("Eta Aquariids", "Earth Day") in the person's language: the same
+// alm_shower_ / alm_hol_ strings the Almanac uses, the English name when the language has none.
+function _teaserName(prefix, name) {
+  var k = prefix + name.toLowerCase().replace(/[^a-z0-9]/g, '_').replace(/__+/g, '_').replace(/^_|_$/g, '');
+  var v = t(k);
+  return v !== k ? v : name;
+}
+
 // Lightweight almanac teaser for the Today discover card.
 // Checks cached highlights (from almanac.js) first, falls back to simple computation.
 function _todayTeaser() {
@@ -8068,7 +8423,7 @@ function _todayTeaser() {
     var s = showers[i], peak = new Date(y, s[0]-1, s[1]);
     if (peak < todayMidnight) peak = new Date(y+1, s[0]-1, s[1]);
     var days = Math.round((peak - todayMidnight) / 86400000);
-    events.push({ days: days, name: s[2], extra: ' \u00b7 ZHR ' + s[3], tonight: true });
+    events.push({ days: days, name: _teaserName('alm_shower_', s[2]), extra: ' \u00b7 ZHR ' + s[3], tonight: true });
   }
   // Equinoxes & solstices — use season-aware names for Southern Hemisphere
   var _tHemi = _almHemisphere();
@@ -8090,7 +8445,7 @@ function _todayTeaser() {
   for (var k = 0; k < holidays.length; k++) {
     var h = holidays[k], hDate = new Date(y, h[0]-1, h[1]);
     if (hDate < todayMidnight) hDate = new Date(y+1, h[0]-1, h[1]);
-    events.push({ days: Math.round((hDate - todayMidnight) / 86400000), name: h[2], extra: '' });
+    events.push({ days: Math.round((hDate - todayMidnight) / 86400000), name: _teaserName('alm_hol_', h[2]), extra: '' });
   }
   // Sort by nearest
   events.sort(function(a, b) { return a.days - b.days; });
@@ -8100,17 +8455,75 @@ function _todayTeaser() {
   return t('teaser_in_days', { name: ev.name, n: ev.days }) + ev.extra;
 }
 
+var TODAY_STAR_DIM = 0.25;   // the faintest of the Today card's stars
+// The Today card's stars twinkle (an opacity animation the compositor runs, each star its own layer: no paint, no main
+// thread) on a machine that carries it, while the card is on screen; reduced motion keeps them still (app.css). Twinkling
+// on a dual-core laptop held the page at 60% CPU doing nothing, so a low machine gets the still frame: the person's
+// Light, the level capability.js decided this session, or, before it was ever asked, the same cheap signals it reads.
+// A card whose frames come slow while it twinkles (TWINKLE_SLOW_MS, the median over TWINKLE_PROBE_FRAMES) stops for
+// the session.
+var TWINKLE_PROBE_FRAMES = 30, TWINKLE_SLOW_MS = 40, TWINKLE_STILL_KEY = 'zimi_twinkle_still';
+var TWINKLE_SMALL_MEM_GB = 4, TWINKLE_SMALL_CORES = 4, TWINKLE_TINY_CORES = 2;
+function _todayCanTwinkle() {
+  if (typeof ZimiCap !== 'undefined') return !ZimiCap.lowPower() && !ZimiCap.still();
+  try {
+    if (sessionStorage.getItem(TWINKLE_STILL_KEY)) return false;
+    var st = localStorage.getItem('zimi_cap'), lvl = sessionStorage.getItem('zimi_cap_level');
+    if (st === 'light') return false;
+    if (st === 'full') return true;
+    if (lvl) return lvl !== 'low';
+  } catch (e) {}
+  var n = navigator, mem = n.deviceMemory || 0, cores = n.hardwareConcurrency || 0;
+  if (n.connection && n.connection.saveData) return false;
+  if (cores && cores <= TWINKLE_TINY_CORES) return false;
+  return !(mem && mem <= TWINKLE_SMALL_MEM_GB && cores && cores <= TWINKLE_SMALL_CORES);
+}
+var _twinkleObs = null;
+// The first paint is the still frame; the twinkle starts once the page is quiet, and only while the card is seen.
+function _todayTwinkle(root) {
+  if (!root || !root.querySelector('.dc-today') || !_todayCanTwinkle()) return;
+  if (_twinkleObs) { _twinkleObs.disconnect(); _twinkleObs = null; }
+  whenQuiet(function () {
+    var card = document.querySelector('.dc-today');   // the card on the page then (Discover may have been drawn again)
+    if (!card || card.classList.contains('twinkle') || !_todayCanTwinkle()) return;
+    card.classList.add('twinkle', 'dc-away');   // paused until the observer sees it
+    if (typeof IntersectionObserver !== 'function') { card.classList.remove('dc-away'); return; }
+    var probed = false;
+    _twinkleObs = new IntersectionObserver(function (entries) {
+      var seen = entries[entries.length - 1].isIntersecting;
+      card.classList.toggle('dc-away', !seen);
+      if (seen && !probed) { probed = true; _twinkleProbe(card); }
+    });
+    _twinkleObs.observe(card);
+  }, { key: 'twinkle', priority: QUIET_PRI_POLISH });
+}
+// Frames while the stars first twinkle: a machine that falls behind gets the still frame back.
+function _twinkleProbe(card) {
+  var gaps = [], last = 0;
+  requestAnimationFrame(function step(ts) {
+    if (last) gaps.push(ts - last);
+    last = ts;
+    if (gaps.length < TWINKLE_PROBE_FRAMES) { if (card.isConnected && !document.hidden) requestAnimationFrame(step); return; }
+    gaps.sort(function (a, b) { return a - b; });
+    if (gaps[gaps.length >> 1] > TWINKLE_SLOW_MS) {
+      card.classList.remove('twinkle');
+      try { sessionStorage.setItem(TWINKLE_STILL_KEY, '1'); } catch (e) {}
+    }
+  });
+}
 function _renderTodayCard() {
   var now = new Date();
   var m = _moonPhase(now);
   var view = _quickMoonView(now);
+  // Each star at its own brightness: the still frame. They twinkle only where _todayTwinkle says the machine can carry it.
   var stars = '';
   for (var i = 0; i < 18; i++) {
     var sx = Math.floor(Math.random() * 100);
     var sy = Math.floor(Math.random() * 100);
+    var glow = (TODAY_STAR_DIM + Math.random() * (1 - TODAY_STAR_DIM)).toFixed(2);
     var delay = (Math.random() * 3).toFixed(1);
     var size = Math.random() > 0.7 ? 3 : 2;
-    stars += '<div class="dc-star" style="left:' + sx + '%;top:' + sy + '%;width:' + size + 'px;height:' + size + 'px;animation-delay:' + delay + 's"></div>';
+    stars += '<div class="dc-star" style="left:' + sx + '%;top:' + sy + '%;width:' + size + 'px;height:' + size + 'px;opacity:' + glow + ';animation-delay:' + delay + 's"></div>';
   }
   var glowOpacity = (m.illumination / 100 * 0.12 + 0.02).toFixed(2);
   return '<div class="dc-today">' + stars +
@@ -8132,6 +8545,11 @@ function _loadScript(src) {
       el.onerror = function() { delete _scriptsLoading[src]; el.remove(); resolve(false); };
       document.head.appendChild(el);
     });
+    // One of the Almanac's files (Look, the game's sky) speaks in the Almanac's words.
+    if (src.indexOf('/static/almanac') === 0) {
+      var loading = _scriptsLoading[src];
+      _scriptsLoading[src] = Promise.all([loading, _loadAlmanacWords()]).then(function(r) { return r[0]; });
+    }
   }
   return _scriptsLoading[src];
 }
@@ -8262,31 +8680,73 @@ function _createMenuRowAvailable() {
 // -- Almanac mini-app (lazy-loaded from /static/almanac.js) --
 var _almanacOpen = false;
 var _almanacLoaded = false;
-// The veil: what stands over the Almanac while its first screen is drawn behind it (almanac.js _almVeilBegin), so the
-// person sees one thing, the finished page, and never the page being built. It is up from the tap, before the files
-// arrive, and comes down in one fade when the first screen is on the canvas.
-var ALM_VEIL_FADE_MS = 240;
-function _almVeilUp() {
-  var v = document.getElementById('alm-veil');
-  if (!v) return null;
-  clearTimeout(v._gone);
-  v.classList.remove('alm-veil-out');
-  v.hidden = false;
-  v.setAttribute('aria-label', t('loading'));
-  return v;
+// The Almanac's first frame. almanac.js and its modules are a megabyte of script, and a phone at 4x takes seconds to read
+// them; the page is not made to wait. From the tap (the stylesheet is the only thing waited for) the Almanac's own head
+// stands in its final place, worked out here from what the app already knows (_moonPhase, the date, the clock): the date,
+// the time, the phase and how much of it is lit, every tile with its label, a clear square where the Moon will come in,
+// and the sky's place with its size and caption room. What is not known yet is a quiet dash of the right size. almanac.js
+// then draws the same head over it in the same boxes (almanac.js _renderAlmanacContent), and nothing moves.
+var ALM_FIRST_DATE = { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric' };
+var ALM_FIRST_TIME = { hour: 'numeric', minute: '2-digit' };
+var ALM_FIRST_DISC = 'data:image/gif;base64,R0lGODlhAQABAAAAACH5BAEKAAEALAAAAAABAAEAAAICTAEAOw==';
+var ALM_FIRST_DASH = '<span class="alm-ph">–</span>';
+// One card of the hero's grid: a label over a value. Every value node carries an id so the per-frame travel updater can
+// rewrite it in place instead of the whole grid. opts: cardId (id on the card, for hiding it), hidden, valClass.
+function _almHeadCard(lbl, valHtml, valId, opts) {
+  opts = opts || {};
+  return '<div class="alm-card"' + (opts.cardId ? ' id="' + opts.cardId + '"' : '') +
+    (opts.hidden ? ' hidden' : '') + '>' +
+    (lbl ? '<div class="alm-card-lbl">' + lbl + '</div>' : '') +
+    '<div class="alm-card-val' + (opts.valClass ? ' ' + opts.valClass : '') + '" id="' + valId + '">' +
+    valHtml + '</div></div>';
 }
-function _almVeilIsUp() {
-  var v = document.getElementById('alm-veil');
-  return !!v && !v.hidden && !v.classList.contains('alm-veil-out');
+function _almFirstFrameHtml() {
+  var now = new Date(), m = _moonPhase(now), lang = _currentLang, fmt = function(o) { return esc(now.toLocaleString(lang, o)); };
+  var place = _almChosenPlace(), zone = '';
+  try { Intl.DateTimeFormat(lang, { timeZoneName: 'short' }).formatToParts(now).forEach(function(p) { if (p.type === 'timeZoneName') zone = p.value; }); } catch (e) {}
+  var cards = _almHeadCard(esc(t('alm_illuminated')), _moonLitPct(m.illumination), 'alm-hc-illum', { cardId: 'alm-hc-illum-card' }) +
+    _almHeadCard(esc(t('alm_next_full')), ALM_FIRST_DASH, 'alm-hc-nextfull', { cardId: 'alm-hc-nextfull-card' }) +
+    '<div id="almanac-sky-facts" class="alm-sky-facts"><div class="alm-sky-cards">' +
+    [['tb_moonrise', 'moon'], ['alm_sunrise', 'sunrise'], ['alm_sunset', 'sunset'], ['alm_daylight', 'daylight']].map(function(r) {
+      return '<div class="alm-card alm-sf-' + r[1] + '"><div class="alm-card-lbl">' + esc(t(r[0])) + '</div><div class="alm-card-val">' + ALM_FIRST_DASH + '</div></div>';
+    }).join('') + '</div></div>';
+  return '<div class="almanac-inner alm-first">' +
+    '<div id="almanac-head"><div class="alm-clock alm-ck-rest" data-v="head"><div class="alm-ck-d" id="almanac-head-date">' + fmt(ALM_FIRST_DATE) + '</div>' +
+    '<div class="alm-ck-l"><span class="alm-ck-t" id="almanac-head-time">' + fmt(ALM_FIRST_TIME) + '</span><span class="alm-ck-z">' + (zone ? '<span class="alm-ck-zn"> &middot; ' + esc(zone) + '</span>' : '') + '</span><span class="alm-ck-r" dir="ltr"></span></div></div>' +
+    '<div id="alm-head-body"><div class="almanac-hero">' +
+    '<div class="almanac-moon-glow" style="background:radial-gradient(circle, rgba(232,224,208,' + (m.illumination / 100 * 0.15 + 0.02).toFixed(2) + ') 0%, transparent 65%)"></div>' +
+    '<div class="almanac-moon-open"><div class="almanac-moon"><img class="almanac-moon-sprite moon-sprite" src="' + ALM_FIRST_DISC + '" alt="" width="200" height="200" /></div></div>' +
+    '<div class="almanac-moon-name"><span id="alm-hc-phase">' + esc(_localMoonName(m.name)) + '</span></div>' +
+    (place ? '' : '<div class="almanac-moon-orient">' + esc(t('alm_moon_north_up')) + '</div>') +
+    '</div><div class="alm-cards">' + cards + '</div></div></div>' +
+    '<div class="alm-sky-info"><div id="almanac-sky-invite"' + (place ? '' : ' class="alm-ph-invite"') + '></div><div id="almanac-sky-cap" class="alm-sky-cap"></div></div>' +
+    '<div class="almanac-sky-wrap"><canvas id="almanac-sky-canvas" aria-hidden="true"></canvas></div></div>';
 }
-// Down: faded out, then hidden; at once (now) when the Almanac is closed or the fade would be seen by no one.
-function _almVeilDown(now) {
-  var v = document.getElementById('alm-veil');
-  if (!v) return;
-  clearTimeout(v._gone);
-  if (now) { v.classList.remove('alm-veil-out'); v.hidden = true; return; }
-  v.classList.add('alm-veil-out');
-  v._gone = setTimeout(function () { v.hidden = true; v.classList.remove('alm-veil-out'); }, ALM_VEIL_FADE_MS + 60);
+// Up under the boot shell once almanac.css is in (before it the page would draw unstyled); gone when almanac.js has drawn
+// its own (almanac.js _openAlmanacInner), or when the open fails.
+var _almOpenAbandoned = false;
+function _almFirstFrame() {
+  var sc = document.getElementById('almanac-content');
+  if (!sc || _almanacOpen || sc.querySelector('#almanac-head')) return;
+  // Back before the page's code has come: the first frame goes with it, and the open that was on its way is dropped.
+  window.addEventListener('popstate', function() {
+    if (_almanacOpen || !document.documentElement.classList.contains('alm-first')) return;
+    _almOpenAbandoned = true;
+    document.documentElement.classList.remove('almanac-boot');
+    _almFirstFrameOff();
+  }, { once: true });
+  sc.innerHTML = _almFirstFrameHtml();
+  document.documentElement.classList.add('alm-first');
+  var view = document.getElementById('almanac-view');
+  if (view) view.classList.add('open');   // already open when the real page opens: no fade of the whole view to start over it
+}
+function _almFirstFrameOff() {
+  var c = document.documentElement.classList;
+  if (!c.contains('alm-first')) return;
+  c.remove('alm-first');
+  if (!_almanacOpen) { var view = document.getElementById('almanac-view'); if (view) view.classList.remove('open'); }
+  var sc = document.getElementById('almanac-content');
+  if (sc && sc.querySelector('.almanac-inner.alm-first')) sc.innerHTML = '';
 }
 // The Almanac's tide section, loaded by almanac.js when it scrolls
 // near; written here so the server stamps their content version on them.
@@ -8304,26 +8764,11 @@ var _ALMANAC_REF_ASSETS = [
 
 // The 3D Earth's files, after the page: the ephemeris (the Sun, the Moon, the planets: no GL), then the view; loaded in
 // that order by almanac.js _almLoadEarth, when the first screen is up and the person is quiet, or at the first need.
-var _ALM_EARTH_SRCS = ['/static/almanac-ephem.js?v=45', '/static/almanac-earth.js?v=45'];
+var _ALM_EARTH_SRCS = ['/static/almanac-vsop87.js?v=45', '/static/almanac-ephem.js?v=45', '/static/almanac-earth.js?v=45'];
 
-// The Almanac's modules. They share a global scope, so they must run in
-// order, and the Almanac opens (or the Field Guide's sky strip reads them)
-// only once the last one has run: opening early would call into functions not
-// yet defined. async=false keeps that order while all download at once, one
-// round trip instead of six on a phone away from home. One load, however many
-// ask: the promise is kept, and dropped when it fails so the next ask tries again.
-var _ALMANAC_MODULES = [
-  '/static/almanac-links.js?v=45',
-  '/static/almanac-orrery.js?v=45',
-  '/static/almanac-sky.js?v=45',
-  '/static/almanac-skygl.js?v=45',
-  '/static/zone-places.js?v=45',
-  '/static/almanac-skyfacts.js?v=45',
-  '/static/almanac.js?v=45'
-];
-// Its stylesheet comes with them, not on the home page's first paint; the
-// Almanac opens once both are in, so it never draws unstyled.
-var _ALMANAC_CSS = '/static/almanac.css?v=3';
+// The Almanac's modules and stylesheet (_ALMANAC_MODULES, _ALMANAC_CSS) are listed in the page's head (index.html), which
+// starts their download when the page boots into the Almanac. One load, however many ask: the promise is kept, and
+// dropped when it fails so the next ask tries again.
 var _almanacModulesLoading = null;
 var _almanacCssLoading = null;
 function _loadAlmanacCss() {
@@ -8343,30 +8788,45 @@ function _loadAlmanacCss() {
   }
   return _almanacCssLoading;
 }
-function _loadAlmanacModules() {
+// A frame of the page painted: after the next paint, or at the latest ALM_PAINT_WAIT_MS (a tab that does not paint).
+var ALM_PAINT_WAIT_MS = 300;
+function _afterPaint() {
+  return new Promise(function(resolve) {
+    var done = false, go = function() { if (!done) { done = true; resolve(); } };
+    requestAnimationFrame(function() { requestAnimationFrame(function() { setTimeout(go, 0); }); });   // the second frame: the first has been painted
+    setTimeout(go, ALM_PAINT_WAIT_MS);
+  });
+}
+// firstFrame: the open's own (the Field Guide's sky strip loads the same files and draws no page).
+function _loadAlmanacModules(firstFrame) {
   if (_almanacLoaded) return Promise.resolve();
   if (!_almanacModulesLoading) {
-    var css = _loadAlmanacCss();
-    var scripts = new Promise(function(resolve, reject) {
-      var failed = false;
-      _ALMANAC_MODULES.forEach(function(src, i) {
-        var s = document.createElement('script');
-        s.src = src;
-        s.async = false;
-        if (i === _ALMANAC_MODULES.length - 1) s.onload = function() { if (!failed) resolve(); };
-        // Offline with a cold cache: these modules were never fetched, so there is
-        // nothing to serve.
-        s.onerror = function() {
-          console.error('Failed to load ' + src);
-          if (failed) return;
-          failed = true;
-          _almanacModulesLoading = null;
-          reject(new Error(src));
-        };
-        document.head.appendChild(s);
+    var css = Promise.all([_loadAlmanacCss(), _loadAlmanacWords()]);
+    // The files come down beside the stylesheet, and are read (a megabyte of script is seconds of a phone's main thread)
+    // after the page's first frame has been painted, so that frame is not behind them.
+    _almPreloadFiles();
+    var scripts = css.then(function() { if (firstFrame) { _almFirstFrame(); return _afterPaint(); } }).then(function() {
+      return new Promise(function(resolve, reject) {
+        var failed = false;
+        _ALMANAC_MODULES.forEach(function(src, i) {
+          var s = document.createElement('script');
+          s.src = src;
+          s.async = false;
+          if (i === _ALMANAC_MODULES.length - 1) s.onload = function() { if (!failed) resolve(); };
+          // Offline with a cold cache: these modules were never fetched, so there is
+          // nothing to serve.
+          s.onerror = function() {
+            console.error('Failed to load ' + src);
+            if (failed) return;
+            failed = true;
+            _almanacModulesLoading = null;
+            reject(new Error(src));
+          };
+          document.head.appendChild(s);
+        });
       });
     });
-    _almanacModulesLoading = Promise.all([css, scripts]).catch(function(e) {
+    _almanacModulesLoading = scripts.catch(function(e) {
       _almanacModulesLoading = null;
       throw e;
     });
@@ -8387,11 +8847,10 @@ function openAlmanac(replaceState) {
   _markZimOpened(_ALMANAC_ZIM);   // the tile's dot is for what has not been opened
   // The tap answers in the next frame: the Almanac's dark shell (the reload gate's, almanac-boot) goes up before
   // its files load or its page is drawn, and the open follows the paint (Eric, 2026-10-30: "tapping almanac app
-  // icon on main page doesn't go right there it hangs back").
+  // icon on main page doesn't go right there it hangs back"). The first frame follows with the stylesheet.
   var root = document.documentElement;
   var answered = root.classList.contains('almanac-boot');
   root.classList.add('almanac-boot');
-  if (!_almanacOpen) _almVeilUp();
   if (_almanacLoaded && !answered) {
     _almanacOpenPending = true;
     requestAnimationFrame(function() { setTimeout(function() { _almanacOpenPending = false; _openAlmanacInner(replaceState); }, 0); });
@@ -8399,9 +8858,11 @@ function openAlmanac(replaceState) {
   }
   if (!_almanacLoaded) {
     _almanacOpenPending = true;
-    _loadAlmanacModules().then(function() {
+    _almOpenAbandoned = false;
+    _loadAlmanacModules(true).then(function() {
       _almanacOpenPending = false;
       _almanacLoaded = true;
+      if (_almOpenAbandoned) return;   // Back was pressed while only the first frame was up: the page the person went back to stands
       _openAlmanacInner(replaceState);
       _keepAlmanac(); // opened once, here next time with no signal too
       // The 3D Earth's files do not follow the open: almanac.js (_almLoadEarth) brings them once the first screen is
@@ -8413,7 +8874,7 @@ function openAlmanac(replaceState) {
       // instead of an empty dark shell.
       _almanacOpenPending = false;
       document.documentElement.classList.remove('almanac-boot');
-      _almVeilDown(true);
+      _almFirstFrameOff();
       _showToast(t('almanac_unavailable_offline'));
     });
     return;
@@ -8444,7 +8905,7 @@ function openAlmanacFind(where, pickId) {
     _almFindLoading = new Promise(function(resolve, reject) {
       var s = document.createElement('script');
       s.src = '/static/almanac-skyfind.js?v=45';
-      s.onload = function() { resolve(); };
+      s.onload = function() { _loadAlmanacWords().then(resolve); };
       s.onerror = function() { _almFindLoading = null; reject(new Error(s.src)); };
       document.head.appendChild(s);
     });
@@ -8739,7 +9200,7 @@ function _loadDiscover() {
     if (s.dated) url += '&date=' + mmdd;
     // day: a wiki's card is Zimipedia's pick of the day (wiki.daily_card),
     // so the word or quote of the day is the same one in both places.
-    url += '&seed=' + mmdd + '&day=' + now.getFullYear() + mmdd;
+    url += '&seed=' + mmdd + '&day=' + now.getFullYear() + mmdd + '&lang=' + encodeURIComponent(_uiLangPrimary());
     return fetch(url)
       .then(function(r) { return r.ok ? r.json() : null; })
       .then(function(d) {
@@ -8747,6 +9208,7 @@ function _loadDiscover() {
         var item = { zim: s.name, path: d.path, title: d.title || _titleFromPath(d.path || ''),
                  thumbnail: d.thumbnail || null, blurb: d.blurb || null,
                  attribution: d.attribution || null, speaker: d.speaker || null, author: d.author || null, part_of_speech: d.part_of_speech || null,
+                 lang: d.lang || null,
                  date: d.date || null, type: s.type, label: s.label || null, icon: s.icon || null,
                  // On This Day's date line (renderDiscover reads these); left
                  // behind here, the card never showed which day or year it was.
@@ -8830,7 +9292,7 @@ function _renderDiscover(el, items) {
       var _dateTitle = _now.toLocaleDateString(_lang, { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric' });
       var _seasonStr = _todaySeason(_now, _almHemisphere());
       var _teaser = _todayTeaser();
-      h += '<a class="discover-card" href="/#almanac" onclick="return _spaNav(event, openAlmanac)">' +
+      h += '<a class="discover-card" href="/#almanac" data-app="almanac" data-zim="" onclick="return _spaNav(event, openAlmanac)">' +
         _renderTodayCard() +
         '<div class="dc-body">' +
           '<div class="dc-source"><span>' + tH('today') + '</span></div>' +
@@ -8838,7 +9300,7 @@ function _renderDiscover(el, items) {
           '<div class="dc-blurb">' + _localMoonName(_m.name) + (_seasonStr ? ' \u00b7 ' + _seasonStr : '') + '</div>' +
           '<div class="dc-blurb">' + fmtPct(_m.illumination, 1) + ' ' + tH('alm_illuminated') + '</div>' +
           (_teaser ? '<div class="dc-blurb" style="color:var(--amber)">' + _teaser + '</div>' : '') +
-        '</div></a>';
+        _cardMoreHtml('dc-more') + '</div></a>';
       continue;
     }
 
@@ -8914,12 +9376,12 @@ function _renderDiscover(el, items) {
         : '';
       h += '<a class="discover-card dc-quote-card" href="' + escAttr(_articleDeepLinkPath(it.zim, it.path)) + '" data-zim="' + escAttr(it.zim) + '" data-path="' + escAttr(it.path) + '" data-title="' + escAttr(it.title || '') + '" onclick="return _spaCardClick(event, this)">' +
         '<div class="dc-body">' +
-          '<div class="dc-header">' + iconHtml + '<span>' + esc(sourceLabel || t('quote_of_day')) + '</span></div>' +
+          '<div class="dc-header">' + iconHtml + '<span>' + esc(sourceLabel || t('quote_of_day')) + '</span>' + _cardLangBadge(zimInfo) + '</div>' +
           '<div class="dc-quote-mark">\u201C</div>' +
           '<div dir="auto" class="dc-blurb dc-quote">' + esc(cleanQuote) + '</div>' +
-          _discoverSayHtml(cleanQuote, it.zim, 'sentence') +
+          _discoverSayHtml(cleanQuote, it.zim, 'sentence', it.lang) +
           attrLine +
-        '</div></a>';
+        _cardMoreHtml('dc-more') + '</div></a>';
 
     // ─── Card: Word of the Day ──────────────────────────────────────
     // Full-width card with headword, part of speech, and definition.
@@ -8927,12 +9389,12 @@ function _renderDiscover(el, items) {
     } else if (/wiktionary/i.test(it.zim || '')) {
       h += '<a class="discover-card dc-quote-card dc-word-card" href="' + escAttr(_articleDeepLinkPath(it.zim, it.path)) + '" data-zim="' + escAttr(it.zim) + '" data-path="' + escAttr(it.path) + '" data-title="' + escAttr(it.title || '') + '" onclick="return _spaCardClick(event, this)">' +
         '<div class="dc-body">' +
-          '<div class="dc-header">' + iconHtml + '<span>' + esc(sourceLabel) + '</span></div>' +
+          '<div class="dc-header">' + iconHtml + '<span>' + esc(sourceLabel) + '</span>' + _cardLangBadge(zimInfo) + '</div>' +
           '<div dir="auto" class="dc-headword">' + esc(displayTitle) + '</div>' +
-          _discoverSayHtml(displayTitle, it.zim) +
+          _discoverSayHtml(displayTitle, it.zim, 'word', it.lang) +
           (it.part_of_speech ? '<div class="dc-pos">' + esc(it.part_of_speech) + '</div>' : '') +
           (it.blurb ? '<div dir="auto" class="dc-def">' + esc(it.blurb) + '</div>' : '') +
-        '</div></a>';
+        _cardMoreHtml('dc-more') + '</div></a>';
 
     // ─── Card: Standard ─────────────────────────────────────────────
     // Thumbnail + source + title + blurb. Used for APOD, On This Day,
@@ -8970,15 +9432,16 @@ function _renderDiscover(el, items) {
       h += '<a class="discover-card' + (_isVid ? ' dc-video-card' : '') + '" href="' + escAttr(_articleDeepLinkPath(it.zim, it.path)) + '" data-zim="' + escAttr(it.zim) + '" data-path="' + escAttr(it.path) + '" data-title="' + escAttr(it.title || '') + '"' + vidAttrs + ' onclick="return _spaCardClick(event, this)">' +
         thumbHtml + playBadge +
         '<div class="dc-body">' +
-          '<div class="dc-source">' + iconHtml + '<span>' + esc(sourceLabel) + '</span>' + badgeHtml + dateHtml + '</div>' +
+          '<div class="dc-source">' + iconHtml + '<span>' + esc(sourceLabel) + '</span>' + badgeHtml + _cardLangBadge(zimInfo) + dateHtml + '</div>' +
           '<div dir="auto" class="dc-title">' + esc(displayTitle) + '</div>' +
           speakerHtml +
           showBlurb +
-        '</div></a>';
+        _cardMoreHtml('dc-more') + '</div></a>';
     }
   }
   h += '</div></div>';
   el.innerHTML = h;
+  _todayTwinkle(el);
   el.dataset.lang = _currentLang; // Track language for cache invalidation on lang switch
   // Restore saved scroll position (e.g., after navigating back from an article)
   try {
@@ -9224,14 +9687,19 @@ function _moveZimTo(zim, category) {
     var bd = document.getElementById('ctx-backdrop');
     if (bd) bd.hidden = true;
     _ctxZim = null; _ctxApp = null; _ctxCard = null; _kbSub = null; _ctxCustomAction = null;
+    _refocusMore();
   }
 
   // On a phone a ZIM's menu is a sheet that comes up from the bottom, with the
   // ZIM it is about at its head; its submenus open in place under their row
   // instead of flying out. A pointer and a wide screen keep the menu at the click.
   var CTX_SHEET_MQ = '(max-width: 600px) and (pointer: coarse)';
-  function _ctxSheetWanted() { return !!_ctxZim && !!(window.matchMedia && matchMedia(CTX_SHEET_MQ).matches); }
+  function _ctxSheetWanted() { return !!(_ctxZim || _ctxApp) && !!(window.matchMedia && matchMedia(CTX_SHEET_MQ).matches); }
   function _ctxSheetHeadHtml(zim) {
+    if (_ctxApp) {
+      return '<div class="ctx-head"><span class="ctx-head-icon ctx-head-app">' + _appIcon(_ctxApp) + '</span><span class="ctx-head-text"><b>' + esc(_appAboutTitle(_ctxApp)) + '</b>' +
+        '<span>' + esc(_appCountLine(_ctxApp)) + '</span></span></div>';
+    }
     var z = _zimInfo(zim) || { name: zim };
     var icon = z.has_icon
       ? '<img src="/w/' + encodeURIComponent(zim) + '/-/icon" alt="" width="36" height="36">'
@@ -9441,20 +9909,12 @@ function _moveZimTo(zim, category) {
     if (!manageEnabled) return '';
     return '<div class="ctx-item">' + tH('move_to') + ' ›<div class="ctx-sub">' + _moveSubmenuHtml(zim) + '</div></div>';
   }
-  // The auto-updater's opt-out, for a ZIM it can reach (a dated catalog file).
-  function _autoUpdateItemHtml(zim) {
-    if (!manageEnabled) return '';
-    var info = _zimInfo(zim);
-    if (!info || !_DATED_ZIM_FILE_RE.test(info.file || '')) return '';
-    return '<div class="ctx-item" data-action="au-skip">' + tH(info.auto_update === false ? 'au_skip_off' : 'au_skip_on') + '</div>';
-  }
-
   // An Apps tile's menu: Open, About (its ZIM, where it has one), Hide from Home (an account's choice), Delete (Zimi's own).
   function showAppMenu() {
     var zim = _ctxZim, own = zim && _zimInfo(zim);
     var h = '<div class="ctx-item" data-action="app-open">' + tH('open') + '</div>';
     if (own && !IS_DESKTOP) h += '<div class="ctx-item" data-action="newtab">' + tH('open_new_tab') + '</div>';
-    if (own) h += '<div class="ctx-item" data-action="about">' + tH('about_zim') + '</div>';
+    h += '<div class="ctx-item" data-action="about-app">' + tH('about') + '</div>';
     if (own && _keepAvailable()) h += '<div class="ctx-sep"></div>' + _keepMenuHtml(zim);
     if (_userSession) h += '<div class="ctx-item" data-action="app-hide">' + tH('hide_from_home') + '</div>';
     if (own && manageEnabled) h += '<div class="ctx-sep"></div><div class="ctx-item danger" data-action="delete">' + tH('delete') + '</div>';
@@ -9475,40 +9935,36 @@ function _moveZimTo(zim, category) {
     var dlItem = manageEnabled
       ? '<div class="ctx-item" data-action="download-zim">' + tH('ctx_download_zim') + '</div>'
       : '';
-    // The file's own group: take it with you, as a file or as a copy on the phone, and whether it updates itself.
-    var fileGroup = dlItem + keepItems + _autoUpdateItemHtml(zim);
+    // The file's own group: take it with you, as a file or as a copy on the phone.
+    var fileGroup = dlItem + keepItems;
+    // Sections, each a thing the person does with it: Open / Favorite / sort it / About; the file itself; Random; Delete last.
+    var layout = _layoutItemsHtml(zim);
+    var sections = function(list) { return list.filter(Boolean).join('<div class="ctx-sep"></div>'); };
     if (_ctxCompact) {
-      var layout = _layoutItemsHtml(zim);
-      menu.innerHTML = aboutItem + (fileGroup ? '<div class="ctx-sep"></div>' + fileGroup : '') + (layout ? '<div class="ctx-sep"></div>' + layout : '');
+      menu.innerHTML = sections([aboutItem + layout, fileGroup]);
       posMenu(_ctxX, _ctxY);
       return;
     }
     var favs = (collectionsCache && collectionsCache.favorites) || [];
     var isFav = favs.includes(zim);
     var colls = (collectionsCache && collectionsCache.collections) || {};
-    var h = '<div class="ctx-item" data-action="open">' + tH('open') + '</div>';
-    if (!IS_DESKTOP) h += '<div class="ctx-item" data-action="newtab">' + tH('open_new_tab') + '</div>';
-    h += '<div class="ctx-sep"></div>';
-    h += '<div class="ctx-item" data-action="favorite">' + (isFav ? tH('remove_from_favorites') : tH('add_to_favorites')) + '</div>';
+    var open = '<div class="ctx-item" data-action="open">' + tH('open') + '</div>';
+    if (!IS_DESKTOP) open += '<div class="ctx-item" data-action="newtab">' + tH('open_new_tab') + '</div>';
+    open += '<div class="ctx-item" data-action="favorite">' + (isFav ? tH('remove_from_favorites') : tH('add_to_favorites')) + '</div>';
     // Collections submenu (hover to expand)
-    h += '<div class="ctx-item">' + tH('collections_tab') + ' \u203A<div class="ctx-sub">';
+    open += '<div class="ctx-item">' + tH('collections_tab') + ' \u203A<div class="ctx-sub">';
     for (var cName in colls) {
       var coll = colls[cName];
       var inColl = (coll.zims || []).indexOf(zim) >= 0;
-      h += '<div class="ctx-item" data-action="toggle-coll" data-coll="' + escAttr(cName) + '">' +
+      open += '<div class="ctx-item" data-action="toggle-coll" data-coll="' + escAttr(cName) + '">' +
         (inColl ? '\u2713 ' : '') + esc(coll.label || cName) + '</div>';
     }
-    if (Object.keys(colls).length > 0) h += '<div class="ctx-sep"></div>';
-    h += '<div class="ctx-item" data-action="new-collection">' + tH('new_collection') + '</div>';
-    h += '</div></div>';
-    h += '<div class="ctx-sep"></div>' + aboutItem;
-    if (fileGroup) h += '<div class="ctx-sep"></div>' + fileGroup;
-    var layoutItems = _layoutItemsHtml(zim);
-    if (layoutItems) { h += '<div class="ctx-sep"></div>' + layoutItems; }
-    if (manageEnabled) {
-      h += '<div class="ctx-sep"></div>';
-      h += '<div class="ctx-item danger" data-action="delete">' + tH('delete') + '</div>';
-    }
+    if (Object.keys(colls).length > 0) open += '<div class="ctx-sep"></div>';
+    open += '<div class="ctx-item" data-action="new-collection">' + tH('new_collection') + '</div>';
+    open += '</div></div>' + layout + aboutItem;
+    var random = '<div class="ctx-item" data-action="random-zim">' + tH('random') + '</div>';
+    var del = manageEnabled ? '<div class="ctx-item danger" data-action="delete">' + tH('delete') + '</div>' : '';
+    var h = sections([open, fileGroup, random, del]);
     menu.innerHTML = h;
     posMenu(_ctxX, _ctxY);
   }
@@ -9543,20 +9999,33 @@ function _moveZimTo(zim, category) {
   // ordinary ZIM has an href and no onclick, so right-click silently did
   // nothing on almost every card in the library while touch kept working. One
   // resolver, both input types, and neither can rot without the other.
+  // A card's menu, opened at a point: right click, long press and the keyboard all come here.
+  function _ctxOpenCard(hit, x, y) {
+    if (window.getSelection) { try { window.getSelection().removeAllRanges(); } catch (_) {} }
+    _ctxZim = hit.zim; _ctxApp = hit.app || null; _ctxCard = hit.card; _ctxCompact = false; _ctxCustomAction = null;
+    _ctxX = x + 2; _ctxY = y + 2;
+    showMainMenu();
+  }
+  // From the keyboard there is no pointer: the menu opens under the card's start.
+  function _ctxOpenCardAtCard(hit) {
+    var r = hit.card.getBoundingClientRect();
+    _ctxOpenCard(hit, (document.documentElement.dir === 'rtl' ? r.right - 200 : r.left) + 6, r.bottom);
+  }
   document.addEventListener('contextmenu', function(e) {
     var hit = _lpHit(e.target);
     if (!hit) { closeCtx(); return; }
     e.preventDefault();
-    // Prevent text selection
-    window.getSelection().removeAllRanges();
-    _ctxZim = hit.zim;
-    _ctxApp = hit.app || null;
-    _ctxCard = hit.card;
-    _ctxCompact = false;
-    _ctxCustomAction = null;
-    _ctxX = e.clientX + 2;
-    _ctxY = e.clientY + 2;
-    showMainMenu();
+    // The menu key fires contextmenu at the focused card with no pointer position.
+    if (!e.clientX && !e.clientY) _ctxOpenCardAtCard(hit);
+    else _ctxOpenCard(hit, e.clientX, e.clientY);
+  });
+  // Shift+F10 is the menu key's twin; a Mac keyboard has no menu key, so it is the way in there.
+  document.addEventListener('keydown', function(e) {
+    if (!(e.key === 'ContextMenu' || (e.key === 'F10' && e.shiftKey))) return;
+    var hit = document.activeElement && _lpHit(document.activeElement);
+    if (!hit) return;
+    e.preventDefault();
+    _ctxOpenCardAtCard(hit);
   });
 
   // Prevent text selection on stat-cards during mousedown
@@ -9589,7 +10058,7 @@ function _moveZimTo(zim, category) {
     var card = target.closest && target.closest('.stat-card, .catalog-item[data-zim]');
     if (!card) return null;
     var app = card.dataset && card.dataset.app;
-    if (app && !card.classList.contains('app-empty')) return _appMenuHasMore(app) ? { card: card, zim: _OWN_APP_ZIM[app] || '', app: app } : null;
+    if (app && !card.classList.contains('app-empty')) return { card: card, zim: _OWN_APP_ZIM[app] || '', app: app };
     var zim = card.dataset && card.dataset.zim;
     if (!zim) {
       var m = (card.getAttribute('onclick') || '').match(/enterSource\('([^']+)'/);
@@ -9618,10 +10087,7 @@ function _moveZimTo(zim, category) {
     _lpTimer = setTimeout(function() {
       _lpTimer = null; _lpFired = true; _lpCard = hit.card;
       if (navigator.vibrate) { try { navigator.vibrate(10); } catch (_) {} }
-      if (window.getSelection) { try { window.getSelection().removeAllRanges(); } catch (_) {} }
-      _ctxZim = hit.zim; _ctxApp = hit.app || null; _ctxCard = hit.card; _ctxCompact = false; _ctxCustomAction = null;
-      _ctxX = _lpStartX + 2; _ctxY = _lpStartY + 2;
-      showMainMenu();
+      _ctxOpenCard(hit, _lpStartX, _lpStartY);
     }, 500);
   }, { passive: true });
   document.addEventListener('touchmove', function(e) {
@@ -9701,7 +10167,13 @@ function _moveZimTo(zim, category) {
     } else if (action === 'open') {
       closeCtx(); enterSource(zim, true);
     } else if (action === 'about') {
-      closeCtx(); _openZimAbout(zim);
+      var opener = _moreOpener;
+      closeCtx(); _rememberMore(opener); _openZimAbout(zim);
+    } else if (action === 'about-app') {
+      var aboutApp = _ctxApp, appOpener = _moreOpener;
+      closeCtx(); _rememberMore(appOpener); _openAppAbout(aboutApp);
+    } else if (action === 'random-zim') {
+      closeCtx(); _randomFrom(zim);
     } else if (action.indexOf('keep-') === 0) {
       closeCtx(); _keepDo(action, zim);
     } else if (action === 'newtab') {
@@ -9744,32 +10216,9 @@ function _moveZimTo(zim, category) {
           collectionsCache = c; renderHome();
         });
       });
-    } else if (action === 'au-skip') {
-      closeCtx();
-      var auInfo = _zimInfo(zim);
-      if (!auInfo) return;
-      var auSkip = auInfo.auto_update !== false;
-      manageFetch('/manage/auto-update-skip', {
-        method: 'POST', headers: {'Content-Type': 'application/json'},
-        body: JSON.stringify({zim: zim, skip: auSkip})
-      }).then(function(res) { if (res.ok) { if (auSkip) auInfo.auto_update = false; else delete auInfo.auto_update; } });
     } else if (action === 'download-zim') {
       closeCtx();
-      var zdl = _zimInfo(zim);
-      var dlFile = (zdl && zdl.file) || zim;
-      // A navigation carries no auth headers, so authorization travels as a
-      // one-time two-minute ticket minted here (POST /manage/dl-ticket) and
-      // spent by the URL — without it a passworded instance answered the
-      // navigation with an HTML refusal Safari saved as name.zim.html.
-      manageFetch('/manage/dl-ticket', {
-        method: 'POST', headers: {'Content-Type': 'application/json'},
-        body: JSON.stringify({file: dlFile})
-      }).then(function(r) { return r.json(); }).then(function(d) {
-        location.href = '/dl/' + encodeURIComponent(dlFile) +
-          (d && d.ticket ? '?t=' + encodeURIComponent(d.ticket) : '');
-      }).catch(function() {
-        location.href = '/dl/' + encodeURIComponent(dlFile);
-      });
+      _downloadZimFile(zim);
     } else if (action === 'delete') {
       closeCtx();
       var zinfo = _zimInfo(zim);
@@ -10015,7 +10464,11 @@ async function renderSource(name) {
   } else if (info.entries === 0 || info.entries === '?') {
     output.innerHTML = '<div class="empty"><p>' + tH('no_content') + '</p><p class="hint">' + tH('zim_corrupted') + '</p></div>';
   } else {
-    output.innerHTML = '';
+    // No main page to open: the two ways into any book, search inside it
+    // (the bar is scoped to it already) and a random page of it.
+    output.innerHTML = '<div class="empty nomain-ways">' +
+      '<button type="button" class="pill nomain-search" onclick="q.focus()">' + tH('search') + '</button> ' +
+      '<button type="button" class="pill nomain-random" onclick="randomArticle(event)"><span aria-hidden="true">' + _diceSvg(13) + '</span> ' + tH('random') + '</button></div>';
   }
 }
 
@@ -10186,11 +10639,22 @@ q.addEventListener('keydown', e => {
 
 
 // Re-run the search with a "Did you mean" correction the user clicked.
-function applyDidYouMean(suggestion) {
+// A search that found nothing runs its suggestion itself: {typed, shown} while
+// the suggestion's results are on screen, so they say what they are and the
+// typed words stay a tap away. kept: the typed words someone chose over it.
+var _dymRun = null, _dymKept = null;
+function applyDidYouMean(suggestion, typed) {
   if (!suggestion) return;
   var q = document.getElementById('q');
+  _dymRun = typed ? { typed: typed, shown: suggestion } : null;
   if (q) q.value = suggestion;
-  doSearch(suggestion, 'new');
+  doSearch(suggestion, typed ? true : 'new');
+}
+function searchTypedInstead(typed) {
+  _dymKept = typed;
+  var q = document.getElementById('q');
+  if (q) q.value = typed;
+  doSearch(typed, 'new');
 }
 
 // push: true records the search in the address (replacing a search already
@@ -10205,6 +10669,8 @@ async function doSearch(query, push, perSource) {
   perSource = perSource || SEARCH_PER_SOURCE;
   if (!query) return;
   if (!more) { _searchCardClear(); _gamesRowClear(); } // a new question: the old card goes, its request with it
+  if (!more && !(_dymRun && _dymRun.shown === query)) _dymRun = null;
+  if (_dymKept !== null && _dymKept !== query) _dymKept = null;
   _currentSearchQuery = query;
   clearTimeout(suggestTimer);
   hideSuggest();
@@ -10675,7 +11141,13 @@ function renderSearchResults(data, scope) {
   // 1.8.0: "einstien" still matched 13 things); a second gate here at 3 hid
   // nearly every suggestion it sent.
   var dymHtml = '';
-  if (data.did_you_mean) {
+  var ran = _dymRun && _dymRun.shown === data._query ? _dymRun : null;
+  if (ran) {
+    // Its results are below: one quiet line, and the way back to what was typed.
+    dymHtml = '<div class="did-you-mean dym-ran">' +
+      t('dym_showing', {s: '<b>' + esc(ran.shown) + '</b>', o: '<a href="#" data-typed="' + escAttr(ran.typed) + '">' + esc(ran.typed) + '</a>'}) +
+      '</div>';
+  } else if (data.did_you_mean && !_titleAnswersQuery(items, data._query)) {
     var sugg = data.did_you_mean;
     dymHtml = '<div class="did-you-mean">' +
       t('did_you_mean', {s: '<a href="#" data-sugg="' + escAttr(sugg) + '">' + esc(sugg) + '</a>'}) +
@@ -10693,6 +11165,13 @@ function renderSearchResults(data, scope) {
     const guided = !!(!scope && data.fieldguide) || !!(_searchCard && _searchCard.el && _searchCard.el.dataset.card === 'fieldguide');
     // A near: whose place no installed map names says so (near_not_found), not "No results found".
     const nearOnly = data.near && !data.near.found;
+    // Nothing found and a spelling that might: run it rather than argue with it.
+    if (data.did_you_mean && !data.partial && !guided && !nearOnly && !ran && _dymKept !== data._query) {
+      // After this answer's own handler has returned: the new search ends the request that brought it.
+      const from = data._query, sugg = data.did_you_mean;
+      setTimeout(function() { if (_currentSearchQuery === from) applyDidYouMean(sugg, from); }, 0);
+      return;
+    }
     output.innerHTML = chipsHtml + _nearHtml(data.near) + (guided || nearOnly ? dymHtml : '<div class="empty">' + dymHtml + '<p>' + tH('no_results') + '</p><p class="hint">' + tH(asksNothing ? 'search_needs_word' : 'try_different') + '</p></div>');
     _searchCardMount();
     _gamesRowMount();
@@ -10707,7 +11186,7 @@ function renderSearchResults(data, scope) {
     if (matches.length > 0 && matches.length <= 8) {
       zimMatchHtml = '<div class="stats-grid" style="margin-bottom:16px">' + matches.map(z => {
         const icon = z.has_icon
-          ? '<img src="/w/' + encodeURIComponent(z.name) + '/-/icon" alt="" width="48" height="48" loading="lazy">'
+          ? _cardIconImg(z.name)
           : '<span class="icon-letter">' + esc(z.title || z.name)[0].toUpperCase() + '</span>';
         // Real link (#49) — and data-zim keeps the long-press context menu
         // working now that there is no enterSource(...) onclick to parse.
@@ -11357,6 +11836,7 @@ function showHistoryDropdown(filter) {
     (anySearch ? '<button type="button" class="sg-recent-clear" onmousedown="event.preventDefault();event.stopPropagation();_recentClearSearches()">' + tH('recent_clear_searches') + '</button>' : '') +
     '</div>';
   // What you searched and read first; the library's filter rows under it.
+  _suggestSheet(false);
   suggestDropdown.innerHTML = recentHeader +
     items.map(function(it, i) {
       var forget = t('remove') + ': ' + it.label;
@@ -11403,6 +11883,7 @@ function _recentClearSearches() {
 
 function showSuggest() {
   suggestIndex = -1;
+  _suggestSheet(false);
   suggestDropdown.innerHTML = suggestItems.map((s, i) =>
     '<div class="suggest-item' + (s._place || s._nearPick ? ' sg-place' : '') + '" data-i="' + i + '" onmousedown="selectSuggest(' + i + ')">' +
     '<div class="sg-title"><bdi>' + esc(s.title) + '</bdi></div>' +
@@ -11413,7 +11894,13 @@ function showSuggest() {
   suggestDropdown.style.display = 'block';
 }
 
+// The tips are a sheet from the bar's foot to the screen's, full width; the suggestions stay under the field (a phone's: the screen's width, CSS).
+function _suggestSheet(on) {
+  suggestDropdown.classList.toggle('tips-sheet', on);
+  suggestDropdown.style.top = on || _isNarrow() ? Math.round(q.closest('.topbar').getBoundingClientRect().bottom) + 'px' : '';
+}
 function hideSuggest() {
+  _suggestSheet(false);
   suggestDropdown.style.display = 'none';
   suggestIndex = -1;
   _searchHelpExpanded(false);
@@ -11430,7 +11917,7 @@ function selectSuggest(i) {
   const s = suggestItems[i];
   if (!s) return;
   hideSuggest();
-  if (s._example) { _searchAgain(s.query); return; }
+  if (s._example) { _useSearchExample(s.query); return; }
   if (s._nearPick) { _pickNearPlace(s); return; }
   // History search item: re-execute the search
   if (s._histSearch) {
@@ -11459,7 +11946,8 @@ function _manageThen(name, args) {
     return window[name].apply(null, args);
   });
 }
-function _warmManage() { if (manageEnabled) _manageLoad(); }
+// Not while the Almanac is up or on its way: its first screen is the page, and Manage loads on the first way in.
+function _warmManage() { if (manageEnabled && !_almanacOpen && !document.documentElement.classList.contains('almanac-boot')) _manageLoad(); }
 function toggleManage() { return _manageThen('toggleManage', arguments); }
 function enterManage() { return _manageThen('enterManage', arguments); }
 function renderManage() { return _manageThen('renderManage', arguments); }
@@ -11469,7 +11957,9 @@ function renderInstalled() { return _manageThen('renderInstalled', arguments); }
 function renderBrowseGallery() { return _manageThen('renderBrowseGallery', arguments); }
 function drillCategory() { return _manageThen('drillCategory', arguments); }
 function browseCatalogFilter() { return _manageThen('browseCatalogFilter', arguments); }
-function _renderSelectionBar() { return _manageThen('_renderSelectionBar', arguments); }
+// The batch-download bar and its selection belong to manage.js: until it is loaded there is none, and drawing the top bar
+// (every page, every boot) must not be what loads it.
+function _renderSelectionBar() { var bar = document.getElementById('ci-selection-bar'); if (bar) bar.remove(); }
 function renderActivityLog() { return _manageThen('renderActivityLog', arguments); }
 function _fetchCatalogItems() { return _manageThen('_fetchCatalogItems', arguments); }
 function _enrichCatalogItems() { return _manageThen('_enrichCatalogItems', arguments); }
@@ -11477,7 +11967,12 @@ function downloadZim() { return _manageThen('downloadZim', arguments); }
 function _restoreSavedReader() { return _manageThen('_restoreSavedReader', arguments); }
 function _openSetup() { return _manageThen('_openSetup', arguments); }
 function _setupSubmit() { return _manageThen('_setupSubmit', arguments); }
-function _fetchHasPw() { return _manageThen('_fetchHasPw', arguments); }
+// Asked on the way in (init), so it is here and not in manage.js: Manage's files are not on the page's way in.
+function _fetchHasPw() {
+  return serverFetch('/manage/has-password', { credentials: 'same-origin' })
+    .then(function(r) { return r.json().then(function(j) { return { ok: r.ok, j: j }; }, function() { return { ok: r.ok, j: {} }; }); })
+    .catch(function() { return { ok: false, j: {} }; });
+}
 function _confirmRemovePassword() { return _manageThen('_confirmRemovePassword', arguments); }
 function _setCreatorDefault() { return _manageThen('_setCreatorDefault', arguments); }
 function _setCreatorField() { return _manageThen('_setCreatorField', arguments); }
@@ -11532,6 +12027,15 @@ function _catIcon(paths) {
   return '<svg aria-hidden="true" width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">' + paths + '</svg>';
 }
 
+// Two people, head and shoulders, solid: what made a ZIM "from the community". One drawing, filled and never
+// stroked (a stroke fattens the shoulders into wedges), drawn here for the Community bucket and for the mark on a
+// community card alike.
+const COMMUNITY_ICON_PATHS = '<circle cx="9" cy="8" r="3.4"/><path d="M2.5 20.5v-1.4C2.5 16 5.4 14 9 14s6.5 2 6.5 5.1v1.4z"/><circle cx="17.4" cy="9" r="2.6"/><path d="M17.6 14.2c2.4.4 4 2 4 4.4v1.9h-4.3v-1.4c0-1.8-.5-3.4-1.4-4.6.5-.2 1.1-.3 1.7-.3z"/>';
+const COMMUNITY_CAT = 'community';
+function communityIcon(size) {
+  return '<svg class="community-icon" aria-hidden="true" width="' + size + '" height="' + size + '" viewBox="0 0 24 24" fill="currentColor">' + COMMUNITY_ICON_PATHS + '</svg>';
+}
+
 const BROWSE_CATEGORIES = [
   { key: 'wikipedia',      i18n: 'cat_encyclopedias',  icon: _catIcon('<circle cx="12" cy="12" r="9"/><path d="M3 12h18M12 3a14 14 0 0 1 0 18M12 3a14 14 0 0 0 0 18"/>'), descKey: 'cat_encyclopedias_desc' },
   { key: 'stack_exchange', i18n: 'cat_qa',             icon: _catIcon('<path d="M4 5h16v11H9l-5 4z"/><path d="M8 9h8M8 12h5"/>'), descKey: 'cat_qa_desc' },
@@ -11543,9 +12047,8 @@ const BROWSE_CATEGORIES = [
   { key: 'survival',       i18n: 'cat_survival',       icon: _catIcon('<circle cx="12" cy="12" r="9"/><path d="M15.5 8.5l-2 5-5 2 2-5z" fill="currentColor" stroke="none"/>'), descKey: 'cat_survival_desc' },
   { key: 'gaming',         i18n: 'cat_gaming',         icon: _catIcon('<rect x="2" y="7" width="20" height="11" rx="5"/><path d="M7 11v3M5.5 12.5h3"/><circle cx="16" cy="11.5" r="1" fill="currentColor" stroke="none"/><circle cx="18.5" cy="13.5" r="1" fill="currentColor" stroke="none"/>'), descKey: 'cat_gaming_desc' },
   { key: 'maps',           i18n: 'cat_maps',           icon: _catIcon('<path d="M3 6l6-2 6 2 6-2v14l-6 2-6-2-6 2z"/><path d="M9 4v14M15 6v14"/>'), descKey: 'cat_maps_desc' },
+  { key: COMMUNITY_CAT,  i18n: 'cat_community',      icon: communityIcon(26), descKey: 'cat_community_desc' },
   { key: 'other',          i18n: 'cat_other',          icon: _catIcon('<path d="M3 8l9-4 9 4v9l-9 4-9-4z"/><path d="M3 8l9 4 9-4M12 12v9"/>'), descKey: 'cat_other_desc' },
-  // Zimi's own ZIMs come last, marked with its pebble and Z in one stroke.
-  { key: 'zimi',           i18n: 'cat_zimi',           icon: _catIcon('<path d="M12 3.5c5 0 9 3.4 9 8.5 0 5.2-4.2 8.5-9.3 8.5C6.4 20.5 3 17 3 12.2 3 7 7 3.5 12 3.5z"/><path d="M8.8 9h6.4l-6.4 6h6.4"/>'), descKey: 'cat_zimi_desc' },
 ];
 
 // Category key → localized display name
@@ -11746,6 +12249,13 @@ function _installedMaps() {
   return _installedOfKind('map', function(z) { return _mapSourceLabel(z) + '|' + _mapName(z).toLowerCase(); });
 }
 
+// A map for any place (/static/mapflow.js, fetched the first time a place asks): the installed map that holds it, or
+// the one worth downloading. Resolves ZimiMapHere, or null when the file cannot be had.
+function _mapHere() {
+  if (window.ZimiMapHere) return Promise.resolve(window.ZimiMapHere);
+  return _loadScript('/static/mapflow.js?v=1').then(function(ok) { return ok ? window.ZimiMapHere : null; });
+}
+
 // ── Search grammar (#94) ──
 // The same parser as zimi/query.py, which the library search uses; the cases
 // both must agree on are tests/fixtures/search_query_cases.json.
@@ -11903,6 +12413,13 @@ function parseSearchQuery(q, filters) {
 }
 
 const _reEscape = s => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+
+// Whether a shown result's title already holds every word of the query: the title phase finds what the full search's
+// suggestion never saw, and a query a title answers has no spelling in doubt.
+function _titleAnswersQuery(items, query) {
+  const parsed = parseSearchQuery(query, SEARCH_BAR_FILTERS);
+  return parsed.groups.length > 0 && (items || []).some(r => searchQueryMatches(parsed, r.title || ''));
+}
 
 // A phrase or an exclusion matches from the start of a word ("-ted" drops
 // TED and TEDx, not United), or anywhere in a script without spaces.
@@ -12172,6 +12689,15 @@ function _searchExampleHtml(ex) {
   return '<bdi class="search-example-q" dir="' + (rtl ? 'rtl' : 'ltr') + '">' + out + esc(ex.slice(at)) + '</bdi>';
 }
 
+// A tip tapped: its syntax goes into the box, to be changed and sent. The catalog's box filters as it is typed, so there it runs.
+function _useSearchExample(query) {
+  if (mode === 'manage') { _searchAgain(query); return; }
+  hideSuggest();
+  q.value = query;
+  q.focus();
+  q.setSelectionRange(query.length, query.length);
+}
+
 function toggleSearchTips(e) {
   if (_searchTipsOpen()) { hideSuggest(); return; }
   // From the keyboard, into the box, where the arrows and Enter pick one; a
@@ -12185,11 +12711,12 @@ function toggleSearchTips(e) {
   suggestDropdown.innerHTML = '<div class="search-tips">' +
     '<div class="search-tips-head">' + tH('search_tips') + '</div>' +
     examples.map((ex, i) =>
-      '<div class="suggest-item search-example" data-i="' + i + '" onmousedown="selectSuggest(' + i + ')">' +
+      '<div class="suggest-item search-example" data-i="' + i + '" onmousedown="event.preventDefault();selectSuggest(' + i + ')">' +
         _searchExampleHtml(ex) +
-        searchQueryChips(ex).map(c => _searchChipHtml(c, pool, false)).join('') +
+        '<span class="search-example-note">' + searchQueryChips(ex).map(c => _searchChipLabel(c, pool, true)).join(' ') + '</span>' +
       '</div>').join('') + '</div>';
   suggestDropdown.style.display = 'block';
+  _suggestSheet(true);
   _searchHelpExpanded(true);
 }
 
@@ -12491,6 +13018,13 @@ function _splitPathFragment(path) {
   var h = path.indexOf('#');
   if (h === -1) return { base: path, frag: '' };
   return { base: path.slice(0, h), frag: path.slice(h) };
+}
+// The games read the language and direction Zimi shows in their address (#lang=fr&dir=ltr), else the phone's.
+function _gameUrlWithLang(url) {
+  var h = url.indexOf('#'), p = new URLSearchParams(h < 0 ? '' : url.slice(h + 1));
+  if (!p.has('lang')) p.set('lang', _currentLang || 'en');
+  if (!p.has('dir')) p.set('dir', document.documentElement.getAttribute('dir') || 'ltr');
+  return (h < 0 ? url : url.slice(0, h)) + '#' + p.toString();
 }
 function _articleUrl(zim, path, query) {
   var p = _splitPathFragment(path);
@@ -12889,6 +13423,11 @@ var READER_THEMES = ['dark', 'light', 'sepia'];
 // every picker shows them, Reader View's and the books' and Zimipedia's
 // reading settings alike (the two had them in different orders).
 var READER_THEME_MODES = ['auto', 'light', 'sepia', 'dark'];
+// What the pickers offer: those, then Red (the app's night mode, not a stored reader palette: it tints the whole app and the page).
+var READER_PICKER_MODES = READER_THEME_MODES.concat([APP_THEME_RED]);
+// The picker's current selection: Red while the app is in it, else the stored mode.
+function _readerPickedMode() { return _nightRedOn() ? APP_THEME_RED : _readerThemeMode(); }
+function _readerThemeLabel(k) { return tH(k === 'auto' ? 'theme_auto' : k === APP_THEME_RED ? 'theme_red' : 'reader_theme_' + k); }
 // The <body> background each theme paints — mirrors --rv-bg in the injected CSS.
 // Used to tint the iframe/loading chrome so AUTO mode never flashes ZIM-white.
 var READER_THEME_BG = { dark: '#0a0a0b', light: '#fbfbf9', sepia: '#f4ecd8' };
@@ -13691,6 +14230,18 @@ function _readerViewToggle() {
   try { _applyArticleDarken(doc); } catch(e) {}
   _ttsStop(); // the visible content changed under any in-progress speech
   _syncReaderViewBtn();
+  _syncReaderViewAddress();
+}
+
+// Reader View rides in an article's address (&rv=1), so a reload or a copied link opens it the same way. Set when the
+// address asked for it; consumed by the first page that loads.
+var _readerViewFromAddress = false;
+var _RV_ADDRESS_RE = /([?&])rv=1(?=&|$)/;
+function _syncReaderViewAddress() {
+  var search = location.search;
+  if (!/[?&]a=/.test(search) || _RV_ADDRESS_RE.test(search) === _readerViewOn) return;
+  search = _readerViewOn ? search + '&rv=1' : search.replace(_RV_ADDRESS_RE, '').replace(/^&/, '?').replace(/\?$/, '');
+  history.replaceState(history.state, '', location.pathname + search + location.hash);
 }
 
 // Reflect availability + on/off state onto the desktop button and the ... menu row.
@@ -13780,8 +14331,14 @@ function _setReaderFamily(fam) {
   _renderReaderPalette();
 }
 function _setReaderTheme(theme) {
-  if (READER_THEME_MODES.indexOf(theme) < 0) return;
-  _prefWrite(SK.READER_THEME, theme);
+  if (READER_PICKER_MODES.indexOf(theme) < 0) return;
+  // Red is the app's own night mode: on, it tints the bar and the page with the rest; any other pick leaves it.
+  var wasRed = _nightRedOn();
+  if (theme === APP_THEME_RED) { if (!wasRed) _nightSet(true); }
+  else {
+    if (wasRed) _nightSet(false);
+    _prefWrite(SK.READER_THEME, theme);
+  }
   var doc = _readerFrameDoc(); if (doc && _readerViewOn) _applyReaderTheme(doc);
   // Keep the iframe/chrome tint in step so scroll-past-content shows theme bg.
   _tintReaderChrome();
@@ -13839,7 +14396,7 @@ function _readerPaletteHtml() {
 function _rvSwatchHtml(key, theme) {
   // 'auto' reuses the app-theme control's already-localized "Auto" label so no
   // new i18n key is needed; the concrete palettes keep their reader_theme_* keys.
-  var lbl = tH(key === 'auto' ? 'theme_auto' : 'reader_theme_' + key);
+  var lbl = _readerThemeLabel(key);
   return '<button type="button" class="rv-swatch rv-sw-' + key + (theme === key ? ' active' : '') +
     '" role="radio" aria-checked="' + (theme === key ? 'true' : 'false') +
     '" title="' + lbl + '" aria-label="' + lbl +
@@ -13850,7 +14407,7 @@ function _rvSwatchesHtml(mode) {
   // `mode` is the stored selection (auto|dark|light|sepia) so the Auto swatch
   // lights up when chosen — not the resolved palette.
   return '<div class="rv-swatches" role="radiogroup" aria-label="' + tH('reader_theme') + '">' +
-    READER_THEME_MODES.map(function(k) { return _rvSwatchHtml(k, mode); }).join('') + '</div>';
+    READER_PICKER_MODES.map(function(k) { return _rvSwatchHtml(k, mode); }).join('') + '</div>';
 }
 function _rvFamPillHtml(key, fam) {
   return '<button type="button" class="rv-pill' + (fam === key ? ' active' : '') +
@@ -13871,7 +14428,7 @@ function _rvSizeStepperHtml(lvl) {
 // no print/share/exit — just the two everyday controls, sized to fit 390px.
 function _readerCompactControlsHtml() {
   return '<div class="rv-compact">' +
-    _rvSwatchesHtml(_readerThemeMode()) +
+    _rvSwatchesHtml(_readerPickedMode()) +
     '<div class="rv-compact-fontrow">' + _rvFamPillsHtml(_readerFamily()) + _rvSizeStepperHtml(_readerFontLevel()) + '</div>' +
   '</div>';
 }
@@ -13885,7 +14442,7 @@ function _readerSettingsRowsHtml() {
   var h = '';
   // Theme (swatches keyed off the stored mode so Auto reflects the selection)
   h += '<div class="rv-row"><div class="rv-row-label">' + tH('reader_theme') + '</div>' +
-    _rvSwatchesHtml(_readerThemeMode()) + '</div>';
+    _rvSwatchesHtml(_readerPickedMode()) + '</div>';
   // Font family
   h += '<div class="rv-row"><div class="rv-row-label">' + tH('reader_font_family') + '</div>' +
     _rvFamPillsHtml(fam) + '</div>';
@@ -14392,7 +14949,8 @@ var _reddotOpen = false;
 var _REDDOT_PAGE = '/static/reddot.html?v=1';
 // Reddot's mark is a red dot (Eric, 2026-09-19), the one colour in the
 // chrome that is not the shell's: a logo keeps its colour in both themes.
-var _REDDOT_SVG = '<svg aria-hidden="true" width="26" height="26" viewBox="0 0 24 24"><circle cx="12" cy="12" r="7" fill="currentColor"/></svg>';
+// Reddot's mark: its dot inside a ring, a line glyph like the other apps', so it never reads as the plain new dot.
+var _REDDOT_SVG = '<svg aria-hidden="true" width="26" height="26" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9" fill="none" stroke="currentColor" stroke-width="1.8"/><circle cx="12" cy="12" r="4.5" fill="currentColor"/></svg>';
 
 function _installedRedditZims() {
   return _installedOfKind('reddit');
@@ -14656,7 +15214,7 @@ function _isBooksPage() {
 function _booksTileHtml() {
   return _appTileHtml('books', t('books'), _BOOKS_SVG, _installedBookZims().map(function(z) { return z.title || z.name; }), 'openBooks');
 }
-function _booksStrings() {
+function _booksStrings(view) {
   var lcc = {};
   _BOOKS_LCC.forEach(function(c) { lcc[c] = t('books_lcc_' + c); });
   return _appStrings('books', ['books_shelf', 'books_authors', 'books_subjects', 'books_eras', 'books_languages', 'books_popular', 'books_recent',
@@ -14664,10 +15222,12 @@ function _booksStrings() {
     'books_sort_name', 'books_sort_books', 'books_read', 'books_resume', 'books_epub', 'books_more_by', 'books_added', 'books_language',
     'books_subject', 'books_era', 'books_author', 'books_more', 'books_none', 'books_empty', 'books_book', 'books_books', 'books_bce', 'books_bce_ce',
     'books_pending', 'books_epub_only', 'books_load_failed', 'books_load_part', 'books_reading', 'books_sources', 'books_source', 'books_format',
-    'books_chapters', 'books_translator', 'books_publisher', 'books_published', 'books_unreadable'], { lcc: lcc, retry: t('retry') });
+    'books_chapters', 'books_translator', 'books_publisher', 'books_published', 'books_unreadable'], { lcc: lcc, retry: t('retry'), view: view || '' });
 }
-function openBooks(replaceState) {
-  _openHashApp('books', replaceState, function() { _booksOpen = true; return _BOOKS_PAGE + '#' + _booksStrings(); });
+// Where the shelf is (a list, a book, a tab), kept in the address as /?books=<view>: a reload lands there.
+function _booksUrl(view) { return view ? '/?books=' + encodeURIComponent(view) : '/#books'; }
+function openBooks(replaceState, view) {
+  _openHashApp('books', replaceState, function() { _booksOpen = true; return _BOOKS_PAGE + '#' + _booksStrings(view); });
 }
 function _booksSearch(val) { _appFrameCall('booksSearch', val); }
 
@@ -15012,6 +15572,31 @@ function _dictFollowLanguage(lang) {
   }, function() {});
 }
 
+// An open app page (not the Dictionary, which follows by translating its word) takes the new language: the strings and
+// the direction ride in its hash, so the hash is written again from the shell's words (what it was opened with beyond
+// the words stays) and the page loaded afresh; a change after the '#' alone is only a scroll until it is reloaded.
+function _openAppStrings() {
+  if (!readerOpen || _almanacOpen || _createOpen) return null;
+  if (_tubeOpen) return _tubeStrings('');
+  if (_exchangeOpen) return _exchangeStrings('');
+  if (_reddotOpen) return _reddotStrings('');
+  if (_wikiOpen) return _wikiStrings();
+  if (_booksOpen) return _booksStrings();
+  if (_fieldguideOpen) return _fieldguideStrings('');
+  return null;
+}
+function _appFollowLanguage() {
+  var fresh = _openAppStrings();
+  if (!fresh) return;
+  try {
+    var win = document.getElementById('reader-frame').contentWindow;
+    var now = JSON.parse(decodeURIComponent(win.location.hash.slice(1) || '{}')), next = JSON.parse(decodeURIComponent(fresh));
+    for (var k in next) if (next[k] !== '' && k !== '__proto__') now[k] = next[k];
+    win.location.hash = encodeURIComponent(JSON.stringify(now));
+    win.location.reload();
+  } catch (e) {}
+}
+
 // ── Reading settings: the book reader's and Zimipedia's ──
 // One sheet (theme, font, text size, line spacing, margins, and for a book
 // the layout), one set of scales, and one stylesheet for the bars and sheets
@@ -15084,7 +15669,7 @@ var _READING_CSS = [
   // A ring that reads on every sheet, so the sheet's own colour's dot is not
   // a hole in it (sepia's on the sepia sheet, dark's on the dark one).
   '.zb-dot{width:24px;height:24px;border-radius:50%;border:1.5px solid rgba(128,128,128,.6);box-sizing:border-box;background-clip:padding-box}',
-  '.zb-dot-auto{background-image:' + READER_AUTO_SWATCH + '}.zb-dot-light{background-color:' + READER_THEME_BG.light + '}.zb-dot-sepia{background-color:' + READER_THEME_BG.sepia + '}.zb-dot-dark{background-color:' + READER_THEME_BG.dark + '}',
+  '.zb-dot-auto{background-image:' + READER_AUTO_SWATCH + '}.zb-dot-light{background-color:' + READER_THEME_BG.light + '}.zb-dot-sepia{background-color:' + READER_THEME_BG.sepia + '}.zb-dot-dark{background-color:' + READER_THEME_BG.dark + '}.zb-dot-red{background-color:#a8140a}',
   // Text size: five A's, each drawn at its own size (inline).
   '.zb-sizes button{font-family:Georgia,serif;padding:0;line-height:1}',
   // A finger: the sheet's choices and its close reach 44px.
@@ -15114,9 +15699,9 @@ function _readingSettingsHtml(prefs, layouts) {
     }).join('') + '</div>';
   };
   var row = function(label, body) { return '<div class="zb-set"><div class="zb-set-label">' + label + '</div>' + body + '</div>'; };
-  var mode = _readerThemeMode(), fam = _readerFamily(), si = _READING_SIZES.indexOf(prefs.size);
-  var themes = READER_THEME_MODES.map(function(k) {
-    var lbl = tH(k === 'auto' ? 'theme_auto' : 'reader_theme_' + k);
+  var mode = _readerPickedMode(), fam = _readerFamily(), si = _READING_SIZES.indexOf(prefs.size);
+  var themes = READER_PICKER_MODES.map(function(k) {
+    var lbl = _readerThemeLabel(k);
     return [k, '<span class="zb-dot zb-dot-' + k + '"></span>' + lbl];
   });
   return '<div class="zb-sheet-head"><b>' + tH('books_settings') + '</b><button type="button" class="zb-x" aria-label="' + tH('close') + '">×</button></div>' +
@@ -15184,7 +15769,6 @@ var _BOOK_FRONT_MIN = 200;        // chars: a first "chapter" with less than thi
 var _BOOK_SECTION_CHARS = 150000; // chars: the longest run laid out as pages at once
 var _BOOK_SETTLE_MS = 350;        // ms of quiet after a scroll or a turn (its slide is _BOOK_SLIDE_MS) before the place is read
 var _BOOK_SLIDE_MS = 280;         // ms a page takes to slide over
-var _BOOK_BARS_HIDE = 24;         // px scrolled down (or up) before the bars leave (or come back)
 var _BOOK_SWIPE = 40;             // px a swipe travels to turn the page
 var _BOOK_SWIPE_TAP_MS = 400;     // ms after a swipe in which a tap is the swipe's own, not a tap
 var _BOOK_EDGE = 0.3;             // share of the width at either side where a tap turns the page
@@ -15301,6 +15885,7 @@ function _bookChrome(on) {
 var _pdfReading = false;
 function _pdfChrome(on) {
   _pdfReading = !!on;
+  _syncThemeColor();
   _ownChromeSync();
 }
 function _ownChromeSync() {
@@ -15822,7 +16407,6 @@ function _bookLay(frame) {
     else if (d < 0 && page > 0) setPage(page - 1, true);
     else if (d < 0 && cur > 0) { showSec(cur - 1); setPage(pages - 1); }
     else setPage(page, true);
-    showBars(false);
     paint();
     settleSoon();
   };
@@ -15891,7 +16475,7 @@ function _bookLay(frame) {
     var b = e.target.closest('button');
     if (!b) return;
     closeSheets();
-    if (b.hasAttribute('data-k')) { goChapter(Number(b.getAttribute('data-k'))); showBars(false); }
+    if (b.hasAttribute('data-k')) { goChapter(Number(b.getAttribute('data-k'))); }
   });
   head.querySelector('.zb-toc').onclick = foot.querySelector('.zb-info').onclick = function() {
     renderToc();
@@ -15941,7 +16525,6 @@ function _bookLay(frame) {
     held = false;
     if (paged) { showSec(s.__zbI); setPage(pageOfRect(tgt.getBoundingClientRect())); }
     else win.scrollTo(0, Math.max(0, (win.scrollY || 0) + tgt.getBoundingClientRect().top - topGap()));
-    showBars(false);
     paint();
     settleSoon();
   }, true);
@@ -16015,18 +16598,12 @@ function _bookLay(frame) {
   });
 
   // ── scrolling ──
-  var lastY = 0, down = 0, up = 0, ticking = false;
+  var ticking = false;
   doc.addEventListener('scroll', function() {
     if (!paged && !ticking) {
       ticking = true;
       win.requestAnimationFrame(function() {
         ticking = false;
-        var y = win.scrollY || 0, dy = y - lastY;
-        lastY = y;
-        var room = Math.max(doc.documentElement.scrollHeight, doc.body.scrollHeight) - win.innerHeight;
-        if (y < 8 || y >= room - 8) { showBars(true); down = up = 0; }
-        else if (dy > 0) { down += dy; up = 0; if (down > _BOOK_BARS_HIDE && !sheetOpen()) showBars(false); }
-        else if (dy < 0) { up -= dy; down = 0; if (up > _BOOK_BARS_HIDE) showBars(true); }
         if (!held) anchor = readAnchor();
         paint();
       });
@@ -16061,7 +16638,6 @@ function _bookLay(frame) {
     if (!s) return;
     held = false;
     goTo({ s: s.__zbI, o: _bookOffsetIn(doc, s, r.startContainer, r.startOffset) });
-    showBars(false);
     paint();
     settleSoon();
   };
@@ -16091,7 +16667,6 @@ function _bookLay(frame) {
     if (!paged) win.scrollTo(0, 0);
   }
   known = { c: charOf(anchor), ts: placed ? placed.ts : 0 };
-  lastY = win.scrollY || 0;
   held = true;
   paint();
   _readerBindLightbox(shell, doc);
@@ -16382,6 +16957,10 @@ window.addEventListener('message', function(e) {
     _appStep({ mode: 'reader', exchange: true, q: d.q }, _exchangeUrl(d.q), 'q');
     if (d.title) { document.title = d.title + ' \u2014 ' + t('exchange'); _setWindowTitle(document.title); }
     _appItemOpened('exchange', d.q, d.title);
+  } else if (d.zimi === 'books-view' && _booksOpen && typeof d.view === 'string') {
+    // The shelf's own place (a list, a book, a tab): the address keeps it, one entry however far it goes.
+    if (d.view) _appStep({ mode: 'reader', books: true, view: d.view }, _booksUrl(d.view), 'view');
+    else _appHome({ mode: 'reader', books: true, view: '' }, _booksUrl(''), 'view');
   } else if (d.zimi === 'exchange-home' && _exchangeOpen) {
     _appHome({ mode: 'reader', exchange: true, q: '' }, _exchangeUrl(''), 'q');
     _appItemClosed();
@@ -16602,6 +17181,44 @@ function _setUserApp(app, on) {
   Promise.resolve(_setUserPref('apps', shown)).then(redraw);
   redraw();
 }
+// About an app: what it is and what it draws on, drawn from the library list already in hand
+// (nothing is fetched). Each source it reads is a row that opens that ZIM's own About.
+var _ABOUT_ICON = '<svg aria-hidden="true" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M12 11v5.5"/><circle cx="12" cy="7.6" r="0.6" fill="currentColor"/></svg>';
+function _appAboutTitle(app) { return app === 'fieldguide' ? t('fieldguide_help_now') : _appTitle(app); }
+function _appAboutZims(app) {
+  var own = _OWN_APP_ZIM[app] && _zimInfo(_OWN_APP_ZIM[app]);
+  return own ? [own] : (app === 'almanac' || app === 'fieldguide' ? [] : _appZims(app).filter(Boolean));
+}
+function _appAboutHtml(app) {
+  var zims = _appAboutZims(app);
+  var rows = zims.map(function(z) {
+    var count = app === 'maps' || _OWN_APP_TITLE[app] ? '' : _appItemsHtml(app, z) || _zimCountHtml(z);
+    var line = [count, fmtSize(z.size_gb)].filter(Boolean).join(' &middot; ');
+    return '<button type="button" class="zi-src" onclick="_openZimAbout(\'' + escAttr(z.name) + '\')"><span class="zi-src-text"><b>' + esc(z.title || z.name) + '</b>' +
+      (line ? '<span>' + line + '</span>' : '') + '</span><span class="zi-src-go" aria-hidden="true">›</span></button>';
+  }).join('');
+  return '<div class="zi-id"><span class="zi-icon zi-app-icon">' + _appIcon(app) + '</span><div class="zi-id-text"><div class="zi-title">' + esc(_appAboutTitle(app)) + '</div>' +
+    '<div class="zi-desc">' + tH('app_about_' + app) + '</div></div></div>' +
+    (app === 'almanac' ? _almanacAccuracyHtml() : '') +
+    (rows ? '<div class="zi-k zi-src-head">' + tH('about_reads') + '</div><div class="zi-srcs">' + rows + '</div>' : '');
+}
+var _ALM_ACCURACY_KEYS = ['moon', 'seasons', 'sun', 'eclipses', 'tides', 'planets', 'islamic', 'chinese', 'deeptime', 'timezones'];
+// What the Almanac's figures are good to, in its own words (the lines the Almanac's reference carries too).
+function _almanacAccuracyHtml() {
+  return '<div class="zi-k zi-src-head">' + tH('alm_about_data') + '</div><div class="zi-desc">' + tH('alm_about_intro') + '</div><ul class="zi-acc">' +
+    _ALM_ACCURACY_KEYS.map(function(k) { return '<li>' + tH('alm_about_' + k) + '</li>'; }).join('') + '</ul>';
+}
+function _openAppAbout(app) {
+  _ziOpenPanel('about')(_appAboutHtml(app));
+}
+// The app the page is showing now, for its ⋯ in the top bar; '' on Home, a search, an article, Create, Manage.
+function _openAppId() {
+  if (_almanacOpen) return 'almanac';
+  if (_createOpen || mode === 'manage' || !readerOpen) return '';
+  return _isTubePage() ? 'tube' : _isExchangePage() ? 'exchange' : _isReddotPage() ? 'reddot' : _isWikiPage() ? 'wiki'
+    : _isBooksPage() ? 'books' : _isDictPage() ? 'dictionary' : _isFieldguidePage() ? 'fieldguide'
+    : _isMapPage() ? 'maps' : _isGamesZimOpen() ? 'games' : '';
+}
 // The apps to choose from, as the tiles they are on the home page: an icon
 // and a name, lit when offered (Eric: "the lil app tiles with icons and i
 // can select or deselect which to show").
@@ -16710,9 +17327,9 @@ function openAppsPage() {
   enterScope('apps', t('apps_section'), _appsZimNames(), true);
 }
 
-// App tiles in a grid, laid out as the library is (list or tiles).
+// App tiles in a grid: always square launcher tiles.
 function _appsGridHtml(tiles) {
-  return '<div class="' + (_getLibraryView() === 'tiles' ? 'stats-grid tiles' : 'stats-grid') + ' apps-grid">' + tiles + '</div>';
+  return '<div class="stats-grid apps-grid pick-tiles">' + tiles + '</div>';
 }
 
 function _appsRowHtml(withHelp) {
@@ -16784,7 +17401,7 @@ function _appItemsHtml(app, z) {
 // One app's section: its tile drawn as a banner (the count of what it reads
 // in place of their names, which follow under it: a map app's maps), then its ZIMs.
 function _appSectionHtml(app, n, grid) {
-  var tile = _APP_TILES[app]().replace('class="stat-card app-tile', 'class="stat-card app-tile app-banner');
+  var tile = _APP_TILES[app]().replace('class="stat-card pick-tile app-tile', 'class="stat-card pick-tile app-tile app-banner');
   if (n) tile = tile.replace(/<div class="detail">[^<]*<\/div>/, '<div class="detail">' + tPluralH(app === 'maps' ? 'apps_count_maps' : 'app_sources', n) + '</div>');
   return '<section class="app-section" data-app="' + app + '">' + tile + grid + '</section>';
 }
@@ -16809,35 +17426,26 @@ function _appOfReaderUrl(url) {
   if (!z) return '';
   return _OWN_ZIM_APP[z.name] || (z.kind === 'map' ? 'maps' : '');
 }
-function _appTileFootHtml(app) {
+// The new dot leads the app's name, the way a phone marks a fresh app. A tile has no ⋯: its menu is a right click,
+// a long press or Shift+F10.
+function _appTileDotHtml(app) {
   var zims = _appZims(app).concat(_OWN_APP_ZIM[app] && !_appZims(app).length ? [_zimInfo(_OWN_APP_ZIM[app])] : []);
-  var dot = _freshDotHtml(zims.filter(Boolean));
-  var more = _appMenuHasMore(app)
-    ? '<button type="button" class="card-more" aria-label="' + escAttr(t('more_actions')) + '" title="' + escAttr(t('more_actions')) + '" onclick="event.preventDefault();event.stopPropagation();_cardMore(this)">' + _CARD_MORE_SVG + '</button>'
-    : '';
-  return '<span class="card-foot"><span class="card-marks">' + dot + '</span>' + more + '</span>';
+  return _freshDotHtml(zims.filter(Boolean));
 }
-// Whether an app's menu has more than Open (showAppMenu): its own ZIM's About and keep, or Hide for a signed-in
-// person. A ⋯ that opens a menu of one item, the tap the tile already is, is no control at all.
-function _appMenuHasMore(app) {
-  var own = _OWN_APP_ZIM[app];
-  return !!((own && _zimInfo(own)) || _userSession);
-}
-
 function _appTileHtml(app, title, icon, names, openFn) {
   names = names.filter(function(n, i) { return names.indexOf(n) === i; });
   if (names.length) {
-    return '<a class="stat-card app-tile ' + app + '-tile" href="#' + app + '" data-zim="" data-app="' + app + '" onclick="return _spaNav(event, ' + openFn + ')">' +
-      '<div class="card-icon">' + icon + '</div>' +
-      '<div class="card-info"><div class="name"><span class="zt">' + esc(title) + '</span></div>' +
-      '<div class="detail">' + esc(names.join(' \u00b7 ')) + '</div></div>' + _appTileFootHtml(app) + '</a>';
+    return '<a class="stat-card pick-tile app-tile ' + app + '-tile" href="#' + app + '" data-zim="" data-app="' + app + '" onclick="return _spaNav(event, ' + openFn + ')">' +
+      '<div class="card-icon pick-ic">' + icon + '</div>' +
+      '<div class="card-info"><div class="name pick-name">' + _appTileDotHtml(app) + '<span class="zt">' + esc(title) + '</span></div>' +
+      '<div class="detail">' + esc(names.join(' \u00b7 ')) + '</div></div></a>';
   }
   var door = _APP_CATEGORY[app]
     ? 'href="/?manage" onclick="return _spaNav(event, function() { _openCategory(_APP_CATEGORY.' + app + '); })"'
     : 'href="/#create" onclick="return _spaNav(event, function() { _createRememberMode = \'page\'; _createRememberSource = _REDDIT_ADDRESS_START; openCreate(); })"';
-  return '<a class="stat-card app-tile app-empty ' + app + '-tile" ' + door + ' data-zim="" data-app="' + app + '">' +
-    '<div class="card-icon">' + icon + '</div>' +
-    '<div class="card-info"><div class="name"><span class="zt">' + esc(title) + '</span></div>' +
+  return '<a class="stat-card pick-tile app-tile app-empty ' + app + '-tile" ' + door + ' data-zim="" data-app="' + app + '">' +
+    '<div class="card-icon pick-ic">' + icon + '</div>' +
+    '<div class="card-info"><div class="name pick-name"><span class="zt">' + esc(title) + '</span></div>' +
     '<div class="detail">' + esc(t('app_empty_' + app)) + '</div></div></a>';
 }
 
@@ -17035,10 +17643,19 @@ function _titleOverflows(el) {
   r.selectNodeContents(el);
   return r.getBoundingClientRect().width > el.clientWidth - parseFloat(cs.paddingLeft) - parseFloat(cs.paddingRight) + 0.01;
 }
-function _fitGameTitle(el) {
+function _shrinkTitle(el) {
   el.style.fontSize = '';
   var px = parseFloat(getComputedStyle(el).fontSize);
   while (_titleOverflows(el) && px > _GAME_TITLE_MIN_PX) { px -= 1; el.style.fontSize = px + 'px'; }
+}
+// Smallest size first; then the buttons and padding give up a few pixels (.tight); what still does not fit ends in the
+// ellipsis, and the full name is the tooltip.
+function _fitGameTitle(el) {
+  var head = el.parentNode;
+  head.classList.remove('tight');
+  _shrinkTitle(el);
+  if (_titleOverflows(el)) { head.classList.add('tight'); _shrinkTitle(el); }
+  el.title = _titleOverflows(el) ? el.textContent : '';
 }
 // Paint the header's game part, or take it away; the stylesheet swaps it for the search box.
 function _syncGameHead() {
@@ -17803,7 +18420,8 @@ function openReader(url) {
     // until the shell exists, so the raw ZIM page never flashes ("dark mode
     // unbroken"). Non-eligible docs (PDF viewer, thin pages) fall through silently.
     var _bookDoc = false; try { _bookDoc = _isBookDoc(frame.contentDocument); } catch (e) {}
-    var _wantReader = _readerViewOn || _readerAuto() || _bookDoc;
+    var _wantReader = _readerViewOn || _readerAuto() || _bookDoc || _readerViewFromAddress;
+    _readerViewFromAddress = false;
     // A wiki's article opened from Zimipedia reads in Zimipedia's reader
     // (Reader View laid out as an encyclopedia); one opened anywhere else does
     // when Reader View is on, so it stays as you follow links.
@@ -17825,6 +18443,7 @@ function openReader(url) {
     if (_bookDoc && _readerViewOn) {
       try { _bookOn = _bookAttach(frame); } catch (e) { console.warn('Book reader:', e); _showToast(t('books_view_unavailable')); }
     }
+    _syncReaderViewAddress();
     _bookChrome(_bookOn);
     _pdfChrome(_isPdfPage());
     if (_bookDoc && _readerViewOn) _bookMath(frame);
@@ -18497,6 +19116,8 @@ var _bmScope = '';
 
 // Glyphs in the app's own icon language (thin stroke, currentColor, round caps
 // and joins, the family of the topbar SVGs).
+// The die on Random: a line icon like its neighbours (the emoji was a colour picture among them).
+function _diceSvg(n) { return '<svg width="' + n + '" height="' + n + '" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3.5" y="3.5" width="17" height="17" rx="4"/><circle cx="8.5" cy="8.5" r=".9" fill="currentColor"/><circle cx="15.5" cy="8.5" r=".9" fill="currentColor"/><circle cx="12" cy="12" r=".9" fill="currentColor"/><circle cx="8.5" cy="15.5" r=".9" fill="currentColor"/><circle cx="15.5" cy="15.5" r=".9" fill="currentColor"/></svg>'; }
 var _BM_SVG_ATTRS = 'viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"';
 var _BM_LIST_SVG = '<svg width="17" height="17" ' + _BM_SVG_ATTRS + '><path d="M9 6h11M9 12h11M9 18h11"/><path d="M4.5 6h.01M4.5 12h.01M4.5 18h.01"/></svg>';
 var _BM_HEART_SVG = '<svg width="17" height="17" ' + _BM_SVG_ATTRS + '><path d="M20.8 5.6a5.5 5.5 0 0 0-7.8 0L12 6.7l-1-1.1a5.5 5.5 0 0 0-7.8 7.8l1 1.1L12 22l7.8-7.5 1-1.1a5.5 5.5 0 0 0 0-7.8z"/></svg>';
@@ -21122,7 +21743,7 @@ function _savedStart() {
   // article that asks what is kept does not wait on reading it.
   (window.requestIdleCallback || setTimeout)(function () { Saved.lists(); });
   _liveOpen();
-  _buildCheck();
+  _buildCheck(true);
   if (_gamesAccount) (window.requestIdleCallback || setTimeout)(function () { _gamesFollow(_gamesAccount); });
   if (!_savedSignedIn()) return;
   if (window.requestIdleCallback) requestIdleCallback(_savedPull, { timeout: 2000 });
@@ -21156,6 +21777,7 @@ function _liveOpen() {
     else if (c.topic === 'saved') _savedPull();
     else if (c.topic === 'games') _gamesPull();
     else if (c.topic === 'library') _libraryHeard();
+    else if (c.topic === 'debuglog') _debugLogAsk();
   });
   // Each write says where the stream is (lastEventId): kept for reopening,
   // and which build the server serves now.
@@ -21164,6 +21786,7 @@ function _liveOpen() {
     var d = null;
     try { d = JSON.parse(e.data); } catch (err) {}
     if (d && d.build) _buildHeard(d.build);
+    if (d && typeof d.debuglog === 'boolean') _debugLogHeard(d.debuglog);
   });
   src.onerror = function () {
     // Closed by the server's answer (401/409: not this account any more, or an
@@ -21174,6 +21797,15 @@ function _liveOpen() {
     if (_accountId) _accountRecheck();
     _liveRetryTimer = setTimeout(_liveOpen, _LIVE_RETRY_MS);
   };
+}
+// The server's debug log (zimi/debuglog.py): while it is on, debuglog.js records this window and posts it. Off, nothing is fetched.
+var _DEBUGLOG_JS = '/static/debuglog.js?v=1';
+function _debugLogHeard(on) {
+  if (on) _loadScript(_DEBUGLOG_JS).then(function (ok) { if (ok && typeof _dbl !== 'undefined') _dbl.start(); });
+  else if (typeof _dbl !== 'undefined') _dbl.stop();
+}
+function _debugLogAsk() {
+  fetch('/debuglog', { cache: 'no-store' }).then(function (r) { return r.json(); }).then(function (d) { _debugLogHeard(!!d.on); }).catch(function () {});
 }
 function _liveClose() {
   if (!_liveSource) return;
@@ -21215,6 +21847,7 @@ function _libraryHeard() {
     _libraryKnown = true;
     _catalogCache = null;
     _gamesLinks = null; // the library changed: which articles are games' may have
+    _almanacViews = {}; // ... and which the 3D Almanac shows (it may have come or gone)
     _gamesIndex = null; // ... and whether the games are here at all
     if (window.AlmanacLinks) { AlmanacLinks.reset(); if (_almanacOpen && typeof _renderAlmanacContent === 'function') _renderAlmanacContent(); } // its Q-ID links follow the library
     if (readerOpen) _gamePlayCheck();
@@ -21257,10 +21890,9 @@ function _buildHeard(build) {
 // "Fresh load is not a busy time, it's the ideal time to pull latest"): the
 // stream's first tick says it too, but it may not open (blocked, offline at
 // first) and a reload then is before the person has engaged with anything.
-function _buildCheck() {
+function _buildCheck(share) {
   if (!_BUILD || _buildWaiting || typeof fetch !== 'function') return;
-  fetch('/health', { cache: 'no-store' }).then(function (r) { return r.json(); })
-    .then(function (d) { if (d && d.asset_version) _buildHeard(d.asset_version); }).catch(function () {});
+  _healthOnce(share).then(function (d) { if (d && d.asset_version) _buildHeard(d.asset_version); });
 }
 // The build the worker in charge is (sw.js answers its CACHE_VERSION, the server's build): the new worker may have
 // claimed this page before the build was asked for, and its change was then fired with no one listening.
@@ -22038,6 +22670,7 @@ function openArticle(zim, path, title, opts) {
     try { sessionStorage.setItem('zimi_disc_scroll', String(Math.round(discScroll.scrollLeft))); } catch(e) {}
   }
   var url = _articleUrl(zim, path, opts && opts.query);
+  if (zim === _GAMES_ZIM) url = _gameUrlWithLang(url);
   // A Kiwix map restores its own last view from localStorage as it loads,
   // after Zimi has positioned it, so a switch from Hawaii to the world map
   // landed on wherever that map was last (Eric: "It moved from Hawaii to
@@ -22285,18 +22918,42 @@ function _gamePlayHide() {
 // article's Q-ID, which apps have a view of it (their ZIMs are in the library, else the answer leaves them out).
 var _ALMANAC_EARTH_TARGETS = { 'planet:moon': 'moon', 'planet:sun': 'sun', 'planet:earth': 'earth' };
 var _ALMANAC_TARGET_WAIT_MS = 8000;
-function _openAlmanacFor(key) {
-  var target = _ALMANAC_EARTH_TARGETS[key];
+// The Almanac opened, then `go` once the Earth view's module (which follows the Almanac's open) is here.
+function _openAlmanacThen(go) {
   closeReader();
   openAlmanac();
-  if (!target) return;
-  // The Earth view's module follows the Almanac's open; it takes the object once both are here.
+  if (!go) return;
   var until = Date.now() + _ALMANAC_TARGET_WAIT_MS;
   var wait = setInterval(function() {
-    if (_almanacOpen && typeof window.openAlmanacEarth === 'function') { clearInterval(wait); window.openAlmanacEarth({ target: target }); }
+    if (_almanacOpen && typeof window.openAlmanacEarth === 'function') { clearInterval(wait); go(); }
     else if (Date.now() > until) clearInterval(wait);
     else if (_almanacOpen && typeof _almLoadEarth === 'function') _almLoadEarth();
   }, 100);
+}
+function _openAlmanacFor(key) {
+  var target = _ALMANAC_EARTH_TARGETS[key];
+  _openAlmanacThen(target ? function() { window.openAlmanacEarth({ target: target }); } : null);
+}
+// The 3D view at an address of its own (v=..&x=.. or m=..&k=..: almanac-earth.js "The address"), as a shared link opens it.
+function _openAlmanacLink(q) {
+  _openAlmanacThen(function() { if (typeof _aeLinkOpen === 'function') _aeLinkOpen(_almLinkParse('#almanac?' + q)); });
+}
+// Which view of the 3D Almanac an article is about (GET /almanac-view, zimi/gamelinks.py): its Q-ID against the bodies,
+// craft, missions and landmarks the view shows. Asked only while the Almanac is in the library (the /games-links answer
+// lists its entries then), once per article, the last few kept.
+var _ALMANAC_VIEW_URL = '/almanac-view';
+var _ALMANAC_VIEWS_KEPT = 200;
+var _almanacViews = {};
+function _almanacViewLoad(zim, path) {
+  var key = zim + ':' + path;
+  if (!(key in _almanacViews)) {
+    if (Object.keys(_almanacViews).length >= _ALMANAC_VIEWS_KEPT) _almanacViews = {};
+    _almanacViews[key] = fetch(_ALMANAC_VIEW_URL + '?zim=' + encodeURIComponent(zim) + '&path=' + encodeURIComponent(_splitPathFragment(path).base))
+      .then(function(r) { return r.ok ? r.json() : {}; })
+      .then(function(d) { return d && d.link || null; })
+      .catch(function() { delete _almanacViews[key]; return null; });
+  }
+  return _almanacViews[key];
 }
 function _appViewFor(data, qid) {
   var game = data.games[qid];
@@ -22315,15 +22972,26 @@ function _gamePlayCheck() {
   _gamePlayHide();
   if (!currentArticle || !_GAMES_WIKI_RE.test(currentArticle.zim)) return;
   var key = currentArticle.zim + ':' + currentArticle.path;
-  _gamesLoad().then(function(data) {
-    if (!currentArticle || currentArticle.zim + ':' + currentArticle.path !== key) return;
-    var view = _appViewFor(data, _gamesQidOf(data, currentArticle.zim, currentArticle.path));
+  var zim = currentArticle.zim, path = currentArticle.path;
+  var here = function() { return currentArticle && currentArticle.zim + ':' + currentArticle.path === key; };
+  var show = function(view) {
     var b = document.getElementById('game-play');
-    if (!view || !b) return;
+    if (!view || !b || !here()) return;
     b.onclick = view.open;
     b.querySelector('.gp-label').textContent = view.label;
     b.querySelector('img').src = view.icon;
     b.hidden = false;
+  };
+  _gamesLoad().then(function(data) {
+    if (!here()) return;
+    var qid = _gamesQidOf(data, zim, path);
+    if (data.games[qid]) { show(_appViewFor(data, qid)); return; }
+    // Anything the 3D view shows (a body, a craft, a mission, a landmark) opens it there; else the sky's own view, if any.
+    var asked = Object.keys(data.almanac || {}).length ? _almanacViewLoad(zim, path) : Promise.resolve(null);
+    asked.then(function(link) {
+      show(link ? { label: t('almanac_see_it'), icon: '/w/' + encodeURIComponent(_ALMANAC_ZIM) + '/-/icon', open: function() { _openAlmanacLink(link); } }
+        : _appViewFor(data, qid));
+    });
   });
 }
 
@@ -22684,7 +23352,7 @@ function _buildTopbarMenuHtml() {
   // back when it hid the inline buttons; it keeps them now, so forcing it here
   // listed Random and Language twice in the same bar (#68).
   if (_isNarrow()) {
-    navGroup += '<button class="topbar-menu-item" onclick="_closeTopbarMenu();randomArticle(event)"><span class="dice" style="font-size:16px">&#x1F3B2;</span> ' + tH(_isMapPage() ? 'random_place' : 'random') + '</button>';
+    navGroup += '<button class="topbar-menu-item" onclick="_closeTopbarMenu();randomArticle(event)"><span class="dice">' + _diceSvg(16) + '</span> ' + tH(_isMapPage() ? 'random_place' : 'random') + '</button>';
     if (!_langMenuHidden()) navGroup += '<button class="topbar-menu-item" onclick="_closeTopbarMenu();toggleLangDropdown(event)"><svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.2"><circle cx="8" cy="8" r="6.5"/><ellipse cx="8" cy="8" rx="3" ry="6.5"/><line x1="1.5" y1="8" x2="14.5" y2="8"/></svg> ' + tH('language') + '</button>';
     // Manage row: while downloads are active, carry the count and route the tap
     // straight to the downloads view (the badge on the ⋯ button is only a dot).
@@ -22696,7 +23364,8 @@ function _buildTopbarMenuHtml() {
     // unauthenticated visitor who taps Manage gets the unified sign-in modal
     // (named user OR admin), and a signed-in user lands on their minimal account
     // card (name, access, log out). See manageFetch's 401 handler + renderManage.
-    if (_userSession) {
+    // The Almanac keeps Language and its way out inline on a phone.
+    if (_almanacOpen) { /* nothing more to list */ } else if (_userSession) {
       navGroup += '<div class="topbar-menu-divider" role="separator"></div>';
       navGroup += '<div class="topbar-menu-label">' + tH('signed_in_as') + ' ' + esc(_userSession.name) + '</div>';
       navGroup += '<button class="topbar-menu-item" onclick="_closeTopbarMenu();toggleManage(event)">' + _ACCT_ICON + ' ' + tH('manage') + '</button>';
@@ -22705,7 +23374,14 @@ function _buildTopbarMenuHtml() {
     }
   }
 
-  h = readerGroup;
+  // An app's own page: its name, and About (what it is, what it is reading right now).
+  var appId = _openAppId();
+  if (appId) {
+    h = '<div class="topbar-menu-label">' + esc(_appAboutTitle(appId)) + '</div>' +
+      '<button class="topbar-menu-item" onclick="_closeTopbarMenu();_rememberMore(document.querySelector(\'.topbar-more\'));_openAppAbout(\'' + appId + '\')">' + _ABOUT_ICON + ' <span class="tbm-label">' + tH('about') + '</span></button>';
+    if (readerGroup || navGroup) h += '<div class="topbar-menu-divider" role="separator"></div>';
+  }
+  h += readerGroup;
   // Divider only when both groups are present, so neither a reader-only (desktop)
   // nor a nav-only (mobile home) menu ends up with a stray separator.
   if (readerGroup && navGroup) h += '<div class="topbar-menu-divider" role="separator"></div>';
@@ -22813,6 +23489,14 @@ function _closeTopbarMenu() {
 
 
 // ── Random ──
+// A random page of one source, opened (a Home card's Random).
+async function _randomFrom(zim) {
+  try {
+    var data = await (await fetch('/random?zim=' + encodeURIComponent(zim))).json();
+    if (data && !data.error) openArticle(data.zim, data.path, data.title, data.pos ? {pos: data.pos} : undefined);
+    else _showToast(t('error'));
+  } catch (e) { _showToast(t('error')); }
+}
 async function randomArticle(event) {
   if (event) event.preventDefault();
   if (_createOpen) closeCreate();
@@ -22882,6 +23566,7 @@ document.addEventListener('keydown', e => {
   if (e.key === 'Escape') {
     // Topmost popovers first — otherwise Escape falls through to goBack()/close
     // and dumps a keyboard user out of the reader instead of shutting the popover.
+    if (document.getElementById(_ZI_OVERLAY_ID)) return;  // an About sheet: its own Escape closes it (_ziKeydown)
     if (_findIsOpen()) { _findClose(); return; }
     if (_extCur) { _extHide(); return; }
     if (_definePopover && _definePopover.classList.contains('open')) { _defineHide(); return; }
@@ -22965,6 +23650,8 @@ async function _enterSourceNoReader(name) {
 }
 
 window.addEventListener('popstate', async (e) => {
+  // A sheet About opened is a step in history: Back closes it and stays.
+  if (_ziPop(e)) return;
   // Same page, different place on the same map: only the hash changed. The
   // hashchange handler moves the map; there is nothing here to route. Judged
   // against the article on screen, not against the last URL this handler saw:
@@ -23161,6 +23848,19 @@ var _discAudio = null;
 // What the server says at most as a sentence (voices.SENTENCE_MAX).
 var _DISC_SENTENCE_MAX = 300;
 var _DISC_SAY_LANG_RE = { word: _WIKTIONARY_LANG_RE, sentence: /^wikiquote_([a-z]{2,3})(?:_|$)/ };
+var _DISC_SAY_SOURCE_RE = { word: /^wiktionary(?:_|$)/, sentence: /^wikiquote(?:_|$)/ };
+// The language a card's Say speaks: the ZIM's own Language metadata, else the
+// code in its file name. A served name need not carry one ("wikiquote",
+// "wiktionary_en-simple"), and reading only the name drew no Say at all on
+// those.
+function _discSayLang(zim, kind) {
+  if (!_DISC_SAY_SOURCE_RE[kind].test(zim || '')) return '';
+  var info = typeof _zimInfo === 'function' ? _zimInfo(zim) : null;
+  var lang = info && info.language ? _normLang(String(info.language).split(',')[0]) : '';
+  if (lang && lang !== 'all') return lang;
+  var m = _DISC_SAY_LANG_RE[kind].exec(zim || '');
+  return m ? m[1] : '';
+}
 // A quote longer than the server says, cut at the last word that fits.
 function _discSentence(text) {
   text = String(text || '').replace(/\s+/g, ' ').trim();
@@ -23168,13 +23868,13 @@ function _discSentence(text) {
   var cut = text.slice(0, _DISC_SENTENCE_MAX), sp = cut.lastIndexOf(' ');
   return sp > 0 ? cut.slice(0, sp) : cut;
 }
-function _discoverSayHtml(word, zim, kind) {
+function _discoverSayHtml(word, zim, kind, lang) {
   kind = kind || 'word';
-  var m = _DISC_SAY_LANG_RE[kind].exec(zim || '');
+  lang = lang || _discSayLang(zim, kind);
   if (kind === 'sentence') word = _discSentence(word);
-  if (!m || !word) return '';
+  if (!lang || !word) return '';
   var label = kind === 'word' ? t('dictionary_say_word', { word: word }) : t('dictionary_say');
-  return '<span class="dc-say" role="button" tabindex="0" data-say="' + escAttr(word) + '" data-lang="' + escAttr(m[1]) + '" data-kind="' + kind + '" aria-label="' + escAttr(label) + '"' +
+  return '<span class="dc-say" role="button" tabindex="0" data-say="' + escAttr(word) + '" data-lang="' + escAttr(lang) + '" data-kind="' + kind + '" aria-label="' + escAttr(label) + '"' +
     ' onclick="return _discoverSay(event, this)" onkeydown="if(event.key===\'Enter\'||event.key===\' \')return _discoverSay(event, this)">' + _DISC_SPEAKER + '<span>' + tH('dictionary_say') + '</span></span>';
 }
 function _discoverSay(e, el) {
@@ -24086,7 +24786,7 @@ function _syncFrameNight(url) {
   if (_nightRedOn()) {
     try {
       var path = url ? new URL(url, location.origin).pathname : frame.contentWindow.location.pathname;
-      on = path.indexOf('/static/') !== 0 && (url ? true : !_docIsOurOwnPage(frame.contentDocument));
+      on = path.indexOf('/static/') !== 0 && (url ? true : !_docIsOurOwnPage(frame.contentDocument) && !_docBroughtRed(frame.contentDocument));
     } catch (e) { on = true; } // unreadable: filtered, never a bright page
   }
   frame.classList.toggle('night-filter', on);
@@ -24108,6 +24808,11 @@ function _frameIsOurOwnPage(frame) {
 // capture): it says so in its head.
 function _docIsOurOwnPage(doc) {
   try { return !!(doc && doc.querySelector && doc.querySelector('meta[name="zimi-page"]')); } catch (e) { return false; }
+}
+// A ZIM page that took Red for itself (ZimiGames reads the theme and draws it from its own tokens): a filter over it as well
+// would dim what it already drew in red.
+function _docBroughtRed(doc) {
+  try { return !!(doc && doc.documentElement && doc.documentElement.classList.contains('night-red')); } catch (e) { return false; }
 }
 // A ZIM page that is an app, not something to read (ZimiGames, the Almanac):
 // it says so in its head, and the reader offers it no highlight, note or lookup.
@@ -24614,12 +25319,7 @@ async function settingsRefreshCache() {
     // Reload ZIM list
     try { zimsCache = await _fetchList(); _rebuildZimsMap(); } catch(e) {}
     if (btn) btn.textContent = t('refreshed');
-    var overlay = document.getElementById('settings-overlay');
-    if (msgEl && overlay && overlay.classList.contains('open')) {
-      setTimeout(function() { closeSettings(); renderManage(); }, 800);
-    } else {
-      renderManage();
-    }
+    renderManage();
   } catch(e) {
     if (msgEl) msgEl.textContent = t('refresh_failed');
     if (btn) btn.textContent = t('error');
@@ -24793,8 +25493,9 @@ function _nudgeActivityPoll() {
 }
 window._nudgeActivityPoll = _nudgeActivityPoll;
 
-// Kick off the poller on load. Even if nothing is happening, one call
-// confirms the endpoint works; subsequent calls follow active/idle cadence.
-window.addEventListener('load', _startActivityPolling);
+// Kick off the poller once the page has loaded and gone quiet (the badge is not what the first paint waits for, and the
+// request is one fewer in the first moments). Even if nothing is happening, one call confirms the endpoint works;
+// subsequent calls follow active/idle cadence.
+window.addEventListener('load', function () { whenQuiet(_startActivityPolling, { key: 'activity-poll', priority: QUIET_PRI_POLISH, maxWaitMs: 8000 }); });
 
 init();

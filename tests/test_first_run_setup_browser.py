@@ -97,6 +97,22 @@ def _page(browser, base, headers):
     return page
 
 
+def _past_the_offer_step(page):
+    """After who can manage, first run offers what can be downloaded now (4f09a1642: Almanac HD, voices, satellite data...);
+    its Done goes on to the library. With nothing to offer the overlay closes by itself."""
+    page.wait_for_function(
+        "() => !document.getElementById('setup-overlay').classList.contains('open')"
+        " || !!document.querySelector('#setup-card #setup-addons')",
+        timeout=30000,
+    )
+    if page.evaluate("() => document.getElementById('setup-overlay').classList.contains('open')"):
+        with page.expect_navigation():
+            page.click("#setup-card .btn-row .btn-primary")
+        page.wait_for_function(
+            "() => !document.getElementById('setup-overlay').classList.contains('open')", timeout=30000
+        )
+
+
 def test_a_device_on_the_network_sets_it_up_with_the_key(served, browser):
     base, key = served
     page = _page(browser, base, LAN_VIA_PROXY)
@@ -110,9 +126,7 @@ def test_a_device_on_the_network_sets_it_up_with_the_key(served, browser):
     page.fill("#setup-pw2", "hunter22")
     page.click("#setup-form button[type=submit]")
     page.wait_for_load_state("load")
-    page.wait_for_function(
-        "!document.getElementById('setup-overlay').classList.contains('open')"
-    )
+    _past_the_offer_step(page)
     assert page.evaluate("fetch('/list').then(r => r.status)") == 200
     assert (
         page.evaluate(
@@ -299,9 +313,7 @@ def test_a_first_run_without_a_password_is_a_choice_with_its_cost(served, browse
     assert "kept" not in cost, "there is no password to keep"
     assert page.is_hidden("#setup-fields")
     page.click("#setup-form button[type=submit]")
-    page.wait_for_function(
-        "!document.getElementById('setup-overlay').classList.contains('open')"
-    )
+    _past_the_offer_step(page)
     assert (
         page.evaluate("fetch('/manage/has-password').then(r => r.json()).then(j => j.access)")
         == "open"

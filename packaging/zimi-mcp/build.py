@@ -50,6 +50,7 @@ MODULES = (
     "placedata",
     "subproc",
     "libzimcompat",
+    "zimparts",
     "zimwriter",
     "zimpatch",
     "tube",

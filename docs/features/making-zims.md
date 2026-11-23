@@ -147,7 +147,7 @@ The rendered and alive engines take them on the page they already have open. The
 
 - **`--engine rendered` fails to start / no Chromium** — install the browser extra: `pip install 'zimi[browser]'` then `playwright install chromium`.
 - **`--engine alive` errors on conversion** — it needs both the browser extra and the warc2zim sidecar. Run `zimi import --setup` once (network), then `zimi import --status` to confirm.
-- **`--engine singlefile` says the CLI is missing** — install Node, then `npm install -g single-file-cli`. It also needs a Chromium; `playwright install chromium` provides one.
+- **`--engine singlefile` says the CLI is missing** — install Node, then `npm install -g single-file-cli`. It also needs a Chromium; `playwright install chromium` provides one. In Docker, Settings > Server > Add-ons (or the first-run list) adds the Browser and SingleFile in one press each.
 - **`--engine zimit` can't run** — it shells out to Docker; ensure Docker is installed and the daemon is running.
 - **`--engine-arg` reads as a missing value** — argparse treats a bare flag-shaped token as missing. Write it attached: `--engine-arg=--workers=2`.
 - **Crawl stops early / ZIM smaller than expected** — you hit `--max-bytes`, `--max-pages`, or `--max-depth`, or robots.txt disallowed pages. Raise the caps or add `--ignore-robots` (site only) where appropriate.

@@ -182,9 +182,12 @@
   // ── Layout ──────────────────────────────────────────────────────────────
   var PAIR_STEP_SHARE = 1.25, DEFENCE_DX = 0.3, DEFENCE_DY = 0.2, STOCK_PEEK = 0.55, STOCK_DROP = 0.85;
   function geo(m, st) { return T.geometry(m, T.rowsFor(m, st.hands[0].length)); }
+  var PANEL_HALF_PX = 260, SHORT_PAIR_STEP_SHARE = 0.3;   // the tray of choices is 520 px wide across the middle
   function tableSpots(g, count) {
-    var pitch = Math.min(g.cw * PAIR_STEP_SHARE, count > 1 ? (g.W - 2 * g.pad - g.cw * (1 + DEFENCE_DX)) / (count - 1) : 0);
-    var x0 = (g.W - (pitch * (count - 1) + g.cw * (1 + DEFENCE_DX))) / 2, y = g.cy - g.ch / 2 - g.ch * 0.2;
+    var left = g.short ? Math.round(g.cx + PANEL_HALF_PX + g.pad) : g.pad, room = g.W - g.pad - left;   // a short table keeps the middle for the Take button
+    var pitch = Math.min(g.cw * PAIR_STEP_SHARE, count > 1 ? (room - g.cw * (1 + DEFENCE_DX)) / (count - 1) : 0);
+    if (g.short) pitch = Math.max(pitch, g.cw * SHORT_PAIR_STEP_SHARE);
+    var x0 = g.short ? Math.min(left, g.W - g.pad - (pitch * (count - 1) + g.cw * (1 + DEFENCE_DX))) : (g.W - (pitch * (count - 1) + g.cw * (1 + DEFENCE_DX))) / 2, y = g.cy - g.ch / 2 - g.ch * 0.2;
     return { x0: x0, pitch: pitch, y: y };
   }
   function place(st, m, view) {

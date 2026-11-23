@@ -84,3 +84,17 @@ def test_the_card_says_it_once():
         encoding="utf-8",
     ).read()
     assert ".share-controls-off .switch input:checked + .switch-slider { background: var(--surface2)" in css
+
+
+def test_offline_mode_is_said_in_words_in_every_language():
+    import glob
+    import json
+
+    root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    src = open(os.path.join(root, "zimi", "manage.py"), encoding="utf-8").read()
+    assert '"bt_why_offline"' in src
+    files = glob.glob(os.path.join(root, "zimi", "static", "i18n", "*.json"))
+    assert len(files) == 10
+    for f in files:
+        text = json.load(open(f, encoding="utf-8"))["bt_why_offline"]
+        assert "ZIMI_" not in text and "HTTP" in text, f

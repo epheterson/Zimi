@@ -322,6 +322,13 @@ def ensure_sidecar(sink=None):
             "the Reddit maker (ArcticZim) is not installed yet and offline mode is on. "
             "Install it once while connected: zimi create --setup-reddit"
         )
+    from zimi import addons
+
+    if addons.supported() and not _has_python():
+        # No Python to build with (a desktop app has none): the Reddit add-on brings uv and its own.
+        if addons.ensure("reddit", say):
+            return exe
+        raise CreateError(addons.refusal("reddit", "the Reddit maker (ArcticZim) is not installed"))
     say(f"creating the ArcticZim sidecar at {venv}")
     if not build_venv(
         venv, sys.executable, [ARCTICZIM_REQUIREMENT, *ARCTICZIM_PINS], exe, say, run=_run_stream
@@ -332,6 +339,11 @@ def ensure_sidecar(sink=None):
     _write_marker(venv)
     say("ArcticZim ready")
     return exe
+
+
+def _has_python():
+    """Whether this Zimi can build the sidecar with its own interpreter: not a frozen app, whose executable is the app."""
+    return not getattr(sys, "frozen", False)
 
 
 def normalize_subreddit(text):

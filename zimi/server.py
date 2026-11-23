@@ -99,6 +99,7 @@ from libzim.suggestion import SuggestionSearcher
 
 from zimi.libzimcompat import entry_by_id, result_paths
 from zimi import changes as _changes
+from zimi import zimparts
 from zimi.safety import loggable
 
 # PyMuPDF, for reading PDFs embedded in ZIM files.
@@ -130,7 +131,7 @@ except ImportError:
 # SSL context using certifi CA bundle (PyInstaller bundles lack system certs)
 SSL_CTX = ssl.create_default_context(cafile=certifi.where())
 
-ZIMI_VERSION = "1.15.7"
+ZIMI_VERSION = "1.16.0"
 
 
 def bundled(module):
@@ -315,8 +316,6 @@ _WORKING_MAX_AGE = 6 * 3600
 
 def _sweep_working_files():
     """Remove abandoned capture spools from the directories Zimi writes to."""
-    import shutil
-
     time.sleep(_SHAPE_SETTLE_SECONDS)
     cutoff = time.time() - _WORKING_MAX_AGE
     freed = 0
@@ -771,7 +770,7 @@ def _dir_holding_zims(candidate):
     A hit is `*.zim` directly in the candidate, else in a `zims/` child —
     the two shapes a hand-assembled folder of ZIMs actually has."""
     for d in (candidate, os.path.join(candidate, DISCOVERY_ZIMS_SUBDIR)):
-        if glob.glob(os.path.join(d, "*.zim")):
+        if zimparts.in_folder(d):
             return d
     return None
 
@@ -1563,6 +1562,10 @@ def _init():
         global _auto_update_enabled, _auto_update_freq, _auto_update_skips
         _auto_update_enabled, _auto_update_freq = _load_auto_update_config()
         _auto_update_skips = _load_auto_update_skips()
+    if bundled("addons"):  # installed add-ons (browser, SingleFile, video) onto PATH / sys.path
+        from zimi import addons
+
+        addons.activate()
 
 
 def _migrate_data_files():
@@ -1785,6 +1788,8 @@ _BYTES_PER_GB = 1000**3
 # Where GB stops being written to one decimal. Below ten, a tenth is real
 # information about a ZIM; above it, "115 GB" beats "115.5 GB" in a list.
 _GB_WHOLE_FROM = 10
+# MB likewise: from a hundred, "285 MB" beats "285.0 MB".
+_MB_WHOLE_FROM = 100
 
 
 def format_bytes(n):
@@ -1799,7 +1804,8 @@ def format_bytes(n):
     if n < _BYTES_PER_MB:
         return f"{n / _BYTES_PER_KB:.1f} KB"
     if n < _BYTES_PER_GB:
-        return f"{n / _BYTES_PER_MB:.1f} MB"
+        mb = n / _BYTES_PER_MB
+        return f"{mb:.0f} MB" if mb >= _MB_WHOLE_FROM else f"{mb:.1f} MB"
     gb = n / _BYTES_PER_GB
     return f"{gb:.0f} GB" if gb >= _GB_WHOLE_FROM else f"{gb:.1f} GB"
 
@@ -1880,6 +1886,24 @@ def _atomic_write_json(path, data, indent=None):
         except OSError:
             pass
         return False
+
+
+def _read_json_file(path, default=None):
+    """The JSON value stored at ``path``, or ``default`` when the file is
+    missing, unreadable or not JSON. Never raises: every persistent state file
+    is rebuildable, so a damaged one reads as a fresh start."""
+    try:
+        with open(path, encoding="utf-8") as f:
+            return json.load(f)
+    except (OSError, ValueError):
+        return default
+
+
+def _read_json_dict(path):
+    """The JSON object stored at ``path``; {} when it is missing, damaged or
+    holds anything else."""
+    data = _read_json_file(path)
+    return data if isinstance(data, dict) else {}
 
 
 # MIME type fallback for ZIM entries with empty mimetype
@@ -2303,9 +2327,17 @@ def _map_source(scraper):
     return ""
 
 
-def _map_bounds(archive):
-    """``[W, S, E, N]`` for a map ZIM, from its own config entry; None when it
-    has none Zimi knows, or the numbers do not make a box."""
+# A maps2zim config with no boundingBox is the planet (Kiwix's world map,
+# maps_en_all, says only its zimName): Web Mercator's own edges.
+_MAP_PLANET = [-180.0, -85.0511, 180.0, 85.0511]
+# Bumped when how a map's ground is read changes, so cached records are read again once.
+MAP_FACTS_VERSION = 2
+
+
+def _map_bounds(archive, scraper=""):
+    """``[W, S, E, N]`` for a map ZIM, from its own config entry; the planet for
+    a maps2zim config that names no box; None when it has none Zimi knows, or
+    the numbers do not make a box."""
     for path, key in _MAP_CONFIG_PATHS:
         try:
             entry = archive.get_entry_by_path(path)
@@ -2315,6 +2347,13 @@ def _map_bounds(archive):
         except Exception:
             continue
         box = raw.get(key) if isinstance(raw, dict) else None
+        if (
+            box is None
+            and isinstance(raw, dict)
+            and path == "content/config.json"
+            and (scraper or "").lower().startswith("maps2zim")
+        ):
+            return list(_MAP_PLANET)
         try:
             if (
                 isinstance(box, list)
@@ -2334,7 +2373,10 @@ def _map_bounds(archive):
 def _map_facts(archive, scraper):
     """The two facts about a map beyond its kind, read once and cached with
     the rest: who published it and what ground it covers."""
-    return {"map_source": _map_source(scraper), "map_bounds": _map_bounds(archive)}
+    return {
+        "map_source": _map_source(scraper),
+        "map_bounds": _map_bounds(archive, scraper),
+    }
 
 
 def _reddit_facts(archive):
@@ -2606,6 +2648,16 @@ def _is_map_zim(name):
     )
 
 
+def _read_has_icon(path):
+    """Whether the book at ``path`` carries any illustration, for a cache
+    record written when only a 48x48 counted. One metadata listing."""
+    try:
+        return any(k.startswith(ILLUSTRATION_PREFIX) for k in open_archive(path).metadata_keys)
+    except Exception as e:
+        log.debug("could not read illustrations for %s: %s", path, e)
+        return False
+
+
 def _read_zim_kind(path):
     """``_zim_kind`` for a cache record written before ``kind`` existed.
 
@@ -2863,6 +2915,10 @@ def _set_listing(listing):
 
 # ── Per-request ZIM allow context (multi-user v1) ────────────────────────────
 # When a named USER (not admin, not anonymous) is logged in, the request's ZIM
+# Connections the kernel holds while every handler thread is busy starting (the stdlib's is 5).
+LISTEN_BACKLOG = 128
+
+
 class ZimiHTTPServer(ThreadingHTTPServer):
     """ThreadingHTTPServer that does not ask DNS who it is.
 
@@ -2877,7 +2933,15 @@ class ZimiHTTPServer(ThreadingHTTPServer):
     Found when the 1.9.0 desktop build failed on all four runners: the server
     printed its whole startup banner and then took longer than thirty seconds
     to emit READY, on machines with no reverse DNS. Nothing in Zimi reads
-    ``server_name``; the address is what it binds to."""
+    ``server_name``; the address is what it binds to.
+
+    It also listens with a real backlog. The stdlib's is 5: a page that opens
+    more connections than that at once (a fast machine, several tabs, the
+    service worker's prefetch) had the rest reset by the kernel before Zimi
+    saw them. Found on a many-core Mac, where 16 parallel requests failed every
+    run (tests/test_best_answer_live.py)."""
+
+    request_queue_size = LISTEN_BACKLOG
 
     def server_bind(self):
         socketserver.TCPServer.server_bind(self)
@@ -3066,13 +3130,13 @@ def _zim_short_name(filename):
     language's build (gutenberg_ale beside gutenberg_en). A file the library
     does not hold gets its base name, so for anything not installed this is
     _zim_base_name."""
-    filename = os.path.basename(filename)
+    filename = zimparts.book_filename(filename)
     name = _zim_base_name(filename)
     files = _zim_files_cache
     held = files.get(name) if files else None
-    if held and os.path.basename(held) != filename:
+    if held and zimparts.book_filename(held) != filename:
         lang_name = _zim_lang_name(filename)
-        if os.path.basename(files.get(lang_name) or "") == filename:
+        if zimparts.book_filename(files.get(lang_name) or "") == filename:
             return lang_name
     return name
 
@@ -3128,7 +3192,7 @@ def _zim_pick(cands):
     top = min(tier for tier, _path in cands)
     return max(
         (path for tier, path in cands if tier == top),
-        key=lambda path: _zim_build_rank(os.path.basename(path)),
+        key=lambda path: _zim_build_rank(zimparts.book_filename(path)),
     )
 
 
@@ -3161,6 +3225,9 @@ def _scan_zim_files():
     """Scan ZIM_DIR plus exactly one level of subdirectories for ZIM files.
     Returns {short_name: path} mapping.
 
+    A split book (name.zimaa, name.zimab...) is one entry at its .zimaa path,
+    named as name.zim would be (zimparts).
+
     Subfolder eligibility: dotted names are never scanned (glob semantics, so
     `.zimi` stays state, not content), the deny list above is skipped, and a
     subfolder containing a `.nozim` marker file is skipped — that is the
@@ -3187,7 +3254,7 @@ def _scan_zim_files():
     (gutenberg_ale) instead of vanishing. A language name some file already
     has as its own is never taken, so no ZIM with a name loses it.
     """
-    root_paths = sorted(glob.glob(os.path.join(ZIM_DIR, "*.zim")))
+    root_paths = zimparts.in_folder(ZIM_DIR)
     sub_paths = []
     for sub in sorted(glob.glob(os.path.join(ZIM_DIR, "*", ""))):
         base = os.path.basename(sub.rstrip(os.sep))
@@ -3196,7 +3263,7 @@ def _scan_zim_files():
         if os.path.exists(os.path.join(sub, _SCAN_IGNORE_MARKER)):
             log.info("Skipping %s (has %s marker)", base, _SCAN_IGNORE_MARKER)
             continue
-        sub_paths.extend(sorted(glob.glob(os.path.join(sub, "*.zim"))))
+        sub_paths.extend(zimparts.in_folder(sub))
     # Folders another program owns (libfolders) are the last tier: read where
     # they are, and never shadowing a ZIM of Zimi's own.
     from zimi import libfolders
@@ -3214,7 +3281,7 @@ def _scan_zim_files():
         (3, ownzims.zim_paths()),
     ):
         for path in paths:
-            name = _zim_base_name(os.path.basename(path))
+            name = _zim_base_name(zimparts.book_filename(path))
             groups.setdefault(name, []).append((tier, path))
     for name, cands in groups.items():
         _own_copy_first(name, cands)
@@ -3222,16 +3289,98 @@ def _scan_zim_files():
     for name, cands in groups.items():
         if len(cands) > 1:
             _split_languages(name, cands, zims, groups)
+    own_wins = _fold_own_copies(zims)
     served = set(zims.values())
-    libfolders.set_shadowed(
-        {
-            path: zims[name]
-            for name, cands in groups.items()
-            for tier, path in cands
-            if tier == 2 and path not in served
-        }
-    )
+    _set_older_copies(groups, served, own_wins)
+    # What serves instead of each unserved file in another program's folder: its name's file, or, for a copy of an own
+    # ZIM the fold removed, the file the fold kept (the name is gone from ``zims`` then).
+    shadowed = {}
+    for name, cands in groups.items():
+        for tier, path in cands:
+            if tier == 2 and path not in served:
+                winner = zims.get(name) or own_wins.get(path)
+                if winner:
+                    shadowed[path] = winner
+    libfolders.set_shadowed(shadowed)
     return zims
+
+
+def _fold_own_copies(zims):
+    """One Almanac, one Games: a ZIM whose Name metadata is an own ZIM's (a copy of it under another file name, such as
+    zimi_eng_zimi_almanac_2026-11.zim beside the package's zimi_almanac) is that ZIM, not another one. The package's
+    file is served under the name unless the copy is strictly newer by its Date metadata, in which case the copy is
+    (and the package's file stands down, like a same-name copy in _own_copy_first). Edits ``zims`` in place; returns
+    ``{loser path: winner path}``. A ZIM that only looks alike (another Name) is left alone, and so is a data pack:
+    Almanac HD carries the Almanac's Name by design (almanachd) and is served under its own."""
+    from zimi import ownzims
+
+    lost = {}
+    for name in sorted(zims):
+        if name in DATA_PACKS:
+            continue
+        path = zims.get(name)
+        fam = ownzims.family_of(path) if path else None
+        if not fam:
+            continue
+        own_name, newer = fam
+        own_path = zims.get(own_name)
+        if name == own_name or not own_path or not ownzims.is_own_path(own_path):
+            continue
+        if newer:
+            lost[own_path] = path
+            zims[own_name] = path
+        else:
+            lost[path] = own_path
+        del zims[name]
+    return lost
+
+
+#: Files in the library that no name serves because a newer build of the same thing does (a superseded edition, or a
+#: copy of an own ZIM): {path: path of what serves instead}. Only the root and one folder down: another program's
+#: folder is not Zimi's to tidy, and the package's own file is never listed.
+_older_copies = {}
+
+
+def _set_older_copies(groups, served, own_wins):
+    global _older_copies
+    found = {}
+    for cands in groups.values():
+        for tier, path in cands:
+            if tier in (0, 1, -1) and path not in served and not _is_own_zim_path(path):
+                winner = next((p for _t, p in cands if p in served), None)
+                if winner:
+                    found[path] = winner
+    for loser, winner in own_wins.items():
+        if not _is_own_zim_path(loser):
+            found[loser] = winner
+    _older_copies = found
+
+
+def library_rel(path):
+    """A library file as the book name under its folder, relative to ``ZIM_DIR`` with ``/`` separators:
+    ``sub/name.zim`` for ``sub/name.zimaa`` too. Manage hands this back to name exactly one file."""
+    try:
+        rel = os.path.relpath(os.path.dirname(path), ZIM_DIR)
+    except ValueError:  # another drive
+        rel = os.pardir
+    book = zimparts.book_filename(path)
+    if rel == os.curdir or rel.split(os.sep)[0] == os.pardir:  # outside the library (Zimi's own file): its name alone
+        return book
+    return "/".join(rel.split(os.sep) + [book])
+
+
+def older_copies():
+    """The superseded files, for Manage > Storage: ``[{file, size_bytes, replaced_by}]``, biggest first. ``file``
+    is the path under the library root (a split book by its book name, its size across every chunk), so a Delete
+    acts on that file and no other of the same name."""
+    out = []
+    for path, winner in _older_copies.items():
+        try:
+            size = zimparts.size(path)
+        except OSError:
+            continue
+        out.append({"file": library_rel(path), "size_bytes": size, "replaced_by": library_rel(winner)})
+    return sorted(out, key=lambda r: (-r["size_bytes"], r["file"]))
 
 
 def _rel_or_abs(path, start):
@@ -3296,7 +3445,7 @@ def get_zim_files():
 
 #: ZIMs that are data for a part of Zimi, not something to read: served at /w/<name>/ to the part that uses them,
 #: never on Home, in the library's grid, in search or in the title indexes (Almanac HD: the Almanac's tiles, in the Almanac's maxi flavour or 1.15.3's tile ZIM).
-DATA_PACKS = frozenset(("zimi_almanac_maxi", "zimi_almanac_hd"))
+DATA_PACKS = frozenset(("zimi_almanac_maxi", "zimi_almanac_ultra", "zimi_almanac_hd", "zimi_almanac_hd_moon", "zimi_almanac_hd_mars", "zimi_almanac_hd_mercury", "zimi_almanac_hd_earth"))   # the last four: parts of a split set (almanachd.PARTS)
 
 
 def content_zims():
@@ -3321,8 +3470,8 @@ def server_zim_count():
 
 
 def open_archive(path):
-    """Open a ZIM archive."""
-    return Archive(path)
+    """Open a ZIM archive (a split book whole, or not at all: zimparts)."""
+    return zimparts.open_book(path)
 
 
 def entry_item(archive, path):
@@ -3352,6 +3501,41 @@ def entry_bytes(archive, path, limit, *, head=False):
     if item.size > limit:
         return None
     return bytes(item.content)
+
+
+#: openZIM's icon size; Illustration_48x48@1 is the mandatory key.
+ICON_SIZE = 48
+ILLUSTRATION_PREFIX = "Illustration_"
+# Cache records carry it: has_icon counted any illustration size from 2.
+ICON_VERSION = 2
+
+
+def illustration_png(archive):
+    """The PNG a book's icon is drawn from, or None. The 48x48 (@1, then
+    @2) when the book has it; else the nearest size it carries: the
+    smallest at or above 48, then the largest below. Caller holds the
+    archive's lock."""
+    for key in ("Illustration_48x48@1", "Illustration_48x48@2"):
+        try:
+            data = bytes(archive.get_metadata(key))
+        except Exception:
+            data = b""
+        if data:
+            return data
+    try:
+        sizes = sorted(archive.get_illustration_sizes())
+    except Exception:
+        return None
+    above = [s for s in sizes if s >= ICON_SIZE]
+    below = [s for s in reversed(sizes) if s < ICON_SIZE]
+    for size in above + below:
+        try:
+            data = bytes(archive.get_illustration_item(size).content)
+        except Exception:
+            continue
+        if data:
+            return data
+    return None
 
 
 # A bounded walk of every entry stops here: enough for a folder of files,
@@ -3400,7 +3584,7 @@ def list_zims(use_cache=True):
     zims = get_zim_files()
     info = []
     for name, path in zims.items():
-        size_bytes = os.path.getsize(path)
+        size_bytes = zimparts.size(path)
         article_count = None
         try:
             archive = open_archive(path)
@@ -3414,15 +3598,29 @@ def list_zims(use_cache=True):
             entry_count = "?"
         entry = {
             "name": name,
-            "file": os.path.basename(path),
+            "file": zimparts.book_filename(path),
             "size_gb": round(size_bytes / _BYTES_PER_GB, 6),
             "size_bytes": size_bytes,
             "entries": entry_count,
+            **_split_facts(path),
         }
         if article_count is not None:
             entry["article_count"] = article_count
         info.append(entry)
     return info
+
+
+def _split_facts(path):
+    """What a library row says about a split book: ``parts``, its chunk
+    count, and ``missing_part`` when a chunk is gone. Empty for a whole file."""
+    if not zimparts.is_split(path):
+        return {}
+    facts = {"parts": len(zimparts.parts(path))}
+    gap = zimparts.missing_part(path)
+    if gap:
+        facts["missing_part"] = gap
+        log.warning("Split ZIM %s is missing chunk %s: not served until it is back", loggable(zimparts.book_filename(path)), loggable(gap))
+    return facts
 
 
 def get_archive(name):
@@ -3469,6 +3667,56 @@ def _load_disk_cache():
         return data.get("files", {})
     except (FileNotFoundError, json.JSONDecodeError, KeyError):
         return None
+
+
+_ident_disk = (None, {})  # (cache file's stamp, its records)
+
+
+def cached_identity(path):
+    """``(Name, Date)`` of the book at ``path`` from the metadata cache on disk, or None when the cache has no
+    record of this version of it with a Name (a record from before the Name was kept, or a new file)."""
+    global _ident_disk
+    try:
+        stamp = os.stat(_cache_file_path()).st_mtime_ns
+    except OSError:
+        return None
+    if _ident_disk[0] != stamp:
+        _ident_disk = (stamp, _load_disk_cache() or {})
+    rec = _ident_disk[1].get(zimparts.book_filename(path))
+    try:
+        size, mtime = zimparts.size(path), zimparts.mtime(path)  # a split book is its chunks together, as load_cache keys it
+    except OSError:
+        return None
+    if isinstance(rec, dict) and "mname" in rec and rec.get("size") == size and rec.get("mtime") == mtime:
+        return (rec["mname"], rec.get("date") or "")
+    return None
+
+
+def _keep_identity_stubs(disk_cache, file_cache):
+    """Keep what the library read of each superseded file (its Name and Date, so the next scan opens nothing for it) in
+    the metadata cache, as a stub record: a file no name serves has no full record. True when one was added or changed."""
+    from zimi import ownzims
+
+    changed = False
+    for path in list(_older_copies):
+        fn = zimparts.book_filename(path)
+        if fn in file_cache:
+            continue
+        try:
+            size, mtime = zimparts.size(path), zimparts.mtime(path)
+        except OSError:
+            continue
+        old = disk_cache.get(fn)
+        if isinstance(old, dict) and old.get("size") == size and old.get("mtime") == mtime and "mname" in old:
+            file_cache[fn] = old
+            continue
+        hit = ownzims._ident_cache.get(path)  # only what the scan already read
+        ident = hit[1] if hit else None
+        if ident is None:
+            continue
+        file_cache[fn] = {"stub": True, "mtime": mtime, "size": size, "mname": ident[0], "date": ident[1]}
+        changed = True
+    return changed
 
 
 def _save_disk_cache(file_cache):
@@ -3521,7 +3769,7 @@ def _read_faces(archive):
 
 
 def _own_display_title(title, tags):
-    """Zimi's own ZIMs show their short name inside Zimi (the file's Title keeps " · Zimi" for other readers)."""
+    """Zimi's own ZIMs show their short name inside Zimi (the file's Title keeps "Zimi " for other readers)."""
     from zimi import ownzims
 
     return (
@@ -3533,7 +3781,8 @@ def _own_display_title(title, tags):
 
 def _extract_zim_metadata(name, path):
     """Open a ZIM archive and extract its metadata. Returns (info_dict, archive)."""
-    size_bytes = os.path.getsize(path)
+    size_bytes = zimparts.size(path)
+    filename = zimparts.book_filename(path)
     size_gb = size_bytes / _BYTES_PER_GB
     meta_title = name
     meta_desc = ""
@@ -3589,7 +3838,7 @@ def _extract_zim_metadata(name, path):
                         meta_lang = ",".join(_ISO639_3_TO_1.get(p, p) for p in parts)
                     else:
                         meta_lang = _ISO639_3_TO_1.get(raw_lang, raw_lang)
-                elif key.startswith("Illustration_48x48"):
+                elif key.startswith(ILLUSTRATION_PREFIX):
                     has_icon = True
             except Exception as e:
                 log.debug(
@@ -3623,12 +3872,12 @@ def _extract_zim_metadata(name, path):
         entry_count = "?"
     # Fall back to date from filename if not in metadata
     if not meta_date:
-        _, file_date = _extract_zim_date(os.path.basename(path))
+        _, file_date = _extract_zim_date(filename)
         if file_date:
             meta_date = file_date
     # Fall back to language from filename (e.g. wikipedia_fr_all → "fr")
     if not meta_lang:
-        m = re.match(r"^[a-zA-Z]+(?:\.\w+)*_([a-z]{2,3})_", os.path.basename(path))
+        m = re.match(r"^[a-zA-Z]+(?:\.\w+)*_([a-z]{2,3})_", filename)
         if m:
             code = m.group(1)
             meta_lang = _ISO639_3_TO_1.get(code, code)
@@ -3636,7 +3885,8 @@ def _extract_zim_metadata(name, path):
     map_search = kind == "map" and _zim_map_search(meta_scraper)
     info = {
         "name": name,
-        "file": os.path.basename(path),
+        "file": filename,
+        **_split_facts(path),
         "size_gb": round(size_gb, 6),
         # Exact byte size: peers verify a pulled .zim against this (a
         # truncated transfer is the realistic LAN failure mode).
@@ -3649,6 +3899,7 @@ def _extract_zim_metadata(name, path):
         "has_icon": has_icon,
         "category": _effective_category(name, path, kind),
         "main_path": main_path,
+        "meta_name": meta_name,
     }
     # Additive: what the ZIM says it is, kept so a cache hit can re-derive the
     # category without reopening the archive.
@@ -3981,15 +4232,16 @@ def load_cache(force=False):
                 prior_by_name[_sn] = _ce
 
     for name, path in zims.items():
-        filename = os.path.basename(path)
+        filename = zimparts.book_filename(path)
         try:
-            stat = os.stat(path)
-            mtime = stat.st_mtime
-            size = stat.st_size
+            mtime = zimparts.mtime(path)
+            size = zimparts.size(path)
         except OSError:
             continue
 
         cached = disk_cache.get(filename) if disk_cache else None
+        if cached and cached.get("stub"):
+            cached = None  # only what a superseded copy said of itself (_keep_identity_stubs): scanned in full if it is served
         # When Zimi first sees a ZIM, stamp it so the UI can flag it "New" for
         # a few days (#34 — a fresh install is otherwise lost in a big
         # library). A ZIM already known (even if its file changed on an update)
@@ -4066,9 +4318,13 @@ def load_cache(force=False):
                 # opens every ZIM again, and rewrites the cache, forever.
                 cached["kind_v"] = KIND_VERSION
                 kind_backfilled = True
-            if cached.get("kind") == "map" and "map_bounds" not in cached:
-                # A record from before Zimi kept a map's ground and publisher.
+            if cached.get("kind") == "map" and (
+                "map_bounds" not in cached or cached.get("map_v") != MAP_FACTS_VERSION
+            ):
+                # A record from before Zimi kept a map's ground and publisher,
+                # or from before it knew a world map's ground.
                 cached.update(_read_map_facts(path))
+                cached["map_v"] = MAP_FACTS_VERSION
                 kind_backfilled = True
             if cached.get("kind") == "reddit" and "subreddits" not in cached:
                 cached.update(_read_reddit_facts(path))
@@ -4089,6 +4345,11 @@ def load_cache(force=False):
                     cached["feeds"] = feeds
                     cached["feeds_v"] = FEEDS_VERSION
                     kind_backfilled = True
+            if not cached.get("has_icon") and int(cached.get("icon_v") or 0) < ICON_VERSION:
+                # A record from before an icon could be any size the book carries.
+                cached["has_icon"] = _read_has_icon(path)
+                cached["icon_v"] = ICON_VERSION
+                kind_backfilled = True
             entry = {
                 "name": name,
                 "file": filename,
@@ -4122,6 +4383,8 @@ def load_cache(force=False):
                 "first_seen": first_seen,
                 "updated_at": updated_at,
             }
+            # A split book's chunks, read from the files like the folder (a stat each).
+            entry.update(_split_facts(path))
             folder = _zim_folder(path)
             if folder:
                 entry["folder"] = folder
@@ -4176,6 +4439,14 @@ def load_cache(force=False):
                 entry["own_h"] = own["h"]
             info.append(entry)
             cached_out = dict(cached)
+            if "mname" not in cached_out:
+                # A record from before the Name was kept: read it once (the scan has, to place copies of own ZIMs).
+                from zimi import ownzims as _own_ids
+
+                ident = _own_ids.identity(path)
+                if ident is not None:
+                    cached_out["mname"] = ident[0]
+                    kind_backfilled = True  # written down, or every start reads every archive again
             if first_seen is not None:
                 cached_out["first_seen"] = first_seen
             if updated_at is not None:
@@ -4208,6 +4479,9 @@ def load_cache(force=False):
                 "language": entry.get("language", ""),
                 "has_icon": entry["has_icon"],
                 "main_path": entry["main_path"],
+                # The ZIM's own Name, so a copy of one of Zimi's own ZIMs under another file name is known without
+                # opening it (ownzims.family_of).
+                "mname": entry.pop("meta_name", ""),
             }
             if entry.get("article_count") is not None:
                 new_cached["article_count"] = entry["article_count"]
@@ -4222,6 +4496,7 @@ def load_cache(force=False):
             # Always, {} included: a ZIM that feeds no other app is decided.
             new_cached["feeds"] = entry.get("feeds") or {}
             new_cached["feeds_v"] = FEEDS_VERSION
+            new_cached["icon_v"] = ICON_VERSION
             if entry.get("map_search"):
                 new_cached["map_search"] = True
             # A map's ground and publisher, null included: a map whose config
@@ -4229,6 +4504,7 @@ def load_cache(force=False):
             if "map_bounds" in entry:
                 new_cached["map_bounds"] = entry["map_bounds"]
                 new_cached["map_source"] = entry.get("map_source", "")
+                new_cached["map_v"] = MAP_FACTS_VERSION
             if "subreddits" in entry:
                 new_cached["subreddits"] = entry["subreddits"]
             # Only when the capture kept two: most ZIMs have one face, and a
@@ -4257,8 +4533,10 @@ def load_cache(force=False):
 
     # Persist cache if we scanned anything new, backfilled a legacy first_seen
     # (so the mtime stamp is computed once), or repaired mass-stamped entries.
+    stubs_changed = _keep_identity_stubs(disk_cache or {}, file_cache)
     if (
         scanned > 0
+        or stubs_changed
         or backfilled > 0
         or kind_backfilled
         or disk_cache is None
@@ -5021,7 +5299,12 @@ def _add_mcp_args(p):
     p.add_argument(
         "--tools",
         default=None,
-        help="lean: search, read, read_section (default); full: every tool (overrides ZIMI_MCP_TOOLS)",
+        help=(
+            "lean: search, read, read_section (default); full: every tool; or a comma "
+            "list of tool names, e.g. search,read,list_entries or lean,list_entries. "
+            "A named set fixes its tools' flavour; a bare name alone is the full tool "
+            "(overrides ZIMI_MCP_TOOLS)"
+        ),
     )
     p.add_argument("--data-dir", default=None, help="Directory for Zimi's own state")
     p.add_argument("--config", default=None, help="Path to a JSON config file")
@@ -5134,7 +5417,7 @@ def _run_mcp(args, settings):
 
 
 def mcp_main(argv=None):
-    """`zimi-mcp [ZIM_DIR] [--tools lean|full]`: `zimi mcp` as a command of
+    """`zimi-mcp [ZIM_DIR] [--tools TOOLS]`: `zimi mcp` as a command of
     its own, the entry point of the zimi-mcp package. It builds no other
     subcommand's parser, so nothing outside the search-and-read core loads."""
     _make_stdio_resilient()
@@ -5616,7 +5899,7 @@ def main():
     p_check = sub.add_parser(
         "check", help="Is a ZIM well formed: checksum, metadata, icon, redirects, links"
     )
-    p_check.add_argument("files", nargs="+", metavar="FILE", help="the .zim files to check")
+    p_check.add_argument("files", nargs="+", metavar="FILE", help="the .zim files to check (a split book: its .zimaa)")
     p_check.add_argument(
         "--quick", action="store_true", help="skip the checksum and the link scan"
     )
@@ -5707,6 +5990,7 @@ def main():
     elif args.command == "create":
         from zimi import creator as _creator
 
+        _init()  # installed add-ons onto PATH and sys.path before the capture looks for its browser or yt-dlp
         _creator.cli_create(args)
 
     elif args.command == "doctor":
@@ -5717,6 +6001,7 @@ def main():
     elif args.command == "import":
         from zimi import importer as _importer
 
+        _init()  # the warc2zim add-on's sidecar and uv, found the same way
         _importer.cli_import(args)
 
     elif args.command == "desktop" or (args.command == "serve" and args.ui):
@@ -5786,7 +6071,7 @@ def main():
                 daemon=True,
             )
             _auto_update_thread.start()
-        print(f"Endpoints: /search, /read, /suggest, /list, /health")
+        print("Endpoints: /search, /read, /suggest, /list, /health")
         if ZIMI_MANAGE:
             from zimi import manage as _mng_open
 
@@ -6118,6 +6403,19 @@ def warm_indexes():
             log.info("Title indexes warmed: %d/%d", opened, len(zim_files))
         except Exception as e:
             log.warning("Title B-tree warm phase failed: %s", e)
+
+        # A container whose data folder is not a volume: said once in the log (Settings says it in words).
+        try:
+            from zimi import runtimes
+
+            if runtimes.config_kept() is False:
+                log.warning(
+                    "This container's data folder (%s) is not on a volume: settings, indexes and add-ons go when "
+                    "it is replaced. Mount a volume at /config.",
+                    ZIMI_DATA_DIR,
+                )
+        except Exception:
+            pass
 
         # Phase 6: the did-you-mean vocabulary, loaded from disk or built now
         # that the title indexes are final and the phases above are done with

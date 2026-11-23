@@ -1872,12 +1872,8 @@ function _renderCreate() {
       '<div class="create-head">' +
         '<div class="create-title">' + tH('create_zim') + '</div>' +
       '</div>' +
-      // The feature is new in 1.9 and has met twenty-six sites; the web is
-      // bigger. The release is final, the feature says it is a beta, and says
-      // where to send a site that fails (Eric, 09-04: "the whole release
-      // isn't beta, just that feature").
+      // Where to send a site that fails: no "Beta" tag (it is getting fewer bugs); the link stays.
       '<div class="create-beta">' +
-        '<span class="create-beta-tag">' + tH('create_beta_tag') + '</span>' +
         '<span class="create-beta-note">' + tH('create_beta_ask') + ' ' +
           '<a href="' + escAttr(CREATE_ISSUES_URL + '?title=' + encodeURIComponent('Capture: ')) + '" target="_blank" rel="noopener">' +
             tH('create_beta_report') + '</a>.</span>' +
@@ -2138,7 +2134,7 @@ function _createFieldHtml(key, def) {
   var f = CREATE_FIELDS[key];
   if (!f) return '';
   var label = tH(f.label);
-  if (f.control === 'engine') return _createEngineHtml(f);
+  if (f.control === 'engine') { setTimeout(function() { _createFillAddonSlots(); }, 0); return _createEngineHtml(f); }
   if (f.control === 'check') {
     // Every row carries an id of its own (here and below) so a field that only
     // applies to some engines can be hidden whole, label and all, rather than
@@ -2295,9 +2291,60 @@ function _createEngineHtml(f) {
     for (var c = 0; c < commands.length; c++) {
       code += ' <code>' + esc(commands[c]) + '</code>';
     }
-    html += '<div class="create-caption">' + tH('create_engine_missing') + code + '</div>';
+    html += '<div class="create-caption">' + tH('create_engine_missing') + code + '</div>' +
+      _createAddonSlot(_createMissingAddons(f.options), 'poll');
   }
   return html + '</details>';
+}
+
+// One tap in place of a command, wherever a capability is missing. The add-ons
+// that would bring what a missing capability needs; an admin whose server can add them gets a Get button beside the
+// command, which is left for everyone else. The slot is filled once the server has said who may (_createFillAddonSlots).
+var CREATE_CAPABILITY_ADDONS = { browser: ['browser'], alive: ['browser', 'warc2zim'], video: ['video'] };
+function _createMissingAddons(options) {
+  var keys = [];
+  options.forEach(function(o) {
+    if (!o.needs || !_createCapabilityMissing(o.needs)) return;
+    (CREATE_CAPABILITY_ADDONS[o.needs] || []).forEach(function(k) { if (keys.indexOf(k) < 0) keys.push(k); });
+  });
+  return keys;
+}
+// ``after``: what looks again once one is in, 'poll' (the server's capabilities) or 'probe' (the source on screen).
+function _createAddonSlot(keys, after) {
+  return keys.length ? '<span class="create-addon-offer" data-after="' + after + '" data-keys="' + escAttr(keys.join(',')) + '"></span>' : '';
+}
+var CREATE_ADDON_AFTER = { poll: function() { _createPoll(true); }, probe: function() { _createProbeSource(true); } };
+// Fill each slot on the page with a button for every add-on it names that is not here yet.
+function _createFillAddonSlots() {
+  if (!document.querySelector('.create-addon-offer')) return;
+  _addonProbe().then(function(probe) {
+    var st = probe.st;
+    // Not an admin, or nothing to add on this install (offline, Never, a desktop app): the command stays the answer.
+    if (probe.code !== 401 && (!st || _addonWhyNot(st))) return;
+    document.querySelectorAll('.create-addon-offer').forEach(function(slot) {
+      slot.textContent = '';
+      slot.dataset.keys.split(',').forEach(function(key) {
+        var row = _addonRowOf(st, key);
+        if (row && row.ready) return;
+        var name = t('addon_' + key);
+        var b = document.createElement('button');
+        b.type = 'button';
+        b.className = 'create-addon-get';
+        b.textContent = row && row.size ? t('addon_offer_get_named', { name: name, size: fmtBytes(row.size) }) : t('addon_offer_get_named_bare', { name: name });
+        b.onclick = function() {
+          b.disabled = true;
+          var say = function(p) { b.textContent = t('addon_offer_adding', { name: name, p: p || 0 }); };
+          say(0);
+          _addonInstallWait(key, say).then(function(ok) {
+            if (!ok) { b.disabled = false; b.textContent = t('addon_failed'); return; }
+            b.textContent = t('addon_offer_ready', { name: name });
+            CREATE_ADDON_AFTER[slot.dataset.after]();
+          });
+        };
+        slot.appendChild(b);
+      });
+    });
+  });
 }
 
 // Append one unmet capability's install commands to the caption's list: the
@@ -3073,12 +3120,16 @@ function _renderCreatePreview() {
   if (p.warning_key || p.detail) {
     warn = '<div class="create-pv-warn">' +
       (p.warning_key ? tH(p.warning_key) : '') +
+      (p.warning_key === 'create_warn_no_ytdlp' ? _createAddonSlot(['video'], 'probe') : '') +
       (p.detail ? '<div class="create-pv-detail">' + esc(p.detail) + '</div>' : '') +
       '</div>';
   }
   // A note is not a warning: it says something true about the source that
   // changes what to expect, and it sits under the facts rather than over them.
   var note = p.note_key ? '<div class="create-caption">' + tH(p.note_key) + '</div>' : '';
+  // The helper this mode needs and this server does not have yet: one tap, then the same source is looked at again.
+  if (p.mode === 'import' && p.sidecar_ready === false) note += _createAddonSlot(['warc2zim'], 'probe');
+  if (p.mode === 'reddit' && p.reddot_ready === false) note += _createAddonSlot(['reddit'], 'probe');
   if (p.mode === 'folder' && p.unsupported_examples && p.unsupported_examples.length) {
     note += '<ul class="create-left-out" aria-label="' + escAttr(t('create_pv_left_out')) + '">' +
       p.unsupported_examples.map(function(u) {
@@ -3091,16 +3142,19 @@ function _renderCreatePreview() {
   host.innerHTML = (warn || html || note)
     ? '<div class="create-preview-box' + (p.ok ? '' : ' not-ok') + '">' + warn + html + note + '</div>'
     : '';
+  // The video helper, one tap: once it is in, the same source is looked at again.
+  _createFillAddonSlots();
 }
 
 // Ask the server what is actually there. Fired when the source stops changing,
 // which is the moment the question becomes answerable.
-async function _createProbeSource() {
+// ``force``: look again even though this very source has an answer (an add-on just came in, so the answer is stale).
+async function _createProbeSource(force) {
   var mode = _createSelected;
   var fields = _createFormFields();
   var body = _createBuildRequest(mode, fields);
   if (!body) { _createPreview = null; _createPreviewSource = ''; _renderCreatePreview(); return; }
-  if (_createBodyKey(body) === _createPreviewSource && _createPreview) return;  // already answered
+  if (!force && _createBodyKey(body) === _createPreviewSource && _createPreview) return;  // already answered
   _createProbing = true;
   _createPreviewSource = _createBodyKey(body);
   _renderCreatePreview();
@@ -4335,6 +4389,7 @@ function _createFreshenForm(s) {
 }
 
 var _createLastDone = null;  // the finished job the card shows, for "capture again"
+var _CREATE_SHARE_URL = 'https://wiki.openzim.org/wiki/Contribute_a_ZIM_file';
 
 function _createMountDone(s) {
   _createLastDone = s;
@@ -4364,6 +4419,8 @@ function _createMountDone(s) {
           // The title is the thing; the filename is the library manager's.
           facts +
         '</div>' +
+        // Made to be shared: one quiet line to openZIM's own instructions (a link the person follows; Zimi calls nothing).
+        (r.name ? '<a class="create-done-share" href="' + _CREATE_SHARE_URL + '" target="_blank" rel="noopener">' + tH('create_share_community') + '</a>' : '') +
         // A crawl that stopped at a bound — the finish button, a page cap, a
         // byte budget — says so on the card: "40 pages" without "and I stopped
         // there" reads like a capture that believes it got everything.

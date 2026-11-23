@@ -405,7 +405,7 @@
     }
 
     board = Z.createBoard({
-      table: el.table, cols: HAND_COLS, heightShare: HEIGHT_SHARE, enterTaps: true,
+      table: el.table, cols: HAND_COLS, heightShare: HEIGHT_SHARE, enterTaps: true, index: 'col',
       place: function (st, m) { tg.syncView(st); return place(st, m, view); },
       canPick: function (st, pile) { return st.phase === 'play' && pile.charAt(0) === 'h' && isLegal(st, seats.view(), tg.idOf(pile)); },
       move: function (pile, idx, to) { return (to === 'trick' || to === 'deck') && pile.charAt(0) === 'h' ? tg.play(tg.idOf(pile)) : false; },
@@ -416,7 +416,7 @@
       id: 'hearts', saveOff: function () { return !!watch; }, lowScore: true, undoOff: function () { return !!watch || seats.hotseat(); }, board: board, newGame: newGame, els: el,
       statText: function (sec, st) { paintHud(); return TX('cards.fact.hand', { n: st.handNo + 1 }); },
       cascadeOrder: function (st) { return [].concat.apply([], st.taken).map(function (id) { return { id: id }; }); },
-      winLines: function (sec, st) { return handLines(st).concat([TX('hearts.winAfter', { n: st.scores[0], hands: Z.plural(st.handNo + 1, 'hand') })]); },
+      listWin: true, winLines: function (sec, st) { return [TX('hearts.winAfter', { n: st.scores[0], hands: Z.plural(st.handNo + 1, 'hand') })].concat(handLines(st)); },
       openMenu: function () {
         Z.sheet({
           title: TX('game.hearts.title'),

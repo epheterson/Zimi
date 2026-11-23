@@ -161,31 +161,100 @@ function _skyGuessText() {
 
 // ══ The settings ════════════════════════════════════════════════════════
 var SKY_DIAL_STEPS = 100;
-function _skySelectHtml(id, labelKey, values, keyOf) {
-  var h = '<label class="alm-sky-set-row"><span>' + _almEsc(t(labelKey)) + '</span><select data-sky-set="' + id + '">';
-  for (var i = 0; i < values.length; i++) h += '<option value="' + values[i] + '">' + _almEsc(t(keyOf(values[i]))) + '</option>';
-  return h + '</select></label>';
+// A choice among a few, as a segmented control in the settings row's style (never a native dropdown).
+function _skySegHtml(id, labelKey, values, keyOf) {
+  var cap = 'alm-sky-seg-' + id, h = '<div class="alm-sky-set-row"><span id="' + cap + '">' + _almEsc(t(labelKey)) + '</span><div class="alm-sky-seg" role="radiogroup" aria-labelledby="' + cap + '">';
+  for (var i = 0; i < values.length; i++) h += '<button type="button" role="radio" aria-checked="false" data-sky-seg="' + id + '" data-v="' + values[i] + '">' + _almEsc(t(keyOf(values[i]))) + '</button>';
+  return h + '</div></div>';
+}
+var SKY_SET_MS = 200, SKY_SET_OPEN_MS = 320;   // the sheet comes up in 320 ms (CSS) and goes back in 200: by transform alone
+var SKY_SET_SWIPE_PX = 80;   // a drag down on the handle this far closes it
+// What a scene draws here, in a few words under its card: the place's own says the terrain it resolves to (from the land cover: grass,
+// forest, desert, a coast..., or that the land is being read or is not mapped), the beach and the horizon say what they are.
+var SKY_LAND_NAMES = ['grass', 'broadleaf', 'conifer', 'desert', 'snow', 'tundra', 'beach'];
+function _skySceneKey(v) {
+  if (v !== 'local') return v;
+  var sc = typeof _osPlaceScene === 'function' && _skyState ? _osPlaceScene(_skyState) : 'plain';
+  if (sc === 'plain') return typeof _osLandFailed !== 'undefined' && _osLandFailed ? 'nomap' : 'plain';
+  if (sc === 'beach') return 'coast';   // the place's own is a coast: it says so, the Beach card keeps "Sea and sand"
+  return SKY_LAND_NAMES.indexOf(sc) >= 0 ? sc : 'plain';
+}
+function _skySceneName(v) { return t('alm_sky_scene_' + _skySceneKey(v)); }
+// The scene, as three small pictures to choose from: the place's own, the beach, the true horizon. Each is drawn in CSS from a
+// sky and a ground colour (nothing is rendered or fetched to show them); the place's own wears the colour of the scene it has.
+var SKY_SKIN_GROUND = { grass: '#4f7a3a', broadleaf: '#3f6b32', conifer: '#2f5a3a', desert: '#b79868', snow: '#d9e2ea', tundra: '#7d8a78', beach: '#c9b27c', plain: '#3a3d44' };
+function _skySkinSwatch(v) {
+  var ground = v === 'beach' ? SKY_SKIN_GROUND.beach : v === 'horizon' ? '#15171b' : SKY_SKIN_GROUND[typeof _osPlaceScene === 'function' && _skyState ? _osPlaceScene(_skyState) : 'plain'] || SKY_SKIN_GROUND.plain;
+  var land = v === 'beach' ? '#2d6f9e 60%,#2d6f9e 78%,' + ground + ' 78%' : ground + ' 70%';
+  return 'linear-gradient(#1d3557,#6c8fb5 ' + (v === 'beach' ? '60' : '70') + '%,' + land + ')';
+}
+function _skySkinCardsHtml() {
+  var h = '<div class="alm-sky-set-cap" id="alm-sky-skin-cap">' + _almEsc(t('alm_sky_set_skin')) + '</div><div class="alm-sky-skins" role="radiogroup" aria-labelledby="alm-sky-skin-cap">';
+  SKY_SETTING_VALUES.skin.forEach(function (v) {
+    h += '<button type="button" role="radio" class="alm-sky-skin" data-sky-skin="' + v + '" aria-checked="false">' +
+      '<span class="alm-sky-skin-pic" style="background:' + _skySkinSwatch(v) + '"></span><span>' + _almEsc(t('alm_sky_skin_' + v)) + '</span>' +
+      '<small class="alm-sky-skin-sub" data-sky-sub="' + v + '">' + _almEsc(_skySceneName(v)) + '</small></button>';
+  });
+  return h + '</div>';
 }
 function _skySettingsHtml() {
-  return '<div class="alm-sky-set-title">' + _almEsc(t('alm_sky_set')) + '</div>' +
+  return '<div class="alm-sky-set-grip" id="alm-sky-set-grip"><i></i></div>' + _skySkinCardsHtml() +
+    '<label class="alm-sky-set-row" id="alm-sky-life-row"><span class="alm-sky-set-lbl">' + _almEsc(t('alm_sky_set_life')) + '<small class="alm-sky-set-sub" id="alm-sky-life-sub"></small></span><input type="checkbox" role="switch" data-sky-set="life" aria-describedby="alm-sky-life-sub"></label>' +
+    _skySegHtml('lines', 'alm_sky_set_lines', SKY_SETTING_VALUES.lines, function (v) { return 'alm_sky_seg_lines_' + v; }) +
+    _skySegHtml('size', 'alm_sky_set_size', SKY_SETTING_VALUES.size, function (v) { return 'alm_sky_size_' + v; }) +
     '<label class="alm-sky-set-row"><span>' + _almEsc(t('alm_sky_set_dark')) + '</span>' +
     '<span class="alm-sky-dial"><small>' + _almEsc(t('alm_sky_set_dark_lo')) + '</small>' +
     '<input type="range" min="0" max="' + SKY_DIAL_STEPS + '" step="1" data-sky-set="dial" aria-label="' + _almEsc(t('alm_sky_set_dark')) + '">' +
     '<small>' + _almEsc(t('alm_sky_set_dark_hi')) + '</small></span></label>' +
-    _skySelectHtml('lines', 'alm_sky_set_lines', SKY_SETTING_VALUES.lines, function (v) { return 'alm_sky_lines_' + v; }) +
-    _skySelectHtml('size', 'alm_sky_set_size', SKY_SETTING_VALUES.size, function (v) { return 'alm_sky_size_' + v; }) +
-    _skySelectHtml('skin', 'alm_sky_set_skin', SKY_SETTING_VALUES.skin, function (v) { return 'alm_sky_skin_' + v; });
+    '<button type="button" class="alm-sky-open3d" id="alm-sky-open3d">' + ALM_RIM_SVG + '<span>' + _almEsc(t('alm_sky_open3d')) + '</span></button>';
 }
-// The gear opens the panel over the sky and closes it again; so does a tap anywhere else, and Escape.
+// The gear opens the sheet from the foot of the screen and closes it again; so does a tap anywhere else, a swipe down on its handle, and
+// Escape. It moves by transform alone (320 ms up, 200 ms back; with reduced motion it appears and goes): the card is scrolled to the top
+// first, so it stands in view above the sheet, and nothing behind changes size or place while the sheet is open.
 function _skyToggleSettings(open) {
   var box = document.getElementById('almanac-sky-set'), gear = document.getElementById('almanac-sky-gear');
   if (!box || !gear) return;
-  if (open === undefined) open = box.hidden;
-  box.hidden = !open;
+  if (open === undefined) open = !box.classList.contains('in');
+  var still = window.matchMedia && matchMedia('(prefers-reduced-motion: reduce)').matches;
+  clearTimeout(box._skyShut);
+  box.style.transform = box.style.transition = '';   // a swipe's own drag is over
+  if (open) {
+    var card = document.querySelector('#almanac-view .almanac-sky-wrap');
+    if (card && card.getBoundingClientRect().top > 1) card.scrollIntoView({ block: 'start', behavior: still ? 'auto' : 'smooth' });
+    box.hidden = false;
+    _skySyncSettings(box);   // the light-pollution dial starts where the place's own night lights say, which may arrive after the sheet was built
+    if (!still) void box.offsetWidth;   // the closed state is drawn once, so the move has somewhere to start
+    box.classList.add('in');
+  } else {
+    box.classList.remove('in');
+    if (still) box.hidden = true; else box._skyShut = setTimeout(function () { box.hidden = true; }, SKY_SET_MS);
+  }
   gear.setAttribute('aria-expanded', String(open));
   var off = open ? 'addEventListener' : 'removeEventListener';
   document[off]('pointerdown', _skySettingsOutside, true);
   document[off]('keydown', _skySettingsKey, true);
+}
+// Leaving the Almanac with the sheet open takes its document listeners with it, so its Escape handler never outlives the view.
+function _skySettingsOff() {
+  clearTimeout((document.getElementById('almanac-sky-set') || {})._skyShut);
+  document.removeEventListener('pointerdown', _skySettingsOutside, true);
+  document.removeEventListener('keydown', _skySettingsKey, true);
+}
+// A drag down on the handle follows the finger and closes the sheet past SKY_SET_SWIPE_PX, else it springs back.
+function _skyBindSwipe(box) {
+  var grip = box.querySelector('#alm-sky-set-grip'), y0 = null;
+  if (!grip) return;
+  grip.addEventListener('pointerdown', function (e) { y0 = e.clientY; grip.setPointerCapture(e.pointerId); box.style.transition = 'none'; });
+  grip.addEventListener('pointermove', function (e) { if (y0 !== null) box.style.transform = 'translateY(' + Math.max(0, e.clientY - y0) + 'px)'; });
+  var end = function (e) {
+    if (y0 === null) return;
+    var dy = e.clientY - y0;
+    y0 = null;
+    box.style.transition = '';
+    if (dy > SKY_SET_SWIPE_PX) { box.style.transform = ''; _skyToggleSettings(false); } else box.style.transform = '';
+  };
+  grip.addEventListener('pointerup', end);
+  grip.addEventListener('pointercancel', end);
 }
 function _skySettingsOutside(e) {
   var box = document.getElementById('almanac-sky-set'), gear = document.getElementById('almanac-sky-gear');
@@ -198,6 +267,26 @@ function _skySettingsKey(e) {
   _skyToggleSettings(false);
   var gear = document.getElementById('almanac-sky-gear');
   if (gear) gear.focus();
+}
+// Each control shows what the sky is drawn with.
+function _skySyncSettings(box) {
+  var controls = box.querySelectorAll('[data-sky-set]'), i;
+  for (i = 0; i < controls.length; i++) {
+    var el = controls[i], k = el.getAttribute('data-sky-set');
+    if (el.type === 'checkbox') el.checked = _skySetting(k) === 'on';
+    else el.value = k === 'dial' ? Math.round(_skySetting('dial') * SKY_DIAL_STEPS) : _skySetting(k);
+  }
+  var cards = box.querySelectorAll('[data-sky-skin]');
+  for (i = 0; i < cards.length; i++) {
+    var v = cards[i].getAttribute('data-sky-skin'), pic = cards[i].querySelector('.alm-sky-skin-pic'), sub = cards[i].querySelector('[data-sky-sub]');
+    cards[i].setAttribute('aria-checked', String(v === _skySetting('skin')));
+    if (pic) pic.style.background = _skySkinSwatch(v);   // the place's own wears the scene it has now
+    if (sub) sub.textContent = _skySceneName(v);
+  }
+  var segs = box.querySelectorAll('[data-sky-seg]');
+  for (i = 0; i < segs.length; i++) segs[i].setAttribute('aria-checked', String(segs[i].getAttribute('data-v') === _skySetting(segs[i].getAttribute('data-sky-seg'))));
+  var sub = document.getElementById('alm-sky-life-sub');   // Life: what it draws, on every scene
+  if (sub) sub.textContent = t('alm_sky_life_sub');
 }
 // The panel and its controls, set to what is chosen; once per panel.
 function _skyBindSettings() {
@@ -213,11 +302,22 @@ function _skyBindSettings() {
   for (var i = 0; i < controls.length; i++) {
     (function (el) {
       var k = el.getAttribute('data-sky-set');
-      if (k === 'dial') el.value = Math.round(_skySetting('dial') * SKY_DIAL_STEPS);
-      else el.value = _skySetting(k);
       el.addEventListener(k === 'dial' ? 'input' : 'change', function () {
-        _skySet(k, k === 'dial' ? el.value / SKY_DIAL_STEPS : el.value);
+        _skySet(k, k === 'dial' ? el.value / SKY_DIAL_STEPS : el.type === 'checkbox' ? (el.checked ? 'on' : 'off') : el.value);
       });
     })(controls[i]);
   }
+  var cards = box.querySelectorAll('[data-sky-skin]');
+  for (i = 0; i < cards.length; i++) {
+    cards[i].addEventListener('click', function () { _skySet('skin', this.getAttribute('data-sky-skin')); _skySyncSettings(box); });
+  }
+  var segs = box.querySelectorAll('[data-sky-seg]');
+  for (i = 0; i < segs.length; i++) {
+    segs[i].addEventListener('click', function () { _skySet(this.getAttribute('data-sky-seg'), this.getAttribute('data-v')); _skySyncSettings(box); });
+  }
+  var open3d = box.querySelector('#alm-sky-open3d');
+  if (open3d) open3d.hidden = typeof _os3DAvailable === 'function' && !_os3DAvailable();   // no WebGL2, no 3D
+  if (open3d) open3d.addEventListener('click', function () { _skyToggleSettings(false); if (typeof _osStandHere === 'function') _osStandHere(); });
+  _skyBindSwipe(box);
+  _skySyncSettings(box);
 }

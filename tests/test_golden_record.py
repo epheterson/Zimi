@@ -14,6 +14,7 @@ Run: pytest tests/test_golden_record.py -v
 """
 
 import json
+import re
 import os
 import sys
 
@@ -21,6 +22,7 @@ import pytest
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
+from scripts.i18n_split import words  # noqa: E402
 from zimi import almanacstage  # noqa: E402
 
 STATIC = almanacstage.STATIC
@@ -48,8 +50,7 @@ def test_the_table_covers_every_picture_once():
     files = [im["file"] for im in images]
     assert len(files) == len(set(files)) == ALL
     assert sorted(files) == _pictures(GR_DIR)
-    with open(os.path.join(STATIC, "i18n", "en.json"), encoding="utf-8") as f:
-        en = json.load(f)
+    en = words("en")
     caps = [im["cap"] for im in images]
     assert sorted(caps) == list(range(ALL)), "each caption once"
     assert all("gr_cap_%d" % c in en for c in caps)
@@ -78,7 +79,9 @@ def test_the_gallery_says_no_picture_is_nasa_public_domain_wholesale():
     assert "_GR_IMAGES" not in src, "the gallery draws from credits.json"
     gallery = src[src.index("function _renderGoldenRecordGallery") :]
     gallery = gallery[: gallery.index("\n}\n")]
-    assert "gr-list" in gallery and "gr-row-text" in gallery, "one list; an omitted picture is a line of text"
+    assert (
+        "gr-list" in gallery and "gr-row-text" in gallery
+    ), "one list; an omitted picture is a line of text"
 
 
 @pytest.fixture(scope="module")
@@ -158,9 +161,29 @@ def test_the_built_zims_hold_49_and_8(tmp_path):
     from libzim.reader import Archive
 
     meta = Archive(str(tmp_path / "kiwix.zim"))
-    assert meta.get_metadata("Name").decode() == build_almanac_kiwix.DEFAULT_NAME == "zimi_mul_almanac"
-    assert meta.get_metadata("Title").decode() == build_almanac_kiwix.DEFAULT_TITLE == "Zimi Almanac"
-    assert meta.get_metadata("Language").decode() == "eng,zho,hin,spa,ara,fra,por,rus,deu,heb"
+    assert (
+        meta.get_metadata("Name").decode()
+        == build_almanac_kiwix.DEFAULT_NAME
+        == "zimi_mul_almanac"
+    )
+    assert (
+        meta.get_metadata("Title").decode()
+        == build_almanac_kiwix.DEFAULT_TITLE
+        == "Zimi Almanac"
+    )
+    assert (
+        meta.get_metadata("Language").decode()
+        == "eng,zho,hin,spa,ara,fra,por,rus,deu,heb"
+    )
+    # The credit line's year ("© 2026 Zimi") comes with the edition, the year of its Date.
+    year = meta.get_metadata("Date").decode()[:4]
+    built = bytes(
+        meta.get_entry_by_path(ownzims.BUILD_FILE).get_item().content
+    ).decode()
+    assert re.fullmatch(
+        r"window.ZIMI_BUILT_YEAR = %s;\nwindow.ZIMI_BUILT_VERSION = '[\d.]+';\n" % year,
+        built,
+    ), built
 
 
 # The gallery's own code, run in node on each edition's table: what the list holds.
@@ -170,7 +193,7 @@ const src = fs.readFileSync(process.argv[1], 'utf8');
 function grab(re) { const m = src.match(re); if (!m) throw new Error('missing ' + re); return m[0]; }
 const code = [/var _GR_DIR = [^\n]*/, /function _grCap\(idx\)[^\n]*/, /function _grCredit\(idx\) \{[\s\S]*?\n\}/,
   /function _renderGoldenRecordGallery\(\) \{[\s\S]*?\n\}/].map(grab).join('\n');
-const ctx = { t: (k) => k, _almEsc: (x) => String(x), _grImages: JSON.parse(fs.readFileSync(process.argv[2], 'utf8')).images };
+const ctx = { t: (k) => k, _almAsset: (p) => p, _almEsc: (x) => String(x), _grImages: JSON.parse(fs.readFileSync(process.argv[2], 'utf8')).images };
 vm.createContext(ctx); vm.runInContext(code, ctx);
 const html = ctx._renderGoldenRecordGallery();
 const count = (re) => (html.match(re) || []).length;
@@ -187,8 +210,16 @@ def _render(folder):
     if not node:
         pytest.skip("node is not installed")
     r = subprocess.run(
-        [node, "-e", _RENDER, os.path.join(STATIC, "almanac.js"), os.path.join(folder, "credits.json")],
-        capture_output=True, text=True, timeout=60,
+        [
+            node,
+            "-e",
+            _RENDER,
+            os.path.join(STATIC, "almanac.js"),
+            os.path.join(folder, "credits.json"),
+        ],
+        capture_output=True,
+        text=True,
+        timeout=60,
     )
     assert r.returncode == 0, r.stderr
     return json.loads(r.stdout)
@@ -201,7 +232,12 @@ def test_the_list_holds_49_pictures_in_zimi(staged):
 
 def test_the_kiwix_list_shows_8_pictures_and_names_41(staged):
     got = _render(os.path.join(staged[True], almanacstage.GOLDEN_RECORD))
-    assert got == {"rows": ALL, "text": ALL - PUBLIC_DOMAIN, "pictures": PUBLIC_DOMAIN, "omittedLine": True}
+    assert got == {
+        "rows": ALL,
+        "text": ALL - PUBLIC_DOMAIN,
+        "pictures": PUBLIC_DOMAIN,
+        "omittedLine": True,
+    }
 
 
 _NODE = r"""
@@ -219,35 +255,54 @@ def _node(body):
     node = shutil.which("node")
     if not node:
         pytest.skip("node is not installed")
-    r = subprocess.run([node, "-e", _NODE % body, os.path.join(STATIC, "almanac.js")], capture_output=True, text=True, timeout=60)
+    r = subprocess.run(
+        [node, "-e", _NODE % body, os.path.join(STATIC, "almanac.js")],
+        capture_output=True,
+        text=True,
+        timeout=60,
+    )
     assert r.returncode == 0, r.stderr
     return json.loads(r.stdout)
 
 
+def _almanac_source():
+    with open(os.path.join(STATIC, "almanac.js"), encoding="utf-8") as f:
+        return f.read()
+
+
 def test_a_failed_credits_fetch_is_tried_again_at_the_next_open():
-    got = _node(
-        r"""
+    got = _node(r"""
 const code = [/var _GR_CREDITS_URL = [^\n]*/, /var _grImages = null, _grFailed = false;/, /async function _loadGrCredits\(\) \{[\s\S]*?\n\}/].map(grab).join('\n');
 let calls = 0;
-const ctx = { fetch: async () => { calls++; if (calls === 1) throw new Error('offline'); return { json: async () => ({ images: [{ file: 'a.gif' }] }) }; } };
+const ctx = { _almAsset: (p) => p, fetch: async () => { calls++; if (calls === 1) throw new Error('offline'); return { json: async () => ({ images: [{ file: 'a.gif' }] }) }; } };
 vm.createContext(ctx); vm.runInContext(code, ctx);
 (async () => {
   const first = await ctx._loadGrCredits(), second = await ctx._loadGrCredits(), third = await ctx._loadGrCredits();
   console.log(JSON.stringify({ first: first.length, second: second.length, third: third.length, calls }));
 })();
-"""
-    )
+""")
     assert got == {"first": 0, "second": 1, "third": 1, "calls": 2}, got
 
 
-def test_a_picture_file_name_is_escaped_in_both_renderers():
-    got = _node(
-        r"""
+def test_a_picture_file_name_is_escaped_in_the_list():
+    got = _node(r"""
 const code = [/var _GR_DIR = [^\n]*/, /function _grCap\(idx\)[^\n]*/, /function _grCredit\(idx\) \{[\s\S]*?\n\}/,
   /function _renderGoldenRecordGallery\(\) \{[\s\S]*?\n\}/].map(grab).join('\n');
-const ctx = { t: (k) => k, _almEsc: (x) => String(x).replace(/"/g, '&quot;'), _grImages: [{ file: 'x" onerror="boom', cap: 'c', by: 'b', pd: true }] };
+const ctx = { t: (k) => k, _almAsset: (p) => p, _almEsc: (x) => String(x).replace(/"/g, '&quot;'), _grImages: [{ file: 'x" onerror="boom', cap: 'c', by: 'b', pd: true }] };
 vm.createContext(ctx); vm.runInContext(code, ctx);
 console.log(JSON.stringify({ raw: ctx._renderGoldenRecordGallery().includes('onerror="boom') }));
-"""
-    )
+""")
     assert got == {"raw": False}, got
+
+
+def test_the_lightbox_escapes_the_picture_file_name_too():
+    src = _almanac_source()
+    lightbox = src[src.index("function _renderGrLightbox") :]
+    lightbox = lightbox[: lightbox.index("\n}\n")]
+    assert "_almEsc(_almAsset(_GR_DIR + im.file))" in lightbox
+
+
+def test_a_render_that_lost_the_inscription_to_a_newer_choice_stops():
+    src = _almanac_source()
+    after = src[src.index("await _loadGrCredits();") :]
+    assert "!== entry) return;" in after[: after.index("_renderGoldenRecordGallery()")]

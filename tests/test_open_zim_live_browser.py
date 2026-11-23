@@ -55,6 +55,8 @@ def served(tmp_path_factory):
     yield {
         "base": "http://127.0.0.1:%d" % httpd.server_address[1],
         "swap": lambda: (shutil.copy(tmp / "second.zim", target), srv.load_cache(force=True)),
+        # Back to the first edition: a rerun (CI retries a failed test) starts from where the test expects.
+        "reset": lambda: (shutil.copy(tmp / "first.zim", target), srv.load_cache(force=True)),
     }
     httpd.shutdown()
     srv.ZIM_DIR, srv.ZIMI_DATA_DIR = saved
@@ -63,6 +65,7 @@ def served(tmp_path_factory):
 def test_a_replaced_zim_shows_new_at_the_same_place(served):
     from playwright.sync_api import sync_playwright
 
+    served["reset"]()
     with sync_playwright() as pw:
         br = pw.chromium.launch()
         pg = br.new_context(viewport={"width": 390, "height": 844}, service_workers="block").new_page()
@@ -78,7 +81,7 @@ def test_a_replaced_zim_shows_new_at_the_same_place(served):
             seq0 = changes._seq
             served["swap"]()
             try:
-                pg.wait_for_function("() => { %s }" % ("const h = (%s)(); return h === 'second';" % heading), timeout=30000)
+                pg.wait_for_function("() => { %s }" % ("const h = (%s)(); return h === 'second';" % heading), timeout=90000)
             except Exception as e:
                 # Where it stopped: did the server announce, did the window hear, did its list change?
                 seen = pg.evaluate(

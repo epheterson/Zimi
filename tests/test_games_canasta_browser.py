@@ -42,7 +42,7 @@ def deal_with_a_weak_and_a_strong_group(browser, served):
         page.wait_for_function("window.ZimiCanasta && ZimiCanasta.session && ZimiCanasta.session.state")
         page.locator(".cn-btn").nth(0).click()   # Draw 2
         page.wait_for_function("ZimiCanasta.session.state.step === 'play'")
-        page.wait_for_timeout(900)   # the two cards finish flying into the hand
+        page.wait_for_function("!document.querySelector('.zc-dealing')")   # the cards finish flying into the hand (the deal's span is up to 1.15 s)
         groups = page.evaluate(GROUPS)
         weak = [g for g in groups if g["pts"] < 50]
         if weak and len(groups) >= 2 and sum(g["pts"] for g in groups) >= 50:
@@ -96,7 +96,7 @@ def _overlap(a, b):
 
 
 def test_eleven_melds_a_side_overlap_nothing(served, browser):
-    for w, h in ((390, 844), (375, 667), (1280, 800)):
+    for w, h in ((390, 844), (375, 667), (560, 800), (600, 900), (640, 1000), (640, 700), (560, 375), (600, 400), (640, 360), (1280, 800)):
         ctx = browser.new_context(viewport={"width": w, "height": h}, has_touch=True)
         page = ctx.new_page()
         errors = []

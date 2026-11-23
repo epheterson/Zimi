@@ -35,6 +35,7 @@ const S = {
   matchMedia() { return { matches: false, addEventListener() {} }; }
 };
 vm.createContext(S);
+S._almAsset = (p) => p;   // app.js: a /static address with its version; here, as it is
 vm.runInContext(require("./sk.cjs")(), S);   // app.js SK, loaded before every Almanac file
 vm.runInContext('var _currentLang = "en"; function t(k, v) { var s = k; if (v) for (var x in v) s += "|" + v[x]; return s; } function tPlural(b, n) { return n + " " + b; } var _almanacOpen = false;', S);
 vm.runInContext(fs.readFileSync(path.join(STATIC, 'almanac-orrery.js'), 'utf8'), S);
@@ -165,7 +166,7 @@ const near = (a, b, tol) => Math.abs(a - b) <= tol;
 {
   vm.runInContext(fs.readFileSync(path.join(STATIC, 'almanac-tides.js'), 'utf8'), S);
   vm.runInContext(fs.readFileSync(path.join(STATIC, 'temml', 'temml.min.js'), 'utf8'), S);
-  const en = JSON.parse(fs.readFileSync(path.join(STATIC, 'i18n', 'en.json'), 'utf8'));
+  const en = Object.assign(JSON.parse(fs.readFileSync(path.join(STATIC, 'i18n', 'en.json'), 'utf8')), JSON.parse(fs.readFileSync(path.join(STATIC, 'i18n', 'almanac', 'en.json'), 'utf8')));
   const src = ['almanac.js', 'almanac-ephem.js', 'almanac-earth.js', 'almanac-reference.js', 'almanac-tables.js', 'almanac-tides.js', 'app.js']
     .map((f) => fs.readFileSync(path.join(STATIC, f), 'utf8')).join('\n');
   // A function's text, by name (its braces balanced), and every named constant's line.

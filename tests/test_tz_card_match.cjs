@@ -35,6 +35,8 @@ const pieces = [
   extract(/function _almTzForLocation\(lat, lon\)\s*\{[\s\S]*?\n\}/, '_almTzForLocation'),
   extract(/var _tzFmtCache = [^;]+;/, '_tzFmtCache'),
   extract(/function _tzFmt\(tz, opts, lang\)\s*\{[\s\S]*?\n\}/, '_tzFmt'),
+  extract(/var ALM_TZ_OFFSET_SLOT_MS = [^\n]+/, 'ALM_TZ_OFFSET_SLOT_MS'),
+  extract(/var _tzOffsetMemo = [^\n]+/, '_tzOffsetMemo'),
   extract(/function _tzUtcOffsetMin\([\s\S]*?\n\}/, '_tzUtcOffsetMin'),
   extract(/function _almTzCardLabel\(tz\)\s*\{[\s\S]*?\n\}/, '_almTzCardLabel'),
   extract(/function _almTzSegment\(tz\) \{[^\n]+\n/, '_almTzSegment'),

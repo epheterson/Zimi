@@ -54,7 +54,6 @@ import html as _html
 import itertools
 import json
 import logging
-import mimetypes
 import os
 import re
 try:  # 3.11 moved the pattern parser under re
@@ -99,7 +98,6 @@ from zimi.creator import (
     current_private_guard,
     urlopen_guarded,
     _user_agent,
-    MOBILE_VIEWPORT,
     with_capture_identity,
     zimi_user_agent,
     AssetSpool,

@@ -32,7 +32,8 @@ import pytest
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-GL_ARGS = ["--use-angle=swiftshader", "--enable-unsafe-swiftshader", "--disable-accelerated-2d-canvas"]
+from browser_slots import WEBGL_ARGS
+GL_ARGS = WEBGL_ARGS + ['--disable-accelerated-2d-canvas']
 VIEW = {"width": 390, "height": 844}
 SF = {
     "lat": 37.7749,
@@ -61,7 +62,7 @@ CALCS = [
     "convert",
     "zones",
 ]
-CONSTS = ["k_earth", "k_sunmoon", "k_bodies", "k_poles", "k_time", "k_nav", "k_physics", "k_units"]
+CONSTS = ["k_earth", "k_sunmoon", "k_bodies", "k_poles", "k_time", "k_nav", "k_physics", "k_scene", "k_capability", "k_units"]
 DRAWN = (
     "() => { var o = document.getElementById('tb-out'); var a = document.getElementById('tk-answer');"
     " return (o && !o.classList.contains('tb-busy') && o.firstChild && !o.querySelector('.tb-wait'))"
@@ -446,9 +447,10 @@ def test_every_calculation_answers_from_its_defaults(page, id_):
 def test_every_constants_table(page, id_):
     _open(page, id_)
     rows = page.evaluate(
-        "[...document.querySelectorAll('#tb-out tbody tr')].map((r) => [...r.cells].map((c) => c.textContent))"
+        "[...document.querySelectorAll('#tb-out .tb-consts tbody tr')].map((r) => [...r.cells].map((c) => c.textContent))"
     )
-    assert len(rows) >= 6, (id_, rows)
+    grid = page.evaluate("document.querySelectorAll('#tb-out .tb-pivot tbody tr').length")
+    assert len(rows) + grid >= 6, (id_, rows)
     for r in rows:
         assert len(r) == 3 and r[0] and r[1] and r[2], (id_, r)
         assert "NaN" not in r[1] and r[1] != "–" and "undefined" not in "".join(r), (
@@ -456,12 +458,106 @@ def test_every_constants_table(page, id_):
             r,
         )
     md = page.evaluate("_tbMarkdown()")
-    assert md.startswith("# ") and "| --- | --- | --- |" in md, (id_, md[:300])
+    assert md.startswith("# ") and "| --- |" in md, (id_, md[:300])
     assert page.evaluate(
         "!!document.querySelector('.tb-bar [data-tb-act=copy]') && !!document.querySelector('.tb-bar [data-tb-act=print]')"
         " && !document.querySelector('.tb-bar [data-tb-reset]')"
     )
     assert _no_side_scroll(page)
+    assert not page.errors, page.errors
+
+
+PIVOT_TILES = ["k_bodies", "k_poles"]
+WIDE = {"width": 1280, "height": 900}
+
+
+@pytest.mark.parametrize("view", [VIEW, WIDE], ids=["phone", "desktop"])
+@pytest.mark.parametrize("id_", PIVOT_TILES)
+def test_body_constants_are_a_grid_by_body_and_quantity(page, id_, view):
+    """One row per body, a column per quantity, a blank where a body lacks it, every old value and its source still shown."""
+    page.set_viewport_size(view)
+    try:
+        _open(page, id_)
+        old = page.evaluate("TB_CONST_ROWS[_tb.id]()")
+        pv = page.evaluate(
+            "() => { var p = _tbPivotRows(TB_CONST_ROWS[_tb.id]()); return { bodies: p.grid.bodies.length, cols: p.grid.cols.length, rest: p.rest.length,"
+            " cells: p.grid.cols.reduce((n, c) => n + Object.keys(c.cells).length, 0) }; }"
+        )
+        dom = page.evaluate(
+            """() => { var t = document.querySelector('#tb-out table.tb-pivot');
+              return { rows: t.tBodies[0].rows.length, cols: t.tHead.rows[0].cells.length - 1,
+                filled: t.tBodies[0].querySelectorAll('td:not(.tb-none)').length,
+                blanks: t.tBodies[0].querySelectorAll('td.tb-none').length,
+                firstCol: [...t.tBodies[0].rows].map((r) => r.cells[0].textContent),
+                heads: [...t.tHead.rows[0].cells].map((c) => c.textContent),
+                list: document.querySelectorAll('#tb-out .tb-consts tbody tr').length,
+                notes: [...document.querySelectorAll('#tb-out .tb-pivot-src .tb-note')].map((n) => n.textContent),
+                frameScrolls: t.parentNode.scrollWidth > t.parentNode.clientWidth,
+                frameW: t.parentNode.clientWidth, tableW: t.scrollWidth }; }"""
+        )
+        assert dom["rows"] == pv["bodies"] and dom["cols"] == pv["cols"] >= 4, (dom, pv)
+        assert dom["filled"] == pv["cells"], (dom, pv)
+        assert dom["blanks"] == dom["rows"] * dom["cols"] - dom["filled"]
+        assert dom["list"] == pv["rest"] and pv["cells"] + pv["rest"] == len(old), (
+            dom,
+            pv,
+            len(old),
+        )
+        # a body once, in the tile's order; a head per quantity, with its unit beneath
+        assert len(set(dom["firstCol"])) == len(dom["firstCol"])
+        assert any("Earth" == b for b in dom["firstCol"]), dom["firstCol"]
+        # every source of every old row appears in the notes or the list
+        shown = " ".join(dom["notes"]) + " " + page.evaluate(
+            "[...document.querySelectorAll('#tb-out .tb-consts .tb-src')].map((c) => c.textContent).join(' ')"
+        )
+        for src in {r[4] for r in old}:
+            assert src in shown, (src, dom["notes"])
+        # the page never scrolls sideways; the table scrolls inside its frame when it must
+        assert _no_side_scroll(page)
+        if view is WIDE and id_ == "k_poles":
+            assert not dom["frameScrolls"], dom
+        if view is VIEW:
+            assert dom["frameScrolls"] == (dom["tableW"] > dom["frameW"])
+        assert not page.errors, page.errors
+    finally:
+        page.set_viewport_size(VIEW)
+
+
+def test_poles_grid_marks_the_earth_source(page):
+    """Earth's pole cells come from another source than the other bodies': marked, and the mark is explained under the table."""
+    _open(page, "k_poles")
+    dom = page.evaluate(
+        "() => ({ marks: document.querySelectorAll('#tb-out .tb-pivot .tb-mark').length,"
+        " notes: [...document.querySelectorAll('#tb-out .tb-pivot-src .tb-note')].map((n) => n.textContent) })"
+    )
+    assert dom["marks"] >= 1, dom
+    assert any(n.startswith("¹") and "Earth" in n and "Meeus 12.4" in n for n in dom["notes"]), dom
+
+
+def test_every_model_the_almanac_computes_by_is_among_the_constants(page):
+    """"We're gonna need all our Almanac maths in the tables", and no section of its own: every model behind what
+    the Almanac shows outside the tables' own sums (the sky, the Moon, tides, satellites, the orrery, the 3D view, missions) is a
+    row of the constants page it rests on: its formula with the very constants the code uses, and its source."""
+    on = page.evaluate("TB_MODELS_ON")
+    keys = page.evaluate("TB_METHOD_KEYS")
+    assert len(keys) == len(set(keys)) >= 20, keys
+    assert "k_methods" not in page.evaluate("ALM_TB_CONSTS"), "no page of its own"
+    rows = []
+    for tile, models in on.items():
+        _open(page, tile)
+        names = page.evaluate("(ks) => ks.map((k) => _tbT('km_' + k))", models)
+        got = page.evaluate("[...document.querySelectorAll('#tb-out tbody tr')].map((r) => [...r.cells].map((c) => c.textContent))")
+        mine = [r for r in got if r[0] in names]
+        assert len(mine) == len(models), (tile, names, got)
+        rows += mine
+    assert all("…" not in r[1] for r in rows), [r for r in rows if "…" in r[1]]   # every constant read, none missing
+    text = " ".join(" ".join(r) for r in rows)
+    for model in ["VSOP87D", "Meeus 47", "Standish", "WGCCRE", "Saemundsson", "Kasten", "Hillaire", "Mallama", "Danjon",
+                  "SGP4", "Hohmann", "Lambert", "NOAA", "Lieske"]:
+        assert model in text, model
+    nums = page.evaluate("[SKY_REFRACT_K[0], SKY_AIRMASS_A, SKY_DANJON, AE_WALK_JUMP_MS].map((x) => String(x))")
+    for x in nums:
+        assert x in text, (x, text)
     assert not page.errors, page.errors
 
 
@@ -611,7 +707,7 @@ def test_the_page_scrolls_to_its_very_end(page):
     """At 390x844 the page reaches its end and stays there: the header
     stepping aside grows the scroller, and the browser's pull back at the
     end must not bring it back (which shrank the scroller and left the last
-    lines out of reach). The footer clears a phone's home indicator."""
+    lines out of reach). Zimi's footer, which ends the page, clears a phone's home indicator."""
     page.evaluate("() => { if (document.getElementById('alm-ref')) _tbClose(); }")
     end = (
         "() => { const c = document.getElementById('almanac-content'); c.scrollTop = c.scrollHeight;"
@@ -623,7 +719,7 @@ def test_the_page_scrolls_to_its_very_end(page):
         assert got["gap"] <= 1 and got["foot"] <= 0, got
     css = page.evaluate(
         "[...document.styleSheets].flatMap((s) => { try { return [...s.cssRules]; } catch (e) { return []; } })"
-        ".filter((r) => r.selectorText === '.alm-footer').map((r) => r.cssText).join(' ')"
+        ".filter((r) => r.selectorText === '.alm-footer + .footer').map((r) => r.cssText).join(' ')"
     )
     assert "safe-area-inset-bottom" in css, css
     page.evaluate("document.getElementById('almanac-content').scrollTop = 0")
@@ -749,8 +845,11 @@ def test_the_whole_book_of_what_is_shown(page):
         " window.__copied = null; window.__printed = 0; window.__ct = _copyText;"
         " _copyText = (s) => { window.__copied = s; }; window.__pr = window.print;"
         " window.print = () => { window.__printed++; };"
-        " if (typeof _tb !== 'undefined') _tb.pdfOff = true; }"
+        " }"
     )
+    # Paper, not the server's PDF: the tables' own files are in first (run alone, this test is the first to need them).
+    page.evaluate("() => new Promise((done) => _almRefReady(done))")
+    page.evaluate("_tb.pdfOff = true")
     icons = page.evaluate(
         ICONS, "#alm-group-tables .alm-group-head .alm-book-bar button"
     )
@@ -947,7 +1046,7 @@ def test_one_tile_prints_and_copies_as_its_own_book(page):
         "() => { window.__copied = null; window.__printed = 0; window.__ct = _copyText;"
         " _copyText = (s) => { window.__copied = s; }; window.__pr = window.print;"
         " window.print = () => { window.__printed++; };"
-        " if (typeof _tb !== 'undefined') _tb.pdfOff = true; }"
+        " }"
     )
     try:
         _open(page, "seasons")
@@ -1075,15 +1174,10 @@ def test_print_opens_a_pdf_in_the_reader(page):
 
 
 def _pdf_outline(data):
-    """The PDF's outline titles, read off its /Title entries."""
-    out = []
-    for raw in re.findall(rb"/Title\s*(\((?:[^)\\]|\\.)*\)|<[0-9A-Fa-f]+>)", data):
-        out.append(
-            bytes.fromhex(raw[1:-1].decode()).decode("utf-16")
-            if raw.startswith(b"<")
-            else raw[1:-1].decode("latin-1")
-        )
-    return out
+    """The PDF's outline titles, read by PyMuPDF (the file's strings may be escaped, octal and all)."""
+    import pymupdf
+
+    return [title for _, title, _ in pymupdf.open("pdf", data).get_toc()]
 
 
 def test_the_whole_book_as_a_pdf_has_parts_chapters_and_page_numbers(page):
@@ -1098,7 +1192,7 @@ def test_the_whole_book_as_a_pdf_has_parts_chapters_and_page_numbers(page):
     page.evaluate("_almBook('print')")
     # The book's own file (the reader may still hold an earlier one).
     page.wait_for_function(
-        "() => { const f = document.getElementById('reader-frame'); try { return /almanac\\/pdf\\/[^/]+\\/Almanac/.test(decodeURIComponent(f.contentWindow.location.href))"
+        "() => { const f = document.getElementById('reader-frame'); try { return /almanac\\/pdf\\/[^/]+\\/Zimi Almanac/.test(decodeURIComponent(f.contentWindow.location.href))"
         " && f.contentWindow.PDFViewerApplication.pagesCount > 0; } catch (e) { return false; } }",
         timeout=180000,
     )
@@ -1355,3 +1449,59 @@ def test_equations_open_and_draw_as_mathml(page):
     assert rows >= 5, rows
     assert "M2" in page.inner_text("#tb-how .tb-eq-terms")
     assert not page.errors, page.errors
+
+
+@pytest.mark.parametrize("view", [VIEW, WIDE], ids=["phone", "desktop"])
+@pytest.mark.parametrize("id_", PIVOT_TILES)
+def test_pivot_grid_cells_align_and_say_what_is_missing(page, id_, view):
+    """Numbers share a right edge marked or not, powers of ten are superscripts, an empty cell holds a placeholder, the body
+    column is frozen opaque, the head stays, and the edge fade shows only while columns lie beyond the right edge."""
+    page.set_viewport_size(view)
+    try:
+        _open(page, id_)
+        dom = page.evaluate(
+            """() => {
+              var t = document.querySelector('#tb-out table.tb-pivot'), fr = t.parentNode, wrap = fr.parentNode;
+              var cols = [...t.tHead.rows[0].cells].map((_, i) => i).slice(1);
+              var edge = (td) => td.querySelector('span[dir]').getBoundingClientRect().right;
+              var spread = cols.map((i) => {
+                var es = [...t.tBodies[0].rows].map((r) => r.cells[i]).filter((c) => c.querySelector('span[dir]') && !c.classList.contains('tb-text')).map(edge);
+                return es.length ? Math.max(...es) - Math.min(...es) : 0; });
+              var texts = [...t.tBodies[0].querySelectorAll('td')].map((c) => c.textContent.trim());
+              var none = [...t.tBodies[0].querySelectorAll('td.tb-none')];
+              var th = t.tBodies[0].rows[0].cells[0], cs = getComputedStyle(th), hs = getComputedStyle(t.tHead.rows[0].cells[0]);
+              var before = wrap.hasAttribute('data-more');
+              return { spread: Math.max(...spread), caret: texts.some((x) => x.includes('^')),
+                sup: texts.some((x) => /×10[⁰¹²³⁴⁵⁶⁷⁸⁹⁻]/.test(x)), none: none.length,
+                noneOk: none.every((c) => c.textContent === '–' && c.getAttribute('aria-hidden') === 'true'),
+                sticky: cs.position === 'sticky' && cs.insetInlineStart === '0px', opaque: !/rgba\\(0, 0, 0, 0\\)|transparent/.test(cs.backgroundColor),
+                headSticky: hs.position === 'sticky', overflows: fr.scrollWidth > fr.clientWidth + 1, before }; }"""
+        )
+        assert page.evaluate(
+            "() => { var f = document.querySelector('#tb-out .tb-consts'); f = f && f.parentNode; return !f || f.scrollWidth <= f.clientWidth + 1; }"
+        ), "the Name / Value / Source list wraps its source text instead of scrolling or clipping it"
+        # a column's head is its name and its unit: two lines, never a name wrapped over three
+        lines = page.evaluate(
+            "() => [...document.querySelectorAll('#tb-out .tb-pivot thead th')].map((h) => Math.round((h.getBoundingClientRect().height"
+            " - parseFloat(getComputedStyle(h).paddingTop) - parseFloat(getComputedStyle(h).paddingBottom)) / parseFloat(getComputedStyle(h).lineHeight)))"
+        )
+        assert max(lines) <= 2, lines
+        assert dom["spread"] <= 1, dom
+        assert not dom["caret"], dom
+        assert dom["sticky"] and dom["opaque"] and dom["headSticky"], dom
+        assert dom["noneOk"], dom
+        if id_ == "k_bodies":
+            assert dom["sup"] and dom["none"] > 0, dom
+        # the fade: on while short of the end, off at the end, never when nothing scrolls
+        assert dom["before"] == dom["overflows"], dom
+        sel = "document.querySelector('#tb-out .tb-frame')"
+        page.evaluate(sel + ".scrollLeft = " + sel + ".scrollWidth")
+        page.wait_for_function("() => !document.querySelector('#tb-out .tb-fadewrap').hasAttribute('data-more')", timeout=3000)
+        page.evaluate(sel + ".scrollLeft = 0")
+        page.wait_for_function(
+            "(o) => document.querySelector('#tb-out .tb-fadewrap').hasAttribute('data-more') === o", arg=dom["overflows"], timeout=3000
+        )
+        assert _no_side_scroll(page)
+        assert not page.errors, page.errors
+    finally:
+        page.set_viewport_size(VIEW)

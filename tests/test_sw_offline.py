@@ -44,7 +44,9 @@ const src = fs.readFileSync(process.argv[1], 'utf8').replace(
   .replace(/const ALMANAC_URLS = \[\];/, 'const ALMANAC_URLS = ' + JSON.stringify(ALMANAC) + ';')
   // The deadlines in tenths, so a slow server can be played in real time.
   .replace(/(const DEADLINE_\w+_MS = )(\d+)/g, (m, k, v) => k + Math.round(v / 10))
-  .replace(/(const NETWORK_DOWN_MS = )(\d+)/, (m, k, v) => k + Math.round(v / 10));
+  .replace(/(const NETWORK_DOWN_MS = )(\d+)/, (m, k, v) => k + Math.round(v / 10))
+  // The build the worker was made for (the server writes it in); the dev placeholder asks no question of a shell's build.
+  .replace(/const CACHE_VERSION = '[^']*'/, (m) => BUILD ? "const CACHE_VERSION = '" + BUILD + "'" : m);
 const ORIGIN = 'http://x';
 
 function headers(h) {
@@ -56,6 +58,7 @@ class FakeResponse {
   constructor(body, o) { o = o || {}; this.body = body; this.status = o.status === undefined ? 200 : o.status;
     this.ok = this.status >= 200 && this.status < 300; this.headers = headers(o.headers); }
   clone() { return new FakeResponse(this.body, { status: this.status, headers: this.rawHeaders }); }
+  text() { return Promise.resolve(String(this.body)); }
 }
 function reply(spec, signal) {  // a scripted answer, or a thrown network error
   if (spec === 'down') return Promise.reject(new TypeError('Failed to fetch'));
@@ -101,7 +104,8 @@ function net(req, o) {
   const path = new URL(req.url).pathname + new URL(req.url).search;
   asked.push(path);
   if (OFFLINE) return reply('down');
-  return reply(network[path] || network[new URL(req.url).pathname] || { body: 'live ' + path }, o && o.signal);
+  const spec = network[path] || network[new URL(req.url).pathname] || { body: 'live ' + path };
+  return reply(typeof spec === 'function' ? spec() : spec, o && o.signal);
 }
 
 const listeners = {};
@@ -148,16 +152,17 @@ eval('(async () => {' + SCENARIO + '})()').then((out) => process.stdout.write(JS
 """
 
 
-def _run(scenario, shell=(), offline=False, almanac=()):
+def _run(scenario, shell=(), offline=False, almanac=(), build=""):
     node = shutil.which("node")
     if not node:
         raise unittest.SkipTest("node not available")
     driver = (
-        "const SHELL = %s;\nconst ALMANAC = %s;\nlet OFFLINE = %s;\nconst SCENARIO = %s;\n"
+        "const SHELL = %s;\nconst ALMANAC = %s;\nlet OFFLINE = %s;\nconst BUILD = %s;\nconst SCENARIO = %s;\n"
         % (
             json.dumps(list(shell)),
             json.dumps(list(almanac)),
             "true" if offline else "false",
+            json.dumps(build),
             json.dumps(scenario),
         )
     ) + _DRIVER
@@ -244,6 +249,51 @@ class TestInstall(unittest.TestCase):
         self.assertEqual(out["r"], "installed")
         self.assertIn("/static/fieldguide-offline.json", out["kept"])
         self.assertNotIn("/static/app.js?v=a1", out["kept"])
+
+
+class TestAShellIsNeverKeptWithoutItsFiles(unittest.TestCase):
+    """an installed app, offline, showed the header and no stylesheet."""
+
+    PAGE = '<html><head><link rel="stylesheet" href="/static/app.css?v=c1"></head><body><script src="/static/app.js?v=a1"></script></body></html>'
+
+    def test_a_stylesheet_that_fails_once_at_install_is_tried_again(self):
+        out = _run(
+            "network['/'] = { body: %s }; let n = 0;"
+            "network['/static/app.css?v=c1'] = () => (n++ === 0 ? { status: 503 } : { body: 'css' });"
+            "const r = await install(); return { r, kept: keptPaths() };" % json.dumps(self.PAGE),
+        )
+        self.assertEqual(out["r"], "installed")
+        self.assertIn("/static/app.css?v=c1", out["kept"])
+        self.assertIn("/static/app.js?v=a1", out["kept"])
+
+    def test_a_shell_whose_stylesheet_cannot_be_had_is_not_installed(self):
+        # The old worker (with its whole cache) stays, and the next visit tries again.
+        out = _run(
+            "network['/'] = { body: %s };"
+            "network['/static/app.css?v=c1'] = { status: 503 };"
+            "const r = await install(); return { r };" % json.dumps(self.PAGE),
+        )
+        self.assertEqual(out["r"], "failed")
+
+    def test_a_kept_shell_is_made_whole_when_the_server_answers(self):
+        out = _run(
+            "await install(); store(CV).delete(ORIGIN + '/static/app.css?v=c1');"
+            "network['/'] = { body: %s };"
+            "await request('/', { mode: 'navigate', destination: 'document' }); await idle();"
+            "return { kept: keptPaths() };" % json.dumps(self.PAGE),
+        )
+        self.assertIn("/static/app.css?v=c1", out["kept"])
+
+    def test_a_shell_of_another_build_is_not_kept_over_the_one_with_its_files(self):
+        # After a deploy, before the new worker installs: its shell names files this cache does not hold.
+        out = _run(
+            "network['/'] = { body: \"<html>build:'zimi-v1.0-aaaa'</html>\" }; await install();"
+            "network['/'] = { body: \"<html>build:'zimi-v1.1-bbbb'</html>\" };"
+            "await request('/', { mode: 'navigate', destination: 'document' }); await idle();"
+            "const kept = await (await caches.open(CV)).match('/'); return { body: kept.body };",
+            build="zimi-v1.0-aaaa",
+        )
+        self.assertIn("zimi-v1.0-aaaa", out["body"])
 
 
 class TestNavigationWithNoServer(unittest.TestCase):
@@ -505,8 +555,9 @@ class TestServerFillsTheShellList(unittest.TestCase):
         for name in ("almanac.js", "almanac-sky.js", "almanac-earth.js"):
             self.assertTrue(hashed(name, pack), name)
             self.assertFalse(hashed(name, shell), name)
-        for u in ("/static/earth/moon-v1.webp", "/almanac-satellites"):
-            self.assertIn(u, pack)
+        self.assertIn("/almanac-satellites", pack)
+        # A data file is kept at the address the page asks for it at: its path and its content hash (_almAsset).
+        self.assertTrue(hashed("earth/moon-v1.webp", pack))
         self.assertTrue([u for u in pack if "three-r" in u] and [u for u in pack if "earth-day" in u])
         # The 4096 Moon map waits for the first time it is shown.
         self.assertFalse([u for u in shell + pack if "moon-4k" in u])

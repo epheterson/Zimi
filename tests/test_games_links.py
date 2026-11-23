@@ -268,6 +268,17 @@ class GameOfTheDayTests(unittest.TestCase):
         for day in _DAYS:
             assert gamelinks.game_of_day(day)["path"] == shelf[day], day
 
+    def test_discover_card_speaks_the_readers_language(self):
+        """The card's name and line came from games.json, English under a translated heading."""
+        g = {"path": "puzzles/map.html", "title": "Map", "why": "English line."}
+        words = {"game.puzzles.map.title": "Karte", "game.puzzles.map.why": "Zeile."}
+        with mock.patch.object(gamelinks, "_shelf_words", lambda lang: words if lang == "de" else {}):
+            assert gamelinks._card(g, "de")["title"] == "Karte"
+            assert gamelinks._card(g, "de")["blurb"] == "Zeile."
+            assert gamelinks._card(g, "fr")["title"] == "Map", "a language without the words is English"
+            assert gamelinks._card(g)["blurb"] == "English line."
+            assert gamelinks._card(g, "../x")["title"] == "Map"
+
     def test_discover_card_is_the_days_game(self):
         with mock.patch.object(gamelinks.ownzims, "enabled", lambda: True):
             card = gamelinks.day_card("20261024")

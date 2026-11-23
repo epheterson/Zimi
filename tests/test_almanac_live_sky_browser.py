@@ -30,7 +30,8 @@ import pytest
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-GL_ARGS = ["--use-angle=swiftshader", "--enable-unsafe-swiftshader", "--disable-accelerated-2d-canvas"]
+from browser_slots import WEBGL_ARGS
+GL_ARGS = WEBGL_ARGS + ['--disable-accelerated-2d-canvas']
 VIEW = {"width": 390, "height": 844}
 PLACE = {"lat": 37.7749, "lon": -122.4194, "name": "San Francisco"}
 DAY = "2026-09-30T21:00:00Z"  # 14:00 in San Francisco, the Sun high in the south
@@ -153,6 +154,15 @@ def _wait_still(pg, sel):
     )
 
 
+def _assert_back_to(pg, key):
+    """The shell's arrow names where it returns to (its aria-label), which is what a person using a screen reader hears."""
+    pg.wait_for_function(
+        "(k) => document.getElementById('back-btn').getAttribute('aria-label') === t('back_to', { place: t(k) })",
+        arg=key,
+        timeout=10_000,
+    )
+
+
 def _wait_view(pg, target):
     pg.wait_for_function(
         "(t) => _aeIsOpen && _ae.preset === t",
@@ -168,9 +178,7 @@ def test_the_sun_and_the_moon_open_the_3d_view_on_themselves(browser, served):
         _settle(pg, DAY)
         _tap_body(pg, "sun")
         _wait_view(pg, "sun")
-        assert pg.evaluate(
-            "_aeBackLabel()"
-        ) == pg.evaluate("t('almanac')")
+        _assert_back_to(pg, 'almanac')
         # The view keeps the page's clock: it shows the sky's instant.
         assert abs(pg.evaluate("_aeDisplayMs()") - _ms(DAY)) < 60000
         pg.evaluate("_aeClose()")
@@ -282,9 +290,7 @@ def test_the_orrery_sun_opens_the_3d_view_on_the_sun(browser, served):
         )
         pg.touchscreen.tap(sun["x"], sun["y"])
         _wait_view(pg, "sun")
-        assert pg.evaluate(
-            "_aeBackLabel()"
-        ) == pg.evaluate("t('alm_solar_system')")
+        _assert_back_to(pg, 'alm_solar_system')
         assert not errors, errors
     finally:
         ctx.close()
@@ -406,6 +412,19 @@ def test_the_sky_stays_facing_the_equator(browser, served):
         ctx.close()
 
 
+def test_birds_and_planes_come_over_the_true_horizon_too(browser, served):
+    """Life is a switch of its own: on the Sky-only scene (no ground, so no water) the spawners still run."""
+    ctx, pg, errors = _almanac(browser, served)
+    try:
+        _settle(pg, DAY)
+        pg.evaluate("() => { _skySet('skin', 'horizon'); _skySet('life', 'on'); _skyArm(true); }")
+        assert pg.evaluate("() => !!_skyTimers.plane && !!_skyTimers.birds"), "the first plane and flock are on their way over the horizon"
+        assert pg.evaluate("() => _skyLifeOn()")
+        assert not errors, errors
+    finally:
+        ctx.close()
+
+
 def test_life_on_the_horizon(browser, served):
     """The coast has the sea at its tide, inland the land; the moving things
     run a light loop only while one is on screen, and each says what it is."""
@@ -475,7 +494,7 @@ def test_life_on_the_horizon(browser, served):
         assert not errors, errors
     finally:
         ctx.close()
-    # Inland: the same beach and palms, the sea at half tide, and no tide claimed.
+    # Inland: the place's own land, no sea, and no tide claimed.
     ctx, pg, errors = _almanac(browser, served, place=DENVER)
     try:
         _settle(pg, DAY)
@@ -490,7 +509,12 @@ def test_life_on_the_horizon(browser, served):
         pg.wait_for_timeout(300)
         assert pg.evaluate("_skyState.sea") is None
         assert not pg.evaluate("_skyState.bodies.some((b) => b.type === 'sea')")
-        assert pg.evaluate("(_skyState.palmCache || []).some(Boolean)")
+        # The foreground is the place's own land (almanac-skyland.js): grass on the plains, not a beach, and no palms.
+        pg.wait_for_function("() => !!_skyState.land", polling=POLL_MS, timeout=60000)
+        pg.evaluate("_skyKick()")
+        pg.wait_for_timeout(300)
+        assert pg.evaluate("_osCardScene(_skyState)") in ("grass", "desert")
+        assert not pg.evaluate("(_skyState.palmCache || []).some(Boolean)")
         assert not errors, errors
     finally:
         ctx.close()
@@ -498,29 +522,56 @@ def test_life_on_the_horizon(browser, served):
 
 # The shipped elements are refreshed for every release and exact only for days either side of their epoch, so the pass is looked
 # for in the elements the page holds: the first half-minute within 2.5 days of the epoch the ISS stands above 12 degrees in the view over a dark sky (Sun below 6).
+# Passes come in runs of days and a run is dark only at some places (the 2026-11-22 elements hold none after dark at San Francisco), so a few cities
+# are tried, the usual one first, and the test stands where the pass is.
+ISS_PASS_PLACES = [PLACE, {"lat": 51.51, "lon": -0.13, "name": "London"}, {"lat": -33.87, "lon": 151.21, "name": "Sydney"},
+                   {"lat": 35.68, "lon": 139.69, "name": "Tokyo"}, {"lat": -26.2, "lon": 28.05, "name": "Johannesburg"},
+                   {"lat": 40.71, "lon": -74.0, "name": "New York"}, {"lat": 19.43, "lon": -99.13, "name": "Mexico City"}]
 ISS_PASS_SCAN = """
-() => {
-  const s = _skyState, iss = _ae.sats.list.find((q) => q.iss), lat = s.lat, lon = s.lon;
-  const sinLat = Math.sin(lat * DEG_TO_RAD), cosLat = Math.cos(lat * DEG_TO_RAD);
-  for (let t = iss.epochMs - 2.5 * MS_PER_DAY; t < iss.epochMs + 2.5 * MS_PER_DAY; t += 30000) {
-    const up = _skyIss(s, t);
-    if (!up || up.alt < 12 || !_skyInView(s, _skyX(s, up.az), 4)) continue;
-    const d = new Date(t), sq = _skySunRaDec(_jdToJulianCentury(_dateToJD(t)));
-    if (_skyHorizontal(sq.ra, sq.dec, _skyLST(d, lon), sinLat, cosLat).alt < -6) return d.toISOString();
+(places) => {
+  const base = _skyState, iss = _ae.sats.list.find((q) => q.iss);
+  for (const place of places) {
+    const s = Object.assign({}, base, { lat: place.lat, lon: place.lon });
+    const sinLat = Math.sin(s.lat * DEG_TO_RAD), cosLat = Math.cos(s.lat * DEG_TO_RAD);
+    for (let t = iss.epochMs - 2.5 * MS_PER_DAY; t < iss.epochMs + 2.5 * MS_PER_DAY; t += 30000) {
+      const up = _skyIss(s, t);
+      if (!up || up.alt < 12 || !_skyInView(s, _skyX(s, up.az), 4)) continue;
+      const d = new Date(t), sq = _skySunRaDec(_jdToJulianCentury(_dateToJD(t)));
+      if (_skyHorizontal(sq.ra, sq.dec, _skyLST(d, s.lon), sinLat, cosLat).alt < -6) return { place: place, iso: d.toISOString() };
+    }
   }
   return null;
 }
 """
 
 
+def _open_at_an_iss_pass(browser, served, ready_js, horizon=False):
+    """The Almanac open at a place with a dark-sky ISS pass in its elements, and the instant of that pass: (ctx, pg, errors, iso)."""
+    ctx, pg, errors = _almanac(browser, served, horizon=horizon)
+    found = None
+    try:
+        pg.wait_for_function(ready_js, polling=500, timeout=90000)
+        found = pg.evaluate(ISS_PASS_SCAN, ISS_PASS_PLACES)
+        assert found, "the shipped elements hold no dark-sky pass in their 2.5 days either side of their epoch, at any of %s" % [p["name"] for p in ISS_PASS_PLACES]
+    finally:
+        if not found:
+            ctx.close()
+    if found["place"] != PLACE:
+        ctx.close()
+        ctx, pg, errors = _almanac(browser, served, place=found["place"], horizon=horizon)
+        pg.wait_for_function(ready_js, polling=500, timeout=90000)
+    return ctx, pg, errors, found["iso"]
+
+
 def test_the_first_look_is_the_beach_with_its_life(browser, served):
     """Nothing chosen, nothing saved: the scene is the beach, boats lit at
     night, palms swaying, an airliner crossing within seconds, meteors on the
-    real calendar's clock; a viewer who chose the true horizon keeps it."""
+    real calendar's clock; a viewer who chose the true horizon keeps it, with its birds
+    and planes but no boats."""
     ctx, pg, errors = _almanac(browser, served)
     try:
         _settle(pg, NIGHT)
-        assert pg.evaluate("_skySetting('skin')") == "beach"
+        assert pg.evaluate("_skySetting('skin')") == "local"
         assert pg.evaluate("localStorage.getItem('zimi_sky_settings')") is None
         assert pg.evaluate("_skyState.bodies.some((b) => b.type === 'boat')")
         pg.wait_for_function(
@@ -553,7 +604,7 @@ def test_the_first_look_is_the_beach_with_its_life(browser, served):
         _settle(pg, NIGHT)
         assert pg.evaluate("_skySetting('skin')") == "horizon"
         assert not pg.evaluate("_skyState.bodies.some((b) => b.type === 'boat')")
-        assert pg.evaluate("!_skyTimers.sway && !_skyTimers.plane")
+        assert pg.evaluate("!!_skyTimers.plane && !!_skyTimers.birds")   # life flies over the true horizon too; only the boats need water
         assert not errors, errors
     finally:
         ctx.close()
@@ -562,15 +613,10 @@ def test_the_first_look_is_the_beach_with_its_life(browser, served):
 def test_the_iss_is_drawn_when_it_is_overhead_and_lit(browser, served):
     """From the satellite elements the 3D view keeps (loaded for the sky too),
     only while it stands above 8 degrees, in the Sun's light, over a dark sky."""
-    ctx, pg, errors = _almanac(browser, served)
+    ctx, pg, errors, iss_pass = _open_at_an_iss_pass(
+        browser, served, "() => { if (typeof _ae !== 'undefined' && _ae) { _skyIssWatch(_skyState); return !!_ae.sats; } return false; }"
+    )
     try:
-        pg.wait_for_function(
-            "() => { if (typeof _ae !== 'undefined' && _ae) { _skyIssWatch(_skyState); return !!_ae.sats; } return false; }",
-            polling=500,
-            timeout=90000,
-        )
-        iss_pass = pg.evaluate(ISS_PASS_SCAN)
-        assert iss_pass, "the shipped elements hold no dark-sky pass in their 2.5 days either side of their epoch"
         _settle(pg, iss_pass)
         pg.wait_for_function(
             "() => _skyState.bodies.some((b) => b.type === 'iss')",
@@ -588,16 +634,11 @@ def test_the_iss_is_drawn_when_it_is_overhead_and_lit(browser, served):
 def test_the_iss_needs_no_3d_view_and_no_beach(browser, served):
     """The live sky asks for the satellite elements itself, on the true horizon as on the beach, without the 3D view
     being opened (or anything calling the watch): its pass is drawn when it is overhead and lit."""
-    ctx, pg, errors = _almanac(browser, served, horizon=True)
+    ctx, pg, errors, iss_pass = _open_at_an_iss_pass(
+        browser, served, "() => typeof _ae !== 'undefined' && !!_ae && !!_ae.sats && !_aeIsOpen", horizon=True
+    )
     try:
         assert pg.evaluate("_skySetting('skin')") == "horizon"
-        pg.wait_for_function(
-            "() => typeof _ae !== 'undefined' && !!_ae && !!_ae.sats && !_aeIsOpen",
-            polling=500,
-            timeout=90000,
-        )
-        iss_pass = pg.evaluate(ISS_PASS_SCAN)
-        assert iss_pass, "the shipped elements hold no dark-sky pass in their 2.5 days either side of their epoch"
         _settle(pg, iss_pass)
         pg.wait_for_function(
             "() => _skyState.bodies.some((b) => b.type === 'iss')",
@@ -728,6 +769,48 @@ def test_the_caption_under_the_sky_is_two_lines_at_most(browser, served):
                  for (const m of mids) { if (m - last > 8) count++; last = m; } return count; }"""
         )
         assert lines <= 2, (lines, cap)
+        assert not errors, errors
+    finally:
+        ctx.close()
+
+
+def _mean_red(png):
+    import io
+    import numpy as np
+    from PIL import Image
+
+    return float(np.asarray(Image.open(io.BytesIO(png)).convert("RGB")).astype(float)[..., 0].mean())
+
+
+def test_red_daylight_is_dimmed_on_the_card_and_on_the_surface_view(browser, served):
+    """In Red with the Sun up both are drawn at --red-daylight (0.8) of the brightness; at night nothing is dimmed."""
+    ctx, pg, errors = _almanac(browser, served)
+    try:
+        pg.evaluate("() => { localStorage.setItem('zimi_app_theme', 'red'); _applyAppTheme(); }")
+        _settle(pg, DAY)
+        assert pg.evaluate("() => getComputedStyle(document.documentElement).getPropertyValue('--red-daylight').trim()") == "0.8"
+        wrap = pg.locator(".almanac-sky-wrap")
+
+        def card(level):
+            pg.evaluate("(v) => { document.documentElement.style.setProperty('--red-daylight', v); _skyState.baseDirty = true; _skyKick(); }", level)
+            pg.wait_for_timeout(1500)
+            return _mean_red(wrap.screenshot())
+
+        full, dim = card("1"), card("0.8")
+        assert 0.75 < dim / full < 0.85, (full, dim)
+        # The Surface view: a canvas flagged for the dim by day (the page's filter chain does the rest), not at night.
+        pg.evaluate("() => { document.documentElement.style.removeProperty('--red-daylight'); openAlmanacEarth({ target: 'earth' }); }")
+        pg.wait_for_function("() => typeof _aeReady === 'function' && _aeReady() && _aeIsOpen && !_ae.fly", timeout=240_000, polling=250)
+        pg.evaluate("() => _aeStandAt('earth', %s, %s)" % (PLACE["lat"], PLACE["lon"]))
+        pg.wait_for_function("() => _ae.stand && _ae.stand.live && _ae.stand.fr", timeout=240_000, polling=250)
+        for iso, flagged in ((DAY, True), (NIGHT, False)):
+            pg.evaluate("(ms) => { _aeGoTo(ms); _ae.stand.fr = null; _ae.stand.dirty = true; _ae.dirty = true; _aeKick(); }", _ms(iso))
+            pg.wait_for_function("(f) => _ae.stand.fr && (_ae.stand.fr.sunAlt > 0) === f", arg=flagged, timeout=60_000, polling=250)
+            pg.wait_for_timeout(1500)
+            got = pg.evaluate("() => { const c = _ae.gl.renderer.domElement; return [c.hasAttribute('data-red-day'), getComputedStyle(c).filter]; }")
+            assert got[0] is flagged, (iso, got)
+            if flagged:
+                assert "brightness(0.8)" in got[1], got
         assert not errors, errors
     finally:
         ctx.close()

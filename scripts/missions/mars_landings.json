@@ -1,0 +1,25 @@
+{
+ "id": "mars_landings",
+ "about": "When each Mars landing happened on Mars (spacecraft event time, UTC): the instant sites-v1.json holds and the 3D view goes to. A time published as received on Earth is turned back by the one-way light time from the view's own ephemeris (almanac-ephem.js _ephBodyJ2000), which gives NASA's published event times for Phoenix, InSight, Curiosity and Perseverance to 1 s.",
+ "sources": {
+  "NSSDCA": "NASA Space Science Data Coordinated Archive, mission pages (Viking 1 and 2 landers, Mars Pathfinder): landing times UT",
+  "JPL-PHX": "NASA/JPL Phoenix landing press kit and release, 2008-05-25: touchdown 23:38:24 UTC spacecraft time (signal received 23:53:44)",
+  "JPL-MSL": "NASA/JPL Mars Science Laboratory landing press kit: touchdown 2012-08-06 05:17:57 UTC spacecraft time (05:31:45 Earth-received)",
+  "JPL-INS": "NASA/JPL InSight landing release, 2018-11-26: touchdown 19:52:59 UTC Earth-received, 19:44:52 spacecraft time",
+  "JPL-MER": "NASA/JPL MER landing releases: Spirit 2004-01-04 04:35 UTC and Opportunity 2004-01-25 05:05 UTC, Earth-received",
+  "JPL-M20": "NASA/JPL Mars 2020 landing press kit: 3:55 p.m. EST (20:55:00 UTC) Earth-received; one-way light time 11 min 22 s",
+  "CNSA-EDL": "Wei et al. 2022, Tianwen-1 Mars entry vehicle trajectory and atmosphere reconstruction preliminary analysis, Astrodynamics 6(1) 81-91, doi:10.1007/s42064-021-0116-y: 'landed ... on May 15, 2021, at 7:18 (UTC+8)'; Hu et al. 2022, Astrodynamics 6(1) 27-37, doi:10.1007/s42064-021-0124-y: '7:18 AM BJT'"
+ },
+ "events": [
+  {"key": "viking1", "kind": "site_time", "site": "Viking 1", "t_utc": "1976-07-20T11:53:06", "src": "NSSDCA"},
+  {"key": "viking2", "kind": "site_time", "site": "Viking 2", "t_utc": "1976-09-03T22:37:50", "src": "NSSDCA"},
+  {"key": "pathfinder", "kind": "site_time", "site": "Mars Pathfinder", "t_utc": "1997-07-04T16:56:55", "src": "NSSDCA"},
+  {"key": "spirit", "kind": "site_time", "site": "Spirit", "t_utc": "2004-01-04T04:25:31", "src": "JPL-MER", "tol": {"s": 60}, "why": "Earth-received 04:35 to the minute, less 568.7 s of light time"},
+  {"key": "opportunity", "kind": "site_time", "site": "Opportunity", "t_utc": "2004-01-25T04:53:56", "src": "JPL-MER", "tol": {"s": 60}, "why": "Earth-received 05:05 to the minute, less 663.9 s of light time"},
+  {"key": "phoenix", "kind": "site_time", "site": "Phoenix", "t_utc": "2008-05-25T23:38:24", "src": "JPL-PHX"},
+  {"key": "curiosity", "kind": "site_time", "site": "Curiosity", "t_utc": "2012-08-06T05:17:57", "src": "JPL-MSL"},
+  {"key": "insight", "kind": "site_time", "site": "InSight", "t_utc": "2018-11-26T19:44:52", "src": "JPL-INS"},
+  {"key": "perseverance", "kind": "site_time", "site": "Perseverance", "t_utc": "2021-02-18T20:43:38", "src": "JPL-M20"},
+  {"key": "zhurong", "kind": "site_time", "site": "Zhurong", "t_utc": "2021-05-14T23:18:00", "src": "CNSA-EDL", "tol": {"s": 60}, "why": "Published to the minute. The time of the landing itself: both papers reconstruct the entry from the vehicle's own measurements (IMU, air data), whose clock is the vehicle's; the signal (17 min 43 s of light time that night) reached Earth near 23:36"}
+ ]
+}

@@ -1,0 +1,25 @@
+/* Zimi's wordmark and the footer under it, drawn once (the Home page's, the Almanac's and the Games': see zimifooter.js).
+   Zimi's server inlines this into the shell's head; the Almanac and the Games link it. The colours read the page's own names
+   (--text2, --border, --amber on Zimi and the Almanac; --ink2, --line, --accent on the Games). In Red the word and the links
+   follow the red ink. */
+:root { --brand-gradient: linear-gradient(135deg, #f59e0b, #f97316, #ef4444); }
+/* The wordmark: the header's Zimi, the sign-in screen's, the footer's. */
+:is(.zimi-brand, .topbar .logo, .pw-brand span, .footer .footer-brand) {
+  background: var(--brand-gradient); -webkit-background-clip: text; background-clip: text; -webkit-text-fill-color: transparent;
+  font-weight: 700; letter-spacing: -0.028em; text-decoration: none;
+}
+:root.night-red :is(.zimi-brand, .topbar .logo, .pw-brand span, .footer .footer-brand) { background: none; -webkit-text-fill-color: var(--amber); color: var(--amber); }
+.footer { text-align: center; padding: 20px 16px 16px; font-size: 12px; line-height: 1.5; color: var(--text2, var(--ink2)); border-top: 1px solid var(--border, var(--line)); margin-top: var(--sp-4, 16px); }
+.footer a { color: var(--amber, var(--accent)); text-decoration: underline; text-decoration-style: dotted; text-underline-offset: 2px; }
+/* 44px hit area on each link without moving the line: a transparent box over it. */
+.footer a { position: relative; }
+.footer a::after { content: ""; position: absolute; left: -4px; right: -4px; top: 50%; height: var(--target, 44px); transform: translateY(-50%); }
+.footer a:hover { text-decoration-style: solid; }
+/* A finger's 44px around each link (the line is 16px tall): a transparent box beside it, the way the top bar's controls do it. */
+.footer a { position: relative; }
+.footer a::after { content: ""; position: absolute; inset: -14px -10px; }
+.footer .footer-brand { text-decoration: none; }
+.footer .footer-brand:hover { opacity: 0.8; }
+/* Red: every word of the footer is the red ink, as on Home (Home's --text2 is red there; a ZIM page has no such name, so the fallback). */
+:root.night-red .footer { color: var(--text2, var(--amber, #ff2010)); border-top-color: var(--border, #5c0e06); }
+:root.night-red .footer a:not(.zimi-brand) { color: var(--amber, #ff2010); }

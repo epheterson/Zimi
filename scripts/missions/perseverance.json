@@ -1,0 +1,17 @@
+{
+ "id": "perseverance",
+ "name": "Perseverance",
+ "zero": "2020-07-30T11:50:00Z",
+ "sources": {
+  "JPL-QF": "NASA/JPL Mars 2020 landing press kit, Quick Facts (launch 7:50 a.m. EDT 30 July 2020; touchdown 3:55 p.m. EST 18 February 2021 as received on Earth; one-way light time 11 min 22 s)",
+  "LM": "landmarks-v1.json, the Perseverance pin (NASA's 18.4447 N, 77.4508 E)",
+  "HZN": "JPL Horizons, spacecraft -168, Mars-centred"
+ },
+ "notes": "Event times are UTC. A place is the vehicle's last state against the record.",
+ "events": [
+  {"key": "launch", "kind": "time", "shipped_k": "alm_ms_ev_liftoff", "t_utc": "2020-07-30T11:50:00", "src": "JPL-QF"},
+  {"key": "entry_interface", "kind": "fix", "vehicle": "m20", "body": "mars", "t_utc": "2021-02-18T20:36:46", "lat": 19.358, "lon": 67.755, "alt_km": 131.0, "src": "HZN", "tol": {"deg": 0.05, "km": 3.0}, "note": "Where Horizons has the craft at the entry instant (Hermite in its minute table), turned by the view's Mars frame (IAU pole and turn). The approach must arrive here and the entry start here."},
+  {"key": "touchdown_place", "kind": "place", "vehicle": "m20", "body": "mars", "at_end": true, "lat": 18.4446, "lon": 77.4509, "src": "LM", "tol": {"deg": 0.01}},
+  {"key": "touchdown_time", "kind": "time", "shipped_k": "alm_ms_ev_m20_touchdown", "t_utc": "2021-02-18T20:43:38", "src": "JPL-QF", "note": "Mars time: the press kit's 20:55:00 UTC as received on Earth, less its 11 min 22 s one-way light time."}
+ ]
+}

@@ -40,11 +40,12 @@ import threading
 
 log = logging.getLogger(__name__)
 
-__all__ = ["available", "entries", "built_at", "icon", "icon_names"]
+__all__ = ["available", "entries", "built_at", "icon", "icon_names", "community_entries"]
 
 _ASSETS = os.path.join(os.path.dirname(os.path.abspath(__file__)), "assets")
 SNAPSHOT_PATH = os.path.join(_ASSETS, "catalog-snapshot.json.gz")
 ICONS_PATH = os.path.join(_ASSETS, "catalog-icons.tar")
+COMMUNITY_PATH = os.path.join(_ASSETS, "community-snapshot.json.gz")
 
 # An icon is named by the hex digest of its contents, so a name that is not a
 # digest cannot address a member. Checked before the tar is touched: the name
@@ -104,6 +105,16 @@ def entries() -> list[dict]:
     """The snapshot's entries. Shared, not copied: callers must not mutate."""
     _load()
     return _entries
+
+
+def community_entries() -> list[dict]:
+    """Kiwix's community catalog as shipped, already shaped as catalog items
+    (source "community"), or []. A copy of the list: callers may keep it."""
+    try:
+        with gzip.open(COMMUNITY_PATH, "rt", encoding="utf-8") as f:
+            return list(json.load(f).get("entries") or [])
+    except (OSError, ValueError):
+        return []
 
 
 def built_at() -> str:

@@ -68,9 +68,20 @@ def _env(tmp_path, monkeypatch):
     lib._catalog_stale_ts = None
 
 
+def test_opening_the_catalog_never_refreshes_a_stale_page(_env, monkeypatch):
+    """Refresh only when Zimi does its update check, never on catalog open."""
+    key = "|eng|500|0"
+    lib._opds_cache[key] = (100.0, 1, [{"name": "old_zim", "title": "Old"}])
+    monkeypatch.setattr(urllib.request, "urlopen", lambda *a, **k: pytest.fail("a catalog open reached for the network"))
+    _total, items, err = lib._fetch_kiwix_catalog("", "eng", 500, 0)
+    assert err is None and items[0]["name"] == "old_zim"
+    assert key not in lib._opds_refreshing
+
+
 def test_stale_returns_immediately_and_spawns_single_refresh(_env, monkeypatch):
-    """A stale page is served instantly, marked stale, and revalidated by
-    exactly one background thread even under concurrent requests."""
+    """The update check (internal) gets a stale page instantly, marked stale,
+    and it is revalidated by exactly one background thread even under
+    concurrent requests."""
     key = "|eng|500|0"
     stale_items = [{"name": "old_zim", "title": "Old"}]
     lib._opds_cache[key] = (100.0, 1, stale_items)  # far past the 24h TTL
@@ -86,7 +97,7 @@ def test_stale_returns_immediately_and_spawns_single_refresh(_env, monkeypatch):
     monkeypatch.setattr(urllib.request, "urlopen", fake_urlopen)
 
     # Served instantly from the stale cache — the blocked network never delays us.
-    total, items, err = lib._fetch_kiwix_catalog("", "eng", 500, 0)
+    total, items, err = lib._fetch_kiwix_catalog("", "eng", 500, 0, _internal=True)
     assert err is None
     assert items == stale_items
     assert lib._catalog_stale_ts == 100.0
@@ -94,7 +105,7 @@ def test_stale_returns_immediately_and_spawns_single_refresh(_env, monkeypatch):
     assert key in lib._opds_refreshing
 
     # A concurrent request for the same page dedups onto the in-flight refresh.
-    _t2, i2, e2 = lib._fetch_kiwix_catalog("", "eng", 500, 0)
+    _t2, i2, e2 = lib._fetch_kiwix_catalog("", "eng", 500, 0, _internal=True)
     assert e2 is None and i2 == stale_items
 
     # Let the background refresh complete and replace the cache.

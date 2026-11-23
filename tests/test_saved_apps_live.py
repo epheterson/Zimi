@@ -453,7 +453,7 @@ def test_a_saved_thing_from_a_file_is_text_not_script(phone, app):
         "scope": "my-data",
         "saved": {"items": {key: item}},
     }
-    pg.evaluate("(t) => _applyMyDataFile(t)", json.dumps(bundle))
+    pg.evaluate("(t) => _manageLoad().then(() => _applyMyDataFile(t))", json.dumps(bundle))   # it lives in manage.js, fetched on first use
     assert pg.evaluate("(k) => Saved.has(k)", key)
     pg.evaluate("() => " + ("openExchange()" if app == "exchange" else "openReddot()"))
     frame = pg.frame_locator("#reader-frame")
@@ -596,7 +596,7 @@ def test_right_to_left_and_dark(served):
         )
         assert (
             _in_frame(pg, "(w) => getComputedStyle(w.document.body).backgroundColor")
-            == "rgb(23, 23, 26)"
+            == "rgb(10, 10, 11)"
         )
         _shot(pg, "exchange_rtl_dark_saved.png")
         br.close()
@@ -629,6 +629,8 @@ def test_an_app_home_asks_the_server_for_nothing_more(phone):
         def handler(r):
             if r.resource_type in ("fetch", "xhr"):
                 u = urlsplit(r.url)
+                if u.path == "/manage/activity":
+                    return  # Home's activity badge polls on its own clock (every 30 s idle), not the app home asking
                 seen.append(u.path + ("?" + u.query if u.query else ""))
 
         pg.on("request", handler)
@@ -638,7 +640,7 @@ def test_an_app_home_asks_the_server_for_nothing_more(phone):
         pg.remove_listener("request", handler)
         assert seen == want, (call, seen)
         assert _in_frame(
-            pg, "(w) => /Saved/.test(w.document.body.innerText)"
+            pg, "(w) => /saved/i.test(w.document.body.innerText)"
         ), call
         pg.evaluate("() => closeReader()")
         pg.wait_for_timeout(200)
