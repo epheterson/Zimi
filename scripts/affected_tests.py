@@ -17,7 +17,7 @@ import sys
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 STAMP = os.path.join(ROOT, ".git", "zimi-last-deploy")
-SOURCES = ("zimi/", "scripts/", "docker/")
+SOURCES = ("zimi/", "scripts/", "packaging/docker/")
 # What a deploy ships besides those folders, and the tests themselves.
 SHIPPED_FILES = ("requirements.txt", "Dockerfile")
 TESTS = "tests/"

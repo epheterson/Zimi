@@ -1,6 +1,6 @@
 # Zimi on Kubernetes — a complete, working starting point.
 #
-#   kubectl apply -f deploy/kubernetes.yaml
+#   kubectl apply -f packaging/deploy/kubernetes.yaml
 #
 # Then load ZIMs into the zimi-library volume and reach the service. Everything
 # below is one namespace, one Deployment, one Service, two volumes.
@@ -10,7 +10,7 @@
 # seeding. Both need to see a real LAN, and pod networking does not give them
 # one. Downloads over plain HTTP work fine, and so does everything a reader
 # touches. If sharing ZIMs peer-to-peer is why you run Zimi, run it on a host
-# with host networking (see deploy/docker-compose.yml) rather than here.
+# with host networking (see packaging/deploy/docker-compose.yml) rather than here.
 #
 # Single replica, deliberately. Zimi keeps its state on a filesystem, not in a
 # database, and two replicas writing the same volume would corrupt the search

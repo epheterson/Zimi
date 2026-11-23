@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Smoke test a built Zimi binary: launch it, wait for READY, hit the core
-# endpoints. Usage: ci/smoke_binary.sh <path-to-binary>
+# endpoints. Usage: .github/ci/smoke_binary.sh <path-to-binary>
 #
 # The LAUNCH is retried (3 attempts x 60s): fresh CI runner images sometimes
 # take a long time to cold-start a PyInstaller bundle — a 30s single-shot

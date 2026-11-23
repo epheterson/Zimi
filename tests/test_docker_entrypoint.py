@@ -18,7 +18,7 @@ ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
 def _load():
     spec = importlib.util.spec_from_file_location(
-        "zimi_entrypoint", os.path.join(ROOT, "docker", "entrypoint.py")
+        "zimi_entrypoint", os.path.join(ROOT, "packaging", "docker", "entrypoint.py")
     )
     mod = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(mod)
@@ -211,7 +211,7 @@ def test_the_dockerfile_uses_the_entrypoint_and_not_a_fixed_user():
     lines = [ln.strip() for ln in text.splitlines() if not ln.lstrip().startswith("#")]
     assert "USER zimi" not in lines
     assert any(ln.startswith("ENTRYPOINT") and "zimi-entrypoint" in ln for ln in lines)
-    assert any("docker/entrypoint.py" in ln for ln in lines)
+    assert any("packaging/docker/entrypoint.py" in ln for ln in lines)
 
 
 # -- standing in for NOMAD's kiwix-serve container ---------------------------

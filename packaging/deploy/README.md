@@ -11,15 +11,15 @@ Three files, all complete and all meant to be copied rather than read as example
 ```bash
 # Docker
 mkdir -p zims && cp /path/to/*.zim zims/
-docker compose -f deploy/docker-compose.yml up -d
+docker compose -f packaging/deploy/docker-compose.yml up -d
 
 # Podman (rootless, at boot)
 mkdir -p ~/zimi/zims ~/zimi/config && cp /path/to/*.zim ~/zimi/zims/
-cp deploy/podman/zimi.container ~/.config/containers/systemd/
+cp packaging/deploy/podman/zimi.container ~/.config/containers/systemd/
 systemctl --user daemon-reload && systemctl --user start zimi
 
 # Kubernetes
-kubectl apply -f deploy/kubernetes.yaml
+kubectl apply -f packaging/deploy/kubernetes.yaml
 ```
 
 The Podman unit carries two flags Docker never needed, and the file says why: `keep-id` so the ZIMs Zimi downloads are owned by you rather than a subordinate UID, and `:Z` for SELinux. CI runs the image rootless under Podman on every change and checks the ownership claim.

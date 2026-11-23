@@ -3,7 +3,7 @@
 ; Produces a per-user installer (no admin/UAC prompt) that WinSparkle can
 ; download and run to auto-update the app in place. Compiled in CI:
 ;
-;   iscc /DMyAppVersion=1.8.0 windows\zimi.iss
+;   iscc /DMyAppVersion=1.8.0 packaging\windows\zimi.iss
 ;
 ; Input : dist\Zimi\        (PyInstaller one-dir output: Zimi.exe + _internal\)
 ; Output: dist\Zimi-windows-x64-Setup.exe
@@ -46,9 +46,9 @@ Compression=lzma2
 SolidCompression=yes
 WizardStyle=modern
 
-OutputDir=..\dist
+OutputDir=..\..\dist
 OutputBaseFilename=Zimi-windows-x64-Setup
-SetupIconFile=..\zimi\assets\icon.ico
+SetupIconFile=..\..\zimi\assets\icon.ico
 UninstallDisplayIcon={app}\{#MyAppExeName}
 
 [Languages]
@@ -59,7 +59,7 @@ Name: "desktopicon"; Description: "{cm:CreateDesktopIcon}"; GroupDescription: "{
 
 [Files]
 ; Whole PyInstaller one-dir tree (Zimi.exe, _internal\, bundled WinSparkle.dll).
-Source: "..\dist\Zimi\*"; DestDir: "{app}"; Flags: recursesubdirs createallsubdirs ignoreversion
+Source: "..\..\dist\Zimi\*"; DestDir: "{app}"; Flags: recursesubdirs createallsubdirs ignoreversion
 
 [Icons]
 Name: "{group}\{#MyAppName}"; Filename: "{app}\{#MyAppExeName}"

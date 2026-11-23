@@ -1,4 +1,4 @@
-"""Write a tiny real ZIM for the portable smoke test: python ci/make_test_zim.py <out.zim>."""
+"""Write a tiny real ZIM for the portable smoke test: python .github/ci/make_test_zim.py <out.zim>."""
 
 import sys
 

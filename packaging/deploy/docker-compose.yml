@@ -5,7 +5,7 @@
 # ON Zimi; this one pulls a released image and never needs the source tree.
 #
 #   1. Put your .zim files in ./zims (or point the volume somewhere else)
-#   2. docker compose -f deploy/docker-compose.yml up -d
+#   2. docker compose -f packaging/deploy/docker-compose.yml up -d
 #   3. http://localhost:8899
 #
 # Nothing else is required. Zimi serves whatever ZIMs it finds, with no setup

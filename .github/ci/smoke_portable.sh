@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Smoke test the portable headless build as a person would use it from a USB stick:
-#   ci/smoke_portable.sh <unpacked-folder> [path-to-a-test.zim]
+#   .github/ci/smoke_portable.sh <unpacked-folder> [path-to-a-test.zim]
 # Copies the folder to a fresh "stick" with a zimi-data and a zims folder beside the executable, then:
 # `serve -d` answers /health with the ZIM, leaves zimi.pid and zimi.log in zimi-data, writes its state there
 # and nowhere else, `doctor --check` passes (it makes a venv under the data folder and imports ssl with its python), `service print` points at this executable, and stopping it

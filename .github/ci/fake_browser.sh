@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # What the browser-mode smoke hands the app as its "browser".
-# BROWSER=ci/fake_browser.sh makes Python's webbrowser module run this
+# BROWSER=.github/ci/fake_browser.sh makes Python's webbrowser module run this
 # instead of a real one, and wait for it to exit, exactly as it waits for a
 # console browser (w3m, lynx: what a machine without a display gets). So it
 # loads the page the way a browser tab would, then records the address and

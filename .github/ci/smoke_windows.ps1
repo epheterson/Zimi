@@ -14,7 +14,7 @@
 # mark of the web is involved (the installer writes the files itself), so
 # only step 2 applies, and the picture is zimi-windows-installed-smoke.png.
 #
-# Usage: pwsh ci/smoke_windows.ps1 [path\to\Zimi.exe] [-Installed]
+# Usage: pwsh .github/ci/smoke_windows.ps1 [path\to\Zimi.exe] [-Installed]
 # Writes zimi-windows-smoke.png next to the logs for the workflow to upload.
 param([string]$Exe = "dist/Zimi/Zimi.exe", [switch]$Installed)
 $ErrorActionPreference = "Stop"
