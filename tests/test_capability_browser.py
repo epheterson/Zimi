@@ -136,14 +136,16 @@ def test_the_plain_line_stands_over_the_earth_drawn_once_and_the_tools_are_gone(
     # A fresh page with the view set aside from the start, as no WebGL2 or a GPU that kept resetting leaves it.
     pg = page.context.new_page()
     pg.errors = []
-    # Noon at the picture's default place: the lit and the dark side both show, whatever hour the suite runs at.
+    # A fixed moment, so the Sun is where it is whatever hour the suite runs at.
     pg.clock.set_fixed_time("2026-06-21T12:00:00Z")
     pg.goto(served + "/#almanac", wait_until="load")
     pg.wait_for_function("() => typeof _almanacLoaded !== 'undefined' && _almanacLoaded && typeof ZimiCap !== 'undefined'", timeout=120_000)
     pg.evaluate("() => _almLoadEarth()")
     pg.wait_for_function("() => typeof openAlmanacEarth === 'function'", timeout=120_000)
     page = pg
-    page.evaluate("() => { _aeEnsure(); _ae.failed = _ae.capStatic = true; openAlmanacEarth({ target: 'earth' }); }")
+    # The picture looks from the viewer's place (the time zone's, when none is chosen), so a place on the terminator at
+    # that moment is chosen: the lit and the dark side both show whatever zone the suite runs in.
+    page.evaluate("() => { _aeEnsure(); _ae.you = { lat: 20, lon: 90 }; _ae.failed = _ae.capStatic = true; openAlmanacEarth({ target: 'earth' }); }")
     page.wait_for_function(
         "() => document.getElementById('ae-static-globe') && typeof _asg !== 'undefined' && _asg.ms !== null",
         timeout=30_000,
