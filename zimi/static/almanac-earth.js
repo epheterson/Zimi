@@ -6939,10 +6939,10 @@ var AE_TARGETS = {
 // or a wheel went in past the stop and the next frame threw it back out: a jump.)
 function _aeClampDist(d) {
   var t = AE_TARGETS[_ae.target], lo = Math.min(Math.max(isFinite(t.min) ? t.min : 0, isFinite(t.stop) ? t.stop : 0), _aeStopCap(_ae.target));
-  return _aeClamp(d, lo, _ae.target === 'iss' && _ae.issWide ? Math.max(t.max, _ae.issWide) : t.max);   // (a flight to the station on a fast clock ends out at its orbit: _ae.issWide)
+  return _aeClamp(d, lo, _aeRides(_ae.target) && _ae.issWide ? Math.max(t.max, _ae.issWide) : t.max);   // (a flight to the station on a fast clock ends out at its orbit: _ae.issWide)
 }
 // (Out at the station's orbit, on a clock too fast to follow it, the view looks at the Earth's middle: the whole ring in the picture.)
-function _aeTargetPos() { return _ae.target === 'iss' && _ae.issWide ? [0, 0, 0] : _aeBodyPos(_ae.target) || [0, 0, 0]; }
+function _aeTargetPos() { return _aeRides(_ae.target) && _ae.issWide ? [0, 0, 0] : _aeBodyPos(_ae.target) || [0, 0, 0]; }
 // Whose sky the Moon is shown in: the device's place once asked for (the
 // crosshair), else the place chosen for the Almanac; null for neither, and
 // then the Moon stands celestial north up and the view says so.
@@ -6957,13 +6957,13 @@ var AE_ISS_UP_EASE_SIN = Math.sin(_aeRad(25));   // sine of the angle from the z
 // (app.js _moonLimbAngles, the same answer the hero disc turns by), so the
 // terminator lies as it does in their sky; everywhere else north is up.
 function _aeRollDeg(target, ms) {
-  if (target !== 'iss') _ae.issRoll = null;
+  if (!_aeRides(target)) _ae.issRoll = null;
   // By the station, up is away from the Earth (its zenith), so the horizon lies across the picture. Looking along
   // the zenith (straight down at the Earth, or up from under the station) that up has no direction, and the picture
   // would turn a half turn across a degree or two of a drag: near that line the picture stays as it was and takes
   // up the horizon again as the line leaves it (AE_ISS_UP_EASE_SIN).
-  if (target === 'iss' && _ae.issPos) {
-    var d = _aeNorm(_aeScale(_aeCameraOffset(_ae.az, _ae.el_, 1), -1)), z = _aeNorm(_ae.issPos);
+  if (_aeRides(target) && _aeRidePos(target)) {
+    var d = _aeNorm(_aeScale(_aeCameraOffset(_ae.az, _ae.el_, 1), -1)), z = _aeNorm(_aeRidePos(target));
     var n = _aeSub([0, 0, 1], _aeScale(d, d[2])), u = _aeSub(z, _aeScale(d, _aeDot(z, d)));
     if (_aeLen(n) < 1e-9 || _aeLen(u) < 1e-9) return _ae.issRoll || 0;
     n = _aeNorm(n);
@@ -7520,7 +7520,7 @@ function _aeViewCam() {
   var roll = _ae.scene ? _aeRollDeg(_ae.target, _ae.scene.ms) : 0;
   if (_ae.fly) roll = _ae.fly.from.roll + _angleDelta(_ae.fly.from.roll, roll) * _aeSmoother(_ae.fly.prog || 0);
   else roll += _ae.twist || 0;   // two fingers turned: the picture is turned about the line of sight, any way up (a flight takes it back to the view's own)
-  var iss = _ae.target === 'iss' && !_ae.fly ? _aeIssFarCam(tp, _ae.dist, _ae.issPos) : { tp: tp, dist: _ae.dist };
+  var iss = _aeRides(_ae.target) && !_ae.fly ? _aeIssFarCam(tp, _ae.dist, _aeRidePos(_ae.target)) : { tp: tp, dist: _ae.dist };
   return { tp: iss.tp, az: _ae.az, el: _ae.el_, dist: iss.dist, tanHalf: _aeTanHalf(AE_FOV_DEG), roll: roll, frame: null };
 }
 // Where the camera stands and which way is up for a view `c`. Up is the observer's zenith on the Moon, north
@@ -7747,7 +7747,10 @@ function _aeFlyToCraft(name, pp, span, waitModel) {
   else dir = _aeAdd(_aeScale(toSun, 0.6), _aeScale(side, 0.8));
   // Its whole span inside the narrower side of the screen (a phone held upright is narrow across: three spans along
   // the view left Voyager's booms off both edges).
-  _aeFlyTo(name, _aeCraftViewDist(span), _aeAzElOf(_aeCraftHeroDir(name, pp) || _aeNorm(dir)));
+  // A telescope the clock takes round too fast to follow is flown to the whole orbit, as the station is (the flight takes seconds, it goes round many times).
+  var wide = _aeIsOrbiter(name) && _aeIssTooFast(pp, false);
+  _ae.issWide = wide ? _aeFitDist(_aeLen(pp) * AE_ISS_FAR_FIT) : 0;
+  _aeFlyTo(name, wide ? _ae.issWide : _aeCraftViewDist(span), _aeAzElOf(_aeCraftHeroDir(name, pp) || _aeNorm(dir)));
   if (waitModel) _aeWaitForModel(waitModel);
   _aeArrive(name);
 }
@@ -8300,7 +8303,13 @@ function _aeRingsOff(rings) { for (var k in rings || {}) rings[k].visible = fals
 function _aeOrbiterAt(s, st, eqeq, sc) {
   var key = s.craft, S = _ae.gl, pos = st.pos, vel = _aeRotZ(_aeXyz(st.velKmS), eqeq);
   var lv = _aeLvlh(pos, vel), fwd = lv[1], star = lv[2];
+  var prev = _aeOrbiterAxes[key];
+  _aeOrbiterAxes[key] = _ae.target === key ? lv : null;   // (only a frame the camera rode: a stale one would throw it)
   _aeOrbiter[key] ={ pos: pos, speed: _aeLen(vel), basis: [fwd, star, _aeCross(fwd, star)] };
+  if (_ae.target === key) {
+    _aeStepIssFar(pos);
+    if (prev && !_ae.fly) _aeRideAlong(prev, lv, pos);
+  }
   var rings = S.craftRings || (S.craftRings = {}), ring = rings[key];
   if (!ring) { ring = rings[key] = _aeLine(S.THREE, S.THREE.LineLoop, AE_ISS_RING_POINTS, AE_ISS_RING_COLOR, AE_ISS_RING_ALPHA); S.scene.add(ring); }
   var line = Math.max(_aeOrbitShow(key), _ae.target === key ? 1 : 0);
@@ -8325,7 +8334,7 @@ function _aeUpdateSats(ms, sc) {
   for (var i = 0; i < sats.list.length; i++) {
     var s = sats.list[i];
     craftState = null;
-    var standing = _aeSatStanding((ms - s.epochMs) / MS_PER_DAY, s.iss, _aeClockRuns() || _ae.target === 'iss');
+    var standing = _aeSatStanding((ms - s.epochMs) / MS_PER_DAY, s.iss, _aeClockRuns() || _aeRides(_ae.target));
     s.standing = standing;
     if (standing === 'none' || (!s.iss && !s.craft && !gpsOn)) continue;   // the GPS constellation is the Satellites layer's (the station and the telescopes are their own)
     if (s.iss) {
@@ -8469,9 +8478,13 @@ var AE_CRAFT_MODEL = { voyager1: 'voyager', voyager2: 'voyager', pioneer10: 'pio
 var AE_ORBITERS = { hubble: { norad: 20580, model: 'hubble', name: 'Hubble Space Telescope', max: 120, link: 'ev:hubble', launchMs: Date.UTC(1990, 3, 24, 12) },
   chandra: { norad: 25867, model: 'chandra', name: 'Chandra X-ray Observatory', max: 400, launchMs: Date.UTC(1999, 6, 23, 12) } };
 var _aeOrbiter = {};   // key -> { pos (Earth radii), vel (km/s, scene frame), basis: [along, across, nadir-ish] }, as the last frame left it
+var _aeOrbiterAxes = {};   // key -> [nadir, forward, starboard] the frame before, so the ride along can hold the camera's place in them
 function _aeOrbiterOf(norad) { return Object.keys(AE_ORBITERS).filter(function (k) { return AE_ORBITERS[k].norad === norad; })[0] || null; }
 function _aeIsOrbiter(key) { return Object.prototype.hasOwnProperty.call(AE_ORBITERS, key); }
 function _aeIsCraft(key) { return _aeIsProbe(key) || _aeIsOrbiter(key); }
+// The views that ride along with a craft going round the Earth (its place in the craft's own axes held): the station and the telescopes.
+function _aeRides(key) { return key === 'iss' || _aeIsOrbiter(key); }
+function _aeRidePos(key) { return key === 'iss' ? _ae.issPos : (_aeOrbiter[key] && _aeOrbiter[key].pos) || null; }
 Object.keys(AE_ORBITERS).forEach(function (k) {
   AE_TARGETS[k] = { min: 0.001, max: AE_ORBITERS[k].max, surface: 0.001 };   // (the model's own span sets min and surface: _aeProbeCraftAt)
 });
@@ -9214,7 +9227,7 @@ function _aeIssTooFast(pos, was) {
 function _aeStepIssFar(pos) {
   var now = performance.now(), dt = _ae.issFarAt ? Math.max(0, now - _ae.issFarAt) : 0;
   _ae.issFarAt = now;
-  if (_ae.target !== 'iss') { _ae.issFar = 0; _ae.issFast = false; _ae.issWide = 0; return; }
+  if (!_aeRides(_ae.target)) { _ae.issFar = 0; _ae.issFast = false; _ae.issWide = 0; return; }
   if (_ae.fly) { _ae.issFar = _ae.issWide ? 1 : 0; _ae.issFast = !!_ae.issWide; return; }   // (a flight out to the orbit lands already pulled out: no second move after it)
   _ae.issFast = _aeIssTooFast(pos, _ae.issFast);
   if (!_ae.issFast) _ae.issWide = 0;
@@ -9230,37 +9243,39 @@ function _aeIssFarCam(tp, dist, issPos) {
   var slide = _aeSmoother((_ae.issFar - AE_ISS_FAR_SLIDE_FROM) / (1 - AE_ISS_FAR_SLIDE_FROM));
   return { tp: _aeScale(tp, 1 - slide), dist: Math.exp(Math.log(dist) + (Math.log(out) - Math.log(dist)) * zoom) };
 }
+// Close by, the camera rides along with the craft (its place in the craft's own axes held: `prev` the axes the last frame had,
+// `now` these, each [nadir, forward, starboard]), so the Earth stays below it as it goes round; a drag turns about it as
+// anywhere else. Pulled out to the orbit it keeps its direction in space instead, so the orbit stands still while the craft goes round it.
+function _aeRideAlong(prev, now, pos) {
+  var nadir = now[0], fwd = now[1], star = now[2];
+  var off = _aeCameraOffset(_ae.az, _ae.el_, 1), loc = [_aeDot(off, prev[0]), _aeDot(off, prev[1]), _aeDot(off, prev[2])];
+  var held = _aeAdd(_aeAdd(_aeScale(nadir, loc[0]), _aeScale(fwd, loc[1])), _aeScale(star, loc[2])), far = _aeSmoother(_ae.issFar);
+  if (far > 0) held = _aeNorm(_aeAdd(_aeScale(held, 1 - far), _aeScale(off, far)));
+  // On the way out the camera's line from the craft comes to stand still in space while the craft goes round, so for part of the way it can point at
+  // the Earth, and the camera on it passed through the ground. Until the look has slid to the Earth's middle (the camera far out by then), the line is kept
+  // off the Earth: no nearer the way down than the tangent from the craft to AE_ISS_FAR_CLEAR_RE.
+  if (far > 0 && _ae.issFar < AE_ISS_FAR_SLIDE_FROM) {
+    var most = Math.sqrt(Math.max(0, 1 - Math.pow(AE_ISS_FAR_CLEAR_RE / _aeLen(pos), 2))), dn = _aeDot(held, nadir);
+    if (dn > most) { var side = _aeSub(held, _aeScale(nadir, dn)); if (_aeLen(side) < 1e-6) side = fwd; held = _aeAdd(_aeScale(nadir, most), _aeScale(_aeNorm(side), Math.sqrt(1 - most * most))); }
+  }
+  var azel = _aeAzElOf(held);
+  _ae.az = azel.az; _ae.el_ = azel.el;
+}
 function _aeIssAt(st, eqeq, standing) {
   var S = _ae.gl;
   if (!st) {
     _ae.issPos = _ae.issBasis = null;
-    _ae.issFar = 0; _ae.issFast = false; _ae.issFarAt = 0;
+    if (_ae.target === 'iss' || !_aeRides(_ae.target)) { _ae.issFar = 0; _ae.issFast = false; _ae.issFarAt = 0; }
     if (S.iss) S.iss.root.visible = false;
     return 1;
   }
   var pos = st.pos, vel = _aeRotZ(_aeXyz(st.velKmS), eqeq);
   var lv = _aeLvlh(pos, vel), nadir = lv[0], fwd = lv[1], star = lv[2];
   var prev = _ae.issBasis;
-  _aeStepIssFar(pos);
+  if (_ae.target === 'iss' || !_aeRides(_ae.target)) _aeStepIssFar(pos);   // (a telescope's ride steps it in _aeOrbiterAt)
   _ae.issPos = pos; _ae.issBasis = [nadir, fwd, star];
   if (!prev && _ae.linkHeld) setTimeout(_aeLinkResume, 0);   // a link to the station, waiting for it
-  // Close by, the camera rides along with the station (its place in the station's own axes held), so the Earth stays
-  // below it as it goes round; a drag turns about it as anywhere else. Pulled out to the orbit it keeps its direction
-  // in space instead, so the orbit stands still while the station goes round it.
-  if (prev && _ae.target === 'iss' && !_ae.fly) {
-    var off = _aeCameraOffset(_ae.az, _ae.el_, 1), loc = [_aeDot(off, prev[0]), _aeDot(off, prev[1]), _aeDot(off, prev[2])];
-    var held = _aeAdd(_aeAdd(_aeScale(nadir, loc[0]), _aeScale(fwd, loc[1])), _aeScale(star, loc[2])), far = _aeSmoother(_ae.issFar);
-    if (far > 0) held = _aeNorm(_aeAdd(_aeScale(held, 1 - far), _aeScale(off, far)));
-    // On the way out the camera's line from the station comes to stand still in space while the station goes round, so for part of the way it can point at
-    // the Earth, and the camera on it passed through the ground. Until the look has slid to the Earth's middle (the camera far out by then), the line is kept
-    // off the Earth: no nearer the way down than the tangent from the station to AE_ISS_FAR_CLEAR_RE.
-    if (far > 0 && _ae.issFar < AE_ISS_FAR_SLIDE_FROM) {
-      var most = Math.sqrt(Math.max(0, 1 - Math.pow(AE_ISS_FAR_CLEAR_RE / _aeLen(pos), 2))), dn = _aeDot(held, nadir);
-      if (dn > most) { var side = _aeSub(held, _aeScale(nadir, dn)); if (_aeLen(side) < 1e-6) side = fwd; held = _aeAdd(_aeScale(nadir, most), _aeScale(_aeNorm(side), Math.sqrt(1 - most * most))); }
-    }
-    var azel = _aeAzElOf(held);
-    _ae.az = azel.az; _ae.el_ = azel.el;
-  }
+  if (prev && _ae.target === 'iss' && !_ae.fly) _aeRideAlong(prev, [nadir, fwd, star], pos);
   var show = _smoothstep(AE_CRAFT_MODEL_PX[0], AE_CRAFT_MODEL_PX[1], _aeCraftPx(AE_ISS_SPAN_RE, pos));
   if (show > 0 || _ae.target === 'iss') _aeCraftLoad('iss');
   if (!_aeCraftData('iss')) return 1;
@@ -10325,7 +10340,7 @@ function _aeIdleWait() {
 // The camera rides the station (7.7 km/s, the Earth turning under it) while the clock is not stopped: drawn every frame,
 // not at the idle interval. A paused clock leaves it as still as any other view.
 function _aeStationMoves() {
-  return _ae.target === 'iss' && !!_ae.issPos && (typeof _almRate === 'undefined' || _almRate !== 0);
+  return _aeRides(_ae.target) && !!_aeRidePos(_ae.target) && (typeof _almRate === 'undefined' || _almRate !== 0);
 }
 // Draw the scene at the clock's instant when something changed, something
 // moves, or the idle interval has passed.
