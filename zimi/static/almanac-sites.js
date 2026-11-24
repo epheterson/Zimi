@@ -569,6 +569,7 @@ function _aeSiteStep(sc) {
     if (st.fr.sunLocal[2] < AS_MIN_SUN_Z && st.def && st.def.ms && !st.linked) { st.nowMark = _asClockMark(sc.ms); st.atLanding = true; _aeGoTo(st.def.ms); }
   }
   if (!st.group) { _asGroupBuild(st); }
+  if (_ae.el.classList.contains('ae-veil') && (st.phase === 'drop' || st.phase === 'stand')) _aeLinkVeil(false);   // the way back to a place: the first thing drawn is the ground
   if (st.phase === 'drop' && now - st.t0 >= (st.dropMs || AS_DROP_MS)) { st.phase = 'stand'; st.from = null; st.getIn = false; }
   if (st.phase === 'rise' && now - st.t0 >= (st.dropMs || AS_DROP_MS)) { _asWholeEnd(st, st.from0); return; }
   _asPlaceSiteParts(st);

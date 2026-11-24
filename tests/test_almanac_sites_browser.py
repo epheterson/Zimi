@@ -774,3 +774,46 @@ def test_the_launch_button_clears_the_strip_and_the_strips_names_fit(page):
     assert got["tower"] and "tower" in got["tower"].lower(), got
     assert not any(c[1] for c in got["cut"]), got   # no name runs past its disc's width
     page.evaluate("() => _asStrip(_ae.site)")
+
+
+
+_TRACE_JS = """window.__trace = []; (function () { var t0 = performance.now(); window.__sampler = setInterval(function () {
+    try { var st = (typeof _aeSiteState === 'function') ? _aeSiteState() : null; var el = document.querySelector('.ae-view');
+    window.__trace.push({ t: Math.round(performance.now() - t0), phase: st && st.phase, veil: !!(el && el.classList.contains('ae-veil')) }); } catch (e) {} }, 30); })();"""
+
+
+def _shown_again_trace(pg):
+    pg.wait_for_function(
+        "() => { var s = typeof _aeSiteState === 'function' && _aeSiteState(); return s && s.phase === 'stand' && s.ready; }",
+        timeout=STAND_MS,
+        polling=250,
+    )
+    return pg.evaluate("() => { clearInterval(window.__sampler); return window.__trace; }")
+
+
+def _assert_veiled_until_the_ground(trace):
+    """Every sample before the ground is drawn (a drop or a stand) has the canvas held back; none after it does."""
+    first = next(i for i, p in enumerate(trace) if p["phase"] in ("drop", "stand"))
+    assert trace[:first], trace
+    assert all(p["veil"] for p in trace[:first]), "the Earth or the flight to the site showed: %r" % trace[:first][:4]
+    assert not any(p["veil"] for p in trace[first + 1 :]), trace[first:][:4]
+
+
+def test_switching_apps_and_back_returns_to_the_site_without_a_detour(page):
+    _visit(page, "moon", "Apollo 15")
+    page.evaluate(
+        """() => { window.__away = function (h) { Object.defineProperty(document, 'hidden', { configurable: true, get: function () { return h; } });
+            document.dispatchEvent(new Event('visibilitychange')); }; window.__away(true); }"""
+    )
+    parked = page.evaluate("() => ({ gl: !!_ae.gl, parked: _ae.parked })")
+    assert not parked["gl"] and any(p.startswith("m=site") for p in parked["parked"]), parked
+    page.evaluate(_TRACE_JS + "; window.__away(false);")
+    _assert_veiled_until_the_ground(_shown_again_trace(page))
+
+
+def test_a_page_shown_again_from_the_back_forward_cache_is_built_again(page):
+    _visit(page, "moon", "Apollo 15")
+    page.evaluate("() => { _aeGlLetGo(); }")
+    page.evaluate("() => { _ae.parked = ['v=moon', 'm=site', 'k=26.13222,3.6339,-159.5,31.5,34.34']; }")
+    page.evaluate(_TRACE_JS + "; window.dispatchEvent(new PageTransitionEvent('pageshow', { persisted: true }));")
+    _assert_veiled_until_the_ground(_shown_again_trace(page))

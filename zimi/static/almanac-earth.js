@@ -1288,6 +1288,7 @@ var AE_CSS = [
   '@media (hover:hover){.ae-go-map:hover{color:var(--amber)}}',
   '[dir="rtl"] .ae-card{padding:12px 14px 12px 40px}',
   '[dir="rtl"] .ae-card-x{right:auto;left:4px}',
+  '.ae-view.ae-veil .ae-canvas{visibility:hidden}',   // the way back to a place on the ground: the Earth and the flight to it are not shown, the ground is
   '.ae-msg{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;text-align:center;padding:24px;color:var(--text2);font-size:14px;pointer-events:none}',
   '.ae-msg[hidden]{display:none}',
   '.ae-static .ae-tools .ae-btn:not(.ae-gear),.ae-static .ae-bottom,.ae-static .ae-labels,.ae-static .ae-fullbar{display:none}',
@@ -11036,18 +11037,24 @@ function _aeBindControls() {
   // inside #almanac-view, where AlmanacLinks already listens.
   if (typeof ResizeObserver === 'function') new ResizeObserver(_aeResize).observe(_ae.el);
   else window.addEventListener('resize', _aeResize);
+  // A page restored from the back-forward cache is shown again with no visibilitychange that says the GPU is gone.
+  window.addEventListener('pageshow', function (e) { if (e && e.persisted && _aeIsOpen && !document.hidden) _aeShownAgain(); });
   document.addEventListener('visibilitychange', function () {
     // Hidden with the view closed, the Almanac keeps no 3D scene, maps or context: a phone discards a page that holds them
     // (the next open builds the scene afresh, as it does after the Almanac was left).
     if (document.hidden && !_aeIsOpen) { _aeDisposeGl(); return; }
     if (document.hidden && _aeIsOpen) { _aeParkGl(); return; }   // open and away: the page's weight goes back too (a phone may discard it)
     if (!_aeIsOpen) return;
-    if (!_ae.gl) { _aeUnparkGl(); return; }
-    // The Almanac resumes its own loops on return; the view covers them.
-    setTimeout(_aePauseAlmanac, 0);
-    if (typeof _almFocus !== 'undefined' && !_almFocus) _almClockPaint();   // back at real time: the pill reads now, not when the page was left
-    _aeRedraw();
+    _aeShownAgain();
   });
+}
+// The open view is in front again: built afresh at the place it was left when the GPU went back, else redrawn.
+function _aeShownAgain() {
+  if (!_ae.gl) { _aeUnparkGl(); return; }
+  // The Almanac resumes its own loops on return; the view covers them.
+  setTimeout(_aePauseAlmanac, 0);
+  if (typeof _almFocus !== 'undefined' && !_almFocus) _almClockPaint();   // back at real time: the pill reads now, not when the page was left
+  _aeRedraw();
 }
 
 // The Almanac's own loops (orrery, sky, clocks) run underneath; covered by
@@ -11151,6 +11158,7 @@ function _aeUnparkGl() {
   _ae.parked = null;
   _ae.fromHero = _ae.fromOrrery = false;   // it was opened that way once: the return is not that opening's hand-in
   _aeLinkWant = _almLinkParse('#almanac?' + parts.join('&'));
+  if (_aeLinkWant && AE_VEIL_GROUND_MODES.indexOf(_aeLinkWant.m) >= 0) _aeLinkVeil(true);   // from the first moment: the scene is built before the way to the ground is
   if (typeof ZimiCap !== 'undefined') { ZimiCap.hold(); ZimiCap.resetFrames('earth'); }   // building again is not the device being slow
   _aeOpenWhenReady();
 }
@@ -11391,6 +11399,15 @@ function _aeStartAtHere() {
 }
 // Where the opening flight arrives: over the chosen place (or the Almanac's
 // stand-in for it), so the first thing seen is here, lit as it is now.
+var AE_VEIL_GROUND_MODES = ['site', 'drive', 'stand'], AE_VEIL_MAX_MS = 30000;
+// A link to a place on the ground (a return from another app, a shared address) keeps the canvas back while the way there is made, so
+// the first thing seen is the place: lifted as the ground is drawn (_aeSiteStep), or after AE_VEIL_MAX_MS.
+function _aeLinkVeil(on) {
+  if (!_ae || !_ae.el) return;
+  clearTimeout(_ae.veilTimer);
+  _ae.el.classList.toggle('ae-veil', !!on);
+  if (on) _ae.veilTimer = setTimeout(function () { _aeLinkVeil(false); }, AE_VEIL_MAX_MS);
+}
 function _aeEnter() {
   // From the hero, its Moon becomes this one where it stands.
   var frame = _ae.fromHero ? _aeHeroFrame() : null;
@@ -11403,6 +11420,7 @@ function _aeEnter() {
   if (!_aeLinkWant) _aeStartAtOpenBody();
   var link = _aeLinkWant;
   _aeLinkWant = null;
+  if (link && link.m && AE_VEIL_GROUND_MODES.indexOf(link.m) >= 0) _aeLinkVeil(true);
   if (link && !_aeLinkReady(link.v)) {
     // The station and the probes are not known at the first frame (their data comes after): the view opens as it
     // would, and goes to the link's place once that has come (_aeLinkResume).
@@ -11714,7 +11732,7 @@ function _aeLinkModeNow() {
   for (var key in _aeLinkModes) { var v = _aeLinkModes[key](); if (v) return [key, v]; }
   return null;
 }
-function _aeLinkModeDone() { _aeLinkModePending = null; }
+function _aeLinkModeDone() { _aeLinkModePending = null; _aeLinkVeil(false); }
 // What is selected, x=<kind>:<what>: lm:<body>:<name> a landmark's card, sent:<id> a row of Sent, sat:<NORAD id> a satellite. The Go
 // sheet is not part of it; an x that names nothing this build has leaves the view as it is.
 var AE_LINK_SEL_RE = /^(lm|sent|sat):(.{1,80})$/, AE_LINK_WAIT_MS = 150, AE_LINK_WAIT_TRIES = 200;
@@ -11808,7 +11826,7 @@ function _aeLinkModeOpen(link) {
     _aeLinkModePending = link;
     _aeWhenSites(function (ok) {
       if (_aeLinkModePending === link) _aeLinkModePending = null;
-      if (ok) _aeSiteLinkOpen(link.v, vals, drive);
+      if (ok) _aeSiteLinkOpen(link.v, vals, drive); else _aeLinkVeil(false);
     });
     return true;
   }
