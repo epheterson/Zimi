@@ -14,7 +14,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 **Zimi**
 
 - A big library starts quietly: on 19 ZIMs the server settles in 21 s instead of 102 s, with under a tenth of the CPU and a third less memory.
-- Docker stops in half a second.
+- Docker stops in under a second.
 - Home no longer flashes while it loads or when you switch between full and compact.
 
 **Games**
