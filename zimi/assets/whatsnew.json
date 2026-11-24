@@ -47,5 +47,14 @@
   "zimi_games": [
    "Twenty-five new games, in ten languages."
   ]
+ },
+ "1.16.1": {
+  "zimi_almanac": [
+   "Almanac HD takes the catalog's names (HD and Maximum) and replaces 1.15's HD file like any newer ZIM.",
+   "Drive the rover at the Apollo sites, ride along with Hubble and Chandra, and see Gaia on its own model."
+  ],
+  "zimi_games": [
+   "A game opened from search has its header, Help and Menu, and the Games ZIM works fully in Kiwix."
+  ]
  }
 }

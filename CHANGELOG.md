@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [1.16.1]
+
 ### Highlights
 
 **Zimi**
@@ -44,6 +46,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 - EPUBs with a Zip64 directory open.
 - MCP: the lean instructions appear only when lean search or read is enabled.
 - Wiktionary: a Vulgar Latin etymology is no longer read as a crude label.
+- A new server opens straight on Welcome, with no glimpse of Home first.
+- With no place set, the Almanac turns the Moon for your time zone's city and says "As seen from" it, with a tap to set your own.
+- Five Letters links a word to a dictionary in the game's language, else to its Wikipedia article, and Did you mean stays in that language.
 
 ## [1.16.0]
 
