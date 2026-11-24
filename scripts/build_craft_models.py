@@ -319,6 +319,9 @@ RECOLOUR = {
     # aluminised Kapton with a doped-silicon coating: silver with a magenta cast
     "webb": {"shld_silv": (0.74, 0.66, 0.76), "shld_pink": (0.72, 0.42, 0.62)},
 }
+# A palette entry (by its place in the built file) that is the wrong material in the source: key -> {entry: (rgb linear, roughness, metalness, kind)}.
+# Hubble's arrays are tan in the file; they are blue-black silicon cells.
+PALETTE_FIX = {"hubble": {3: ((0.03, 0.045, 0.14), 0.25, 0.2, cm.KIND_CELLS)}}
 # Parts that stay whole (their triangles are what the craft is known by: Webb's gold mirror segments): key -> material substrings.
 KEEP_WHOLE = {"webb": ("mirror_blinn", "omnimirror"), "psyche": ("psyche", "array gold")}
 # Materials simplified one primitive at a time, so layers kept apart in the file stay apart (Webb's five sunshield layers).
@@ -742,6 +745,8 @@ def main():
             path, _credit, tris, size, aim = CRAFT[key]
             glb = source_glb(path, a.src)
             data = craft(glb, tris, size, aim, RECOLOUR.get(key), KEEP_WHOLE.get(key, ()), PER_PRIM.get(key, ()))
+            for entry, look in PALETTE_FIX.get(key, {}).items():
+                data = cm.set_look(data, entry, *look)
             if key not in STOCK:
                 if not a.hd:
                     raise SystemExit("%s is not a stock model: give --hd (the HD craft folder)" % key)

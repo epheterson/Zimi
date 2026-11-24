@@ -171,3 +171,22 @@ def test_the_station_still_flies(page):
     page.evaluate("() => _aeGoPick('iss')")
     page.wait_for_function("() => { _ae.dirty = true; _aeKick(); return _ae.target === 'iss' && !_ae.fly && _ae.gl.iss && _ae.gl.iss.root.visible; }", timeout=120_000, polling=300)
     assert math.isfinite(page.evaluate("() => _aeLen(_ae.issPos)"))
+
+
+def test_the_all_satellites_layer_draws_no_second_dot_for_the_station_or_the_telescopes(page):
+    page.evaluate("() => { _aeSatsAllSet(true); }")
+    page.wait_for_function("() => typeof _as !== 'undefined' && !!_as.data && !!_as.cloud && _as.data.n > 0", timeout=120_000, polling=300)
+    got = page.evaluate(
+        """() => {
+          var own = [25544, 20580, 25867], d = _as.data, out = { n: d.n, shown: [], own: [] };
+          for (var i = 0; i < d.n; i++) {
+            if (own.indexOf(d.norad[i]) < 0) continue;
+            out.own.push(d.norad[i]);
+            if (_asVisible(i) && _as.cloud.geometry.attributes.aSize.array[i] > 0) out.shown.push([d.norad[i], d.name[i]]);
+          }
+          return out;
+        }"""
+    )
+    page.evaluate("() => { _aeSatsAllSet(false); }")
+    assert got["n"] > 0 and got["own"], ("the catalogue holds them", got)
+    assert got["shown"] == [], ("a craft with a dot and a model of its own is not drawn twice", got)
