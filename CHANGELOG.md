@@ -7,6 +7,44 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Highlights
+
+**Zimi**
+
+- A big library starts quietly: on 19 ZIMs the server settles in 21 s instead of 102 s, with under a tenth of the CPU and a third less memory.
+- Docker stops in half a second.
+- Home no longer flashes while it loads or when you switch between full and compact.
+
+**Games**
+
+- A game opened from search has its header, Help and Menu, and the Games ZIM works fully in Kiwix.
+
+**Almanac**
+
+- Almanac HD takes the catalog's names (HD and Maximum) and replaces 1.15's HD file like any newer ZIM.
+- Drive the rover at the Apollo sites, ride along with Hubble and Chandra, and see Gaia on its own model.
+
+### Changed
+
+- **A quieter cold start:** background index builds run one at a time at idle disk priority, wait while memory is short (`ZIMI_BUILD_MIN_FREE_MB`, 300 by default), and build the Q-ID index on first use.
+- **Catalog editions:** the Almanac's three editions carry Kiwix's flavour names (mini, none, maxi).
+- **Repository layout:** desktop, Docker, CI and packaging files live under `packaging/` and `.github/`, release tests under `tests/release/`.
+
+### Fixed
+
+- Home: the full/compact switch changes the page in place, the Discover row is moved rather than drawn again, and nothing jumps when the library arrives.
+- Games: the shelf inside Zimi has no empty band at the top, the filter pill clears the types list, and Ludo in Red gives each player a shade and ring of its own.
+- Games ZIM in kiwix-serve: no missing footer files or daily-game requests.
+- Almanac HD: both the 1.15 and 1.16 file names are read, and each size counts only its own files.
+- 3D: going back to a place on the ground shows the ground, and a page restored from the browser's back-forward cache is built again.
+- 3D site view: pictures and distances in the strip, time visibly speeds up while you drive, and a drag cancels a waiting mission hand-off.
+- 3D: Hubble's solar arrays are blue-black, no second dot sits on the station or the telescopes, and spacecraft trails put their points where the path turns.
+- The GPS rings choice follows a signed-in account.
+- Voices: with the cache off nothing is kept on disk, and Japanese keeps the prolonged sound mark.
+- EPUBs with a Zip64 directory open.
+- MCP: the lean instructions appear only when lean search or read is enabled.
+- Wiktionary: a Vulgar Latin etymology is no longer read as a crude label.
+
 ## [1.16.0]
 
 ### Highlights
