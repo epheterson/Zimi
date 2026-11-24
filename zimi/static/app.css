@@ -155,6 +155,12 @@
      class. If the client may not manage, enterManage drops the class and shows
      the library instead. */
   html.manage-boot #main-view { visibility: hidden; }
+  /* A fresh install being set up: the server stamps data-zimi-setup, so the
+     first frame is Welcome's backdrop and the library chrome never paints.
+     The card itself waits for its words (_openSetup adds .open). */
+  html[data-zimi-setup] body > :not(#setup-overlay):not(script):not(style) { visibility: hidden; }
+  html[data-zimi-setup] #setup-overlay { display: flex; }
+  html[data-zimi-setup] #setup-overlay:not(.open) .desktop-card { visibility: hidden; }
 
   /* Pulled past an edge, the page shows its own background, not the
      browser's white, and never scrolls sideways. On a touch screen it does

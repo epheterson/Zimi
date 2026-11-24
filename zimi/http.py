@@ -2506,11 +2506,18 @@ def _shell_html():
     """The shell as served: stamped ``data-zimi-fieldguide`` on <html> while
     the Field Guide is on, so the client draws no Help now and no guide card
     when it is not. Every shell response (sign-in, setup and home) goes
-    through here."""
-    if not _srv.fieldguide_enabled():
+    through here. A fresh install still being set up is stamped
+    ``data-zimi-setup`` too: the stylesheet then paints the Welcome card's
+    backdrop and nothing of the library, so Home never shows first."""
+    marks = ""
+    if _srv.fieldguide_enabled():
+        marks += ' data-zimi-fieldguide="1"'
+    if _manage_mod.setup_pending():
+        marks += ' data-zimi-setup="1"'
+    if not marks:
         return SEARCH_UI_HTML
     return SEARCH_UI_HTML.replace(
-        '<html lang="en">', '<html lang="en" data-zimi-fieldguide="1">', 1
+        '<html lang="en">', '<html lang="en"%s>' % marks, 1
     )
 
 
@@ -6060,6 +6067,8 @@ class ZimHandler(BaseHTTPRequestHandler):
         )
         if _srv.fieldguide_enabled():
             etag = etag.replace('"', '-fg"', 1)
+        if _manage_mod.setup_pending():
+            etag = etag.replace('"', '-setup"', 1)
         # Cache strategy:
         #   max-age=0, must-revalidate — browser always revalidates (Safari-safe)
         #   s-maxage=60 — an edge (Cloudflare) may hold it a minute: the shell
