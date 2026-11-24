@@ -28,6 +28,7 @@ NEW = {
     "osirisapex": "osirisrex",
     "psyche": "psyche",
     "lucy": "lucy",
+    "gaia": "gaia",
 }
 
 

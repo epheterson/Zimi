@@ -8418,7 +8418,7 @@ var AE_CRAFT_NEAR_MIN = 0.3 / 1000 / AE_EARTH_RADIUS_KM;    // 30 cm: a craft a 
 var AE_CRAFT_MODEL = { voyager1: 'voyager', voyager2: 'voyager', pioneer10: 'pioneer', pioneer11: 'pioneer',
   parker: 'parker', juno: 'juno', jwst: 'webb', cassini: 'cassini', galileo: 'galileo', kepler: 'kepler',
   newhorizons: 'newhorizons', europaclipper: 'clipper', osirisapex: 'osirisrex', psyche: 'psyche', lucy: 'lucy',
-  hubble: 'hubble', chandra: 'chandra' };
+  hubble: 'hubble', chandra: 'chandra', gaia: 'gaia' };
 // The craft that orbit the Earth and have a model: a probe's model, flight and card with the place SGP4 gives (the satellites' elements, `craft`,
 // worked out in _aeUpdateSats). Held with its long axis along the orbit, its far side toward the Earth ('orbit' in AE_CRAFT_POINTS below).
 // The key is the Sent object's id (sent-v1.json), `norad` the elements', `model` the file (craft-<model>-v1.bin, scripts/build_craft_models.py).
@@ -8437,7 +8437,7 @@ var AE_CRAFT_HD_MODEL = { solarorbiter: 'solarorbiter', juice: 'juice', hayabusa
 var AE_CRAFT_HD_ONLY = {};
 Object.keys(AE_CRAFT_HD_MODEL).forEach(function (k) { AE_CRAFT_HD_ONLY[AE_CRAFT_HD_MODEL[k]] = true; });
 // What each points: its high-gain antenna at the Earth, or (Parker, Webb) its shield at the Sun.
-var AE_CRAFT_POINTS = { parker: 'sun', webb: 'sun', hubble: 'orbit', chandra: 'orbit' };
+var AE_CRAFT_POINTS = { parker: 'sun', webb: 'sun', gaia: 'sun', hubble: 'orbit', chandra: 'orbit' };
 var AE_CRAFT_SHIELD_VIEW_SUN = 0.35;                       // the shield in profile, from the Sun's side so it is lit
 var AE_CRAFT_VIEW_SPANS = 3;                                // a flight to a probe ends at least this many of its spans off
 var AE_CRAFT_FIT_R = 0.6;                                   // and far enough that this share of its span fits the narrow side
@@ -10895,6 +10895,17 @@ var AE_TILES_SPIN_MS = 500;   // loading this long shows the spinner
 // Surface tiles on their way: in flight, not merely queued. A queue is only drained while the orbit scene draws it, so one left behind by a
 // walk on the surface (or a parked view) kept the spinner turning for good (Mercury and the Earth).
 function _aeTilesBusy() { var S = _ae && _ae.gl; return !!(S && S.hd && S.hd.loading > 0 && !_aeHdAway(S.hd)); }
+// Settled: nothing on screen is still arriving. No flight or spin is running, no ground is being built or flown to, and no surface tile
+// is loading or queued. Tests (and anyone scripting the view) wait on window.__aeSettled() instead of a fixed sleep; it only reads state.
+function _aeSettled() {
+  if (!_ae || !_aeIsOpen) return false;
+  var S = _ae.gl, hd = S && S.hd, site = _ae.site, h = site && site.host;
+  if (_ae.fly || _ae.spin || _ae.standPending || _ae.pendingPreset) return false;
+  if (h && !h.live && !(h.pend && h.pend.ready)) return false;
+  if (hd && (hd.loading > 0 || (hd.queue && hd.queue.length && !_aeHdAway(hd)))) return false;
+  return !!S;
+}
+window.__aeSettled = _aeSettled;
 function _aeWherePaint() {
   if (_ae.el && _ae.el.classList) _ae.el.classList.toggle('ae-solar', _ae.preset === 'planets' && !_ae.spin);   // the solar system view: no UFO, Side by side offered
   var nb = _aeById('ae-north'), tw = _ae.twist || 0;

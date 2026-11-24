@@ -47,7 +47,7 @@ def test_the_name_keeps_its_side_while_the_mark_sits_on_the_middle(served):
             br.close()
 
 
-@pytest.mark.parametrize("target", ["gaia", "juice", "spitzer"])   # far craft that stay dots (Kepler now arrives on its model)
+@pytest.mark.parametrize("target", ["juice", "spitzer"])   # far craft that stay dots (Kepler and Gaia arrive on their models)
 def test_a_flight_to_a_far_craft_does_not_flash_or_flap(served, target):
     from playwright.sync_api import sync_playwright
 

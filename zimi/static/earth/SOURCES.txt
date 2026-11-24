@@ -237,6 +237,8 @@ craft-<model>-v1.bin (scripts/build_craft_models.py)
     https://github.com/nasa/NASA-3D-Resources/blob/master/3D%20Models/Chandra%20X-ray%20Observatory/Chandra%20X-ray%20Observatory.glb
     (hubble and chandra were Sent-chooser pictures only; on 2026-11-22 they became stock models, with elements from CelesTrak's
     "science" group: zimi/satellites.py, scripts/build_satellite_snapshot.py)
+  gaia: a reconstruction written for Zimi from ESA's published dimensions (scripts/build_sent_models.py --stock; 23 KB, 9.5 m across the
+  sunshield), turned sunshield-first toward the Sun like Webb (the 3D view draws only craft that have a model)
   (kepler, newhorizons to lucy moved here from the Almanac HD pack on 2026-11-21 so the standard Almanac draws them; the pack's
   textured versions of New Horizons, Clipper, OSIRIS-REx, Psyche and Lucy still upgrade them where it is installed.)
   Each material as a palette entry of up to twelve (colour, roughness,

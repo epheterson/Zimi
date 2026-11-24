@@ -166,7 +166,8 @@ class Craft(bsm.Mesh):
             self.cyl(((r0 + (r1 - r0) * 0.3) * ca, (r0 + (r1 - r0) * 0.3) * sa, z0 + (z1 - z0) * 0.3), rad * 1.6, abs(z1 - z0) * 0.25, GREY, n=8)
             self.frustum((r1 * ca, r1 * sa, z1 + 0.04), (r1 * ca, r1 * sa, z1 - 0.01), pad * 0.4, pad, color, n=10)
 
-    def write(self, key):
+    def write(self, key, stock=None, front=FRONT):
+        """Into the HD pack (OUT), or, with `stock` (the static earth folder), as the standard Almanac's craft-<key>-v1.bin there (`front`: the way the view aims)."""
         v = np.vstack(self.v)
         f = np.vstack(self.f)
         cls = np.concatenate(self.c)
@@ -175,8 +176,12 @@ class Craft(bsm.Mesh):
         cls = cls[src]
         lo, hi = v.min(0), v.max(0)
         looks = [bsm._flat_look(*e) + (KIND_OF.get(i, cm.KIND_NONE),) for i, e in enumerate(self.palette)]
-        data = cm.pack(1.0, lo, hi, FRONT, (1, 0, 0), looks, v, n, cls, f)
-        cm.hd_add(OUT, key, data, CREDIT)
+        data = cm.pack(1.0, lo, hi, front, (1, 0, 0), looks, v, n, cls, f)
+        if stock:
+            with open(os.path.join(stock, "craft-%s-v1.bin" % key), "wb") as fh:
+                fh.write(data)
+        else:
+            cm.hd_add(OUT, key, data, CREDIT)
         print(
             "  %-18s %6d triangles %5.1f x %5.1f x %5.1f m  %5.1f KB"
             % (key, len(f), *(hi - lo), len(data) / 1024)
@@ -1066,6 +1071,10 @@ EXTRAS = {
 }
 
 
+# The reconstructions the standard Almanac draws close up too (craft-<key>-v1.bin): key -> the axis the view turns toward the Sun
+# (Gaia's sunshield faces it, -z here) or, for an orbiter, along the orbit.
+STOCK = {"gaia": (0, 0, -1)}
+
 PROCEDURAL = {
     f.__name__: f
     for f in (
@@ -1122,6 +1131,7 @@ def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--only", default="")
     ap.add_argument("--hd", required=True, help="the Almanac HD craft folder (hd/craft/): <key>.zcr2 and index.json")
+    ap.add_argument("--stock", help="zimi/static/earth: also write the STOCK models there as craft-<key>-v1.bin")
     a = ap.parse_args()
     OUT = a.hd
     want = set(filter(None, a.only.split(",")))
@@ -1131,6 +1141,8 @@ def main():
             if key in EXTRAS:
                 EXTRAS[key](m)
             m.write(key.replace("_", "-"))
+            if a.stock and key in STOCK:
+                m.write(key, stock=a.stock, front=STOCK[key])
 
 
 if __name__ == "__main__":
