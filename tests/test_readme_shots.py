@@ -9,6 +9,11 @@ import importlib.util
 import os
 import re
 
+import pytest
+
+# The shot taker drives a browser; a job without Playwright (the quick tier, the desktop builds) skips these.
+pytest.importorskip("playwright")
+
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
 
