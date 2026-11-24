@@ -70,7 +70,7 @@ def test_idle_io_is_accepted_by_the_system():
 def test_a_builder_child_takes_idle_io_as_well_as_nice(monkeypatch):
     called = []
     monkeypatch.setattr(subproc, "idle_io", lambda: called.append("io"))
-    monkeypatch.setattr(os, "nice", lambda n: called.append("nice"))
+    monkeypatch.setattr(os, "nice", lambda n: called.append("nice"), raising=False)   # Windows has no os.nice
     search._yield_to_the_server()
     assert called == ["nice", "io"]
 

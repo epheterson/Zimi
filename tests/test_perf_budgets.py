@@ -42,7 +42,8 @@ OWN_ZIM_COPIES = 1
 
 def _gz_kb(rel):
     with open(os.path.join(STATIC, rel), "rb") as fh:
-        return len(gzip.compress(fh.read(), 6)) / KB
+        # As served from a Linux or macOS checkout: a Windows checkout's CRLF line ends would count against the budget.
+        return len(gzip.compress(fh.read().replace(b"\r\n", b"\n"), 6)) / KB
 
 
 @pytest.mark.parametrize("rel,budget", sorted({**HOME_GZIP_KB, **EARTH_JS_GZIP_KB}.items()))

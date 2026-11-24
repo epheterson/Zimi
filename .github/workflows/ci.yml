@@ -406,7 +406,7 @@ jobs:
         env:
           SMOKE_MODE_ARGS: --browser
           SMOKE_EXPECT_BT: '1'
-          BROWSER: ${{ github.workspace }}/ci/fake_browser.sh
+          BROWSER: ${{ github.workspace }}/.github/ci/fake_browser.sh
           FAKE_BROWSER_LOG: /tmp/fake-browser.log
         run: |
           .github/ci/smoke_binary.sh "dist/Zimi/Zimi"
