@@ -772,7 +772,16 @@ def test_the_launch_button_clears_the_strip_and_the_strips_names_fit(page):
     )
     assert got["gap"] >= 0, got
     assert got["tower"] and "tower" in got["tower"].lower(), got
-    assert not any(c[1] for c in got["cut"]), got   # no name runs past its disc's width
+    assert got["tower"] and all(n for n in got["lines"]), got
+    # The strip is pictures; the chosen thing's whole name is on the line over it, inside the screen, and above the launch button.
+    full = page.evaluate(
+        """() => { var it = Array.from(document.querySelectorAll('#as-strip .as-item')).filter(i => /tower/i.test(i.getAttribute('aria-label')))[0];
+          it.click(); var n = document.getElementById('as-name'), r = n.getBoundingClientRect(), b = document.getElementById('as-launch').getBoundingClientRect(), s = document.getElementById('as-strip').getBoundingClientRect();
+          return { label: it.getAttribute('aria-label'), said: n.textContent, shown: getComputedStyle(n).display !== 'none', inside: r.left >= 0 && r.right <= innerWidth,
+            above: r.bottom <= s.top + 1, clear: r.top >= b.bottom - 1 || r.right < b.left || r.left > b.right, nameBox: Math.round(it.querySelector('b').getBoundingClientRect().width) }; }"""
+    )
+    assert full["said"] == full["label"] and full["shown"] and full["inside"] and full["above"] and full["clear"], full
+    assert full["nameBox"] <= 1, full   # the disc's own caption is out of the way
     page.evaluate("() => _asStrip(_ae.site)")
 
 
