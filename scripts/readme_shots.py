@@ -22,23 +22,103 @@ import argparse
 import sys
 import time
 
+from playwright.sync_api import TimeoutError as PlaywrightTimeout
 from playwright.sync_api import sync_playwright
+
+NETWORK_IDLE_MS = 4000
 
 DESKTOP = {"width": 1440, "height": 900}
 ARTICLE = {"width": 1280, "height": 800}
 SETTLE_MS = 1200  # fonts, icons and the Discover strip after networkidle
 CREATE_TIMEOUT_MS = 8 * 60 * 1000
+# What the Home draws once the library has answered: the app tiles row.
+HOME_READY = ".apps-grid .app-tile"
+SCRATCH_ZIMS = "~/Zimi/zims"
+SERVER_BOOT_S = 120
+
+
+def _scratch_env(zim_dir, data_dir):
+    """A server of its own: manage open (first-run setup counts as done), offline, no torrent."""
+    import os
+
+    env = dict(os.environ)
+    env.update(
+        ZIM_DIR=str(zim_dir),
+        ZIMI_DATA_DIR=str(data_dir),
+        ZIMI_MANAGE_OPEN="1",
+        ZIMI_OFFLINE="1",
+        ZIMI_TORRENT="0",
+    )
+    return env
+
+
+class ScratchServer:
+    """`zimi serve` on a free port over symlinks to real ZIMs (read-only use), data in a temp dir."""
+
+    def __init__(self, zims=SCRATCH_ZIMS):
+        self.zims = zims
+
+    def __enter__(self):
+        import os
+        import socket
+        import subprocess
+        import tempfile
+        import urllib.request
+        from pathlib import Path
+
+        self.tmp = tempfile.TemporaryDirectory(prefix="zimi-shots-")
+        root = Path(self.tmp.name)
+        (root / "zims").mkdir()
+        (root / "data").mkdir()
+        for z in sorted(Path(os.path.expanduser(self.zims)).glob("*.zim")):
+            (root / "zims" / z.name).symlink_to(z)
+        with socket.socket() as s:
+            s.bind(("127.0.0.1", 0))
+            port = s.getsockname()[1]
+        self.base = "http://127.0.0.1:%d" % port
+        env = _scratch_env(root / "zims", root / "data")
+        self.proc = subprocess.Popen(
+            [sys.executable, "-m", "zimi", "serve", "--port", str(port)],
+            env=env,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+            start_new_session=True,
+        )
+        t0 = time.time()
+        while time.time() - t0 < SERVER_BOOT_S:
+            try:
+                urllib.request.urlopen(self.base + "/health", timeout=2).read()
+                return self
+            except Exception:
+                time.sleep(1)
+        self.__exit__()
+        sys.exit("scratch server did not come up")
+
+    def __exit__(self, *exc):
+        import os
+        import signal
+
+        try:
+            os.killpg(self.proc.pid, signal.SIGTERM)
+            self.proc.wait(timeout=20)
+        except Exception:
+            pass
+        self.tmp.cleanup()
 
 
 def _settle(page, ms=SETTLE_MS):
-    page.wait_for_load_state("networkidle")
+    # The live-changes stream (/events) never lets the network go idle; a short wait is all it gets.
+    try:
+        page.wait_for_load_state("networkidle", timeout=NETWORK_IDLE_MS)
+    except PlaywrightTimeout:
+        pass
     page.wait_for_timeout(ms)
 
 
 def shot_homepage(page, base, out, favorites, tiles=False):
     page.set_viewport_size(DESKTOP)
     page.goto(base + "/")
-    page.wait_for_selector(".card-info, .discover-card", timeout=30000)
+    page.wait_for_selector(HOME_READY, timeout=30000)
     if favorites:
         # Starred through the same door the star button uses; a second run
         # would un-star, so only names not yet starred are sent.
@@ -51,7 +131,7 @@ def shot_homepage(page, base, out, favorites, tiles=False):
             favorites,
         )
         page.reload()
-        page.wait_for_selector(".card-info, .discover-card", timeout=30000)
+        page.wait_for_selector(HOME_READY, timeout=30000)
     if tiles:
         page.evaluate("_setLibraryView('tiles')")
         page.wait_for_selector(".lib-view-btn.active[title*='ile']", timeout=10000)
@@ -155,9 +235,10 @@ def _shot_app(page, base, out, name, opener):
     """An app's home in the reader frame, opened the way its tile opens it."""
     page.set_viewport_size(DESKTOP)
     page.goto(base + "/")
-    page.wait_for_selector(".card-info, .discover-card", timeout=30000)
+    page.wait_for_selector(HOME_READY, timeout=30000)
     page.evaluate("() => " + opener)
-    page.frame_locator("#reader-frame").locator("body *").first.wait_for(timeout=60000)
+    page.mouse.move(0, 0)  # no pointer resting over a tile
+    page.frame_locator("#reader-frame").locator("body *:visible").first.wait_for(timeout=60000)
     _settle(page, APP_SETTLE_MS)
     page.screenshot(path=str(out / (name + ".png")))
 
@@ -170,8 +251,34 @@ def shot_bookshelf(page, base, out):
     _shot_app(page, base, out, "bookshelf", "openBooks()")
 
 
+def shot_games(page, base, out):
+    _shot_app(page, base, out, "games", "openGames()")
+
+
+def shot_solar_system(page, base, out):
+    """The Almanac's 3D view on the whole-solar-system preset (the Sun centred, every orbit)."""
+    page.set_viewport_size(DESKTOP)
+    page.goto(base + "/#almanac", wait_until="load")
+    page.wait_for_function(
+        "() => typeof openAlmanacEarth === 'function' && typeof _aeLoadThree === 'function'",
+        timeout=60000,
+    )
+    page.evaluate("openAlmanacEarth({ target: 'earth' })")
+    page.wait_for_function(
+        "() => typeof _aeReady === 'function' && _aeReady() && _aeIsOpen", timeout=90000, polling=200
+    )
+    page.evaluate("_aePreset('sun')")
+    page.evaluate("_aePreset('planets')")
+    page.wait_for_function("() => window.__aeSettled && window.__aeSettled()", timeout=60000)
+    page.mouse.move(0, 0)
+    _settle(page, APP_SETTLE_MS)
+    page.screenshot(path=str(out / "solar-system.png"))
+
+
 SHOTS = (
     "homepage",
+    "solar-system",
+    "games",
     "search",
     "language-dropdown",
     "browse-library",
@@ -186,7 +293,12 @@ def main():
     ap = argparse.ArgumentParser(
         description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter
     )
-    ap.add_argument("--base", default="http://127.0.0.1:8899")
+    ap.add_argument(
+        "--base",
+        default="",
+        help="a running Zimi; left out, a scratch server starts on a free port over --zims (read-only)",
+    )
+    ap.add_argument("--zims", default=SCRATCH_ZIMS, help="ZIM folder for the scratch server")
     ap.add_argument("--out", default="screenshots")
     ap.add_argument(
         "--only", default="", help="comma-separated subset of: " + ", ".join(SHOTS)
@@ -201,7 +313,7 @@ def main():
         default="",
         help="comma-separated ZIM names to star before the homepage shot",
     )
-    ap.add_argument("--query", default="water purification")
+    ap.add_argument("--query", default="photosynthesis")
     ap.add_argument(
         "--article",
         default="Earth",
@@ -228,6 +340,15 @@ def main():
     if bad:
         sys.exit("unknown shot(s): " + ", ".join(bad))
 
+    if args.base:
+        run(args, want, out)
+    else:
+        with ScratchServer(args.zims) as srv:
+            args.base = srv.base
+            run(args, want, out)
+
+
+def run(args, want, out):
     with sync_playwright() as pw:
         browser = pw.chromium.launch()
         ctx = browser.new_context(
@@ -256,6 +377,10 @@ def main():
                 shot_zimipedia(page, args.base, out)
             elif name == "bookshelf":
                 shot_bookshelf(page, args.base, out)
+            elif name == "games":
+                shot_games(page, args.base, out)
+            elif name == "solar-system":
+                shot_solar_system(page, args.base, out)
             elif name == "create":
                 shot_create(page, args.base, out, args.create_url, args.create_engine)
             print("%-18s %5.1fs  %s" % (name, time.time() - t0, out / (name + ".png")))
