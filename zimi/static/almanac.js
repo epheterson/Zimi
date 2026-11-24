@@ -3148,15 +3148,24 @@ function _cacheAlmanacHighlights(now, moon) {
 // The hero disc at a given instant: its phase, libration and turn, from the
 // canonical _moonView in app.js — the ONE derivation the hero, the sky-scene
 // moon, the Today discover card and the 3D view share. Only a place someone
-// chose turns it to their sky; the synthetic stand-in would be a guess, so
-// without one the disc stands celestial north up and says so
-// (_heroMoonOrientNote).
+// chose turns it to their own sky; with none, the place the time zone stands
+// for does (_getLocation, known) and the disc says whose sky it is
+// (_heroMoonOrientNote). Only a zone the table lacks leaves it celestial
+// north up, which it then says.
 function _heroMoonView(date, loc) {
-  return loc.stored ? _moonView(date, loc.lat, loc.lon) : _moonView(date, null, null);
+  return loc.known ? _moonView(date, loc.lat, loc.lon) : _moonView(date, null, null);
 }
 function _heroMoonTiltDeg(date, loc) { return _heroMoonView(date, loc).tilt; }
+// "As seen from Denver" for a place that was guessed from the time zone, else '' (a chosen place is not said).
+function _almMoonSeenFromText(loc) {
+  if (loc.stored || !loc.known) return '';
+  var city = loc.name ? loc.name.split(',')[0].trim() : (typeof _skyZoneCity === 'function' ? _skyZoneCity() : '');
+  return city ? t('alm_moon_seen_from', { place: city }) : t('alm_moon_seen_from_zone');
+}
 function _heroMoonOrientNote(loc) {
-  return loc.stored ? '' : '<div class="almanac-moon-orient">' + _almEsc(t('alm_moon_north_up')) + '</div>';
+  if (!loc.known) return '<div class="almanac-moon-orient">' + _almEsc(t('alm_moon_north_up')) + '</div>';
+  var said = _almMoonSeenFromText(loc);
+  return said ? '<button type="button" class="almanac-moon-orient almanac-moon-orient-set" title="' + _almEsc(t('alm_place_find')) + '" onclick="_almPlaceFind()">' + _almEsc(said) + '</button>' : '';
 }
 
 // ── Hero moon time-travel sweep ──

@@ -2066,6 +2066,8 @@
   "app_sources_many": "{n} Quellen",
   "alm_moon_open_3d": "Den Mond in 3D öffnen",
   "alm_moon_north_up": "Norden oben",
+  "alm_moon_seen_from": "Von {place} aus gesehen",
+  "alm_moon_seen_from_zone": "Aus deiner Zeitzone gesehen",
   "sky_find_btn": "Am Himmel finden",
   "sky_find_ph": "Venus, Sirius, Orion, M31 …",
   "sky_find_none": "Nichts am Himmel heißt so",

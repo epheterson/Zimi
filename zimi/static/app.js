@@ -8741,7 +8741,7 @@ function _almFirstFrameHtml() {
     '<div class="almanac-moon-glow" style="background:radial-gradient(circle, rgba(232,224,208,' + (m.illumination / 100 * 0.15 + 0.02).toFixed(2) + ') 0%, transparent 65%)"></div>' +
     '<div class="almanac-moon-open"><div class="almanac-moon"><img class="almanac-moon-sprite moon-sprite" src="' + ALM_FIRST_DISC + '" alt="" width="200" height="200" /></div></div>' +
     '<div class="almanac-moon-name"><span id="alm-hc-phase">' + esc(_localMoonName(m.name)) + '</span></div>' +
-    (place ? '' : '<div class="almanac-moon-orient">' + esc(t('alm_moon_north_up')) + '</div>') +
+    (place ? '' : '<div class="almanac-moon-orient">&nbsp;</div>') +
     '</div><div class="alm-cards">' + cards + '</div></div></div>' +
     '<div class="alm-sky-info"><div id="almanac-sky-invite"' + (place ? '' : ' class="alm-ph-invite"') + '></div><div id="almanac-sky-cap" class="alm-sky-cap"></div></div>' +
     '<div class="almanac-sky-wrap"><canvas id="almanac-sky-canvas" aria-hidden="true"></canvas></div></div>';

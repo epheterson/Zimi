@@ -2066,6 +2066,8 @@
   "app_sources_many": "{n} 个来源",
   "alm_moon_open_3d": "以 3D 查看月球",
   "alm_moon_north_up": "北方朝上",
+  "alm_moon_seen_from": "从{place}看到的月亮",
+  "alm_moon_seen_from_zone": "从你所在时区看到的月亮",
   "sky_find_btn": "在天空中查找",
   "sky_find_ph": "金星、Sirius、Orion、M31…",
   "sky_find_none": "天空中没有这个名字的天体",

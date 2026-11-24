@@ -63,7 +63,7 @@ vm.runInContext(
   'function t(k) { return k; }', S);
 for (const fn of ['_moonEqCoords', '_moonLimbAngles', '_moonLimbAnglesOf', '_moonAxisOf', '_moonView', '_normDeg360', '_moonScreenTiltDeg', '_moonIsWaxing', '_moonPhase'])
   vm.runInContext(extractFn(appSrc, fn), S);
-for (const fn of ['_dateToJD', '_jdnToGregorian', '_cnDeltaTdays', '_almEsc', '_heroMoonView', '_heroMoonTiltDeg', '_heroMoonOrientNote'])
+for (const fn of ['_dateToJD', '_jdnToGregorian', '_cnDeltaTdays', '_almEsc', '_heroMoonView', '_heroMoonTiltDeg', '_heroMoonOrientNote', '_almMoonSeenFromText'])
   vm.runInContext(extractFn(almSrc, fn), S);
 vm.runInContext(extractFn(read('almanac-sky.js'), '_angleDelta'), S);
 vm.runInContext(read('almanac-orrery.js'), S);
@@ -93,7 +93,7 @@ for (const c of CASES) {
 // ── 2. The hero disc ──
 {
   const c = CASES[0];
-  const loc = { lat: c.lat, lon: c.lon, stored: true };
+  const loc = { lat: c.lat, lon: c.lon, stored: true, known: true };
   const view = S._heroMoonView(new Date(c.ms), loc), tilt = view.tilt;
   // The sprite is drawn lunar north up, lit at `limb` counterclockwise from
   // the pole, and CSS rotation runs clockwise: the lit limb ends up this far
@@ -107,12 +107,22 @@ for (const c of CASES) {
   check(darkClockwise > 15 && darkClockwise < 75, "the hero's dark limb is at the upper right, as in Eric's photo");
   check(diff(litFromUp, c.rot) < TOL, 'the hero draws the lit limb at the zenith-up angle');
 
-  const guess = { lat: 34, lon: -120, stored: false };
+  // No place chosen, the time zone's place known: the disc turns for that sky and says whose it is.
+  S._skyZoneCity = () => 'Denver';
+  const zone = { lat: 39.74, lon: -104.99, stored: false, known: true };
+  const zv = S._heroMoonView(new Date(c.ms), zone);
+  check(diff(zv.tilt, S._moonView(new Date(c.ms), zone.lat, zone.lon).tilt) < 1e-9,
+    'no place chosen, zone known: the hero turns for the zone place');
+  const zoneNote = S._heroMoonOrientNote(zone);
+  check(zoneNote.includes('alm_moon_seen_from') && zoneNote.includes('_almPlaceFind()') && !zoneNote.includes('north_up'),
+    'and says "as seen from" it, with a way to set your own place');
+  check(S._heroMoonOrientNote(loc) === '', 'a chosen place says nothing');
+  // A zone the table lacks: celestial north up, said.
+  const guess = { lat: 34, lon: -120, stored: false, known: false };
   const north = S._heroMoonView(new Date(c.ms), guess);
   check(diff(S._normDeg360(north.limb - north.tilt), angles(c).chi) < 1e-9,
-    'no place chosen: the hero stands celestial north up (lit limb at chi), not at a guessed place');
-  check(S._heroMoonOrientNote(guess).includes('alm_moon_north_up') && S._heroMoonOrientNote(loc) === '',
-    'and says "north up" only then');
+    'zone unknown: the hero stands celestial north up (lit limb at chi), not at a guessed place');
+  check(S._heroMoonOrientNote(guess).includes('alm_moon_north_up'), 'and says "north up" only then');
   check(diff(S._moonLimbAngles(new Date(c.ms), null, null).rot, angles(c).chi) < 1e-9, 'with no place rot is chi');
 }
 
@@ -130,8 +140,13 @@ for (const c of CASES) {
   console.log('   3D ' + c.name + ': roll ' + roll.toFixed(2) + ', lit limb ' + lit.toFixed(2) + ' from up');
   check(diff(lit, c.rot) < TOL, '3D view, ' + c.name + ': the Moon camera shows the lit limb at the zenith-up angle');
   S._ae = { you: null };
-  S._getLocation = () => ({ lat: 0, lon: 0, stored: false });
-  check(S._aeRollDeg('moon', c.ms) === 0 && S._aeObserver() === null, '3D view, ' + c.name + ': no place, north up');
+  S._getLocation = () => ({ lat: 0, lon: 0, stored: false, known: false });
+  check(S._aeRollDeg('moon', c.ms) === 0 && S._aeObserver() === null, '3D view, ' + c.name + ': zone unknown, north up');
+  S._ae = { you: null, target: 'moon' };
+  check(S._aeMoonSkyNote() === 'alm_moon_north_up', '3D view: the caption says north up then');
+  S._getLocation = () => ({ lat: 39.74, lon: -104.99, stored: false, known: true });
+  check(S._aeObserver() !== null && S._aeRollDeg('moon', c.ms) !== 0, '3D view, ' + c.name + ': zone place, turned for its sky');
+  check(S._aeMoonSkyNote() === 'alm_moon_seen_from', '3D view: the caption says as seen from the zone place');
   delete S._getLocation;
 }
 check(S._aeRollDeg('earth', CASES[0].ms) === 0, 'the Earth and the Sun keep north up');

@@ -153,6 +153,9 @@ body.alm-moon-wait .almanac-moon-sprite, body.alm-moon-wait .almanac-moon-sprite
 .almanac-moon-name { margin-top: 16px; font-size: 18px; font-weight: 500; color: var(--text); }
 /* Said only when the disc stands celestial north up (no place chosen). */
 .almanac-moon-orient { margin-top: 2px; font-size: 11px; letter-spacing: .02em; color: var(--text3); }
+/* The place guessed from the time zone is a button: it opens the place search. */
+.almanac-moon-orient-set { display: block; margin: 2px auto 0; padding: 0; border: 0; background: none; font-family: inherit; cursor: pointer; text-decoration: underline; text-decoration-color: transparent; transition: text-decoration-color .15s, color .15s; }
+.almanac-moon-orient-set:hover, .almanac-moon-orient-set:focus-visible { color: var(--text2); text-decoration-color: currentColor; }
 .almanac-moon-line { font-size: 13px; color: var(--text2); margin-top: 8px; text-align: center; }
 /* Live canvas laid over the hero moon during a time-travel sweep: it draws the
    moon at successive real instants (terminator sweeping, disc rotating) over

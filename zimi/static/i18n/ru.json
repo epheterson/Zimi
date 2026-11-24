@@ -2066,6 +2066,8 @@
   "creator_made_reddit_two": "{n} сабреддита",
   "alm_moon_open_3d": "Открыть Луну в 3D",
   "alm_moon_north_up": "Север сверху",
+  "alm_moon_seen_from": "Вид из места: {place}",
+  "alm_moon_seen_from_zone": "Вид из вашего часового пояса",
   "sky_find_btn": "Найти на небе",
   "sky_find_ph": "Венера, Sirius, Orion, M31…",
   "sky_find_none": "На небе нет ничего с таким названием",

@@ -6944,12 +6944,21 @@ function _aeClampDist(d) {
 // (Out at the station's orbit, on a clock too fast to follow it, the view looks at the Earth's middle: the whole ring in the picture.)
 function _aeTargetPos() { return _aeRides(_ae.target) && _ae.issWide ? [0, 0, 0] : _aeBodyPos(_ae.target) || [0, 0, 0]; }
 // Whose sky the Moon is shown in: the device's place once asked for (the
-// crosshair), else the place chosen for the Almanac; null for neither, and
-// then the Moon stands celestial north up and the view says so.
+// crosshair), else the Almanac's place: the one chosen, or the one the time
+// zone stands for. Null only for a zone the table lacks, and then the Moon
+// stands celestial north up and the view says so.
 function _aeObserver() {
   if (_ae.you) return _ae.you;
   var loc = (typeof _getLocation === 'function') ? _getLocation() : null;
-  return loc && loc.stored ? loc : null;
+  return loc && loc.known ? loc : null;
+}
+// The quiet line about whose sky the Moon is in: celestial north up with no place to stand, "as seen from" a place the
+// time zone stood in for, nothing for a place someone chose (or the crosshair's).
+function _aeMoonSkyNote() {
+  if (_ae.target !== 'moon') return '';
+  var obs = _aeObserver();
+  if (!obs) return _aeT('alm_moon_north_up');
+  return _ae.you ? '' : (_almMoonSeenFromText(obs) || '');
 }
 var AE_ISS_UP_EASE_SIN = Math.sin(_aeRad(25));   // sine of the angle from the zenith line within which the station's up is held, not followed
 // The camera's turn about its line of sight, in degrees from celestial north
@@ -10261,9 +10270,8 @@ function _aeUpdateText(ms) {
     }
     if (status.textContent !== txt) status.textContent = txt;
   }
-  // The caption slot's quiet lines, by priority: on the Moon with no place to
-  // stand that up is celestial north (said, not guessed), then out among the planets that their directions are true and their distances squeezed.
-  aeCaption('north', _ae.target === 'moon' && !_aeObserver() ? _aeT('alm_moon_north_up') : '', { prio: AE_CAP_PRIO_NOTE });
+  // The caption slot's quiet lines, by priority: on the Moon, whose sky it is (_aeMoonSkyNote), then out among the planets that their directions are true and their distances squeezed.
+  aeCaption('north', _aeMoonSkyNote(), { prio: AE_CAP_PRIO_NOTE });
   _aeWherePaint();
   var note = _aeNoteParts();
   _aeRenderAsk(note.ask);

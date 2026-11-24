@@ -2066,6 +2066,8 @@
   "app_sources_many": "{n} مصادر",
   "alm_moon_open_3d": "افتح القمر بتقنية ثلاثية الأبعاد",
   "alm_moon_north_up": "الشمال للأعلى",
+  "alm_moon_seen_from": "كما يُرى من {place}",
+  "alm_moon_seen_from_zone": "كما يُرى من منطقتك الزمنية",
   "sky_find_btn": "ابحث في السماء",
   "sky_find_ph": "الزهرة، Sirius، Orion، M31…",
   "sky_find_none": "لا شيء في السماء بهذا الاسم",
