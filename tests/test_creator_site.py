@@ -25,7 +25,7 @@ REPO_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, REPO_ROOT)
 
 from libzim.reader import Archive  # noqa: E402
-from tests.ports import free_port  # noqa: E402
+from tests.ports import held_server  # noqa: E402
 
 import zimi.crawler as crawler  # noqa: E402
 import zimi.creator as creator  # noqa: E402
@@ -33,8 +33,9 @@ import zimi.server as _srv  # noqa: E402
 from zimi.libzimcompat import entry_by_id
 from zimi.zimwriter import HISTORY_METADATA_KEY, parse_history  # noqa: E402
 
-PORT = free_port()
 HOST = "127.0.0.1"
+_BOUND = held_server(HOST)  # this module's port, kept from import on (see tests/ports.py)
+PORT = _BOUND.server_address[1]
 BASE = f"http://{HOST}:{PORT}"
 NS = "_assets/127_0_0_1"  # _slug() of the fixture hostname
 
@@ -289,7 +290,8 @@ _SERVER = []
 @pytest.fixture(scope="session")
 def fixture_server():
     if not _SERVER:
-        srv = http.server.ThreadingHTTPServer((HOST, PORT), _Handler)
+        srv = _BOUND
+        srv.RequestHandlerClass = _Handler
         threading.Thread(target=srv.serve_forever, daemon=True).start()
         _SERVER.append(srv)
     return BASE
