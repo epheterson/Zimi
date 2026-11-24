@@ -16,6 +16,7 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from games_wait import PENDING_TIMERS_JS, becomes, frames, game_ready, timers_idle, truthy  # noqa: E402
 from test_games_persist_browser import VIEW, browser, leave, served, tap  # noqa: E402,F401
 
+pytest.importorskip("playwright")
 from playwright.sync_api import TimeoutError as PlaywrightTimeout  # noqa: E402
 
 REPLY_MS = 60000   # how long to give the computer to finish its reply; the read after is atomic with the save, so a reply that is still coming costs nothing

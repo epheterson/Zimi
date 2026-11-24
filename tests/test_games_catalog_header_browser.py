@@ -14,6 +14,7 @@ import pytest
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from games_wait import wait_for_server  # noqa: E402
+pytest.importorskip("playwright")
 from playwright.sync_api import sync_playwright  # noqa: E402
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
