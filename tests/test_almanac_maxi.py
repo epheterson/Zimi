@@ -50,7 +50,7 @@ def built(tmp_path_factory):
 
 
 def test_it_is_named_the_way_kiwix_names_a_flavour(built):
-    assert os.path.basename(built["flavour"]) == "zimi_almanac_maps_2026-11.zim"
+    assert os.path.basename(built["flavour"]) == "zimi_almanac_hd_2026-11.zim"
 
 
 def test_same_name_different_flavour(built):
@@ -146,7 +146,7 @@ def test_the_release_step_writes_the_manifest_zimi_reads(built, tmp_path, monkey
     # --month: the name the release job works out from what releases shipped (gh); given here, so no network.
     maxi.main(["--tiles", built["tiles"], "--out", str(tmp_path), "--tag", "v1.15.4", "--month", "2026-11c", "--no-craft"])
     path = tmp_path / (maxi.FILE_FMT % "2026-11c")
-    raw = (tmp_path / "zimi_almanac_maps.json").read_text(encoding="utf-8")
+    raw = (tmp_path / "zimi_almanac_hd.json").read_text(encoding="utf-8")
     man = json.loads(raw)
     assert set(man) == {"file", "size", "sha256", "tag"}
     assert (
@@ -195,7 +195,7 @@ def _release_workflow():
 def test_the_release_builds_and_attaches_the_flavour_and_its_manifest():
     wf = _release_workflow()
     assert "scripts/build_almanac_maxi.py" in wf and "--tag" in wf
-    assert "zimi_almanac_maps" in wf  # copied onto the release with the other files
+    assert "zimi_almanac_hd" in wf  # copied onto the release with the other files
     assert re.search(
         r"needs:\s*\[[^\]]*almanac-maxi", wf
     ), "the release waits for the flavour"

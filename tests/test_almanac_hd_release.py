@@ -40,10 +40,10 @@ def test_the_release_workflow_builds_both_sizes_and_attaches_maximums_chunks():
     run = re.search(r"build_almanac_maxi\.py[^\n]*", job).group(0)
     assert "--tag" in run and "/mnt/" in run                                  # the runner's big disk
     assert "GH_TOKEN" in job                                                  # to read which names releases shipped
-    assert "zimi_almanac_maps" in job and "if-no-files-found: error" in job  # Maximum's chunks are uploaded
+    assert "zimi_almanac_hd" in job and "if-no-files-found: error" in job  # Maximum's chunks are uploaded
     release = _job(wf, "release")
-    assert re.search(r"cp [^\n]*zimi_almanac_maps_maxi_\*\.zim\[a-z\]\[a-z\]", release) or "zimi_almanac_maps_maxi_*.zim[a-z][a-z]" in release
-    assert "zimi_almanac_maps.json" in release
+    assert re.search(r"cp [^\n]*zimi_almanac_hd_maxi_\*\.zim\[a-z\]\[a-z\]", release) or "zimi_almanac_hd_maxi_*.zim[a-z][a-z]" in release
+    assert "zimi_almanac_hd.json" in release
 
 
 @pytest.fixture(scope="module")
@@ -61,13 +61,13 @@ def test_hd_is_maximums_tiles_cut_short_and_maximum_ships_as_checked_chunks(tile
     monkeypatch.setattr(maxi, "CHUNK_BYTES", 1 << 14)
     out = str(tmp_path / "out")
     hd, chunks, manifest = maxi.build_release(tiles, out, "v1.16.0", "2026-11c")
-    assert os.path.basename(hd) == "zimi_almanac_maps_2026-11c.zim"
+    assert os.path.basename(hd) == "zimi_almanac_hd_2026-11c.zim"
     a = Archive(hd)
     man = json.loads(bytes(a.get_entry_by_path("hd/hd.json").get_item().content))
     assert man["layers"]["earth/day"]["max"] == 1 and not a.has_entry_by_path("hd/earth/day/2/0/0.webp")
     assert "Flavour" not in a.metadata_keys   # the catalog's names: HD has none
     assert len(chunks) >= 2
-    assert not os.path.exists(os.path.join(out, "zimi_almanac_maps_maxi_2026-11c.zim"))   # the chunks ship, not the book
+    assert not os.path.exists(os.path.join(out, "zimi_almanac_hd_maxi_2026-11c.zim"))   # the chunks ship, not the book
     b = Archive(chunks[0])
     assert b.get_metadata("Flavour").decode() == "maxi" and b.has_entry_by_path("hd/earth/day/2/0/0.webp") and b.check()
     rel = almanachd.parse_manifest(open(manifest, encoding="utf-8").read(), version="1.16.0")
@@ -85,7 +85,7 @@ def test_an_hd_only_tile_source_makes_hd_alone(tiles, tmp_path, monkeypatch):
 
 
 def test_names_move_past_every_shipped_letter_and_never_under_the_tiles():
-    stems = ("zimi_almanac_maps", "zimi_almanac_maxi", "zimi_almanac_ultra")
+    stems = ("zimi_almanac_hd", "zimi_almanac_maxi", "zimi_almanac_ultra")
     shipped = {"zimi_almanac_maxi_2026-11.zim", "zimi_almanac_2026-11c.zim"}   # 1.15.5 shipped the bare month
     assert maxi.unshipped_month(stems, shipped, today="2026-11") == "2026-11a"
     assert maxi.unshipped_month(stems, shipped, floor="2026-11c", today="2026-11") == "2026-11c"

@@ -331,7 +331,7 @@ def test_yes_reads_the_manifest_of_its_own_versions_release_then_downloads_and_c
     manifest["body"] = GOOD
     assert almanachd.start({"name": "admin"}) == ("1", None)
     assert manifest["asked"] == [
-        "https://github.com/epheterson/Zimi/releases/download/v1.15.4/zimi_almanac_maps.json"
+        "https://github.com/epheterson/Zimi/releases/download/v1.15.4/zimi_almanac_hd.json"
     ]
     ((args, kw),) = queued
     assert args[2] == REL["file"] and kw["extra"]["_sha256"] == REL["sha256"]

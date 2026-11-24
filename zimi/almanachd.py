@@ -1,19 +1,23 @@
 """Almanac HD: the Almanac's sharp Earth, Moon and planets, one ZIM fetched once, in one of two sizes.
 
 The Almanac ships with one small map per body and works with nothing more. Almanac HD is those maps as tile
-pyramids, far too large for the package. It is the HD edition of the Almanac itself: ``zimi_almanac_maps_<month>.zim``
+pyramids, far too large for the package. It is the HD edition of the Almanac itself: ``zimi_almanac_hd_<month>.zim``
 (no Flavour, as the catalog has it; the same Name as the Almanac in the package), the whole Almanac with the tiles inside under
 ``hd/`` (scripts/build_almanac_maxi.py). Opened alone in Kiwix it is the full Almanac with sharp tiles; in Zimi it is
 fetched the way any ZIM is, through the download queue (library.py), into the library, where the 3D view
 (almanac-earth.js) draws from ``/w/zimi_almanac_maxi/hd/``. A data pack (server.DATA_PACKS): the library shows one
 Almanac, the package's, with HD present.
 
-Every release builds that file and attaches it with a small manifest, ``zimi_almanac_maps.json``
+Every release builds that file and attaches it with a small manifest, ``zimi_almanac_hd.json``
 (``{"file", "size", "sha256", "tag"}``). The offer is sized offline (the pinned tile source plus the Almanac in the
 package: "about N MB"). Only after a yes, or under Automatically, does Zimi read the manifest of its own version's
 release (``v<version>``), then download the file it names and check its sha256; a build with no release (a dev
-build) finds none and fetches nothing. 1.15.3 shipped the tiles alone as
-``zimi_almanac_hd``; whoever has that file keeps their tiles (``LEGACY_NAME``) and is not asked again.
+build) finds none and fetches nothing. 1.15.3 shipped the tiles alone as ``zimi_almanac_hd_<month>.zim`` too, with the
+tiles at the top of the ZIM instead of under ``hd/``: the new HD replaces it the way any newer ZIM replaces an older one
+(the newest month holds the name; the older is listed with the older copies, never deleted unasked), and until then
+it keeps serving its tiles. Which layout a file has is read once per file version, from the Name its ZIM carries
+(``legacy_layout``: the tile ZIM's is ``zimi_almanac_hd``, the Almanac's own is ``zimi_almanac``), which the library's
+metadata cache keeps.
 
 Eric, 2026-11-03: "HD can download once on first use of almanac or something?" Whether it may is an Ask first /
 Automatically / Never setting like every other fetch (outbound.py), Ask first by default: the Almanac offers it, with
@@ -21,7 +25,7 @@ its size, to someone who may download, and Automatically fetches it the first ti
 Never. Reading the manifest is part of that setting: nothing is read before consent, and under Never nothing is.
 
 Two sizes, one installed at a time: HD, the file above (under GitHub's 2 GiB a release file), and
-Maximum, ``zimi_almanac_maps_maxi_<month>.zim`` (Flavour ``maxi``: every layer at its source's full resolution, heights
+Maximum, ``zimi_almanac_hd_maxi_<month>.zim`` (Flavour ``maxi``: every layer at its source's full resolution, heights
 for every body), too big for one release file, so attached as zimsplit chunks (``.zimaa``, ``.zimab``...; cut
 between clusters, so its index stays whole) that the library reads as one book (zimparts.py). The manifest lists
 Maximum under ``max``: the book's file, size and sha256, and each chunk's. Its chunks come into a hidden folder of
@@ -53,24 +57,27 @@ from zimi.safety import loggable
 log = logging.getLogger("zimi")
 
 NAME = "zimi_almanac_maxi"
-#: The tiles-only ZIM 1.15.3 offered: read from where it is, preferred less than NAME.
+#: What a file called ``zimi_almanac_hd_<month>.zim`` is served as: HD of 1.16.1 on (tiles under ``hd/``) or the
+#: tiles-only ZIM 1.15.3 offered (tiles at the top), by the layout inside the file (``legacy_layout``).
 LEGACY_NAME = "zimi_almanac_hd"
+#: The Name metadata of 1.15.3's tile ZIM; HD carries the Almanac's own.
+LEGACY_META_NAME = "zimi_almanac_hd"
 ENV = "ZIMI_ALMANAC_HD"
 PREFS_KEY = "almanac_hd"
 #: What a release's manifest is called. 1.16.0 named it ``zimi_almanac_maxi.json`` and reads only its own tag's release
 #: (manifest_url), so those assets never change; every release after names its files as the catalog does.
-MANIFEST = "zimi_almanac_maps.json"
+MANIFEST = "zimi_almanac_hd.json"
 RELEASE_URL = "https://github.com/epheterson/Zimi/releases/download/{tag}/{file}"
 #: Where a release's files are fetched from instead of GitHub (a server of the admin's own, on the LAN, say): an
 #: http(s) address with ``{file}`` and optionally ``{tag}``. Env only: no request can set it. ZIMI_OFFLINE still wins.
 URL_ENV = "ZIMI_ALMANAC_HD_URL"
 #: What a manifest may name: the flavour's file, nothing else (it becomes a path and a URL).
-#: ``zimi_almanac_maps_<month>.zim`` is HD in the catalog's names (no Flavour); 1.16.0 called it ``zimi_almanac_maxi_``.
-_FILE_RE = re.compile(r"^zimi_almanac_(?:maps|maxi)_\d{4}-\d{2}[a-z]?\.zim$")
+#: ``zimi_almanac_hd_<month>.zim`` is HD in the catalog's names (no Flavour); 1.16.0 called it ``zimi_almanac_maxi_``.
+_FILE_RE = re.compile(r"^zimi_almanac_(?:hd|maxi)_\d{4}-\d{2}[a-z]?\.zim$")
 #: Maximum: the book's name and file, and where its chunks wait until the whole book is checked.
 MAX_NAME = "zimi_almanac_ultra"
-#: Maximum is ``zimi_almanac_maps_maxi_<month>.zim`` (Flavour maxi, as in the catalog); 1.16.0 called it ``zimi_almanac_ultra_``.
-_MAX_RE = re.compile(r"^zimi_almanac_(?:maps_maxi|ultra)_\d{4}-\d{2}[a-z]?\.zim$")
+#: Maximum is ``zimi_almanac_hd_maxi_<month>.zim`` (Flavour maxi, as in the catalog); 1.16.0 called it ``zimi_almanac_ultra_``.
+_MAX_RE = re.compile(r"^zimi_almanac_(?:hd_maxi|ultra)_\d{4}-\d{2}[a-z]?\.zim$")
 STAGE_DIR = ".almanac-max"
 #: GitHub's limit for a release file: every chunk is under it.
 CHUNK_LIMIT = 2**31
@@ -142,9 +149,11 @@ def release_url_template():
 
 def served_name(stem):
     """The name the server has an Almanac HD file under, from its name without ``.zim`` (the date still on), or None
-    when it is not one. Both generations of file names are the same two things: HD is ``NAME``, Maximum ``MAX_NAME``."""
+    when it is not one. Both generations of file names are the same two things: HD is ``NAME`` (1.16.0's names) or
+    ``LEGACY_NAME`` (``zimi_almanac_hd_<month>``, which the tile ZIM of 1.15.3 has too: legacy_layout tells them apart
+    once it is a file), Maximum ``MAX_NAME``."""
     if _FILE_RE.match(stem + ".zim"):
-        return NAME
+        return LEGACY_NAME if stem.startswith(PART_PREFIX) else NAME
     if _MAX_RE.match(stem + ".zim"):
         return MAX_NAME
     return None
@@ -330,15 +339,52 @@ def _choose(kind):
         log.info("Almanac HD: could not save the size chosen (%s)", loggable(type(e).__name__))
 
 
+def _date_token(path):
+    m = re.search(r"_(\d{4}-\d{2}[a-z]?)\.zim", os.path.basename(str(path)))
+    return m.group(1) if m else None
+
+
+#: ``(the scan's mapping it was read for, {path: legacy})``: a layout is read once per scan, never on a request.
+_layouts = [None, {}]
+
+
+def legacy_layout(path):
+    """The file is 1.15.3's tile ZIM (tiles at the top of the ZIM) rather than HD (tiles under ``hd/``). Told by the
+    Name its ZIM carries, which the library's metadata cache keeps (ownzims.identity: no archive is opened for a file the
+    cache knows), and remembered until the next scan. A file that cannot be read counts as the older layout."""
+    from zimi import ownzims
+    from zimi import server as _srv
+
+    files = _srv._zim_files_cache
+    if _layouts[0] is not files:
+        _layouts[0], _layouts[1] = files, {}
+    known = _layouts[1]
+    if path not in known:
+        ident = ownzims.identity(path)
+        known[path] = ident is None or ident[0] == LEGACY_META_NAME
+    return known[path]
+
+
+def _hd_name(have):
+    """Which of the names HD has is the HD in use: the newest month, a file of the new layout over a tile ZIM of the same
+    month. None when there is none."""
+    return max(
+        (n for n in (NAME, LEGACY_NAME) if n in have),
+        key=lambda n: (_date_token(have[n]) or "", not legacy_layout(have[n])),
+        default=None,
+    )
+
+
 def present():
-    """The name the server has the tiles under, or None: Maximum, else HD (the flavour, else 1.15.3's tile ZIM). Both
-    sizes on disk (the moment between one arriving and the other going): the one chosen. Whoever is asking: the library
-    as the server sees it, never the asking person's allowed part of it (a person who may not see it would otherwise
-    fetch it again on every visit)."""
+    """The name the server has the tiles under, or None: Maximum, else HD (1.16's, else 1.15.3's tile ZIM, the newest
+    month first). Both sizes on disk (the moment between one arriving and the other going): the one chosen. Whoever is
+    asking: the library as the server sees it, never the asking person's allowed part of it (a person who may not see
+    it would otherwise fetch it again on every visit)."""
     have = _have()
-    if MAX_NAME in have and (chosen() != "hd" or NAME not in have):
+    hd = _hd_name(have)
+    if MAX_NAME in have and (chosen() != "hd" or hd is None):
         return MAX_NAME
-    return next((n for n in (NAME, LEGACY_NAME) if n in have), None)
+    return hd
 
 
 def current():
@@ -347,11 +393,6 @@ def current():
     if name:
         return "max" if name == MAX_NAME else "hd"
     return "hd" if installed() else None
-
-
-def _date_token(path):
-    m = re.search(r"_(\d{4}-\d{2}[a-z]?)\.zim", os.path.basename(str(path)))
-    return m.group(1) if m else None
 
 
 def parts_present():
@@ -372,7 +413,9 @@ def installed():
 def base():
     """Where the 3D view reads tiles from, or None: /w/<name>/ and, in a flavour, the hd/ folder under it."""
     name = present()
-    return None if name is None else "/w/%s/%s" % (name, "" if name == LEGACY_NAME else "hd/")
+    if name is None:
+        return None
+    return "/w/%s/%s" % (name, "" if name == LEGACY_NAME and legacy_layout(_have()[name]) else "hd/")
 
 
 def parts_bases():
@@ -385,7 +428,7 @@ def superseded():
     replaced_by}]``. The scan lists an older file of the same name itself; these are the other names (1.15.3's tile
     ZIM, the 1.16 development parts, the other size)."""
     have, name = _have(), present()
-    if not name or name == LEGACY_NAME:
+    if not name or (name == LEGACY_NAME and legacy_layout(have[name])):
         return []
     from zimi import server as _srv
     from zimi import zimparts
@@ -407,7 +450,7 @@ def superseded():
 
 #: Maximum's files in the library's own folder, by name: its book or its chunks. HD is not matched by name: it is the one
 #: file the library reads (see files()), so an older month's copy and the 1.16 development parts never count as it.
-_MAX_FILES = re.compile(r"^zimi_almanac_(?:maps_maxi|ultra)_\d{4}-\d{2}[a-z]?\.zim(?:[a-z]{2})?$")
+_MAX_FILES = re.compile(r"^zimi_almanac_(?:hd_maxi|ultra)_\d{4}-\d{2}[a-z]?\.zim(?:[a-z]{2})?$")
 
 
 def files(kind):
@@ -418,7 +461,7 @@ def files(kind):
 
     if kind == "hd":
         have = _have()
-        path = have.get(NAME) or have.get(LEGACY_NAME)
+        path = have.get(_hd_name(have))
         return [path] if path and os.path.isfile(path) else []
     out = []
     try:
@@ -883,18 +926,22 @@ def on_installed(kind):
 
     _choose(kind)
     _last_error.clear()
-    other = MAX_NAME if kind == "hd" else NAME
-    path = _have().get(other)
-    if not path or os.path.dirname(os.path.realpath(path)) != os.path.realpath(_srv.ZIM_DIR):
-        return
-    if other == NAME and _date_token(path) in {_date_token(_have().get(part_name(p), "")) for p in PARTS}:
-        return  # the development set's own flavour: an older copy, not this choice's to remove
-    try:
-        _srv.release_zim_handles([other])
-    except Exception as e:
-        log.debug("Handle release before removing %s: %s", other, e)
-    _remove_files(zimparts.on_disk(path), "the other size")
-    _srv.unregister_zim_paths([path])  # the registry alone: a rescan under the lock would stall every read
+    _layouts[0] = None   # a file may have come in over one of the same name
+    have = _have()
+    # HD goes when Maximum came in: its names, but never a tile ZIM of 1.15.3 (older data, left for Storage to list).
+    others = [MAX_NAME] if kind == "hd" else [n for n in (NAME, LEGACY_NAME) if n in have and not (n == LEGACY_NAME and legacy_layout(have[n]))]
+    for other in others:
+        path = have.get(other)
+        if not path or os.path.dirname(os.path.realpath(path)) != os.path.realpath(_srv.ZIM_DIR):
+            continue
+        if other == NAME and _date_token(path) in {_date_token(have.get(part_name(p), "")) for p in PARTS}:
+            continue  # the development set's own flavour: an older copy, not this choice's to remove
+        try:
+            _srv.release_zim_handles([other])
+        except Exception as e:
+            log.debug("Handle release before removing %s: %s", other, e)
+        _remove_files(zimparts.on_disk(path), "the other size")
+        _srv.unregister_zim_paths([path])  # the registry alone: a rescan under the lock would stall every read
 
 
 def _auto_start():

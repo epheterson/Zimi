@@ -3308,7 +3308,7 @@ function _aeLoadMaps(S) {
 // (level z: 2^(z+1) columns by 2^z rows, 180 / 2^z degrees a side, from longitude -180 and latitude +90). Installed,
 // the view draws each body as the tiles in sight instead of its one map, each at the level whose texels are no smaller
 // than the screen's pixels, and lets the camera nearer. Without it nothing here runs: the one map is the view.
-// Where the tiles are: the server says (the HD flavour of the Almanac, /w/zimi_almanac_maxi/hd/, or the 1.15.3 tile
+// Where the tiles are: the server says (the HD flavour of the Almanac, /w/<name>/hd/, or the 1.15.3 tile
 // ZIM, below) or the Almanac ZIM's own answer (hd/, a path from its page, so Kiwix finds them beside it).
 var AE_HD_BASE_LEGACY = '/w/zimi_almanac_hd/';
 function _aeHdBase() { return (_ae.hdSt && _ae.hdSt.base) || AE_HD_BASE_LEGACY; }
