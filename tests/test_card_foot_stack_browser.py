@@ -38,7 +38,6 @@ def _boxes(width, grid_class):
     return out
 
 
-@pytest.mark.local_gate
 def test_marks_stack_in_a_column_above_the_dots_on_a_wide_row():
     pytest.importorskip("playwright")
     if not renderer.browser_available():
