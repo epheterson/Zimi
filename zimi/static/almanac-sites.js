@@ -330,6 +330,7 @@ function _aeSiteGround(body) {
 function _aeSiteLeave(quiet, handover, keepClock) {
   var st = _ae && _ae.site;
   if (!st) return;
+  if (typeof _asClockLetGo === 'function') _asClockLetGo(st);   // a drive's speed-up lent the clock its pace: the person's own comes back
   _ae.site = null;
   _ae.move = null;
   if (!keepClock && st.clock0 && typeof _aeGoTo === 'function') {   // the visit moved the clock (to the landing day): back to where it was
@@ -805,7 +806,7 @@ function _asHud(on) {
     var routeL = _almEsc(_aeT('alm_site_trail')), eyeL = _almEsc(_aeT('alm_stand_eye')), motionL = _almEsc(_aeT('alm_stand_motion'));
     hud.innerHTML = '<div class="as-layer" id="as-layer"></div><div class="as-rest" id="as-rest" hidden><i></i></div><div class="as-stick" id="as-stick" hidden><i></i></div>' +
       '<div class="as-tools">' +
-      '<div class="as-tools-end"><button type="button" class="ae-btn ae-round" id="as-trailbtn" aria-label="' + routeL + '" title="' + routeL + '" hidden>' + AS_ROUTE_SVG + '</button><button type="button" class="ae-btn ae-round" id="as-liftoff" aria-label="' + _almEsc(_aeT('alm_site_liftoff')) + '" title="' + _almEsc(_aeT('alm_site_liftoff')) + '" hidden>' + AS_LAUNCH_SVG + '</button><button type="button" class="ae-btn ae-round" id="as-follow" aria-label="' + _almEsc(_aeT('alm_site_follow')) + '" title="' + _almEsc(_aeT('alm_site_follow')) + '" hidden>' + AS_FOLLOW_SVG + '</button><button type="button" class="ae-btn ae-round" id="as-whole" aria-label="' + _almEsc(_aeT('alm_site_whole')) + '" title="' + _almEsc(_aeT('alm_site_whole')) + '">' + AS_WHOLE_SVG + '</button><button type="button" class="ae-btn ae-round" id="as-eye" aria-label="' + eyeL + '" title="' + eyeL + '" hidden>' + AS_EYE_SVG + '</button><button type="button" class="ae-btn ae-round" id="as-motion" aria-label="' + motionL + '" title="' + motionL + '" aria-pressed="false" hidden>' + AS_PHONE_SVG + '</button></div></div>' +
+      '<div class="as-tools-end"><button type="button" class="ae-btn ae-round" id="as-takedrive" aria-label="' + _almEsc(_aeT('alm_site_drive')) + '" title="' + _almEsc(_aeT('alm_site_drive')) + '" hidden>' + AS_DRIVE_SVG + '</button><button type="button" class="ae-btn ae-round" id="as-trailbtn" aria-label="' + routeL + '" title="' + routeL + '" hidden>' + AS_ROUTE_SVG + '</button><button type="button" class="ae-btn ae-round" id="as-liftoff" aria-label="' + _almEsc(_aeT('alm_site_liftoff')) + '" title="' + _almEsc(_aeT('alm_site_liftoff')) + '" hidden>' + AS_LAUNCH_SVG + '</button><button type="button" class="ae-btn ae-round" id="as-follow" aria-label="' + _almEsc(_aeT('alm_site_follow')) + '" title="' + _almEsc(_aeT('alm_site_follow')) + '" hidden>' + AS_FOLLOW_SVG + '</button><button type="button" class="ae-btn ae-round" id="as-whole" aria-label="' + _almEsc(_aeT('alm_site_whole')) + '" title="' + _almEsc(_aeT('alm_site_whole')) + '">' + AS_WHOLE_SVG + '</button><button type="button" class="ae-btn ae-round" id="as-eye" aria-label="' + eyeL + '" title="' + eyeL + '" hidden>' + AS_EYE_SVG + '</button><button type="button" class="ae-btn ae-round" id="as-motion" aria-label="' + motionL + '" title="' + motionL + '" aria-pressed="false" hidden>' + AS_PHONE_SVG + '</button></div></div>' +
       '<div class="as-count" id="as-count" aria-hidden="true"></div>' +
       '<button type="button" class="ae-btn ae-round as-launch" id="as-launch" aria-label="' + _almEsc(_aeT('alm_site_launch')) + '" title="' + _almEsc(_aeT('alm_site_launch')) + '" hidden>' + AS_LAUNCH_SVG + '</button>' + _asMenuHtml();
     Array.prototype.forEach.call(hud.querySelectorAll('.as-tools .ae-round'), function (b) { b.classList.add('ah-minor'); });
@@ -817,6 +818,7 @@ function _asHud(on) {
   _ae.el.classList.toggle('ae-driving', !!(_ae.site && _ae.site.drive));
   _aeById('as-rest').hidden = !(_ae.site && _ae.site.drive);
   _aeById('as-launch').hidden = !(_ae.site && _ae.site.def && _ae.site.def.launch);
+  _aeById('as-takedrive').hidden = !_asDriveOffered(_ae.site);
   _aeById('as-liftoff').hidden = !(_ae.site && _ae.site.def && _ae.site.def.liftoff && !_ae.site.drive);
   _aeById('as-follow').hidden = !(_ae.site && _ae.site.def && _ae.site.def.mission && typeof _aeMissionStart === 'function');
   _asEyeSync(_ae.site);
@@ -1239,7 +1241,10 @@ function _asFocusPart(st, best) {
   st.distTo = _aeClamp(best.size * 2.6, AS_ORBIT_DIST_M[0], AS_ORBIT_DIST_M[1]);
   _aeKick();
 }
+// A visit to a site whose mission had a rover offers the drive on the spot: the rover stands out of the first view (130 m off at Apollo 15), so the card's button was the only way to it.
+function _asDriveOffered(st) { return !!(st && !st.drive && !st.launch && st.def && !st.def.adHoc && _asHadRover(st.def) && _asCanDrive(st.body, st.row)); }
 function _asBindHud(hud) {
+  _aeById('as-takedrive').onclick = function () { var st = _ae.site; if (st && _asDriveOffered(st)) _aeSiteVisit(st.body, st.row, true); };
   _aeById('as-liftoff').onclick = function () { if (_ae.site) _asAscentStart(_ae.site); };
   _aeById('as-follow').onclick = function () { _aeSiteFollowMission(_ae.site); };
   _aeById('as-whole').onclick = function () { if (_ae.site) { _asWholeSite(_ae.site); _aeShowHint(_aeT('alm_site_whole_said')); } };   // each says what it did: an eased camera move alone read as "nothing happened"

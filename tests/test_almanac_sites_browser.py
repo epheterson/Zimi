@@ -826,3 +826,16 @@ def test_a_page_shown_again_from_the_back_forward_cache_is_built_again(page):
     page.evaluate("() => { _ae.parked = ['v=moon', 'm=site', 'k=26.13222,3.6339,-159.5,31.5,34.34']; }")
     page.evaluate(_TRACE_JS + "; window.dispatchEvent(new PageTransitionEvent('pageshow', { persisted: true }));")
     _assert_veiled_until_the_ground(_shown_again_trace(page))
+
+
+def test_a_visit_to_a_site_with_a_rover_offers_the_drive_on_the_spot(page):
+    """(Apollo 15 on a phone) the parked rover stands 130 m from the lander, out of the first view, and the visit had no way to it."""
+    _visit(page, "moon", "Apollo 11")
+    assert page.evaluate("() => document.getElementById('as-takedrive').hidden"), "Apollo 11 had no rover"
+    _visit(page, "moon", "Apollo 15")
+    assert not page.evaluate("() => document.getElementById('as-takedrive').hidden")
+    page.evaluate("() => document.getElementById('as-takedrive').click()")
+    page.wait_for_function(
+        "() => { var s = _aeSiteState(); return s && s.drive && s.phase === 'stand' && s.ready; }", timeout=STAND_MS, polling=500
+    )
+    page.evaluate("() => _aeSiteLeave(true)")
