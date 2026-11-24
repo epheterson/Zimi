@@ -10,6 +10,7 @@ Run: pytest tests/test_almanac_hd_holes_browser.py -v
 """
 
 import json
+import math
 import os
 import struct
 import sys
@@ -33,7 +34,10 @@ TURN = 0.9             # radians the globe is turned by after the tiles went, as
 SLOW_FRAME_MS = 40     # a frame the governor counts as slow at every level but the lowest
 LOW_FRAME_MS = 33      # the low level draws 30 frames a second: a frame on that cadence
 GOVERNOR_HELD_MS = 3_600_000
-SHALLOW = 1            # levels 0 and 1: the stand-ins for every other tile
+#: The share of the disc's pixels where the one map may still differ from a tile's: multisampling (on for an Apple GPU)
+#: blends a few pixels along a tile's edge. A map drawn over a tile is thousands of pixels, never this few.
+EDGE_SHARE = 0.002
+SHALLOW = 1           # levels 0 and 1: the stand-ins for every other tile
 
 
 def _png(rgb, n=64):
@@ -120,7 +124,7 @@ def site(tmp_path_factory):
     srv.ZIM_DIR, srv.ZIMI_DATA_DIR = old
 
 
-def _open_earth(site, fails):
+def _open_earth(site, fails, held=None):
     """The Earth view open with the synthetic HD set read. fails(level) says whether a tile of that level fails now."""
     browser, url = site
     ctx = browser.new_context(
@@ -137,11 +141,15 @@ def _open_earth(site, fails):
         path = route.request.url.split(HD_BASE, 1)[1].split("?")[0]
         if path == "hd.json":
             route.fulfill(status=200, content_type="application/json", body=json.dumps(MANIFEST))
+        elif held is not None and held["on"] and int(path.split("/")[2]) > SHALLOW:
+            held["routes"].append(route)   # in flight: not answered until the test lets it
         elif fails(int(path.split("/")[2])):
             route.fulfill(status=503, body="")
         else:
             route.fulfill(status=200, content_type="image/png", body=TILE)
 
+    if held is not None:
+        held["answer"] = hd_file
     pg.route("**/almanac-hd", lambda route: route.fulfill(status=200, content_type="application/json", body=json.dumps(state)))
     pg.route("**" + HD_BASE + "**", hd_file)
     pg.goto(url + "/#almanac", wait_until="load")
@@ -171,7 +179,7 @@ def _watch(pg, until, ms=WAIT_MS):
         _frames(pg, 1)
         got = pg.evaluate(EARTH_PIXELS)
         seen.append(got)
-        assert got["inside"] > 5000 and got["open"] == 0 and got["over"] == 0, got
+        assert got["inside"] > 5000 and got["open"] == 0 and got["over"] <= got["inside"] * EDGE_SHARE, got
         if until(got):
             return seen
         pg.wait_for_timeout(500)
@@ -212,14 +220,22 @@ def test_the_tiles_turned_off_mid_view_leave_the_whole_earth_drawn_and_come_back
 
 
 def test_missing_shallow_tiles_show_the_one_map_not_a_hole(site):
-    ctx, pg = _open_earth(site, lambda level: level <= SHALLOW)
+    held = {"on": False, "routes": []}
+    ctx, pg = _open_earth(site, lambda level: level <= SHALLOW, held)
     try:
         _look(pg, NEAR)
         seen = _watch(pg, lambda g: g["tiles"] > 0 and not g["busy"])
         assert seen[-1]["deepest"] > SHALLOW, seen[-1]
-        _look(pg, FAR, TURN)   # the far side's deep tiles were never asked for: only the one map can be there
-        seen += _watch(pg, lambda g: not g["busy"])
-        assert any(g["holes"] > 0 for g in seen), seen[-1]
+        held["on"] = True
+        _look(pg, FAR, math.pi)   # the far side's deep tiles were never asked for, and are slow: only the one map can be there
+        _frames(pg)
+        got = pg.evaluate(EARTH_PIXELS)
+        assert got["inside"] > 5000 and got["open"] == 0 and got["over"] <= got["inside"] * EDGE_SHARE, got
+        assert got["holes"] > 0, got
+        held["on"] = False   # the tiles come in; the globe stays closed on the way and the holes fill
+        for route in held["routes"]:
+            held["answer"](route)
+        seen += _watch(pg, lambda g: not g["busy"] and g["holes"] == 0)
     finally:
         ctx.close()
 
