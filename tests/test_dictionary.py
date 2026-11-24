@@ -336,6 +336,18 @@ def test_suggestions_and_a_word_nobody_has(library):
     assert not got["found"] and got["langs"] == []
 
 
+def test_did_you_mean_stays_in_the_language_asked_for(library):
+    english = dic.suggest("wa", langs=["en"])["words"][0]
+    assert english["w"] == "water"
+    assert english["zims"] and "wiktionary_fr" not in english["zims"]
+    french = dic.suggest("wa", langs=["fr"])["words"][0]
+    assert french["zims"] == ["wiktionary_fr"]
+    # A language with no Wiktionary here falls back to the ones there are.
+    assert dic.suggest("wa", langs=["xx"]) == dic.suggest("wa")
+    near = dic.lookup("wate", ["fr"])
+    assert not near["found"] and near["near"] == ["water"]
+
+
 def test_the_day_has_more_words_than_one_and_a_shuffle(library):
     from zimi import wiki
 

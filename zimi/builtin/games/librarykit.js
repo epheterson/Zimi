@@ -416,6 +416,17 @@
     if (!dictAnswer) dictAnswer = Lib.hosted() ? Lib.json('/dictionary/suggest?q=a', PROBE_MS).then(function () { return true; }, function () { return false; }) : Promise.resolve(false);
     return dictAnswer;
   };
+  // Where a word of a game's language can be read in this library: 'dictionary' when a Wiktionary in that language is installed
+  // (the Dictionary would find it), else {article: the Wikipedia in that language} (its page, if it has one), else null. Never
+  // another language's: the Dictionary opened on a word its Wiktionaries are not written in says nothing and offers strangers.
+  Lib.wordHome = function (list, lang) {
+    var want = Lib.primaryLang(lang), mine = function (project) {
+      return (list || []).filter(function (z) { return z.kind === 'wiki' && z.project === project && Lib.primaryLang(z.language) === want; });
+    };
+    if (mine('wiktionary').length) return { kind: 'dictionary' };
+    var p = Lib.pickZim(mine('wikipedia'), 'wikipedia', want);
+    return p && p.exact ? { kind: 'article', zim: p.zim.name } : null;
+  };
   Lib.wordLink = function (a, word) {
     delete a.dataset.lzim;   // the Dictionary does not depend on a ZIM of the library
     if (a.dataset.gone) { a.hidden = false; delete a.dataset.gone; }
