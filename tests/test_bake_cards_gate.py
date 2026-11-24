@@ -99,6 +99,7 @@ def test_zz_contact_sheet_of_the_new_games_and_the_layout_problems():
         for i, im in enumerate(ims):
             sheet.paste(im.resize((tw, th)), ((i % cols) * tw, (i // cols) * th))
         sheet.save(os.path.join(SHOTS, "new13.png"))
+    os.makedirs(SHOTS, exist_ok=True)   # under xdist the games ran in other workers: this one may be first to touch the folder
     with open(os.path.join(SHOTS, "problems.json"), "w", encoding="utf-8") as f:
         json.dump(PROBLEMS, f, indent=1)
     print("\nLAYOUT PROBLEMS:", json.dumps(PROBLEMS))
