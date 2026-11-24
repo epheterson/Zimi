@@ -301,14 +301,13 @@ function _getSessionJSON(key, fallback) {
 function _almChosenPlace() {
   return _getStorageJSON(SK.ALMANAC_PLACE, null) || _getSessionJSON(SK.ALMANAC_LOC, null);
 }
-// Which hemisphere the Almanac's sky is drawn for: the chosen place, else the
-// device's time zone (zone-places.js, the table the sky uses), else null: the
-// sky does not know, so nothing season-shaped is said. The table is fetched
-// on first need and the Discover row drawn again when it lands.
+// Where Home's Almanac pieces stand: the chosen place, else the device's time zone's own city
+// (zone-places.js, the table the sky and the Almanac's Moon use), else null: nothing that depends on
+// the place is said. The table is fetched on first need and the Discover row drawn again when it lands.
 var _zonePlacesLoading = false, _discoverDrawn = null;
-function _almHemisphere() {
+function _almPlaceOrZone() {
   var p = _almChosenPlace();
-  if (p) return p.lat < 0 ? 'south' : 'north';
+  if (p) return p;
   if (typeof _skyZonePlace !== 'function') {
     if (!_zonePlacesLoading) {
       _zonePlacesLoading = true;
@@ -325,7 +324,12 @@ function _almHemisphere() {
   var tz = null;
   try { tz = Intl.DateTimeFormat().resolvedOptions().timeZone; } catch(e) {}
   var z = _skyZonePlace(tz);
-  return z ? (z[0] < 0 ? 'south' : 'north') : null;
+  return z ? { lat: z[0], lon: z[1] } : null;
+}
+// Which hemisphere the Almanac's sky is drawn for, or null when it does not know.
+function _almHemisphere() {
+  var p = _almPlaceOrZone();
+  return p ? (p.lat < 0 ? 'south' : 'north') : null;
 }
 // "Spring 41%": the season the Today card names and how far through it is,
 // from the hemisphere the sky is drawn for. Null hemisphere (the place is not
@@ -8409,7 +8413,7 @@ function _moonIsWaxing(m) { return m.phase < 0.5; }
 // Today-card view: at the Almanac's chosen place, or celestial north up when
 // none was chosen (as the hero does).
 function _quickMoonView(date) {
-  var ll = _almChosenPlace();
+  var ll = _almPlaceOrZone();   // as the Almanac's hero turns it: the chosen place, else the time zone's city
   return ll ? _moonView(date, ll.lat, ll.lon) : _moonView(date, null, null);
 }
 
