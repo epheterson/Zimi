@@ -5219,7 +5219,50 @@ var AE_PROBE_VIEW_LIFT = 0.35;        // and looks at it from this far above its
 var AE_PROBE_FRAME_NEAR = 1.15, AE_PROBE_FRAME_MAX = 4000;   // a body this near the probe is framed with it, up to this far
 var AE_TRAIL_TAIL = 0.1;               // how faint a probe's path is at its start (it fades up to the probe)
 var AE_TRAIL_POINTS = 240, AE_TRAIL_REDRAW_DAYS = 10, AE_TRAIL_ALPHA = 0.55, AE_TRAIL_FAINT = 0.12;
+var AE_TRAIL_EVEN_SHARE = 0.5;   // of a trail's points are spread evenly in time; the rest go where the path turns most
 var _aeTracks = null, _aeTracksLoading = null, _aeProbePos = {}, _aeProbeHeading = {};
+// The n instants a path from `from` to `to` is drawn through: spread by the turn the path makes, so a flyby's hairpin (Parker at Venus) gets
+// the points a straight cruise does not need, and no corner is two long chords meeting. Same first and last instant for any table.
+function _aeTrailTimes(t, from, to, n) {
+  var n0 = Math.max(3, Math.round(n * AE_TRAIL_EVEN_SHARE)), ts = [], ps = [], i;
+  var at = function (x) { return _aeTrackAt(t, x) || [0, 0, 0]; };
+  for (i = 0; i < n0; i++) { ts.push(from + (to - from) * i / (n0 - 1)); ps.push(at(ts[i])); }
+  while (ts.length < n) {
+    // The segments either side of the sharpest corners are halved, a round at a time (each corner halved shows the next one).
+    var turns = [];
+    for (i = 1; i < ts.length - 1; i++) {
+      var a = _aeSub(ps[i], ps[i - 1]), b = _aeSub(ps[i + 1], ps[i]), la = _aeLen(a), lb = _aeLen(b);
+      turns.push([la > 0 && lb > 0 ? Math.acos(_aeClamp((a[0] * b[0] + a[1] * b[1] + a[2] * b[2]) / (la * lb), -1, 1)) : 0, i]);
+    }
+    turns.sort(function (x, y) { return y[0] - x[0]; });
+    var room = n - ts.length, take = Math.max(1, Math.min(room >> 1, ts.length >> 2)), halve = {}, count = 0;
+    for (i = 0; i < turns.length && count < room && count < take * 2; i++) {
+      [turns[i][1] - 1, turns[i][1]].forEach(function (s) { if (!halve[s] && count < room) { halve[s] = 1; count++; } });
+    }
+    var nts = [], nps = [];
+    for (i = 0; i < ts.length; i++) {
+      nts.push(ts[i]); nps.push(ps[i]);
+      if (halve[i]) { var mid = (ts[i] + ts[i + 1]) / 2; nts.push(mid); nps.push(at(mid)); }
+    }
+    ts = nts; ps = nps;
+  }
+  ts[n - 1] = to;
+  // Never worse than an even spread: where halving beside a corner only makes its neighbours' angle sharper, the even one is kept.
+  var even = [];
+  for (i = 0; i < n; i++) even.push(from + (to - from) * i / (n - 1));
+  return _aeSharpestTurn(t, ts) <= _aeSharpestTurn(t, even) ? ts : even;
+}
+// The sharpest angle (radians) between two successive segments of a table's path through the given instants.
+function _aeSharpestTurn(t, times) {
+  var worst = 0, p = null, d = null;
+  for (var i = 0; i < times.length; i++) {
+    var q = _aeTrackAt(t, times[i]) || [0, 0, 0], e = p && _aeSub(q, p), le = e ? _aeLen(e) : 0;
+    if (d && le > 0) worst = Math.max(worst, Math.acos(_aeClamp((d[0] * e[0] + d[1] * e[1] + d[2] * e[2]) / (_aeLen(d) * le), -1, 1)));
+    if (le > 0) d = e;
+    p = q;
+  }
+  return worst;
+}
 var AE_PROBE_HEADING_DAYS = 30;
 function _aeTracksLoad() {
   if (_aeTracks || _aeTracksLoading || typeof fetch !== 'function') return;
@@ -5399,8 +5442,9 @@ function _aeUpdateProbes(jd, place, near) {
       // craft the line stuttered and slid off it when turned.
       var times = trail.times || (trail.times = new Float64Array(AE_TRAIL_POINTS));
       trail.position.set(pos[0], pos[1], pos[2]);
+      var spread = _aeTrailTimes(t, from, jd, AE_TRAIL_POINTS);
       for (var i = 0; i < AE_TRAIL_POINTS; i++) {
-        var f = i / (AE_TRAIL_POINTS - 1), tv = i === AE_TRAIL_POINTS - 1 ? jd : from + (jd - from) * f, q = i === AE_TRAIL_POINTS - 1 ? pos : place(_aeTrackAt(t, tv) || h);
+        var f = i / (AE_TRAIL_POINTS - 1), tv = spread[i], q = i === AE_TRAIL_POINTS - 1 ? pos : place(_aeTrackAt(t, tv) || h);
         times[i] = tv;
         arr[i * 3] = q[0] - pos[0]; arr[i * 3 + 1] = q[1] - pos[1]; arr[i * 3 + 2] = q[2] - pos[2];
         col[i * 4] = AE_PROBE_COLOR[0]; col[i * 4 + 1] = AE_PROBE_COLOR[1]; col[i * 4 + 2] = AE_PROBE_COLOR[2];
