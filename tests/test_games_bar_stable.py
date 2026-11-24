@@ -261,6 +261,10 @@ def test_no_touch_is_lost_between_the_cells_of_any_board_or_card_game(chromium, 
         c, page = open_game(chromium, base, game)
     except Exception:
         pytest.skip("a game that waits on a lobby or a canvas")
+    # Cells are measured where the cards rest: a deal still flying leaves the face-down hand stacked in one place with gaps
+    # to the cards under it, which a press never meets once it has landed.
+    page.wait_for_function("() => !document.querySelector('.zc-dealing')", timeout=15000)
+    page.wait_for_timeout(600)
     sel = _cell_selector(page)
     r = page.evaluate(_SEAMS, sel)
     if r["bad"] and "zc-" not in sel:
