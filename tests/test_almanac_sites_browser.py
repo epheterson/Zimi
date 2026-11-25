@@ -730,7 +730,14 @@ def test_the_rim_from_the_body_goes_down_into_the_visit_in_one_move_from_any_zoo
     page.evaluate("([b, n]) => _aeLmOpen(b, _aeLm[b].filter(r => r[0] === n)[0])", ["moon", "Apollo 15"])
     page.wait_for_function("() => !!document.getElementById('as-visit') && !_ae.fly", timeout=120_000, polling=250)
     page.evaluate("() => { _ae.dist *= 1.3; _ae.dirty = true; _aeKick(); }")
-    page.wait_for_timeout(300)
+    # The camera eases out to the new zoom over a number of frames, however long each takes (seconds each on software GL): the move is
+    # recorded from where it has come to rest, not from the middle of that ease.
+    page.wait_for_function(
+        """() => { var c = _ae.gl.camera, m = _aeBodyPos('moon'), d = Math.hypot(c.position.x - m[0], c.position.y - m[1], c.position.z - m[2]);
+          window.__restRun = window.__restPrev !== undefined && Math.abs(d - window.__restPrev) < 1e-9 ? (window.__restRun || 0) + 1 : 0; window.__restPrev = d; return window.__restRun >= 6; }""",
+        timeout=60_000,
+        polling="raf",
+    )
     assert page.evaluate("() => _aeRimState().label") == page.evaluate("() => _aeT('alm_stand_here')")
     page.evaluate(REC)
     page.evaluate("() => _aeRimPress('ae-rim')")
@@ -739,7 +746,7 @@ def test_the_rim_from_the_body_goes_down_into_the_visit_in_one_move_from_any_zoo
     f = page.evaluate("() => window.__x")
     assert not any(x[2] for x in f), "no separate flight before the drop"
     h = [x[1] for x in f]
-    assert all(b <= a + 1e-4 for a, b in zip(h, h[1:])), "the camera only ever goes down"
+    assert all(b <= a + 1e-4 for a, b in zip(h, h[1:])), ("the camera only ever goes down", [(i, round(a, 5), round(b, 5)) for i, (a, b) in enumerate(zip(h, h[1:])) if b > a + 1e-4], len(h))
     assert h[0] > 2 * 0.2727, "from where the view stood"
     page.evaluate("() => _aeSiteLeave(true)")
 
