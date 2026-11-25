@@ -659,6 +659,8 @@ jobs:
     if: startsWith(github.ref, 'refs/tags/') || github.event.inputs.tag != ''
     runs-on: ubuntu-latest
     timeout-minutes: 120
+    permissions:
+      contents: write # read a draft release's files (the craft pack can be pinned to the release being built)
     steps:
       - name: Checkout
         uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
@@ -677,6 +679,17 @@ jobs:
           sudo mkdir -p /mnt/almanac
           sudo chown "$USER" /mnt/almanac
           df -h /mnt
+
+      # The pinned craft pack, fetched with the token: a draft release's files are not public, and the pack may be
+      # pinned to the release this run builds. The build checks its sha256; with no pack here it tries the public URL.
+      - name: Fetch the pinned craft pack
+        if: hashFiles('zimi/assets/almanac-craft.json') != ''
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          read -r FILE PTAG < <(python3 -c 'import json; p = json.load(open("zimi/assets/almanac-craft.json")); print(p["file"], p["tag"])')
+          mkdir -p /mnt/almanac/tiles
+          gh release download "$PTAG" -R "$GITHUB_REPOSITORY" -p "$FILE" -D /mnt/almanac/tiles --clobber || echo "no $FILE on $PTAG yet"
 
       - name: Build HD, Maximum as chunks, and the manifest
         env:
