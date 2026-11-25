@@ -205,8 +205,8 @@ def test_the_menu_and_its_sheets_give_a_finger_44px(browser, base, game):
 
 # Every board, card and tile game on the shelf, and minesweeper: the cells are what the page puts a press handler on, or
 # the children of the box that has one (found through the browser's own list of listeners).
-_CELLS = """(idx) => {
-  const all = Array.from(document.querySelectorAll('body, body *'));
+_CELLS = """function (idx) {
+  const all = this;
   const sig = (e) => { const c = ((e.className && e.className.baseVal !== undefined ? e.className.baseVal : e.className) + '').trim().split(/\\s+/).filter(Boolean)[0];
     return c ? e.tagName.toLowerCase() + '.' + CSS.escape(c) : null; };
   const out = new Set(['.zc-card', '.zc-slot']), plain = (e) => !/^(svg|g|path|rect|circle|use|text|line|polygon|polyline|ellipse|defs)$/.test(e.tagName) && !e.closest('svg');
@@ -242,7 +242,9 @@ def _cell_selector(page):
         oid = pr["value"].get("objectId") if pr["name"].isdigit() else None
         if oid and {l["type"] for l in cdp.send("DOMDebugger.getEventListeners", {"objectId": oid})["listeners"]} & {"click", "pointerdown", "pointerup", "mousedown", "touchstart"}:
             idx.append(int(pr["name"]))
-    found = page.evaluate(_CELLS, idx).split(",")
+    # Asked of the very array the listeners were read from: a game that repaints between two calls shifts every index.
+    out = cdp.send("Runtime.callFunctionOn", {"objectId": arr["result"]["objectId"], "functionDeclaration": _CELLS, "arguments": [{"value": idx}], "returnByValue": True})
+    found = out["result"]["value"].split(",")
     if ".zc-card" in found and any("zc-" in f for f in found if f not in (".zc-card", ".zc-slot")):
         return ".zc-card,.zc-slot"  # the card table: the cards and their places, not what is drawn on them
     return ",".join(f for f in found if f not in ("button.ar-btn", "button.ar-back", "span.ct-chip", ".zc-card", ".zc-slot")) or ".zc-card,.zc-slot"
@@ -255,6 +257,20 @@ def _shelf_games(*kinds):
     return sorted({r["path"] for r in rows if r.get("kind") in kinds and r.get("path") and "/" not in r["path"]} | {"minesweeper.html"})
 
 
+def _dom_quiet(page, quiet_ms=1500, limit_ms=8000):
+    """The page has stopped repainting: a game's computer opponent moves on timers and redraws the hand and the chain each time,
+    and a slow machine stretches the first of them past any fixed pause. A game that never stops (a clock) is measured at the limit."""
+    page.evaluate(
+        """([q, lim]) => new Promise((res) => {
+            let last = performance.now(); const t0 = last;
+            new MutationObserver(() => { last = performance.now(); }).observe(document.body, { subtree: true, childList: true, attributes: true, characterData: true });
+            const tick = () => { const now = performance.now(); if (now - last >= q || now - t0 >= lim) res(); else setTimeout(tick, 100); };
+            tick();
+        })""",
+        [quiet_ms, limit_ms],
+    )
+
+
 @pytest.mark.parametrize("game", _shelf_games("board", "cards", "tiles"))
 def test_no_touch_is_lost_between_the_cells_of_any_board_or_card_game(chromium, base, game):
     try:
@@ -265,6 +281,7 @@ def test_no_touch_is_lost_between_the_cells_of_any_board_or_card_game(chromium, 
     # to the cards under it, which a press never meets once it has landed.
     page.wait_for_function("() => !document.querySelector('.zc-dealing')", timeout=15000)
     page.wait_for_timeout(600)
+    _dom_quiet(page)
     sel = _cell_selector(page)
     r = page.evaluate(_SEAMS, sel)
     if r["bad"] and "zc-" not in sel:
