@@ -21,6 +21,7 @@ download gets. ``ZIMI_BUILTIN_ZIMS=0`` serves none.
 import collections
 import datetime
 import hashlib
+import json
 import os
 import re
 import shutil
@@ -459,37 +460,60 @@ COMPRESSED_BINARY_TYPES = {".bin": "text/plain"}
 
 #: The sentence of the Almanac's LongDescription that says which edition a file is; a flavour swaps it (FLAVOUR_TEXT).
 STANDARD_EDITION = "This is the standard edition, without the high-resolution map tiles."
+TILES_PIN = os.path.join(os.path.dirname(SOURCE_ROOT), "assets", "almanac-tiles.json")
+
+
+def _flavour_size(template, key):
+    """``template`` with the flavour file's size in gigabytes (the tile pin's ``hd_size`` / ``max_size``, written when the
+    files are built), or "" when the pin has none: a description says how big the file is only when that is known."""
+    try:
+        with open(TILES_PIN, encoding="utf-8") as f:
+            size = json.load(f).get(key)
+    except (OSError, ValueError, AttributeError):
+        return ""
+    if not isinstance(size, int) or isinstance(size, bool) or size <= 0:
+        return ""
+    return template % ("%s GB" % ("%.1f" % (size / 1e9)).removesuffix(".0"))
+
+
 #: ``(own name, Flavour)`` -> the Description (80 characters at most, the openZIM limit) and the edition sentence a flavour
 #: carries. Title stays the standard edition's, so a reader lists the files side by side; the Description tells them apart.
 FLAVOUR_TEXT = {
     ("zimi_almanac", "maxi"): (
-        "The Almanac with high-resolution maps of Earth, Moon and planets",
-        "This is the maxi edition, with the high-resolution map tiles inside.",
+        "The Almanac with high-resolution maps of Earth, Moon and planets" + _flavour_size(", about %s", "hd_size"),
+        "This is the maxi edition. It carries the high-resolution maps of the Earth, Moon and planets, the sharp tiles the smaller edition leaves out"
+        + _flavour_size(", about %s in all", "hd_size")
+        + ".",
     ),
     ("zimi_almanac", "ultra"): (
         "The Almanac with maximum-resolution maps of Earth, Moon and planets",
-        "This is the maximum edition, with every map tile at its source's full resolution.",
+        "This is the maximum edition. It carries the maps of the Earth, Moon and planets with every tile at its source's full resolution"
+        + _flavour_size(", about %s in all", "max_size")
+        + ".",
     ),
 }
 
 
-def flavour_text(folder, own, flavour):
+def flavour_text(folder, own, flavour, texts=None):
     """``{"description", "long_description"}`` a flavour of ``own`` says about itself, built from the folder's zimi.txt;
-    {} for the standard edition (no flavour) and for a flavour with nothing of its own."""
-    if (own.name, flavour) not in FLAVOUR_TEXT:
+    {} for the standard edition (no flavour) and for a flavour with nothing of its own. ``texts`` (default FLAVOUR_TEXT)
+    is the table to read: the openZIM catalog names its editions differently (build_almanac_kiwix.CATALOG_TEXT)."""
+    texts = FLAVOUR_TEXT if texts is None else texts
+    if (own.name, flavour) not in texts:
         return {}
     from zimi import folderfiles
 
-    description, edition = FLAVOUR_TEXT[(own.name, flavour)]
+    description, edition = texts[(own.name, flavour)]
     long_description = folderfiles.read_sidecar(os.path.join(folder, "zimi.txt"), {"longdescription"}).get("longdescription", "")
     if STANDARD_EDITION not in long_description:
         raise RuntimeError("%s's zimi.txt LongDescription no longer holds the standard edition's sentence" % own.name)
     return {"description": description, "long_description": long_description.replace(STANDARD_EDITION, edition)}
 
 
-def write_zim(own, path, flavour=None, extra_items=None):
+def write_zim(own, path, flavour=None, extra_items=None, edition=None):
     """``own`` built into ``path``, from its source as it is now: another flavour of the same Name
     (``flavour``, ``extra_items``: see creator.create_folder_zim). Nothing is committed or stamped.
+    ``edition`` is the FLAVOUR_TEXT key to say about itself when that is not the Flavour (HD has none).
     """
 
     def _write(folder):
@@ -500,7 +524,7 @@ def write_zim(own, path, flavour=None, extra_items=None):
             out_path=path,
             register=False,
             flavour=flavour,
-            **flavour_text(folder, own, flavour),
+            **flavour_text(folder, own, edition or flavour),
             extra_items=with_build_year(extra_items),
             mime_overrides=COMPRESSED_BINARY_TYPES,
         )

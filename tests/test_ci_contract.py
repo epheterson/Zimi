@@ -308,7 +308,7 @@ def test_the_mac_app_reports_the_release_version():
     update to offer. The spec reads pyproject.toml, as the other builds do."""
     import re as _re
 
-    spec = (ROOT / "desktop" / "zimi_desktop.spec").read_text(encoding="utf-8")
+    spec = (ROOT / "packaging" / "desktop" / "zimi_desktop.spec").read_text(encoding="utf-8")
     assert not _re.search(r"'CFBundle(Short)?Version(String)?':\s*'\d", spec), "a version is hard-coded in the spec"
     start = spec.index("def _app_version(")
     end = spec.index("\nAPP_VERSION", start)
@@ -342,8 +342,8 @@ _BUILDS = [
     ("Zimi-portable-linux-x64", "zimi-1.2.3-linux-x64.tar.gz"),
     ("Zimi-portable-linux-arm64", "zimi-1.2.3-linux-arm64.tar.gz"),
     # Built in the release run: the Almanac's HD flavour and the manifest Zimi reads.
-    ("Almanac-maxi", "zimi_almanac_maxi_2026-11.zim"),
-    ("Almanac-maxi", "zimi_almanac_maxi.json"),
+    ("Almanac-maxi", "zimi_almanac_hd_2026-11.zim"),
+    ("Almanac-maxi", "zimi_almanac_hd.json"),
 ]
 
 
@@ -383,7 +383,7 @@ def test_release_files_are_named_version_platform_chip(tmp_path):
         "Zimi-1.2.3-x86_64.AppImage.zsync",
         "zimi-1.2.3-linux-arm64.tar.gz",
         "zimi-1.2.3-linux-x64.tar.gz",
-    ] + sorted(_OWN_ZIMS + ["zimi_almanac_maxi_2026-11.zim", "zimi_almanac_maxi.json"])
+    ] + sorted(_OWN_ZIMS + ["zimi_almanac_hd_2026-11.zim", "zimi_almanac_hd.json"])
     text = _commands("desktop-release.yml")
     # The release gets every renamed file (beside the SBOM, when one was made).
     assert 'gh release create "$TAG" release/*' in text and 'gh release upload "$TAG" release/*' in text
@@ -473,6 +473,6 @@ def test_no_requirement_admits_a_pillow_with_known_holes():
     for name in ("pyproject.toml", "packaging/zimi-mcp/pyproject.toml"):
         text = (ROOT / name).read_text(encoding="utf-8")
         assert 'requires-python = ">=3.11,' in text, name
-    for name in ("requirements.txt", "desktop/requirements-desktop.txt"):
+    for name in ("requirements.txt", "packaging/desktop/requirements-desktop.txt"):
         pins = re.findall(r"(?im)^pillow\s*>=\s*([\d.]+)", (ROOT / name).read_text(encoding="utf-8"))
         assert pins and all(int(v.split(".")[0]) >= 13 for v in pins), (name, pins)

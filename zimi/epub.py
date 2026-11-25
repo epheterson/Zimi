@@ -144,12 +144,14 @@ _EOCD = b"PK\x05\x06"
 _EOCD_LEN = 22
 _EOCD_SEARCH = _EOCD_LEN + 0xFFFF  # the end record, then a comment of up to 64 KiB
 _ZIP64_MARK = 0xFFFFFFFF
+_ZIP64_LOCATOR = b"PK\x06\x07"  # sits right before the end record of a Zip64 archive; ZipFile then trusts the Zip64 record over the end record's own fields
+_ZIP64_LOCATOR_LEN = 20
 
 
 def _directory_too_big(fileobj):
     """Whether the zip's end record says its central directory is over MAX_DIRECTORY_BYTES
     or MAX_MEMBERS entries: read from the end of the file, so a large EPUB with a small
-    directory passes. A directory in Zip64 form is over, too (it starts past 4 GiB)."""
+    directory passes. A directory in Zip64 form (a locator before the end record, or the 32-bit size marked) is over, too: ZipFile would read the Zip64 sizes, which this check does not."""
     fileobj.seek(0, os.SEEK_END)
     end = fileobj.tell()
     fileobj.seek(max(0, end - _EOCD_SEARCH))
@@ -157,6 +159,8 @@ def _directory_too_big(fileobj):
     at = tail.rfind(_EOCD)
     if at < 0 or len(tail) - at < _EOCD_LEN:
         return False  # ZipFile says what is wrong with it
+    if at >= _ZIP64_LOCATOR_LEN and tail[at - _ZIP64_LOCATOR_LEN : at - _ZIP64_LOCATOR_LEN + 4] == _ZIP64_LOCATOR:
+        return True
     entries = int.from_bytes(tail[at + 10 : at + 12], "little")
     size = int.from_bytes(tail[at + 12 : at + 16], "little")
     return size == _ZIP64_MARK or size > MAX_DIRECTORY_BYTES or entries > MAX_MEMBERS

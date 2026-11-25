@@ -75,7 +75,7 @@ let worst = 0, finite = true;
 for (const t of dates) {
   for (const loc of locs) {
     const d = new Date(t);
-    const hero = vm.runInContext('_heroMoonTiltDeg(new Date(' + t + '), ' + JSON.stringify(Object.assign({ stored: true }, loc)) + ')', sandbox);
+    const hero = vm.runInContext('_heroMoonTiltDeg(new Date(' + t + '), ' + JSON.stringify(Object.assign({ stored: true, known: true }, loc)) + ')', sandbox);
     const canon = vm.runInContext('_moonScreenTiltDeg(new Date(' + t + '), ' + loc.lat + ', ' + loc.lon + ')', sandbox);
     if (!isFinite(hero) || !isFinite(canon)) finite = false;
     worst = Math.max(worst, Math.abs(hero - canon));

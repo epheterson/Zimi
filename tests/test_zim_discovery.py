@@ -34,7 +34,7 @@ import zimi.server as server  # noqa: E402
 from tests.conftest_zim import build_fixture_zim  # noqa: E402
 from tests.test_serve_smoke import REPO_ROOT, _wait_for_ready  # noqa: E402
 
-sys.path.insert(0, os.path.join(REPO_ROOT, "desktop"))
+sys.path.insert(0, os.path.join(REPO_ROOT, "packaging", "desktop"))
 
 import zimi_desktop  # noqa: E402
 

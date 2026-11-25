@@ -3,8 +3,8 @@
     python scripts/build_almanac_maxi.py [--tiles FILE] [--out DIR] [--cache DIR] [--tag vX.Y.Z]
 
 Two flavours of one Name, the way Kiwix ships them: ``zimi_almanac_<month>.zim`` (the Almanac, small, in the
-package) and ``zimi_almanac_maxi_<month>.zim`` (Flavour ``maxi``: the same Almanac with the tiles inside, under
-``hd/``). Opened alone in Kiwix the maxi flavour is the whole Almanac whose 3D view draws the sharp tiles from its own
+package) and ``zimi_almanac_hd_<month>.zim`` (no Flavour, as in the catalog: the same Almanac with the tiles inside, under
+``hd/``; Maximum is ``zimi_almanac_hd_maxi_<month>.zim``, Flavour ``maxi``). Opened alone in Kiwix HD is the whole Almanac whose 3D view draws the sharp tiles from its own
 ZIM (``hd/hd.json`` is what tells it they are there); in Zimi, where the Almanac runs from the app, the file is the
 tile library, found by name.
 
@@ -12,7 +12,7 @@ The tiles take about an hour to make (scripts/build_almanac_hd.py: NASA download
 release, so the tiles are an immutable input: the *tile source* is a ZIM of tiles only, attached once to a release and
 pinned in ``zimi/assets/almanac-tiles.json`` ({file, size, sha256, tag}). This script reads the tiles out of it and
 writes the flavour in minutes, on every release (desktop-release.yml). With ``--tag`` it also writes
-``zimi_almanac_maxi.json`` ({file, size, sha256, tag}), the manifest Zimi reads from its own release to offer and
+``zimi_almanac_hd.json`` ({file, size, sha256, tag}), the manifest Zimi reads from its own release to offer and
 fetch the file (zimi/almanachd.py).
 """
 
@@ -33,15 +33,15 @@ PIN = os.path.join(ROOT, "zimi", "assets", "almanac-tiles.json")
 CRAFT_PIN = os.path.join(ROOT, "zimi", "assets", "almanac-craft.json")
 RELEASE_URL = "https://github.com/epheterson/Zimi/releases/download/{tag}/{file}"
 FLAVOUR = "maxi"
-FILE_FMT = "zimi_almanac_maxi_%s.zim"
+FILE_FMT = "zimi_almanac_hd_%s.zim"
 #: Maximum: every layer at its source's full resolution (zimi/almanachd.py), attached as zimsplit chunks.
-MAX_FLAVOUR = "ultra"
-MAX_FILE_FMT = "zimi_almanac_ultra_%s.zim"
+MAX_FLAVOUR = "ultra"   # the edition's key in the text tables (FLAVOUR_TEXT, CATALOG_TEXT) only; the file's Flavour is maxi (CATALOG_FLAVOUR)
+MAX_FILE_FMT = "zimi_almanac_hd_maxi_%s.zim"
 #: HD is Maximum's tiles with these stopped short, the one file under 2 GiB (1.98 GB in 2026-11): Mars's and Mercury's
 #: colour at level 6, every body's heights at level 3. Everything else is the same in both.
 HD_CAPS = {"planets/mars": 6, "planets/mercury": 6}
 HD_TERRAIN_CAP = 3
-MANIFEST = "zimi_almanac_maxi.json"
+MANIFEST = "zimi_almanac_hd.json"
 #: Where the tiles sit inside the flavour (beside index.html, so a relative URL from the page reaches them).
 TILE_ROOT = "hd/"
 MIMES = {
@@ -258,17 +258,30 @@ def with_craft(manifest_bytes, has_craft):
     return json.dumps(manifest, separators=(",", ":")).encode()
 
 
-def build(tiles_zim, out_dir, month=None, craft_dir=None, flavour=FLAVOUR, caps=None):
-    """A flavour of the Almanac (HD, ``maxi``, by default; Maximum is ``ultra``), built from the source as it is now
-    with the tile source's tiles inside, ``caps`` cutting layers short. Returns its path."""
+def build(tiles_zim, out_dir, month=None, craft_dir=None, flavour=FLAVOUR, caps=None, catalog=False):
+    """A flavour of the Almanac (the HD edition by default, key ``maxi``; Maximum is key ``ultra``; the file carries the catalog's Flavour: none, ``maxi``), built from the source as it is now
+    with the tile source's tiles inside, ``caps`` cutting layers short. Returns its path.
+
+    ``catalog``: the openZIM catalog's build, not Zimi's own: the community edition (build_almanac_kiwix) with its Name
+    ``zimi_mul_almanac``, Title and ten Languages, and the catalog's Flavour for this one (build_almanac_kiwix.CATALOG_FLAVOUR)."""
     from zimi import ownzims
 
     own = next(o for o in ownzims.OWN if o.name == "zimi_almanac")
     month = month or datetime.date.today().strftime("%Y-%m")
+    if catalog:
+        import build_almanac_kiwix
+
+        return build_almanac_kiwix.build(
+            out_dir, month=month, flavour=flavour, extra_items=add_tiles(tiles_zim, craft_dir, caps)
+        )
     os.makedirs(out_dir, exist_ok=True)
     path = os.path.join(out_dir, (MAX_FILE_FMT if flavour == MAX_FLAVOUR else FILE_FMT) % month)
+    import build_almanac_kiwix
+
+    # The file's Flavour is the catalog's (HD none, Maximum maxi); `flavour` stays the key of what it says about itself.
     return ownzims.write_zim(
-        own, path, flavour=flavour, extra_items=add_tiles(tiles_zim, craft_dir, caps)
+        own, path, flavour=build_almanac_kiwix.CATALOG_FLAVOUR[flavour], extra_items=add_tiles(tiles_zim, craft_dir, caps),
+        edition=flavour,
     )
 
 
@@ -441,6 +454,15 @@ def main(argv=None):
     ap.add_argument("--build-craft", action="store_true", help="build the craft folder here from NASA's files (build_craft_folder) instead of the pinned one")
     ap.add_argument("--no-craft", action="store_true", help="a flavour without the HD craft (the Almanac's 3D view keeps its stock models)")
     ap.add_argument(
+        "--catalog",
+        nargs="?",
+        const="hd",
+        choices=("hd", "maximum"),
+        help="the openZIM catalog's edition (Name zimi_mul_almanac, ten languages, no Golden Record pictures that are not "
+        "public domain) instead of Zimi's own: hd (the default: no Flavour, HD's tile caps) or maximum (Flavour maxi, every "
+        "level, one whole file); one file (not with --tag)",
+    )
+    ap.add_argument(
         "--tag",
         help="the release the files go on: builds HD and Maximum (as chunks) and writes the manifest naming them",
     )
@@ -450,15 +472,21 @@ def main(argv=None):
     )
     a = ap.parse_args(argv)
     tiles = a.tiles or fetch_tiles(a.cache)
+    if a.catalog and a.tag:
+        raise SystemExit("--catalog builds the one catalog file; a release (--tag) is Zimi's own")
     if not a.craft and not a.no_craft:
         a.craft = build_craft_folder(os.path.join(a.cache, "craft")) if a.build_craft else fetch_craft(a.cache, required=bool(a.tag))
     if not a.tag:
-        path = build(tiles, a.out, month=a.month, craft_dir=a.craft)
+        maximum = a.catalog == "maximum"
+        path = build(
+            tiles, a.out, month=a.month, craft_dir=a.craft, flavour=MAX_FLAVOUR if maximum else FLAVOUR,
+            caps=hd_caps() if a.catalog and not maximum else None, catalog=bool(a.catalog),
+        )
         print("built %s (%.1f MB)" % (path, os.path.getsize(path) / 1e6))
         return 0
     tm, tl = _date(os.path.basename(tiles))   # the tile source's own <month><letter> (.zim or .zimaa)
     month = a.month or unshipped_month(
-        ("zimi_almanac_maxi", "zimi_almanac_ultra"), shipped_assets(), floor=tm and tm + tl
+        ("zimi_almanac_hd", "zimi_almanac_maxi", "zimi_almanac_ultra"), shipped_assets(), floor=tm and tm + tl
     )
     hd, chunks, manifest = build_release(tiles, a.out, a.tag, month, a.craft)
     print("wrote", manifest)

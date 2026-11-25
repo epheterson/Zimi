@@ -299,3 +299,23 @@ def test_say_reads_the_language_from_the_zim_not_only_its_name(served):
             ], got
         finally:
             br.close()
+
+
+def test_switching_full_and_compact_tiles_keeps_the_discover_row_itself(served):
+    """The view switch draws the library again; the Discover row is moved, not copied, so its pictures are not
+    decoded again (the row blinked)."""
+    from playwright.sync_api import sync_playwright
+
+    with sync_playwright() as pw:
+        br, pg = _phone(pw)
+        try:
+            pg.goto(served + "/")
+            pg.wait_for_function(READY, timeout=30000)
+            pg.wait_for_function("() => { const r = document.getElementById('discover-row'); return r && r.innerHTML.length > 0 && r.dataset.lib; }", timeout=30000)
+            pg.evaluate("() => { window.__row = document.getElementById('discover-row'); window.__img = window.__row.querySelector('img'); }")
+            for mode in ("tiles", "list", "tiles"):
+                pg.evaluate("(m) => _setLibraryView(m)", mode)
+                assert pg.evaluate("() => document.getElementById('discover-row') === window.__row"), mode
+                assert pg.evaluate("() => !window.__img || window.__row.contains(window.__img)"), mode
+        finally:
+            br.close()

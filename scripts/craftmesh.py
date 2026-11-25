@@ -418,3 +418,15 @@ def hd_add(folder, key, data, credit):
     with open(path + ".tmp", "w") as fh:
         json.dump({"models": index}, fh, indent=1, sort_keys=True)
     os.replace(path + ".tmp", path)
+
+
+PALETTE_HEAD = 4 + struct.calcsize("<If6f3f3f4IffI")  # where a ZCR2's palette starts
+PALETTE_ENTRY = struct.calcsize("<3f4B4h")
+
+
+def set_look(data, entry, rgb, rough, metal, kind):
+    """A ZCR2's palette entry given another look (rgb linear, roughness and metalness 0-1, a KIND_*), the rest untouched."""
+    off = PALETTE_HEAD + entry * PALETTE_ENTRY
+    old = struct.unpack_from("<3f4B4h", data, off)
+    new = struct.pack("<3f4B4h", *rgb, int(round(rough * 255)), int(round(metal * 255)), old[5], kind, *old[7:])
+    return data[:off] + new + data[off + PALETTE_ENTRY :]

@@ -730,7 +730,14 @@ def test_the_rim_from_the_body_goes_down_into_the_visit_in_one_move_from_any_zoo
     page.evaluate("([b, n]) => _aeLmOpen(b, _aeLm[b].filter(r => r[0] === n)[0])", ["moon", "Apollo 15"])
     page.wait_for_function("() => !!document.getElementById('as-visit') && !_ae.fly", timeout=120_000, polling=250)
     page.evaluate("() => { _ae.dist *= 1.3; _ae.dirty = true; _aeKick(); }")
-    page.wait_for_timeout(300)
+    # The camera eases out to the new zoom over a number of frames, however long each takes (seconds each on software GL): the move is
+    # recorded from where it has come to rest, not from the middle of that ease.
+    page.wait_for_function(
+        """() => { var c = _ae.gl.camera, m = _aeBodyPos('moon'), d = Math.hypot(c.position.x - m[0], c.position.y - m[1], c.position.z - m[2]);
+          window.__restRun = window.__restPrev !== undefined && Math.abs(d - window.__restPrev) < 1e-9 ? (window.__restRun || 0) + 1 : 0; window.__restPrev = d; return window.__restRun >= 6; }""",
+        timeout=60_000,
+        polling="raf",
+    )
     assert page.evaluate("() => _aeRimState().label") == page.evaluate("() => _aeT('alm_stand_here')")
     page.evaluate(REC)
     page.evaluate("() => _aeRimPress('ae-rim')")
@@ -739,7 +746,7 @@ def test_the_rim_from_the_body_goes_down_into_the_visit_in_one_move_from_any_zoo
     f = page.evaluate("() => window.__x")
     assert not any(x[2] for x in f), "no separate flight before the drop"
     h = [x[1] for x in f]
-    assert all(b <= a + 1e-4 for a, b in zip(h, h[1:])), "the camera only ever goes down"
+    assert all(b <= a + 1e-4 for a, b in zip(h, h[1:])), ("the camera only ever goes down", [(i, round(a, 5), round(b, 5)) for i, (a, b) in enumerate(zip(h, h[1:])) if b > a + 1e-4], len(h))
     assert h[0] > 2 * 0.2727, "from where the view stood"
     page.evaluate("() => _aeSiteLeave(true)")
 
@@ -772,5 +779,70 @@ def test_the_launch_button_clears_the_strip_and_the_strips_names_fit(page):
     )
     assert got["gap"] >= 0, got
     assert got["tower"] and "tower" in got["tower"].lower(), got
-    assert not any(c[1] for c in got["cut"]), got   # no name runs past its disc's width
+    assert got["tower"] and all(n for n in got["lines"]), got
+    # The strip is pictures; the chosen thing's whole name is on the line over it, inside the screen, and above the launch button.
+    full = page.evaluate(
+        """() => { var it = Array.from(document.querySelectorAll('#as-strip .as-item')).filter(i => /tower/i.test(i.getAttribute('aria-label')))[0];
+          it.click(); var n = document.getElementById('as-name'), r = n.getBoundingClientRect(), b = document.getElementById('as-launch').getBoundingClientRect(), s = document.getElementById('as-strip').getBoundingClientRect();
+          return { label: it.getAttribute('aria-label'), said: n.textContent, shown: getComputedStyle(n).display !== 'none', inside: r.left >= 0 && r.right <= innerWidth,
+            above: r.bottom <= s.top + 1, clear: r.top >= b.bottom - 1 || r.right < b.left || r.left > b.right, nameBox: Math.round(it.querySelector('b').getBoundingClientRect().width) }; }"""
+    )
+    assert full["said"] == full["label"] and full["shown"] and full["inside"] and full["above"] and full["clear"], full
+    assert full["nameBox"] <= 1, full   # the disc's own caption is out of the way
     page.evaluate("() => _asStrip(_ae.site)")
+
+
+
+_TRACE_JS = """window.__trace = []; (function () { var t0 = performance.now(); window.__sampler = setInterval(function () {
+    try { var st = (typeof _aeSiteState === 'function') ? _aeSiteState() : null; var el = document.querySelector('.ae-view');
+    window.__trace.push({ t: Math.round(performance.now() - t0), phase: st && st.phase, veil: !!(el && el.classList.contains('ae-veil')) }); } catch (e) {} }, 30); })();"""
+
+
+def _shown_again_trace(pg):
+    pg.wait_for_function(
+        "() => { var s = typeof _aeSiteState === 'function' && _aeSiteState(); return s && s.phase === 'stand' && s.ready; }",
+        timeout=STAND_MS,
+        polling=250,
+    )
+    return pg.evaluate("() => { clearInterval(window.__sampler); return window.__trace; }")
+
+
+def _assert_veiled_until_the_ground(trace):
+    """Every sample before the ground is drawn (a drop or a stand) has the canvas held back; none after it does."""
+    first = next(i for i, p in enumerate(trace) if p["phase"] in ("drop", "stand"))
+    assert trace[:first], trace
+    assert all(p["veil"] for p in trace[:first]), "the Earth or the flight to the site showed: %r" % trace[:first][:4]
+    assert not any(p["veil"] for p in trace[first + 1 :]), trace[first:][:4]
+
+
+def test_switching_apps_and_back_returns_to_the_site_without_a_detour(page):
+    _visit(page, "moon", "Apollo 15")
+    page.evaluate(
+        """() => { window.__away = function (h) { Object.defineProperty(document, 'hidden', { configurable: true, get: function () { return h; } });
+            document.dispatchEvent(new Event('visibilitychange')); }; window.__away(true); }"""
+    )
+    parked = page.evaluate("() => ({ gl: !!_ae.gl, parked: _ae.parked })")
+    assert not parked["gl"] and any(p.startswith("m=site") for p in parked["parked"]), parked
+    page.evaluate(_TRACE_JS + "; window.__away(false);")
+    _assert_veiled_until_the_ground(_shown_again_trace(page))
+
+
+def test_a_page_shown_again_from_the_back_forward_cache_is_built_again(page):
+    _visit(page, "moon", "Apollo 15")
+    page.evaluate("() => { _aeGlLetGo(); }")
+    page.evaluate("() => { _ae.parked = ['v=moon', 'm=site', 'k=26.13222,3.6339,-159.5,31.5,34.34']; }")
+    page.evaluate(_TRACE_JS + "; window.dispatchEvent(new PageTransitionEvent('pageshow', { persisted: true }));")
+    _assert_veiled_until_the_ground(_shown_again_trace(page))
+
+
+def test_a_visit_to_a_site_with_a_rover_offers_the_drive_on_the_spot(page):
+    """(Apollo 15 on a phone) the parked rover stands 130 m from the lander, out of the first view, and the visit had no way to it."""
+    _visit(page, "moon", "Apollo 11")
+    assert page.evaluate("() => document.getElementById('as-takedrive').hidden"), "Apollo 11 had no rover"
+    _visit(page, "moon", "Apollo 15")
+    assert not page.evaluate("() => document.getElementById('as-takedrive').hidden")
+    page.evaluate("() => document.getElementById('as-takedrive').click()")
+    page.wait_for_function(
+        "() => { var s = _aeSiteState(); return s && s.drive && s.phase === 'stand' && s.ready; }", timeout=STAND_MS, polling=500
+    )
+    page.evaluate("() => _aeSiteLeave(true)")

@@ -2066,6 +2066,8 @@
   "app_sources_many": "{n} fuentes",
   "alm_moon_open_3d": "Abrir la Luna en 3D",
   "alm_moon_north_up": "Norte arriba",
+  "alm_moon_seen_from": "Visto desde {place}",
+  "alm_moon_seen_from_zone": "Visto desde tu zona horaria",
   "sky_find_btn": "Buscar en el cielo",
   "sky_find_ph": "Venus, Sirius, Orion, M31…",
   "sky_find_none": "Nada en el cielo se llama así",

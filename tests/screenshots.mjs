@@ -20,7 +20,7 @@ test('Screenshot: Homepage', async ({ page }) => {
   }
   await page.waitForTimeout(3000);
   await page.evaluate(() => window.scrollTo(0, 0));
-  await page.screenshot({ path: 'screenshots/homepage.png', fullPage: false });
+  await page.screenshot({ path: 'docs/screenshots/homepage.png', fullPage: false });
 });
 
 test('Screenshot: Search', async ({ page }) => {
@@ -38,7 +38,7 @@ test('Screenshot: Search', async ({ page }) => {
     if (done) break;
   }
   await page.waitForTimeout(3000);
-  await page.screenshot({ path: 'screenshots/search.png', fullPage: false });
+  await page.screenshot({ path: 'docs/screenshots/search.png', fullPage: false });
 });
 
 test('Screenshot: Language dropdown', async ({ page }) => {
@@ -61,7 +61,7 @@ test('Screenshot: Language dropdown', async ({ page }) => {
     if (arrows > 5) break;
   }
   await page.waitForTimeout(1000);
-  await page.screenshot({ path: 'screenshots/language-dropdown.png', fullPage: false });
+  await page.screenshot({ path: 'docs/screenshots/language-dropdown.png', fullPage: false });
 });
 
 test('Screenshot: Installed library', async ({ page }) => {
@@ -75,5 +75,5 @@ test('Screenshot: Installed library', async ({ page }) => {
     if (ready) break;
   }
   await page.waitForTimeout(2000);
-  await page.screenshot({ path: 'screenshots/browse-library.png', fullPage: false });
+  await page.screenshot({ path: 'docs/screenshots/browse-library.png', fullPage: false });
 });

@@ -29,6 +29,7 @@ import json
 import os
 import re
 import shutil
+import socketserver
 from pathlib import Path
 
 import pytest
@@ -46,6 +47,12 @@ os.environ.setdefault("ZIMI_BUILTIN_ZIMS", "0")
 # that needs either one sets it itself (monkeypatch.setenv).
 for _var in ("ZIMI_TORRENT", "ZIMI_BT", "ZIMI_OFFLINE"):
     os.environ.pop(_var, None)
+
+# A test's static file server is a stock socketserver: its listen backlog of 5 overflows when a page asks for dozens
+# of scripts at once on a busy machine, and the overflow is a connection reset on a script the page needed (the
+# game's Watch never registered, the splash offered only "New game"). Zimi's own server listens with a backlog of
+# 128 (server.LISTEN_BACKLOG); every test server gets the same.
+socketserver.TCPServer.request_queue_size = 128
 
 
 def _register_shard(config):

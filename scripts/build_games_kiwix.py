@@ -10,7 +10,6 @@ build_almanac_kiwix.py holds the sibling for the Almanac, and the DESCRIPTION / 
 import argparse
 import datetime
 import os
-import shutil
 import sys
 import tempfile
 
@@ -36,7 +35,7 @@ def build(out_dir, file_name=None, name=DEFAULT_NAME, title=DEFAULT_TITLE, month
     path = os.path.join(out_dir, file_name or FILE_FMT % (name, month))
     with tempfile.TemporaryDirectory(prefix="zimi-kiwix-") as tmp:
         src = os.path.join(tmp, "games")
-        shutil.copytree(os.path.join(ownzims.SOURCE_ROOT, "games"), src)
+        ownzims._stage_games(src)   # the folder and Zimi's footer files, which every game page asks for
         set_fields(src, Title=title, Language=LANGUAGES, Description=description or DESCRIPTION, LongDescription=long_description or LONG_DESCRIPTION)
         real = creator.zim_name
         creator.zim_name = lambda scope, language="eng": name

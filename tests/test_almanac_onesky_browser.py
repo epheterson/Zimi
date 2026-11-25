@@ -204,6 +204,7 @@ def stand(browser, served, times):
     pg.wait_for_timeout(1500)
     pg.air_on = pg.evaluate("() => !!_ae.stand.airOn")
     out = {}
+    prev_sa = None
     for sa, ms in times.items():
         pg.evaluate(
             """([ms, head, pitch]) => { _aeGoTo(ms); const st = _ae.stand; st.userYaw = head * Math.PI / 180 - st.yaw;
@@ -222,9 +223,20 @@ def stand(browser, served, times):
             "() => { const st = _ae.stand; _ae.gl.renderer.render(st.scene, st.camera); return _ae.gl.renderer.domElement.toDataURL('image/png'); }"
         )
         out[sa] = _medians(base64.b64decode(data.split(",")[1]), pts)
+        # The provider reads its three radiances back from the GPU without stopping the frame: until the answer for this Sun height is in,
+        # it returns the last one (nothing at all for the first), so wait for an answer that is not the previous height's.
+        prev = json.dumps(out.get(("amb", prev_sa)))
+        pg.wait_for_function(
+            """(prev) => { const a = _aeStandAir.ambient(_ae.stand, _ae.stand.fr); return !!a && JSON.stringify(a) !== prev; }""",
+            arg=prev,
+            timeout=60_000,
+            polling=200,
+        )
+        pg.wait_for_timeout(300)
         out[("amb", sa)] = pg.evaluate(
             "() => _aeStandAir.ambient(_ae.stand, _ae.stand.fr)"
         )
+        prev_sa = sa
     out["air_on"] = pg.air_on
     out["warnings"] = pg.warnings
     ctx.close()

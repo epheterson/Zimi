@@ -338,9 +338,34 @@ function _asStick(st) {
 // The factor the picture's motion is scaled by: the clock's rate (1 where it is paused, backwards or slow), and while a thumb
 // steers no more than AS_HELD_RATE_CAP. Pushing the stick further runs the drive at AS_DRIVE_FAST_RATE (its own, the clock is left alone).
 function _asTimeScale(st, held) {
-  var rate = typeof _almRate === 'number' ? Math.max(1, _almRate) : 1;
+  var rate = _asBaseRate(st);
   if (st.input.fast) rate = Math.max(rate, (st.info && st.info.rover && st.info.rover.fast) || AS_DRIVE_FAST_RATE);   // each vehicle's own turbo: a Mars rover at its real 0.04 m/s needs ×100 to cross a landscape   // the drive's own turbo: the shared clock is the person's, never set here
   return (held ? Math.min(rate, AS_HELD_RATE_CAP) : rate) * _asBoost(st);
+}
+// The speed-up the drive runs at (the turbo, or the stick held full) is the universe's too: the clock runs at that pace while it lasts, so
+// the Sun and the shadows move as fast as the ground goes by, and goes back to the person's own rate the moment it ends. The drive's own
+// factor is worked out from the person's rate (st.clockBase while the clock is borrowed), never from the borrowed one. A clock that is
+// paused or running backwards is left alone; a rate the person sets meanwhile is theirs again at once.
+var AS_CLOCK_FOLLOW_STEP = 0.02;   // the clock is set again when the pace has moved this share
+function _asBaseRate(st) {
+  if (st.clockBase != null) return Math.max(1, st.clockBase);
+  return typeof _almRate === 'number' ? Math.max(1, _almRate) : 1;
+}
+function _asClockFollow(st, k) {
+  if (typeof _almClockSetRate !== 'function' || typeof _almRate !== 'number') return;
+  if (st.clockBase != null && _almRate !== st.clockSet) st.clockBase = st.clockSet = null;   // the person took the clock
+  var base = _asBaseRate(st);
+  if (k > base * (1 + AS_CLOCK_FOLLOW_STEP)) {
+    if (st.clockBase == null) { if (!(_almRate >= 1)) return; st.clockBase = _almRate; }
+    if (Math.abs(k - _almRate) / k > AS_CLOCK_FOLLOW_STEP) { _almClockSetRate(k); st.clockSet = _almRate; }
+  } else if (st.clockBase != null) _asClockLetGo(st);
+}
+function _asClockLetGo(st) {
+  if (!st || st.clockBase == null) return;
+  var base = st.clockBase;
+  st.clockBase = null;
+  if (typeof _almClockSetRate === 'function' && _almRate === st.clockSet) _almClockSetRate(base);
+  st.clockSet = null;
 }
 // Holding the stick full for a while speeds the ground covered up, a step at a time to AS_BOOST_MAX (the rover "moves super slow"); it ends the moment the stick eases.
 function _asBoost(st) {
@@ -364,6 +389,7 @@ function _asRoverStep(st, dt) {
   // clock's rate (pushed past the solid ring, or Shift, the rate holds at the next stop; held by a thumb it is capped).
   st.input.fullS = Math.hypot(st.input.sx, st.input.sy) >= AS_BOOST_STICK && !st.auto ? (st.input.fullS || 0) + dt : 0;   // (the thumb's stick; the keys have Shift)
   var held = !!(sx || sy), k = st.auto && st.auto.trip ? 1 : _asTimeScale(st, held);
+  if (!(st.auto && st.auto.trip)) _asClockFollow(st, k);
   if (typeof _almStripCap === 'function') _almStripCap(held && !st.auto ? AS_HELD_RATE_CAP : 0);   // the slider's far ends are dimmed while a thumb steers   // (a journey counts its distance down by the rate itself)
   var ts = k;   // (the picture's time scale; k is used again below for the ease)
   r.v += _aeClamp(sy * info.vmax - r.v, -AS_ACCEL * dt * 1.5, AS_ACCEL * dt);

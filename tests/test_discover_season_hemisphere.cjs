@@ -17,7 +17,7 @@ function ctx(tz, place) {
   };
   vm.createContext(S);
   vm.runInContext(fs.readFileSync(path.join(__dirname, '..', 'zimi', 'static', 'zone-places.js'), 'utf8'), S);
-  vm.runInContext('var _zonePlacesLoading = false, _discoverDrawn = null;' + extractFn(src, '_almHemisphere'), S);
+  vm.runInContext('var _zonePlacesLoading = false, _discoverDrawn = null;' + extractFn(src, '_almPlaceOrZone') + extractFn(src, '_almHemisphere'), S);
   vm.runInContext(src.slice(src.indexOf('var _SEASONS_NORTH'), src.indexOf('function _todaySeason(')) + extractFn(src, '_todaySeason'), S);
   return (c) => vm.runInContext(c, S);
 }

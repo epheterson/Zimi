@@ -560,3 +560,15 @@ def test_zimi_mcp_refuses_an_unknown_tool_at_startup(library):
         proc.kill()
     assert proc.returncode != 0
     assert "unknown tool 'nope'" in err and "list_entries" in err
+
+
+@needs_mcp
+@pytest.mark.parametrize(
+    "tools, lean_text",
+    [("lean", True), ("lean,list_entries", True), ("search,read_section", False), ("list_entries,read_section", False), ("full", False)],
+)
+def test_the_lean_instructions_are_given_only_with_lean_search_or_read(tools, lean_text):
+    from zimi import mcp_server
+
+    said = mcp_server.build(tools)._mcp_server.instructions or ""
+    assert (mcp_server._INSTRUCTIONS_LEAN in said) is lean_text

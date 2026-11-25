@@ -203,6 +203,7 @@ var SK = {
   ALM_SKY: 'zimi_sky_settings',
   ALM_ORBITS: 'zimi_ae_orbits',
   ALM_SATS_ALL: 'zimi_ae_sats_all',
+  ALM_SATS_GPS: 'zimi_ae_sats_gps',
   ALM_LANDMARKS: 'zimi_alm_landmarks',
   ALM_SPIN_FACES: 'zimi_alm_spin_faces',
   ALM_HINT_CONTROLS: 'zimi_alm_hint_controls',   // sessionStorage: the 3D view's "tap to show or hide controls" line, said once
@@ -247,7 +248,7 @@ var _PREF_KEYS = [
   SK.APP_THEME, SK.APP_THEME_BEFORE_RED, SK.ARTICLE_THEME, SK.DARKEN_ARTICLES,
   SK.LIBRARY_SORT, SK.TTS_RATE, SK.BOOK_PREFS, SK.WIKI_PREFS,
   SK.READER_COACH, SK.TTS_SUGGESTED, SK.WELCOME_DISMISSED, SK.MAPS_SOURCE,
-  SK.ALMANAC_PLACE, SK.ALM_CLOCKS, SK.ALM_CLOCKS_VIEW, SK.ALM_UNITS, SK.ALM_SKY, SK.ALM_ORBITS, SK.ALM_SATS_ALL, SK.ALM_LANDMARKS, SK.ALM_SPIN_FACES,
+  SK.ALMANAC_PLACE, SK.ALM_CLOCKS, SK.ALM_CLOCKS_VIEW, SK.ALM_UNITS, SK.ALM_SKY, SK.ALM_ORBITS, SK.ALM_SATS_ALL, SK.ALM_SATS_GPS, SK.ALM_LANDMARKS, SK.ALM_SPIN_FACES,
   SK.ALM_HD_LATER, SK.ALM_ORRERY_TRIED,
   SK.WIKI_VIEW, SK.WIKI_LANG, SK.PDF_DARK, SK.PDF_SPREAD, SK.PDF_VIEW,
   SK.TUBE_SORT, SK.TUBE_AUTOPLAY, SK.TUBE_THEATER, SK.REDDOT_FOLLOW,
@@ -300,14 +301,13 @@ function _getSessionJSON(key, fallback) {
 function _almChosenPlace() {
   return _getStorageJSON(SK.ALMANAC_PLACE, null) || _getSessionJSON(SK.ALMANAC_LOC, null);
 }
-// Which hemisphere the Almanac's sky is drawn for: the chosen place, else the
-// device's time zone (zone-places.js, the table the sky uses), else null: the
-// sky does not know, so nothing season-shaped is said. The table is fetched
-// on first need and the Discover row drawn again when it lands.
+// Where Home's Almanac pieces stand: the chosen place, else the device's time zone's own city
+// (zone-places.js, the table the sky and the Almanac's Moon use), else null: nothing that depends on
+// the place is said. The table is fetched on first need and the Discover row drawn again when it lands.
 var _zonePlacesLoading = false, _discoverDrawn = null;
-function _almHemisphere() {
+function _almPlaceOrZone() {
   var p = _almChosenPlace();
-  if (p) return p.lat < 0 ? 'south' : 'north';
+  if (p) return p;
   if (typeof _skyZonePlace !== 'function') {
     if (!_zonePlacesLoading) {
       _zonePlacesLoading = true;
@@ -324,7 +324,12 @@ function _almHemisphere() {
   var tz = null;
   try { tz = Intl.DateTimeFormat().resolvedOptions().timeZone; } catch(e) {}
   var z = _skyZonePlace(tz);
-  return z ? (z[0] < 0 ? 'south' : 'north') : null;
+  return z ? { lat: z[0], lon: z[1] } : null;
+}
+// Which hemisphere the Almanac's sky is drawn for, or null when it does not know.
+function _almHemisphere() {
+  var p = _almPlaceOrZone();
+  return p ? (p.lat < 0 ? 'south' : 'north') : null;
 }
 // "Spring 41%": the season the Today card names and how far through it is,
 // from the hemisphere the sky is drawn for. Null hemisphere (the place is not
@@ -3498,7 +3503,7 @@ function bcClick(e) {
   // An app's icon is the way to its front page, from anywhere inside it.
   if (_isAppPage()) { _appEntryHome(); return; }
   // In ZimiGames the icon is the way to every game: the shelf, from any game (a Discover card or a link lands mid-shelf).
-  if (_isGamesZimOpen()) { openArticle(_GAMES_ZIM, 'index.html', t('app_games')); return; }
+  if (_isGamesZimOpen()) { openArticle(currentArticle.zim, 'index.html', t('app_games')); return; }
   if (currentSource && (readerOpen || mode === 'search')) {
     if (readerOpen) closeReader();
     enterSource(currentSource, false);
@@ -4172,7 +4177,7 @@ function route(push) {
       // One of Zimi's own apps keeps its round in the address (a game's ?daily=): split off, it reaches the page again.
       var aQ = _OWN_ZIM_APP[aZim] ? /^([^?#]*)(\?[^#]*)?(#.*)?$/.exec(aPath) : null;
       if (aQ && aQ[2]) aPath = aQ[1] + (aQ[3] || '');
-      if (aZim === _GAMES_ZIM) _gameHeadBoot(aPath);
+      if (_isGamesZimName(aZim)) _gameHeadBoot(aPath);
       _bootDeepLinkArticle(aZim, aPath, aQ && aQ[2]);
       return;
     }
@@ -4617,7 +4622,7 @@ function goBack() {
       return;
     }
     // A game with nothing behind it (the page was reloaded): the shelf it came from.
-    if (_gameHasShelfBehind()) { openArticle(_GAMES_ZIM, 'index.html', t('app_games')); return; }
+    if (_gameHasShelfBehind()) { openArticle(currentArticle.zim, 'index.html', t('app_games')); return; }
     closeReader();
     // Only go home if reader was auto-opened by enterSource AND user hasn't searched
     if (sourceAutoReader) {
@@ -5637,20 +5642,19 @@ function renderHome(filter) {
 
   // Preserve existing discover content to avoid flash (pop-in → disappear → reappear)
   // But invalidate if the language changed (cached HTML has baked-in translated strings)
-  var _prevDiscoverHtml = null;
-  var _prevDiscoverScroll = 0;
+  // The drawn Discover row itself is kept and moved into the new page, not copied as HTML: a copy re-creates every
+  // card's picture, and the row blinked while they decoded again (a switch between full and compact tiles, Back from a
+  // card). Only a row drawn for this library and language: one drawn while the list was still loading holds only Today.
+  var _keptDiscover = null, _prevDiscoverScroll = 0;
   if (_showDiscover) {
     var _prevRow = document.getElementById('discover-row');
-    // ...and only a row drawn for this library: one drawn while the list was
-    // still loading holds only Today, and reused it would stay that way.
     if (_prevRow && _prevRow.innerHTML && _prevRow.dataset.lang === _currentLang
         && _prevRow.dataset.lib === _discoverLibKey()) {
-      _prevDiscoverHtml = _prevRow.innerHTML;
-      // scrollLeft is a live DOM property, not serialized by innerHTML — capture
-      // it so the strip keeps its place across a home re-render (e.g. Back from
-      // an opened discover card) instead of snapping to the first card.
+      _keptDiscover = _prevRow;
+      // scrollLeft is not kept by a detached node in every browser: note it and give it back.
       var _prevScrollEl = _prevRow.querySelector('.discover-scroll');
       if (_prevScrollEl) _prevDiscoverScroll = _prevScrollEl.scrollLeft;
+      _prevRow.remove();
     }
   }
   output.innerHTML = h;
@@ -5661,15 +5665,12 @@ function renderHome(filter) {
   // no card should wait on that. A no-op once the map has arrived.
   _loadZimKinds();
   if (_showDiscover) {
-    if (_prevDiscoverHtml) {
-      // Restore cached discover DOM — avoid re-fetch flash
-      var newRow = document.getElementById('discover-row');
-      if (newRow) {
-        newRow.innerHTML = _prevDiscoverHtml; newRow.dataset.lang = _currentLang; newRow.dataset.lib = _discoverLibKey();
-        if (_prevDiscoverScroll) {
-          var _newScrollEl = newRow.querySelector('.discover-scroll');
-          if (_newScrollEl) _newScrollEl.scrollLeft = _prevDiscoverScroll;
-        }
+    var newRow = _keptDiscover && document.getElementById('discover-row');
+    if (newRow) {
+      newRow.replaceWith(_keptDiscover);
+      if (_prevDiscoverScroll) {
+        var _keptScrollEl = _keptDiscover.querySelector('.discover-scroll');
+        if (_keptScrollEl) _keptScrollEl.scrollLeft = _prevDiscoverScroll;
       }
     } else {
       _loadDiscover();
@@ -6080,7 +6081,34 @@ function _sortLibrary(list) {
 function _setLibraryView(mode) {
   if (mode !== 'tiles') mode = 'list';
   _prefWrite(SK.LIBRARY_VIEW, mode);
-  renderHome();  // scope/recency filters are module state, so this re-renders in place
+  // The cards are the same markup in both views (the grid's class and the language chip's wording differ), so the
+  // switch changes those in place: nothing on Home is drawn again, so nothing blinks.
+  if (!_applyLibraryViewInPlace(mode)) renderHome();
+}
+// True when Home's grids were switched where they stand; false (draw it again) when there is no library grid to switch.
+function _applyLibraryViewInPlace(mode) {
+  var grids = output.querySelectorAll('.stats-grid.tiles, .stats-grid.pick-grid');
+  if (!grids.length) return false;
+  var tiles = mode === 'tiles';
+  Array.prototype.forEach.call(grids, function(g) {
+    g.classList.toggle('tiles', tiles);
+    g.classList.toggle('pick-grid', !tiles);
+    Array.prototype.forEach.call(g.querySelectorAll('.stat-card[data-zim]'), function(card) {
+      var badge = card.querySelector('.lang-badge:not(.multi)');
+      if (!badge) return;
+      var z = (zimsCache || []).find(function(x) { return x.name === card.dataset.zim; });
+      var info = z && _zimLangBadgeInfo(z, false);
+      if (!info || !info.code) return;
+      badge.classList.toggle('lang-badge-full', tiles);
+      badge.textContent = tiles ? _langOwnName((z.language || '').toLowerCase().slice(0, 2)) : info.code;
+    });
+  });
+  Array.prototype.forEach.call(output.querySelectorAll('.lib-view-btn'), function(b) {
+    var on = b.dataset.view === mode;
+    b.classList.toggle('active', on);
+    b.setAttribute('aria-pressed', String(on));
+  });
+  return true;
 }
 // The grid/list segmented toggle. Both glyphs are always shown; the active one
 // is aria-pressed. It's a global view control but lives on the first section
@@ -6091,8 +6119,8 @@ function _libViewToggleHtml() {
   var listSvg = '<svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4"><line x1="5" y1="3.5" x2="14" y2="3.5"/><line x1="5" y1="8" x2="14" y2="8"/><line x1="5" y1="12.5" x2="14" y2="12.5"/><circle cx="2" cy="3.5" r="1"/><circle cx="2" cy="8" r="1"/><circle cx="2" cy="12.5" r="1"/></svg>';
   var gridSvg = '<svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4"><rect x="2" y="2" width="4.5" height="4.5" rx="1"/><rect x="9.5" y="2" width="4.5" height="4.5" rx="1"/><rect x="2" y="9.5" width="4.5" height="4.5" rx="1"/><rect x="9.5" y="9.5" width="4.5" height="4.5" rx="1"/></svg>';
   return '<span class="lib-view-toggle" role="group" aria-label="' + escAttr(t('library_view')) + '">' +
-    '<button class="lib-view-btn' + (view === 'list' ? ' active' : '') + '" aria-pressed="' + (view === 'list') + '" title="' + escAttr(t('view_list')) + '" aria-label="' + escAttr(t('view_list')) + '" onclick="event.stopPropagation();_setLibraryView(\'list\')">' + listSvg + '</button>' +
-    '<button class="lib-view-btn' + (view === 'tiles' ? ' active' : '') + '" aria-pressed="' + (view === 'tiles') + '" title="' + escAttr(t('view_tiles')) + '" aria-label="' + escAttr(t('view_tiles')) + '" onclick="event.stopPropagation();_setLibraryView(\'tiles\')">' + gridSvg + '</button>' +
+    '<button class="lib-view-btn' + (view === 'list' ? ' active' : '') + '" data-view="list" aria-pressed="' + (view === 'list') + '" title="' + escAttr(t('view_list')) + '" aria-label="' + escAttr(t('view_list')) + '" onclick="event.stopPropagation();_setLibraryView(\'list\')">' + listSvg + '</button>' +
+    '<button class="lib-view-btn' + (view === 'tiles' ? ' active' : '') + '" data-view="tiles" aria-pressed="' + (view === 'tiles') + '" title="' + escAttr(t('view_tiles')) + '" aria-label="' + escAttr(t('view_tiles')) + '" onclick="event.stopPropagation();_setLibraryView(\'tiles\')">' + gridSvg + '</button>' +
     '</span>';
 }
 
@@ -8385,7 +8413,7 @@ function _moonIsWaxing(m) { return m.phase < 0.5; }
 // Today-card view: at the Almanac's chosen place, or celestial north up when
 // none was chosen (as the hero does).
 function _quickMoonView(date) {
-  var ll = _almChosenPlace();
+  var ll = _almPlaceOrZone();   // as the Almanac's hero turns it: the chosen place, else the time zone's city
   return ll ? _moonView(date, ll.lat, ll.lon) : _moonView(date, null, null);
 }
 
@@ -8717,7 +8745,7 @@ function _almFirstFrameHtml() {
     '<div class="almanac-moon-glow" style="background:radial-gradient(circle, rgba(232,224,208,' + (m.illumination / 100 * 0.15 + 0.02).toFixed(2) + ') 0%, transparent 65%)"></div>' +
     '<div class="almanac-moon-open"><div class="almanac-moon"><img class="almanac-moon-sprite moon-sprite" src="' + ALM_FIRST_DISC + '" alt="" width="200" height="200" /></div></div>' +
     '<div class="almanac-moon-name"><span id="alm-hc-phase">' + esc(_localMoonName(m.name)) + '</span></div>' +
-    (place ? '' : '<div class="almanac-moon-orient">' + esc(t('alm_moon_north_up')) + '</div>') +
+    (place ? '' : '<div class="almanac-moon-orient">&nbsp;</div>') +
     '</div><div class="alm-cards">' + cards + '</div></div></div>' +
     '<div class="alm-sky-info"><div id="almanac-sky-invite"' + (place ? '' : ' class="alm-ph-invite"') + '></div><div id="almanac-sky-cap" class="alm-sky-cap"></div></div>' +
     '<div class="almanac-sky-wrap"><canvas id="almanac-sky-canvas" aria-hidden="true"></canvas></div></div>';
@@ -17455,6 +17483,10 @@ function _appTileHtml(app, title, icon, names, openFn) {
 // Almanac is part of Zimi and always opens its own page, not the ZIM.
 // Their count lines are fixed strings: nothing is read to draw them.
 var _GAMES_ZIM = 'zimi_games';
+// The catalog's Games ZIM (scripts/build_games_kiwix.py) holds the same games under its own name: a library that has it
+// opens its games with the same header.
+var _GAMES_CATALOG_ZIM = 'zimi_mul_games';
+function _isGamesZimName(zim) { return zim === _GAMES_ZIM || zim === _GAMES_CATALOG_ZIM; }
 var _ALMANAC_ZIM = 'zimi_almanac';
 // A Zimi app wears the same line glyph on its Home tile, in Settings and in the breadcrumb once open.
 var _OWN_APP_TITLE = { games: 'app_games', almanac: 'app_almanac' };
@@ -17544,7 +17576,7 @@ var _GAME_ACT_SVG = {
 };
 var _GAME_ACT_KEY = { undo: 'game_undo', pause: 'game_pause', resume: 'game_resume' };
 function _isGamesZimOpen() {
-  return !!(readerOpen && !_almanacOpen && !_createOpen && mode !== 'manage' && currentArticle && currentArticle.zim === _GAMES_ZIM);
+  return !!(readerOpen && !_almanacOpen && !_createOpen && mode !== 'manage' && currentArticle && _isGamesZimName(currentArticle.zim));
 }
 function _isGamePage() { return !!(_gameHead && _isGamesZimOpen()); }
 // The shelf (ZimiGames' index page) is an app that owns the search box: what is typed filters the shelf in the page,
@@ -17568,7 +17600,7 @@ function _gameFrameZim() {
   try { var m = /^\/w\/([^/]+)\//.exec(_gameFrame().contentWindow.location.pathname); return m ? decodeURIComponent(m[1]) : ''; } catch (e) { return ''; }
 }
 function _gameFrameIs(win) {
-  return _gameFrameWindow(win) && readerOpen && !_almanacOpen && !_createOpen && mode !== 'manage' && _gameFrameZim() === _GAMES_ZIM;
+  return _gameFrameWindow(win) && readerOpen && !_almanacOpen && !_createOpen && mode !== 'manage' && _isGamesZimName(_gameFrameZim());
 }
 // What a ZimiGames page may ask of Zimi besides its header (builtin/games/librarykit.js Lib.leadOut, skydetective.js):
 //   {zimi: 'open', zim, path}                 an article (a map path may end in #map=zoom/lat/lon), the handler above

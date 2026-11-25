@@ -2066,6 +2066,8 @@
   "app_sources_many": "{n} מקורות",
   "alm_moon_open_3d": "פתיחת הירח בתלת־ממד",
   "alm_moon_north_up": "צפון למעלה",
+  "alm_moon_seen_from": "כפי שנראה מ{place}",
+  "alm_moon_seen_from_zone": "כפי שנראה מאזור הזמן שלכם",
   "sky_find_btn": "חפש בשמיים",
   "sky_find_ph": "נוגה, Sirius, Orion, M31…",
   "sky_find_none": "אין בשמיים דבר בשם הזה",

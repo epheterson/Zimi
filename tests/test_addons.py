@@ -538,7 +538,7 @@ def test_the_frozen_apps_keep_the_stdlib_modules_the_add_ons_import():
     newer = {"annotationlib"}
     assert all(m.split(".")[0] in sys.stdlib_module_names or m in newer for m in w.FROZEN_STDLIB)
     for spec in ("zimi_desktop.spec", "zimi_portable.spec"):
-        text = open(os.path.join(REPO, "desktop", spec), encoding="utf-8").read()
+        text = open(os.path.join(REPO, "packaging", "desktop", spec), encoding="utf-8").read()
         assert "FROZEN_STDLIB" in text, spec
 
 

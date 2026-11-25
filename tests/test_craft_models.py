@@ -79,6 +79,24 @@ def test_stock_materials_are_physical(key):
         assert (tex, ntex, mr) == (-1, -1, -1)
 
 
+def test_hubbles_arrays_are_blue_black_cells_not_tan():
+    b, npal, *_ = _read("hubble")
+    looks = [struct.unpack_from("<3f4B4h", b, 88 + 24 * i) for i in range(npal)]
+    cells = [x for x in looks if x[6] == cm.KIND_CELLS]
+    assert cells, "an array palette entry drawn as cells"
+    assert all(x[2] > 2 * x[0] and max(x[:3]) < 0.3 for x in cells), cells
+    assert not any(x[0] > x[2] and x[0] > 0.25 and x[1] < x[0] for x in looks), "no tan or brown entry left"
+
+
+def test_set_look_changes_only_the_one_entry():
+    b, npal, *_ = _read("hubble")
+    new = cm.set_look(b, 0, (0.1, 0.2, 0.3), 0.5, 0.25, cm.KIND_FOIL)
+    assert len(new) == len(b) and new[:88] == b[:88] and new[88 + 24:] == b[88 + 24:]
+    r, g, bl, rough, metal, flags, kind, *tex = struct.unpack_from("<3f4B4h", new, 88)
+    assert (round(r, 3), round(g, 3), round(bl, 3), rough, metal, kind) == (0.1, 0.2, 0.3, 128, 64, cm.KIND_FOIL)
+    assert tex == [-1, -1, -1, 0] or len(tex) == 4
+
+
 def test_stock_total_stays_where_it_was():
     total = sum(os.path.getsize(_path(k)) for k in STOCK)
     assert total <= MAX_TOTAL_BYTES, "the stock craft are %d bytes" % total

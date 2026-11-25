@@ -38,7 +38,7 @@ OFFER = {
 }
 
 
-def _build_hd(folder, out):
+def _build_hd(folder, out, legacy=False):
     from PIL import Image
 
     from zimi import creator
@@ -76,11 +76,27 @@ def _build_hd(folder, out):
         f.write(
             "Title: Almanac HD\nDescription: test tiles\nLanguage: eng\nCreator: test\nPublisher: test\n"
         )
-    creator.create_folder_zim(folder, out_path=out, register=False)
+    if legacy:
+        # 1.15.3's tile ZIM as its builder wrote it: the Name that tells it from the HD flavour of the same file name.
+        sys.path.insert(0, SCRIPTS)
+        import build_almanac_hd
+
+        Image.new("RGB", (48, 48), (40, 40, 60)).save(os.path.join(folder, "icon.png"))
+        build_almanac_hd.pack_zim(folder, out)
+    else:
+        creator.create_folder_zim(folder, out_path=out, register=False)
 
 
-#: What the library holds: nothing; the HD flavour of the Almanac (tiles under hd/); or 1.15.3's tiles-only ZIM.
-KINDS = {"without": None, "flavour": "/w/zimi_almanac_maxi/hd/", "tiles-only": "/w/zimi_almanac_hd/"}
+#: What the library holds: nothing; the HD flavour of the Almanac (tiles under hd/) under each generation of file names
+#: (1.16.1's ``zimi_almanac_hd_<month>``, 1.16.0's ``zimi_almanac_maxi_<month>``); or 1.15.3's tiles-only ZIM.
+KINDS = {
+    "without": None,
+    "flavour": "/w/zimi_almanac_hd/hd/",
+    "flavour-1160-names": "/w/zimi_almanac_maxi/hd/",
+    "tiles-only": "/w/zimi_almanac_hd/",
+}
+#: The file a kind of flavour is written as: by the builder (current names) or renamed to (the older ones).
+FLAVOUR_FILES = {"flavour": "zimi_almanac_hd_2026-11.zim", "flavour-1160-names": "zimi_almanac_maxi_2026-11.zim"}
 SCRIPTS = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "scripts")
 
 
@@ -93,13 +109,16 @@ def _serve(tmp, kind, fresh=True):
     (tmp / "zims").mkdir(exist_ok=not fresh)
     (tmp / "data").mkdir()
     if kind == "tiles-only":
-        _build_hd(str(tmp / "stage"), str(tmp / "zims" / "zimi_almanac_hd_2026-11.zim"))
-    elif kind == "flavour":
+        _build_hd(str(tmp / "stage"), str(tmp / "zims" / "zimi_almanac_hd_2026-11.zim"), legacy=True)
+    elif kind in FLAVOUR_FILES:
         _build_hd(str(tmp / "stage"), str(tmp / "tiles.zim"))
         sys.path.insert(0, SCRIPTS)
         import build_almanac_maxi
 
         build_almanac_maxi.build(str(tmp / "tiles.zim"), str(tmp / "zims"), month="2026-11")
+        built = tmp / "zims" / FLAVOUR_FILES["flavour"]
+        if built.name != FLAVOUR_FILES[kind]:
+            built.rename(tmp / "zims" / FLAVOUR_FILES[kind])
     srv.ZIM_DIR, srv.ZIMI_DATA_DIR = str(tmp / "zims"), str(tmp / "data")
     srv.load_cache(force=True)
     httpd = ThreadingHTTPServer(("127.0.0.1", 0), ZimHandler)
@@ -340,16 +359,16 @@ def test_the_gear_offers_two_sizes_and_choosing_maximum_starts_it(browser, serve
         ctx.close()
 
 
-@pytest.mark.parametrize("flavour", ["standard", "maxi"])
+@pytest.mark.parametrize("flavour", ["standard", "flavour", "flavour-1160-names"])
 def test_a_flavour_opened_alone_is_the_almanac_and_the_hd_one_draws_its_own_tiles(browser, tmp_path, flavour):
     """What Kiwix does: the ZIM's page with nothing of Zimi's app around it (?raw=1), reading only its own files. The
     standard flavour starts with no page error and no tile; the HD flavour draws the sharp tiles from hd/ inside itself."""
     import zimi.server as srv
 
     old = (srv.ZIM_DIR, srv.ZIMI_DATA_DIR)
-    if flavour == "maxi":
-        httpd = _serve(tmp_path, "flavour")
-        page = "/w/zimi_almanac_maxi/index.html?raw=1"
+    if flavour != "standard":
+        httpd = _serve(tmp_path, flavour)
+        page = KINDS[flavour][: -len("hd/")] + "index.html?raw=1"
     else:
         from zimi import ownzims
 
@@ -377,8 +396,9 @@ def test_a_flavour_opened_alone_is_the_almanac_and_the_hd_one_draws_its_own_tile
             pg.evaluate("_ae.dist = AE_TARGETS.earth.min; _ae.dirty = true; _aeKick()")
             _settle(pg, "() => { var d = (" + DRAWN + ")(); return d && d.length && d.every(z => z === 2); }")
             tiles = [u for u in reqs if u.endswith(".webp") and "/earth/day/" in u and "/hd/" in u]
-            assert tiles and all("/w/zimi_almanac_maxi/hd/earth/day/" in u for u in tiles), tiles[:3]
-            assert not [u for u in reqs if "zimi_almanac_hd" in u]
+            assert tiles and all(KINDS[flavour] + "earth/day/" in u for u in tiles), tiles[:3]
+            others = [n for n in ("zimi_almanac_hd", "zimi_almanac_maxi") if "/w/%s/" % n not in KINDS[flavour]]
+            assert not [u for u in reqs if any("/w/%s/" % n in u for n in others)]
         assert errors == []
     finally:
         ctx.close()
@@ -537,7 +557,7 @@ def test_a_maximum_the_release_does_not_carry_is_said_in_the_gear(browser, serve
 
 def test_removing_the_installed_size_puts_the_standard_maps_back_without_a_reload(browser, served):
     with_hd, url, base = served
-    if not with_hd or base != "/w/zimi_almanac_maxi/hd/":
+    if not with_hd or not base.endswith("/hd/"):
         pytest.skip("needs the flavour's tiles installed")
     after = dict(OFFER, installed=False, kind=None, sizes={}, absent={})
     ctx, pg, tiles = _open_earth(browser, url, route_hd=dict(INSTALLED, base=base, parts={}), base=base)

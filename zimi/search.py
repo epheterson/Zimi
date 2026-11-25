@@ -1275,6 +1275,9 @@ def _loadavg_throttle(threshold_ratio=0.8, max_sleep=2.0):
     """
     if os.environ.get("ZIMI_INDEX_THROTTLE", "1") == "0":
         return
+    from zimi import subproc
+
+    subproc.wait_for_memory()
     try:
         load_5min = os.getloadavg()[1]
     except (AttributeError, OSError):
@@ -1307,12 +1310,34 @@ _CHILD_PYTHON = (
 )
 
 
-def _zim_entry_count(zim_name):
+_header_counts = {}
+
+
+def zim_entry_count(zim_name, zim_path=None):
+    """How many entries a ZIM holds: the library list's count, or, while that still reads "?" (a cold start, before the
+    background measure has opened the file), the count in the ZIM's own header, which costs one open and no scan. 0 only
+    when neither can be read. The builders choose their process and the Q-ID pass its size cap by this number, and a
+    "?" taken as 0 made the biggest ZIM of a cold start the one built on a server thread."""
     for z in _srv._zim_list_cache or []:
         if z.get("name") == zim_name:
             entries = z.get("entries", 0)
-            return entries if isinstance(entries, int) else 0
-    return 0
+            if isinstance(entries, int):
+                return entries
+    zim_path = zim_path or _srv.get_zim_files().get(zim_name)
+    if not zim_path:
+        return 0
+    try:
+        key = (zim_path, os.path.getsize(zim_path), os.path.getmtime(zim_path))
+        if key not in _header_counts:
+            from libzim.reader import Archive
+
+            _header_counts[key] = Archive(zim_path).entry_count
+        return _header_counts[key]
+    except Exception:
+        return 0
+
+
+
 
 
 def _build_index_isolated(
@@ -1327,10 +1352,26 @@ def _build_index_isolated(
     unless the build says otherwise: a build that reads every entry pays per
     entry, one that reads a file per video pays per video. A frozen desktop
     build has no `python -m` to start, and builds in this process."""
+    from zimi import subproc
+
     if min_entries is None:
         min_entries = _ISOLATE_BUILD_MIN_ENTRIES
-    if getattr(sys, "frozen", False) or _zim_entry_count(zim_name) < min_entries:
-        return build_fn(zim_name, zim_path)
+    with _build_gate:
+        # Free memory first: a build over a tight host is the one that gets the container killed.
+        subproc.wait_for_memory()
+        if subproc.stopping.is_set():
+            raise RuntimeError(f"{kind} index build skipped: the server is stopping")
+        if getattr(sys, "frozen", False) or zim_entry_count(zim_name, zim_path) < min_entries:
+            return build_fn(zim_name, zim_path)
+        return _run_build_child(kind, zim_name, zim_path, close_fn)
+
+
+# One disk-heavy builder at a time, whatever it builds: titles, Q-IDs, details, places and documents used to queue
+# only behind their own kind, so after a reboot five kinds read the same disk at once.
+_build_gate = threading.RLock()
+
+
+def _run_build_child(kind, zim_name, zim_path, close_fn):
     from zimi import subproc
 
     cmd = [
@@ -4673,10 +4714,13 @@ _CHILD_NICE = 19
 
 
 def _yield_to_the_server():
+    from zimi import subproc
+
     try:
         os.nice(_CHILD_NICE)
     except (AttributeError, OSError):
         pass  # Windows has no nice; the build still runs, at normal priority
+    subproc.idle_io()   # nice orders the CPU only; this puts its reads behind everyone else's
 
 
 def _build_index_child_main(kind, data_dir, zim_name, zim_path):

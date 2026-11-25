@@ -308,7 +308,14 @@ html[data-anim="off"] *, html[data-anim="off"] *::before, html[data-anim="off"] 
 .sh-bar .sh-nav { flex: 1 1 0; min-width: 0; margin: 0; -webkit-mask-image: linear-gradient(to right, #000 calc(100% - 28px), transparent); mask-image: linear-gradient(to right, #000 calc(100% - 28px), transparent); }
 [dir="rtl"] .sh-bar .sh-nav { margin: 0; -webkit-mask-image: linear-gradient(to left, #000 calc(100% - 28px), transparent); mask-image: linear-gradient(to left, #000 calc(100% - 28px), transparent); }
 .sh-bar .sh-tools { flex: none; }
-@media (min-width: 900px) { [data-view="index"] .sh-bar { display: block; margin-bottom: 0; } [data-view="index"] .sh-bar .sh-nav { margin: 0 0 22px; } }
+@media (min-width: 900px) {
+  [data-view="index"] .sh-bar { display: block; margin-bottom: 0; }
+  [data-view="index"] .sh-bar .sh-nav { margin: 12px 0 22px; }
+  /* In Zimi the room and the settings button share the rail's first line, the types under them (shelf.js placeTools). */
+  html.gs-hosted [data-view="index"] .sh-bar { display: flex; flex-wrap: wrap; }
+  html.gs-hosted [data-view="index"] .sh-bar .sh-nav { flex: 1 0 100%; order: 1; margin: 6px 0 22px; }
+  html.gs-hosted [data-view="index"] .sh-bar .sh-tools { margin-inline-start: auto; }
+}
 html.gs-hosted .ar-shelf header:not(:has(.sh-tools)) { display: none; }
 /* Every sideways scroller's bar, one rule: the twin of Zimi's tokens.css hscroll block, which this ZIM cannot load. A
    finger swipes and sees no bar; a mouse gets a thin bar, always there but clear, that takes the thumb's colour on hover,

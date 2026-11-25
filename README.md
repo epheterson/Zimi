@@ -36,31 +36,31 @@ Use as much as you need:
 
 | Homepage | Search Results |
 |----------|---------------|
-| ![Homepage](screenshots/homepage.png) | ![Search](screenshots/search.png) |
+| <img alt="Homepage" src="docs/screenshots/homepage.png" width="400"> | <img alt="Search" src="docs/screenshots/search.png" width="400"> |
 
 | Almanac | Solar system |
 |---------|--------------|
-| ![Almanac](screenshots/almanac.png) | ![Solar system](screenshots/solar-system.png) |
+| <img alt="Almanac" src="docs/screenshots/almanac.png" width="400"> | <img alt="Solar system" src="docs/screenshots/solar-system.png" width="400"> |
 
 | Games | ZimCity |
 |-------|---------|
-| ![Games](screenshots/games.png) | ![ZimCity](screenshots/zimcity.png) |
+| <img alt="Games" src="docs/screenshots/games.png" width="400"> | <img alt="ZimCity" src="docs/screenshots/zimcity.png" width="400"> |
 
 | Zimipedia | Bookshelf |
 |-----------|-----------|
-| ![Zimipedia](screenshots/zimipedia.png) | ![Bookshelf](screenshots/bookshelf.png) |
+| <img alt="Zimipedia" src="docs/screenshots/zimipedia.png" width="400"> | <img alt="Bookshelf" src="docs/screenshots/bookshelf.png" width="400"> |
 
 | Maps | ZimiTube |
 |------|----------|
-| ![Maps](screenshots/maps.png) | ![ZimiTube](screenshots/zimitube.png) |
+| <img alt="Maps" src="docs/screenshots/maps.png" width="400"> | <img alt="ZimiTube" src="docs/screenshots/zimitube.png" width="400"> |
 
 | Reddot | Catalog |
 |--------|---------|
-| ![Reddot](screenshots/reddot.png) | ![Catalog](screenshots/browse-library.png) |
+| <img alt="Reddot" src="docs/screenshots/reddot.png" width="400"> | <img alt="Catalog" src="docs/screenshots/browse-library.png" width="400"> |
 
 | Sharing | Make a ZIM |
 |---------|------------|
-| ![Sharing](screenshots/sharing.png) | ![Create](screenshots/create.png) |
+| <img alt="Sharing" src="docs/screenshots/sharing.png" width="400"> | <img alt="Create" src="docs/screenshots/create.png" width="400"> |
 
 ## Install
 
@@ -133,11 +133,11 @@ zimi-mcp /path/to/zims
 
 ## Contributing
 
-Issues and ideas are welcome, and every one gets answered. See [CONTRIBUTING.md](CONTRIBUTING.md); security reports go privately per [SECURITY.md](SECURITY.md).
+Issues and ideas are welcome, and every one gets answered. See [CONTRIBUTING.md](.github/CONTRIBUTING.md); security reports go privately per [SECURITY.md](.github/SECURITY.md).
 
 ## License
 
-[GPL-3.0-or-later](LICENSE), like the Kiwix and openZIM libraries it builds on; 1.13.3 and earlier were MIT. Desktop and Docker builds bundle [libtorrent-rasterbar](https://libtorrent.org/) (BSD-3-Clause), see [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).
+[GPL-3.0-or-later](LICENSE), like the Kiwix and openZIM libraries it builds on; 1.13.3 and earlier were MIT. Desktop and Docker builds bundle [libtorrent-rasterbar](https://libtorrent.org/) (BSD-3-Clause), see [THIRD_PARTY_NOTICES.md](docs/THIRD_PARTY_NOTICES.md).
 
 ---
 

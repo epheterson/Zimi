@@ -222,14 +222,27 @@
     els.mean.textContent = T('fiveletters.mean', { word: shown() });
     paintLearn();
   }
-  // Inside Zimi with the Dictionary on, the round's word opens there (and the in-page meaning steps aside).
+  // Inside Zimi, the round's word is read where its own language is: in the Dictionary when a Wiktionary in the game's
+  // language is installed (and the in-page meaning steps aside), else in that language's Wikipedia when it has the page,
+  // else nowhere (Lib.wordHome).
   function paintLearn() {
     els.learn.hidden = true;
     if (!game || game.status === 'playing') return;
-    var g = game, w = game.title || game.answer;
-    Lib.dictionaryOn().then(function (on) {
-      if (!on || g !== game || game.status === 'playing') return;
-      Lib.wordLink(els.learn, w); els.learn.textContent = T('learn.dictionary', { word: w }); els.learn.hidden = false; els.mean.hidden = true;
+    var g = game, w = game.title || game.answer, stale = function () { return g !== game || game.status === 'playing'; };
+    Lib.zims().then(function (list) {
+      var home = stale() ? null : Lib.wordHome(list, cur ? cur.lang : 'en');
+      if (!home) return;
+      if (home.kind === 'dictionary') {
+        return Lib.dictionaryOn().then(function (on) {
+          if (!on || stale()) return;
+          Lib.wordLink(els.learn, w); els.learn.textContent = T('learn.dictionary', { word: w }); els.learn.hidden = false; els.mean.hidden = true;
+        });
+      }
+      var path = w.charAt(0).toUpperCase() + w.slice(1);
+      return Lib.hasPage(home.zim, path).then(function (has) {
+        if (!has || stale()) return;
+        Lib.articleLink(els.learn, home.zim, path); els.learn.textContent = T('learn.article', { word: w }); els.learn.hidden = false;
+      });
     });
   }
   // A win: the row hops tile by tile, as the end sheet is about to come up.

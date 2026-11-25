@@ -136,6 +136,31 @@ def test_a_device_on_the_network_sets_it_up_with_the_key(served, browser):
     )
 
 
+def test_the_first_frames_are_welcome_never_home(served, browser):
+    """Home's top bar and tiles never paint before the setup card: the server
+    stamps the page, so the very first frame is Welcome's backdrop."""
+    base, _ = served
+    ctx = browser.new_context(viewport=VIEW, extra_http_headers=LAN_VIA_PROXY)
+    page = ctx.new_page()
+    page.add_init_script(
+        """
+        window.__homeSeen = false;
+        (function tick() {
+          var bar = document.querySelector('.topbar'), main = document.getElementById('main-view');
+          [bar, main].forEach(function(el) {
+            if (el && getComputedStyle(el).visibility !== 'hidden') window.__homeSeen = true;
+          });
+          requestAnimationFrame(tick);
+        })();
+        """
+    )
+    page.goto(base)
+    page.wait_for_selector("#setup-overlay.open")
+    page.wait_for_timeout(300)
+    assert page.evaluate("window.__homeSeen") is False
+    assert page.get_attribute("html", "data-zimi-setup") == "1"
+
+
 def test_the_internet_sees_only_that_it_is_being_set_up(served, browser):
     base, _ = served
     page = _page(browser, base, INTERNET)

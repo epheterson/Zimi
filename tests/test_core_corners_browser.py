@@ -123,8 +123,13 @@ def test_empty_hint_uses_the_secondary_text_colour(base, scheme):
 
     with sync_playwright() as pw:
         br, pg = _page(pw, scheme)
-        _search(pg, base, "zzzqqq")
-        pg.wait_for_selector(".empty .hint", timeout=30000)
+        # A word of its own per scheme: the server keeps a search's answer, and the second run must ask afresh.
+        _search(pg, base, "zzzqqq" if scheme == "dark" else "qqqzzz")
+        try:
+            pg.wait_for_selector(".empty .hint", timeout=30000)
+        except Exception:
+            # Say what the page showed instead of only that the wait ran out.
+            raise AssertionError("no hint under the empty line; the output was: " + repr(pg.inner_text("#output")[:400]))
         same = pg.evaluate(
             "() => { const h = document.querySelector('.empty .hint'), p = document.querySelector('.empty p');"
             " const hs = getComputedStyle(h), ps = getComputedStyle(p);"

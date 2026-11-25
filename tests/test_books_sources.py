@@ -495,6 +495,18 @@ def test_an_epub_with_an_oversized_directory_is_refused_before_it_is_read(monkey
         epub.Book(data)
 
 
+def test_a_zip64_locator_cannot_hide_a_big_directory_behind_a_small_end_record(monkeypatch):
+    from zimi import epub
+
+    data = fx.gutenberg_epub()
+    at = data.rfind(b"PK\x05\x06")
+    locator = b"PK\x06\x07" + bytes(16)  # the end record itself still says "small"
+    forged = data[:at] + locator + data[at:]
+    monkeypatch.setattr(epub.zipfile, "ZipFile", lambda *a, **k: pytest.fail("the directory was read"))
+    with pytest.raises(epub.EpubError, match="directory too large"):
+        epub.Book(forged)
+
+
 def _swap(data, name, text):
     import io
     import zipfile

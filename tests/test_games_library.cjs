@@ -50,6 +50,13 @@ const Lib = load(['librarykit.js']).GamesLib;
     check(de.zim.name === 'wikipedia' && !de.exact, 'kit: no ZIM in their language falls back to English');
     check(Lib.pickZim(list, 'wikibooks', 'en') === null, 'kit: a project the library lacks gives null');
     check(Lib.pickZim([list[4]], 'wikipedia', 'en') === null, 'kit: a map is not a wiki');
+    // A word is read where its own language is: a Wiktionary in it, else its Wikipedia, else nowhere.
+    check(same(Lib.wordHome(list, 'en'), { kind: 'dictionary' }), 'kit: a Wiktionary in the game\'s language leads to the Dictionary');
+    check(same(Lib.wordHome(list, 'fr-CA'), { kind: 'article', zim: 'wikipedia_fr' }), 'kit: no Wiktionary in the language, its Wikipedia instead');
+    check(Lib.wordHome(list, 'de') === null, 'kit: neither in the language, no link (not English\'s)');
+    const other = [{ name: 'wiktionary_eo', kind: 'wiki', project: 'wiktionary', language: 'epo' }, { name: 'wiktionary_la', kind: 'wiki', project: 'wiktionary', language: 'la' }];
+    check(Lib.wordHome(other, 'en') === null, 'kit: only Esperanto and Latin Wiktionaries, an English word has no home');
+    check(same(Lib.wordHome(other.concat([list[0]]), 'en'), { kind: 'article', zim: 'wikipedia' }), 'kit: the English Wikipedia stands in for the missing English Wiktionary');
 
     check(Lib.resolvePath('wikipedia', 'Paris', './France') === 'France', 'kit: a relative link resolves to its path');
     check(Lib.resolvePath('wikipedia', 'A/B', '../C') === 'C', 'kit: a link up a folder resolves');

@@ -65,7 +65,7 @@ milkyway-v1.webp
   floor subtracted, resized to 2048x1024, WebP quality 90. Longitude runs to
   the left from the centre (l = 0 in the middle), latitude +90 at the top;
   almanac-skygl.js _sgGalUV is that map. Drawn behind the stars of the live
-  sky (almanac-sky.js). Credited in THIRD_PARTY_NOTICES.md.
+  sky (almanac-sky.js). Credited in docs/THIRD_PARTY_NOTICES.md.
 
 constellations-v1.json
   The 88 IAU constellations' figures and label places, packed by
@@ -114,7 +114,7 @@ landmarks-earth-v1.json, landmarks-earth-names-<lang>-v1.json
   with 23 to 85 KB (9 to 19 KB compressed) of names for the reader's language, fetched the first time the Landmarks layer
   is on with the Earth in view, or a name is searched for; never with the page.
 
-Almanac HD (zimi_almanac_maxi_<month>.zim, not in this folder: the HD flavour of the
+Almanac HD (zimi_almanac_hd_<month>.zim, not in this folder: the HD flavour of the
 Almanac, built on each release from a pinned tile source and fetched once on an
 admin's yes; zimi/almanachd.py, scripts/build_almanac_maxi.py)
   The Earth and the Moon as 512 px tile pyramids, built by
@@ -237,6 +237,8 @@ craft-<model>-v1.bin (scripts/build_craft_models.py)
     https://github.com/nasa/NASA-3D-Resources/blob/master/3D%20Models/Chandra%20X-ray%20Observatory/Chandra%20X-ray%20Observatory.glb
     (hubble and chandra were Sent-chooser pictures only; on 2026-11-22 they became stock models, with elements from CelesTrak's
     "science" group: zimi/satellites.py, scripts/build_satellite_snapshot.py)
+  gaia: a reconstruction written for Zimi from ESA's published dimensions (scripts/build_sent_models.py --stock; 23 KB, 9.5 m across the
+  sunshield), turned sunshield-first toward the Sun like Webb (the 3D view draws only craft that have a model)
   (kepler, newhorizons to lucy moved here from the Almanac HD pack on 2026-11-21 so the standard Almanac draws them; the pack's
   textured versions of New Horizons, Clipper, OSIRIS-REx, Psyche and Lucy still upgrade them where it is installed.)
   Each material as a palette entry of up to twelve (colour, roughness,

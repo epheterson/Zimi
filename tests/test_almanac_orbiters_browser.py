@@ -171,3 +171,67 @@ def test_the_station_still_flies(page):
     page.evaluate("() => _aeGoPick('iss')")
     page.wait_for_function("() => { _ae.dirty = true; _aeKick(); return _ae.target === 'iss' && !_ae.fly && _ae.gl.iss && _ae.gl.iss.root.visible; }", timeout=120_000, polling=300)
     assert math.isfinite(page.evaluate("() => _aeLen(_ae.issPos)"))
+
+
+def test_the_all_satellites_layer_draws_no_second_dot_for_the_station_or_the_telescopes(page):
+    page.evaluate("() => { _aeSatsAllSet(true); }")
+    page.wait_for_function("() => typeof _as !== 'undefined' && !!_as.data && !!_as.cloud && _as.data.n > 0", timeout=120_000, polling=300)
+    got = page.evaluate(
+        """() => {
+          var own = [25544, 20580, 25867], d = _as.data, out = { n: d.n, shown: [], own: [] };
+          for (var i = 0; i < d.n; i++) {
+            if (own.indexOf(d.norad[i]) < 0) continue;
+            out.own.push(d.norad[i]);
+            if (_asVisible(i) && _as.cloud.geometry.attributes.aSize.array[i] > 0) out.shown.push([d.norad[i], d.name[i]]);
+          }
+          return out;
+        }"""
+    )
+    page.evaluate("() => { _aeSatsAllSet(false); }")
+    assert got["n"] > 0 and got["own"], ("the catalogue holds them", got)
+    assert got["shown"] == [], ("a craft with a dot and a model of its own is not drawn twice", got)
+
+
+# The page's own loop on a virtual 60 fps clock with the renderer stubbed to a no-op (software GL is far too slow to time frames).
+# Each frame records where the camera stands from the craft and the camera's side of it: along the way to the Earth's middle.
+RIDE_FRAMES = """([key, rate, frames]) => {
+  var NOW = Date.now(), PERF = performance.now(), RealDate = Date;
+  window.Date = class extends RealDate { constructor(...a) { if (a.length) super(...a); else super(NOW); } static now() { return NOW; } };
+  performance.now = function () { return PERF; };
+  var cbs = [], draw = _ae.gl.renderer.render, rows = [], raf = window.requestAnimationFrame, caf = window.cancelAnimationFrame, perf = performance.now;
+  window.requestAnimationFrame = function (cb) { cbs.push(cb); return cbs.length; };
+  window.cancelAnimationFrame = function () {};
+  _ae.gl.renderer.render = function () {};
+  _almFocus = new RealDate(NOW); _almClockSetRate(rate);
+  _ae.dirty = true; _ae.raf = 0; if (_ae.idleTimer) clearTimeout(_ae.idleTimer); _ae.idleTimer = 0;
+  for (var i = 0; i < frames; i++) {
+    NOW += 1000 / 60; PERF += 1000 / 60;
+    var pend = cbs; cbs = [];
+    if (!_ae.raf && !pend.length) { if (i % 6 === 0) _aeKick(); pend = cbs; cbs = []; }
+    pend.forEach(function (cb) { cb(PERF); });
+    var o = _aeOrbiter[key], c = _ae.gl.camera.position;
+    if (!o) continue;
+    var off = _aeNorm(_aeSub([c.x, c.y, c.z], o.pos)), down = _aeNorm(_aeScale(o.pos, -1));
+    rows.push({ toEarth: _aeDot(off, down), inSpace: off, dist: _aeLen(_aeSub([c.x, c.y, c.z], o.pos)) });
+  }
+  window.Date = RealDate; _ae.gl.renderer.render = draw; window.requestAnimationFrame = raf; window.cancelAnimationFrame = caf; performance.now = perf;
+  _almFocus = new RealDate(); _almClockSetRate(1); _ae.raf = 0; _ae.dirty = true; _aeKick();
+  return rows;
+}"""
+
+
+def test_the_camera_rides_along_with_the_telescope_and_keeps_its_side_of_it(page):
+    """The view of a telescope goes round with it (as the station's does): the camera keeps its place in the craft's own axes,
+    so the Earth stays on the same side while the craft goes round it, and the camera's direction in space turns.
+    """
+    key = "hubble"   # (the page's clock is left wound on after it, so one telescope: Chandra's ride is the same code)
+    page.evaluate("() => _aePreset('earth')")
+    page.wait_for_function("() => { _ae.dirty = true; _aeKick(); return !_ae.fly; }", timeout=60_000, polling=300)
+    _arrive(page, key)
+    rows = page.evaluate(RIDE_FRAMES, [key, 300, 240])
+    assert len(rows) > 200, len(rows)
+    side = [r["toEarth"] for r in rows]
+    assert max(side) - min(side) < 0.02, ("the Earth stays on the same side of the camera", min(side), max(side))
+    first, last = rows[0]["inSpace"], rows[-1]["inSpace"]
+    assert sum(a * b for a, b in zip(first, last)) < 0.9, ("and the camera's direction in space turns with the craft", first, last)
+    assert max(r["dist"] for r in rows) - min(r["dist"] for r in rows) < 1e-9 + 0.01 * rows[0]["dist"], "its distance holds"

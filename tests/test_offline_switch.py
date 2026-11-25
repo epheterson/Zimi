@@ -21,7 +21,7 @@ REPO_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, REPO_ROOT)
 # The desktop launcher lives outside the package (same convention as
 # test_winsparkle.py).
-sys.path.insert(0, os.path.join(REPO_ROOT, "desktop"))
+sys.path.insert(0, os.path.join(REPO_ROOT, "packaging", "desktop"))
 
 import zimi.library as library  # noqa: E402
 import zimi.p2p as p2p  # noqa: E402

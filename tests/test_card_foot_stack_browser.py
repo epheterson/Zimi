@@ -38,14 +38,13 @@ def _boxes(width, grid_class):
     return out
 
 
-@pytest.mark.local_gate
 def test_marks_stack_in_a_column_above_the_dots_on_a_wide_row():
     pytest.importorskip("playwright")
     if not renderer.browser_available():
         pytest.skip("playwright + chromium are not usable here")
     o = _boxes(390, "stats-grid pick-grid")
-    lefts = {round(m[0]) for m in o["marks"]}  # their right edges: the marks are glyphs of different widths, so only the edge they stack on is one line
+    rights = [m[0] for m in o["marks"]]  # their right edges: the marks are glyphs of different widths, so only the edge they stack on is one line
     tops = [m[1] for m in o["marks"]]
-    assert len(lefts) == 1, o  # one column
+    assert max(rights) - min(rights) <= 1.5, o  # one column (a font's sub-pixel advance may differ by under a pixel)
     assert tops == sorted(tops) and len(set(tops)) == 3, o  # one under the other
     assert o["more"][1] > o["marks"][-1][1], o  # the dots (a 44px touch box) sit below the last mark

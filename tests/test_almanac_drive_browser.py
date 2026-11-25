@@ -74,7 +74,7 @@ def test_the_lunar_rover_covers_the_distance_its_top_speed_allows(page):
 STICK_SPEED = "() => { var e = document.getElementById('ah-read'); return e ? e.textContent : null; }"   # the speed is the info corner's reading, bottom left
 
 
-def test_pushing_further_runs_the_drive_at_x10_and_never_touches_the_clock(page):
+def test_pushing_further_runs_the_drive_at_x10_and_the_clock_runs_with_it_only_while_it_lasts(page):
     base._visit(page, "moon", "Apollo 15", drive=True)
     page.evaluate("() => _almClockSetRate(1)")
     d = _run_distance(page, False)
@@ -84,10 +84,11 @@ def test_pushing_further_runs_the_drive_at_x10_and_never_touches_the_clock(page)
     page.evaluate(
         "() => { var s = _ae.site; s.input.fast = true; s.input.keys.f = true; _aeSiteAdvance(3); s.speedAt = 0; _asSpeedShow(s); }"
     )
-    assert page.evaluate("() => _almRate") == 1, "the shared clock is the person's: a drive never sets it"
+    assert page.evaluate("() => _almRate") == 10, "the universe runs at the pace the drive is sped up to (the time chip shows it)"
     shown = page.evaluate(STICK_SPEED)
     bar = page.evaluate("() => document.querySelector('.ae-pin .alm-ck-r').textContent")
     page.evaluate("() => { var s = _ae.site; s.input.fast = false; s.input.keys.f = false; _aeSiteAdvance(0.1); }")
+    assert page.evaluate("() => _almRate") == 1, "the person's own pace is back the moment the speed-up ends"
     assert any(u in shown for u in ("mph", "km/h", "mi/h")), shown
     assert not any(w in shown for w in ("ft", " m ")), "one number with its unit: no heading, no distance"
     assert not any(u in bar for u in ("mph", "km/h", "mi/h")), "the speed is the chip's own reading, never the clock's rate: " + bar

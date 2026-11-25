@@ -201,6 +201,7 @@ VARS: dict[str, tuple[str, str]] = {
     # ── performance and limits ────────────────────────────────────────────
     "ZIMI_HOT_ZIMS": ("ZIMs to keep warm, so the first search is fast", ""),
     "ZIMI_INDEX_THROTTLE": ("Slows index building to spare the disk", ""),
+    "ZIMI_BUILD_MIN_FREE_MB": ("Background index builds wait until this much memory is free (MB, 300 unless set)", ""),
     "ZIMI_BUILTIN_ZIMS": ("Serves Zimi's own ZIMs, ZimiGames and the Almanac", ""),
     "ZIMI_RATE_LIMIT": ("Requests per minute, anonymous", ""),
     "ZIMI_RATE_LIMIT_TRUSTED": ("Requests per minute, signed in", ""),

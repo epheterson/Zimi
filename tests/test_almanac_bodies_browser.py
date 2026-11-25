@@ -21,13 +21,12 @@ import test_almanac_hd_browser as hdb  # noqa: E402
 from test_almanac_hd_browser import _open_earth, _settle  # noqa: E402,F401
 
 LAYERS = {"planets/pluto": 2, "planets/io": 2}
+SCRIPTS = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "scripts")
 SHOTS = os.environ.get("ZIMI_SHOTS")
 
 
 def _fixture_hd(folder, out):
     from PIL import Image, ImageDraw
-
-    from zimi import creator
 
     for layer, top in LAYERS.items():
         for z in range(top + 1):
@@ -60,7 +59,13 @@ def _fixture_hd(folder, out):
         f.write(
             "Title: Almanac HD\nDescription: test tiles\nLanguage: eng\nCreator: test\nPublisher: test\n"
         )
-    creator.create_folder_zim(folder, out_path=out, register=False)
+    # 1.15.3's tile ZIM as its builder wrote it: the Name that tells it from HD (tiles under hd/) is what makes
+    # the server serve its tiles from the top of the ZIM.
+    sys.path.insert(0, SCRIPTS)
+    import build_almanac_hd
+
+    Image.new("RGB", (48, 48), (40, 40, 60)).save(os.path.join(folder, "icon.png"))
+    build_almanac_hd.pack_zim(folder, out)
 
 
 @pytest.fixture(scope="module")

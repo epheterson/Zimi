@@ -4201,6 +4201,7 @@
   "lastline.readyKeys": "按任意键开始",
   "lastline.readyTouch": "点按开始。移动并开火",
   "lastline.wave": "第 {n} 波",
+  "learn.article": "阅读“{word}”的文章",
   "learn.dictionary": "在词典中查找 {word}",
   "learn.map": "在地图上打开 {place}",
   "letters.air": {

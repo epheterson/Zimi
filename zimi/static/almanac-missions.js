@@ -732,9 +732,10 @@ function _amHandoff(m, pi) {
   if (typeof _aeSitesLoad !== 'function') return;
   _aeSitesLoad();
   if (typeof _aeLmLoad === 'function') _aeLmLoad();
-  var waited = 0;
+  var waited = 0, began = performance.now();
   var go = function () {
     if (!_ae || !_ae.mission || _amMission() !== m) return;
+    if ((_ae.mission.scrubAt || 0) >= began) return;   // a drag since it began (the site's data was still loading): the user took the clock back
     var row = _amLandingRow(m.handoff.site, m.handoff.body);
     if (!row || typeof _aeSiteVisit !== 'function' || typeof _asData === 'undefined' || !_asData) {
       if ((waited += AM_POLL_MS) < AM_SITE_WAIT_MS) setTimeout(go, AM_POLL_MS);

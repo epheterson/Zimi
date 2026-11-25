@@ -1429,7 +1429,7 @@ def lookup(word, langs=(), names=(), every=False):
     out["langs"] = list(groups.values())
     out["found"] = bool(out["langs"])
     if not out["found"]:
-        out["near"] = [s["w"] for s in suggest(word)["words"] if s["w"] != word][:8]
+        out["near"] = [s["w"] for s in suggest(word, langs=langs)["words"] if s["w"] != word][:8]
     return out
 
 
@@ -1445,9 +1445,20 @@ def _ordered_sources(langs):
     )
 
 
-def suggest(q, limit=SUGGEST_MAX):
+def _in_languages(ws, langs):
+    """The Wiktionaries written in one of ``langs`` (codes); all of ``ws``
+    when none is, so a reader whose language has no Wiktionary here still
+    gets the ones that exist."""
+    langs = {_primary(c) for c in langs or () if c}
+    mine = [w for w in ws if _primary(w["lang"]) in langs]
+    return mine or ws
+
+
+def suggest(q, limit=SUGGEST_MAX, langs=()):
     """Words starting with ``q`` across the Wiktionaries: ``{"words": [{"w",
-    "zims"}]}``, each word once, in the order the indexes give them."""
+    "zims"}]}``, each word once, in the order the indexes give them. With
+    ``langs`` the words come from the Wiktionaries in those languages, when
+    there are any."""
     from zimi.search import (
         _get_suggest_archive,
         _title_index_search,
@@ -1458,7 +1469,7 @@ def suggest(q, limit=SUGGEST_MAX):
     out = collections.OrderedDict()
     if not q:
         return {"q": q, "words": []}
-    for w in wiktionaries():
+    for w in _in_languages(wiktionaries(), langs):
         name = w["name"]
         hits = None
         try:

@@ -254,7 +254,7 @@ fi
 # ---------------------------------------------------------------------------
 # Deployment manifests + ZIMs
 # ---------------------------------------------------------------------------
-cp "$REPO_ROOT/deploy/docker-compose.yml" "$REPO_ROOT/deploy/kubernetes.yaml" "$OUT_DIR/deploy/"
+cp "$REPO_ROOT/packaging/deploy/docker-compose.yml" "$REPO_ROOT/packaging/deploy/kubernetes.yaml" "$OUT_DIR/deploy/"
 
 ZIM_COUNT=0
 if [ ${#ZIM_PATHS[@]} -gt 0 ]; then

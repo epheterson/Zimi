@@ -48,7 +48,7 @@ var AS_STICK_R_PX = AE_STICK_R_PX, AS_STICK_ZONE = AE_STICK_ZONE, AS_STICK_OUTER
 var AS_EDGE_PX = 22, AS_TAP_AREA_PX = 44, AS_DOT_PX = 12, AS_WALK_MAX_M = 250, AS_ARRIVAL_EL = 0.55, AS_ARRIVAL_FILL = 1.25;   // a part answers a tap this near its bounds; under DOT px wide it also wears a dot; the walk goes this far from the lander; the arrival view's height and how much room it leaves round the cluster
 var AS_ASCENT = { thrustN: 15570, massKg: 4500, burnKgS: 5.1, riseS: 10, pitchPerDeg: 1.5, pitchMaxDeg: 60, leadS: 8, endS: 70, stepS: 0.1 };   // the ascent engine: 15.6 kN (3,500 lbf), about 4.5 t at liftoff, 5.1 kg/s (Isp 311 s); a vertical rise of 10 s, then pitched forward
 var AS_ITEM_PX = 104, AS_NAME_PX = 12;   // a thing's width in the strip (its name takes two lines of it, never cut) and the size of every name at a site
-var AS_STRIP_H_PX = 108, AS_LAUNCH_GAP_PX = 8, AS_THUMB_PX = 56, AS_THUMBS_URL = _almAsset('/static/earth/site-thumbs-v1.webp');   // the strip of what is here: its height, a picture's size, the sheet of pictures
+var AS_STRIP_H_PX = 84, AS_NAME_LINE_PX = 22, AS_LAUNCH_GAP_PX = 8, AS_THUMB_PX = 56, AS_THUMBS_URL = _almAsset('/static/earth/site-thumbs-v1.webp');   // the strip of what is here: its height, a picture's size, the sheet of pictures
 var AS_SPAN_PARTS_M = 45;                                  // the first view holds what stands within this of the lander; an ALSEP or a parked rover far off is a tap away
 var AS_CAM_FOLLOW = { pos: 6, az: 2.2, yawBack: 0.7 };    // 1/s
 var AS_CHASE_EL = 0.36;
@@ -330,6 +330,7 @@ function _aeSiteGround(body) {
 function _aeSiteLeave(quiet, handover, keepClock) {
   var st = _ae && _ae.site;
   if (!st) return;
+  if (typeof _asClockLetGo === 'function') _asClockLetGo(st);   // a drive's speed-up lent the clock its pace: the person's own comes back
   _ae.site = null;
   _ae.move = null;
   if (!keepClock && st.clock0 && typeof _aeGoTo === 'function') {   // the visit moved the clock (to the landing day): back to where it was
@@ -569,6 +570,7 @@ function _aeSiteStep(sc) {
     if (st.fr.sunLocal[2] < AS_MIN_SUN_Z && st.def && st.def.ms && !st.linked) { st.nowMark = _asClockMark(sc.ms); st.atLanding = true; _aeGoTo(st.def.ms); }
   }
   if (!st.group) { _asGroupBuild(st); }
+  if (_ae.el.classList.contains('ae-veil') && (st.phase === 'drop' || st.phase === 'stand')) _aeLinkVeil(false);   // the way back to a place: the first thing drawn is the ground
   if (st.phase === 'drop' && now - st.t0 >= (st.dropMs || AS_DROP_MS)) { st.phase = 'stand'; st.from = null; st.getIn = false; }
   if (st.phase === 'rise' && now - st.t0 >= (st.dropMs || AS_DROP_MS)) { _asWholeEnd(st, st.from0); return; }
   _asPlaceSiteParts(st);
@@ -695,12 +697,12 @@ var AS_CSS = [
   '.as-menu button:focus-visible{outline:2px solid var(--amber);outline-offset:-2px}',
   '.as-menu hr{border:0;border-top:1px solid var(--border);margin:4px 0}',
   '.ae-view.ae-bare .as-menu-btn,.ae-view.ae-bare .as-menu{opacity:0;visibility:hidden}',
-  '.ae-view.ae-bare .as-rest,.ae-view.ae-bare .as-tools,.ae-view.ae-bare .as-strip{opacity:0;visibility:hidden}',   // hiding the controls only fades them: nothing is removed, nothing reflows
+  '.ae-view.ae-bare .as-rest,.ae-view.ae-bare .as-tools,.ae-view.ae-bare .as-strip,.ae-view.ae-bare .as-name{opacity:0;visibility:hidden}',   // hiding the controls only fades them: nothing is removed, nothing reflows
   '.as-hud.as-holding .as-rest{opacity:0}',   // one ring at a time: the thumb's own, once it is down
   '.as-stick.as-fast i{background:var(--amber);border-color:var(--amber)}',
   '.as-rest{left:calc(' + AS_REST_X_PX + 'px + env(safe-area-inset-left));top:auto;bottom:calc(' + AS_REST_Y_PX + 'px + env(safe-area-inset-bottom));margin:0 0 -' + AS_STICK_R_PX + 'px -' + AS_STICK_R_PX + 'px;opacity:.55}',
   // Driving shows the picture, the stick, one pill and the view's own camera and rim buttons: what belongs to the site view stays off it.
-  '.as-hud.as-driving .as-tools,.as-hud.as-driving .as-launch,.as-hud.as-driving .as-strip{display:none}',
+  '.as-hud.as-driving .as-tools,.as-hud.as-driving .as-launch,.as-hud.as-driving .as-strip,.as-hud.as-driving .as-name{display:none}',
   '.as-earthhint{position:absolute;left:0;top:0;width:38px;height:38px;padding:0;pointer-events:none;display:flex;align-items:center;justify-content:center}',
   '.as-earthhint b{width:16px;height:16px;border-radius:50%;background:radial-gradient(circle at 35% 35%,#8fb8ff,#2f5fc4 70%,#1b3a7a)}',
   '.as-earthhint-arrow{position:absolute;inset:0;pointer-events:none}',
@@ -729,17 +731,21 @@ var AS_CSS = [
   '.as-item b,.as-item small,.as-feats b{color:#fff;text-shadow:0 1px 3px rgba(0,0,0,.95),0 0 7px rgba(0,0,0,.75)}',
   // A name stands on a dark plate (the ground it is over can be as bright as the Moon's), 12 px, whole words (a word longer than the line is the only thing that breaks).
   '.as-item b,.as-feats b{font-weight:600;font-size:' + AS_NAME_PX + 'px;background:rgba(0,0,0,.55);border-radius:6px;padding:1px 5px}',
-  '.as-item b{line-height:1.15;max-width:' + AS_ITEM_PX + 'px;box-sizing:border-box;overflow:hidden;display:-webkit-box;-webkit-box-orient:vertical;-webkit-line-clamp:2;overflow-wrap:break-word;text-align:center}',   // a name takes two lines, not an ellipsis after ten letters (the corner names the tapped part in full)
+  // The strip is pictures, as the planets' row is: a name that fits a 104 px disc is cut on a phone ("Launch to..."), so the name is said whole
+  // where there is room for it (the line over the strip, the corner) once a thing is chosen, and each button carries it as its label.
+  '.as-item b{position:absolute;width:1px;height:1px;overflow:hidden;clip-path:inset(50%);padding:0;white-space:nowrap}',
   '.as-pic.as-crater{background:radial-gradient(ellipse 48% 30% at 50% 50%,rgba(0,0,0,.55) 60%,rgba(255,255,255,.35) 66%,transparent 70%),rgba(14,14,16,.72)}',
   '.as-item small{font-size:var(--fs-caption,11px);color:var(--text3)}',
-  '.as-item.as-on b:after{content:"";display:block;width:16px;height:2px;margin:2px auto 0;border-radius:1px;background:var(--amber)}',
+  '.as-item.as-on .as-pic{border-color:var(--amber);box-shadow:0 0 0 1px var(--amber)}',
+  '.as-name{position:absolute;inset-inline:12px;bottom:calc(' + (8 + AS_STRIP_H_PX) + 'px + env(safe-area-inset-bottom));text-align:center;pointer-events:none;color:#fff;font-weight:600;font-size:' + AS_NAME_PX + 'px;text-shadow:0 1px 3px rgba(0,0,0,.95),0 0 7px rgba(0,0,0,.75)}',
+  '.as-name:empty{display:none}',
   '.as-hud.as-lifting .as-strip{opacity:.35}',
   '.as-strip{padding-top:6px}.as-hud.as-has-strip:not(.as-driving)::after{content:"";position:absolute;inset-inline:0;bottom:0;height:calc(' + (AS_STRIP_H_PX + 14) + 'px + env(safe-area-inset-bottom));z-index:-1;background:linear-gradient(to top,rgba(0,0,0,.45),transparent);pointer-events:none}',   // the shade under the strip spans the view's width
   '.as-strip[hidden]{display:none}',   // (its own display would keep a put-away strip on screen)
   '.as-feats b{position:absolute;left:0;top:0;white-space:nowrap;pointer-events:none}',
   '.as-dots i{position:absolute;left:0;top:0;width:28px;height:28px;pointer-events:none}',
   '.as-dots i:after{content:"";position:absolute;left:10px;top:10px;width:5px;height:5px;border-radius:50%;border:1.5px solid rgba(255,255,255,.6);background:rgba(255,255,255,.2)}',
-  '.as-launch{position:absolute;left:50%;transform:translateX(-50%);bottom:calc(' + (8 + AS_STRIP_H_PX + AS_LAUNCH_GAP_PX) + 'px + env(safe-area-inset-bottom));width:64px;height:64px;pointer-events:auto}',   // above the strip, not over it
+  '.as-launch{position:absolute;left:50%;transform:translateX(-50%);bottom:calc(' + (8 + AS_STRIP_H_PX + AS_NAME_LINE_PX + AS_LAUNCH_GAP_PX) + 'px + env(safe-area-inset-bottom));width:64px;height:64px;pointer-events:auto}',   // above the strip, not over it
   '.as-count{position:absolute;inset:0;display:flex;align-items:flex-start;justify-content:center;padding-top:26%;box-sizing:border-box;font-size:84px;font-weight:700;color:rgba(255,255,255,.85);text-shadow:0 2px 18px rgba(0,0,0,.6);pointer-events:none;font-variant-numeric:tabular-nums}'
 ].join('');
 var AS_EYE_SVG = '<svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="5.5" r="2.3"/><path d="M12 8.5v6M8.5 11.5l3.5-1 3.5 1M12 14.5l-2.5 5.5M12 14.5l2.5 5.5"/></svg>';
@@ -800,7 +806,7 @@ function _asHud(on) {
     var routeL = _almEsc(_aeT('alm_site_trail')), eyeL = _almEsc(_aeT('alm_stand_eye')), motionL = _almEsc(_aeT('alm_stand_motion'));
     hud.innerHTML = '<div class="as-layer" id="as-layer"></div><div class="as-rest" id="as-rest" hidden><i></i></div><div class="as-stick" id="as-stick" hidden><i></i></div>' +
       '<div class="as-tools">' +
-      '<div class="as-tools-end"><button type="button" class="ae-btn ae-round" id="as-trailbtn" aria-label="' + routeL + '" title="' + routeL + '" hidden>' + AS_ROUTE_SVG + '</button><button type="button" class="ae-btn ae-round" id="as-liftoff" aria-label="' + _almEsc(_aeT('alm_site_liftoff')) + '" title="' + _almEsc(_aeT('alm_site_liftoff')) + '" hidden>' + AS_LAUNCH_SVG + '</button><button type="button" class="ae-btn ae-round" id="as-follow" aria-label="' + _almEsc(_aeT('alm_site_follow')) + '" title="' + _almEsc(_aeT('alm_site_follow')) + '" hidden>' + AS_FOLLOW_SVG + '</button><button type="button" class="ae-btn ae-round" id="as-whole" aria-label="' + _almEsc(_aeT('alm_site_whole')) + '" title="' + _almEsc(_aeT('alm_site_whole')) + '">' + AS_WHOLE_SVG + '</button><button type="button" class="ae-btn ae-round" id="as-eye" aria-label="' + eyeL + '" title="' + eyeL + '" hidden>' + AS_EYE_SVG + '</button><button type="button" class="ae-btn ae-round" id="as-motion" aria-label="' + motionL + '" title="' + motionL + '" aria-pressed="false" hidden>' + AS_PHONE_SVG + '</button></div></div>' +
+      '<div class="as-tools-end"><button type="button" class="ae-btn ae-round" id="as-takedrive" aria-label="' + _almEsc(_aeT('alm_site_drive')) + '" title="' + _almEsc(_aeT('alm_site_drive')) + '" hidden>' + AS_DRIVE_SVG + '</button><button type="button" class="ae-btn ae-round" id="as-trailbtn" aria-label="' + routeL + '" title="' + routeL + '" hidden>' + AS_ROUTE_SVG + '</button><button type="button" class="ae-btn ae-round" id="as-liftoff" aria-label="' + _almEsc(_aeT('alm_site_liftoff')) + '" title="' + _almEsc(_aeT('alm_site_liftoff')) + '" hidden>' + AS_LAUNCH_SVG + '</button><button type="button" class="ae-btn ae-round" id="as-follow" aria-label="' + _almEsc(_aeT('alm_site_follow')) + '" title="' + _almEsc(_aeT('alm_site_follow')) + '" hidden>' + AS_FOLLOW_SVG + '</button><button type="button" class="ae-btn ae-round" id="as-whole" aria-label="' + _almEsc(_aeT('alm_site_whole')) + '" title="' + _almEsc(_aeT('alm_site_whole')) + '">' + AS_WHOLE_SVG + '</button><button type="button" class="ae-btn ae-round" id="as-eye" aria-label="' + eyeL + '" title="' + eyeL + '" hidden>' + AS_EYE_SVG + '</button><button type="button" class="ae-btn ae-round" id="as-motion" aria-label="' + motionL + '" title="' + motionL + '" aria-pressed="false" hidden>' + AS_PHONE_SVG + '</button></div></div>' +
       '<div class="as-count" id="as-count" aria-hidden="true"></div>' +
       '<button type="button" class="ae-btn ae-round as-launch" id="as-launch" aria-label="' + _almEsc(_aeT('alm_site_launch')) + '" title="' + _almEsc(_aeT('alm_site_launch')) + '" hidden>' + AS_LAUNCH_SVG + '</button>' + _asMenuHtml();
     Array.prototype.forEach.call(hud.querySelectorAll('.as-tools .ae-round'), function (b) { b.classList.add('ah-minor'); });
@@ -812,6 +818,7 @@ function _asHud(on) {
   _ae.el.classList.toggle('ae-driving', !!(_ae.site && _ae.site.drive));
   _aeById('as-rest').hidden = !(_ae.site && _ae.site.drive);
   _aeById('as-launch').hidden = !(_ae.site && _ae.site.def && _ae.site.def.launch);
+  _aeById('as-takedrive').hidden = !_asDriveOffered(_ae.site);
   _aeById('as-liftoff').hidden = !(_ae.site && _ae.site.def && _ae.site.def.liftoff && !_ae.site.drive);
   _aeById('as-follow').hidden = !(_ae.site && _ae.site.def && _ae.site.def.mission && typeof _aeMissionStart === 'function');
   _asEyeSync(_ae.site);
@@ -1046,15 +1053,18 @@ function _asStrip(st) {
   hud.classList.toggle('as-has-strip', show);
   hud.classList.toggle('as-lifting', !!st.ascent);
   var box = _aeById('as-strip');
-  if (!show) { if (box) box.hidden = true; return; }
+  if (!show) { if (box) box.hidden = true; var gone = _aeById('as-name'); if (gone) gone.textContent = ''; return; }
   if (!box) {
     box = document.createElement('div'); box.id = 'as-strip'; box.className = 'as-strip';
     box.addEventListener('click', function (e) {
       var b = e.target.closest && e.target.closest('.as-item');
       if (!b || !_ae.site) return;
-      if (b._part) _asFocusPart(_ae.site, b._part); else if (b._feat) _asLookToward(_ae.site, b._feat.x, b._feat.y);
+      if (b._part) _asFocusPart(_ae.site, b._part); else if (b._feat) { _ae.site.tappedPart = null; _ae.site.pickName = b.getAttribute('aria-label'); _asLookToward(_ae.site, b._feat.x, b._feat.y); }
+      _asStripName(_ae.site);
     });
     hud.appendChild(box);
+    var nm = document.createElement('div'); nm.id = 'as-name'; nm.className = 'as-name';
+    hud.appendChild(nm);
   }
   box.hidden = false;
   var parts = _asStripParts(st), feats = _asFeatures(st), key = parts.map(function (p) { return p.model; }).concat(feats.map(function (f) { return f.n; })).join(',');
@@ -1065,11 +1075,17 @@ function _asStrip(st) {
       .sort(function (a, b) { return a.d - b.d; });
     box.innerHTML = items.map(function (it) {
       var d = Math.round(it.d), far = d >= 1000 ? (d / 1000).toFixed(1) + ' km' : d ? d + ' m' : '';
-      return '<button type="button" class="as-item"><i class="as-pic' + (it.crater ? ' as-crater' : '') + '" style="' + it.pic + '"></i><b>' + _almEsc(it.name) + '</b><small>' + far + '</small></button>';
+      return '<button type="button" class="as-item" aria-label="' + _almEsc(it.name) + '" title="' + _almEsc(it.name) + '"><i class="as-pic' + (it.crater ? ' as-crater' : '') + '" style="' + it.pic + '"></i><b>' + _almEsc(it.name) + '</b><small>' + far + '</small></button>';
     }).join('');
     Array.prototype.forEach.call(box.children, function (el, i) { el._part = items[i].part || null; el._feat = items[i].feat || null; });
   }
-  Array.prototype.forEach.call(box.children, function (el) { el.classList.toggle('as-on', el._part === st.tappedPart); });
+  Array.prototype.forEach.call(box.children, function (el) { el.classList.toggle('as-on', !!el._part && el._part === st.tappedPart); });
+  _asStripName(st);
+}
+// The whole name of what is chosen, on the line over the strip (a disc's width cuts it); empty when nothing is.
+function _asStripName(st) {
+  var nm = _aeById('as-name');
+  if (nm) nm.textContent = st && st.tappedPart ? _asPartName(st, st.tappedPart.model) : (st && st.pickName) || '';
 }
 function _asHudTick(st, sc) {
   _asEyeSync(st);
@@ -1107,7 +1123,7 @@ function _asFeatures(st) {   // (the named craters big enough to show: worked ou
 // Look toward a place far off: the camera at the lander, low, turned that way (the horizon then holds it at its true bearing).
 function _asLookToward(st, x, y) {
   var b = Math.atan2(x, y);
-  st.tapped = st.tappedPart = null;
+  st.tapped = st.tappedPart = st.pickName = null;
   st.camera.az = Math.PI - b; st.camera.el = AS_LOOK_EL;
   st.focusXY = [Math.sin(b) * AS_LOOK_M, Math.cos(b) * AS_LOOK_M]; st.focusZ = _asGroundAt(st, st.focusXY[0], st.focusXY[1], false) + AS_ORBIT_FOCUS_Z_M;
   st.distTo = AS_LOOK_M * 1.2;
@@ -1177,7 +1193,7 @@ function _asGroundPick(st, px, py) {
 function _asWalkTo(st, x, y) {
   var r = Math.hypot(x, y);
   if (r > AS_WALK_MAX_M) { x *= AS_WALK_MAX_M / r; y *= AS_WALK_MAX_M / r; }
-  st.tapped = st.tappedPart = null;
+  st.tapped = st.tappedPart = st.pickName = null;
   st.focusXY = [x, y];
   st.focusZ = _asGroundAt(st, x, y, false) + AS_ORBIT_FOCUS_Z_M;
   _asCaption(st);
@@ -1193,7 +1209,7 @@ function _asPan(st, dx, dy) {
 }
 // The whole site again: the arrival view.
 function _asWholeSite(st) {
-  st.tapped = st.tappedPart = null;
+  st.tapped = st.tappedPart = st.pickName = null;
   st.focusXY = st.home.xy.slice(); st.focusZ = st.home.z; st.distTo = st.home.dist;
   st.camera.el = AS_ARRIVAL_EL;
   _asCaption(st);
@@ -1225,7 +1241,10 @@ function _asFocusPart(st, best) {
   st.distTo = _aeClamp(best.size * 2.6, AS_ORBIT_DIST_M[0], AS_ORBIT_DIST_M[1]);
   _aeKick();
 }
+// A visit to a site whose mission had a rover offers the drive on the spot: the rover stands out of the first view (130 m off at Apollo 15), so the card's button was the only way to it.
+function _asDriveOffered(st) { return !!(st && !st.drive && !st.launch && st.def && !st.def.adHoc && _asHadRover(st.def) && _asCanDrive(st.body, st.row)); }
 function _asBindHud(hud) {
+  _aeById('as-takedrive').onclick = function () { var st = _ae.site; if (st && _asDriveOffered(st)) _aeSiteVisit(st.body, st.row, true); };
   _aeById('as-liftoff').onclick = function () { if (_ae.site) _asAscentStart(_ae.site); };
   _aeById('as-follow').onclick = function () { _aeSiteFollowMission(_ae.site); };
   _aeById('as-whole').onclick = function () { if (_ae.site) { _asWholeSite(_ae.site); _aeShowHint(_aeT('alm_site_whole_said')); } };   // each says what it did: an eased camera move alone read as "nothing happened"

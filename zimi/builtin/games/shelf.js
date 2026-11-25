@@ -563,10 +563,11 @@
 
   // Continue and the Daily row (Game of the day leads it) come from recent.js, after the page is up.
   // The order and the view switch share the chips' row, so no row is spent on them. Index on a wide screen has the
-  // chips down a rail, so there they stay on the header's row. Out of Zimi the header holds the search box as well.
+  // chips down a rail, so there they stay on the header's row. Out of Zimi the header holds the search box as well; inside Zimi
+  // it would hold the one button alone, a band of nothing, so there the button sits beside the room, at the rail's head.
   var wide = root.matchMedia('(min-width: 900px)');
   function placeTools() {
-    var target = state.view === 'index' && wide.matches ? header : chipBar;
+    var target = state.view === 'index' && wide.matches && !hosted ? header : chipBar;
     if (tools.parentNode !== target) target.appendChild(tools);
   }
   if (wide.addEventListener) wide.addEventListener('change', placeTools);

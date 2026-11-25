@@ -1,0 +1,122 @@
+#!/usr/bin/env bash
+# Smoke test a built Zimi binary: launch it, wait for READY, hit the core
+# endpoints. Usage: .github/ci/smoke_binary.sh <path-to-binary>
+#
+# The LAUNCH is retried (3 attempts x 60s): fresh CI runner images sometimes
+# take a long time to cold-start a PyInstaller bundle — a 30s single-shot
+# wait failed the v1.7.1 Apple Silicon release build on a healthy binary.
+# Endpoint checks are NOT retried: once the server answers READY, a failing
+# endpoint is a real bug, not runner weather.
+set -euo pipefail
+
+BINARY="$1"
+# How the binary is launched: --serve (the headless server), or --browser
+# (the app without a native window, which opens the system browser and
+# prints the same READY line).
+MODE_ARGS="${SMOKE_MODE_ARGS:---serve}"
+ATTEMPTS="${SMOKE_ATTEMPTS:-3}"
+READY_TIMEOUT="${SMOKE_READY_TIMEOUT:-60}"
+LOG=$(mktemp)
+PID=""
+
+cleanup() {
+  [ -n "$PID" ] && kill "$PID" 2>/dev/null || true
+}
+trap cleanup EXIT
+
+PORT=""
+for attempt in $(seq 1 "$ATTEMPTS"); do
+  TMPZIM=$(mktemp -d)
+  : > "$LOG"
+  echo "Attempt $attempt/$ATTEMPTS: starting $BINARY $MODE_ARGS --port 0 ..."
+  # An idle Zimi starts no BitTorrent engine (it joins no DHT until there is
+  # work), so the BT check gives it work: Mirror mode starts the engine at boot.
+  if [ "${SMOKE_EXPECT_BT:-}" = "1" ]; then export ZIMI_BT="mirror=1"; fi
+  # shellcheck disable=SC2086
+  "$BINARY" $MODE_ARGS --port 0 --zim-dir "$TMPZIM" > "$LOG" 2>&1 &
+  PID=$!
+
+  deadline=$(( SECONDS + READY_TIMEOUT ))
+  while [ "$SECONDS" -lt "$deadline" ]; do
+    if PORT=$(awk '/^READY /{print $2; exit}' "$LOG") && [ -n "$PORT" ]; then
+      break 2
+    fi
+    if ! kill -0 "$PID" 2>/dev/null; then
+      echo "Binary exited before READY (attempt $attempt)."
+      break
+    fi
+    sleep 0.5
+  done
+
+  echo "No READY within ${READY_TIMEOUT}s (attempt $attempt). Log:"
+  cat "$LOG"
+  kill "$PID" 2>/dev/null || true
+  wait "$PID" 2>/dev/null || true
+  PID=""
+  rm -rf "$TMPZIM"
+done
+
+if [ -z "$PORT" ]; then
+  echo "ERROR: Server did not start after $ATTEMPTS attempts"
+  exit 1
+fi
+
+echo "Server ready on port $PORT"
+BASE="http://127.0.0.1:$PORT"
+# setup-python exposes `python` on CI; bare macOS/Linux boxes may only have python3
+PY=$(command -v python || command -v python3)
+
+echo "Testing /health..."
+curl -sf "$BASE/health" | "$PY" -c "import sys,json; d=json.load(sys.stdin); assert d['status']=='ok', f'Bad health: {d}'; print(f'  OK: v{d[\"version\"]}, {d[\"zim_count\"]} ZIMs')"
+
+echo "Testing /list..."
+curl -sf "$BASE/list" | "$PY" -c "import sys,json; d=json.load(sys.stdin); print(f'  OK: {len(d)} sources')"
+
+echo "Testing /search..."
+curl -sf "$BASE/search?q=test&limit=1&fast=1" | "$PY" -c "import sys,json; d=json.load(sys.stdin); assert 'results' in d; print(f'  OK: {d[\"total\"]} results')"
+
+echo "Testing /static/pdfjs/web/viewer.html..."
+STATUS=$(curl -s -o /dev/null -w '%{http_code}' "$BASE/static/pdfjs/web/viewer.html")
+[ "$STATUS" = "200" ] && echo "  OK: pdf.js viewer" || { echo "FAIL: got $STATUS"; exit 1; }
+
+echo "Testing /manage/status..."
+curl -sf -H "Sec-Fetch-Site: same-origin" "$BASE/manage/status" | "$PY" -c "import sys,json; d=json.load(sys.stdin); assert 'zim_count' in d; print(f'  OK: {d[\"zim_count\"]} ZIMs, manage={d[\"manage_enabled\"]}')"
+
+echo "Testing / (web UI)..."
+STATUS=$(curl -s -o /dev/null -w '%{http_code}' "$BASE/")
+[ "$STATUS" = "200" ] && echo "  OK: web UI" || { echo "FAIL: got $STATUS"; exit 1; }
+
+if [ "${SMOKE_EXPECT_BT:-}" = "1" ]; then
+  # libtorrent is an in-process engine that starts on a background thread
+  # after READY, so poll rather than check once. "status":"ready" alone is
+  # optimistic (importable counts) — demand PROOF the session came up:
+  # sidecar_running is true only when the engine is actually alive.
+  #
+  # Soft dependency: a platform with no libtorrent wheel bundles nothing and
+  # runs HTTP-only (an accepted degraded mode, NOT a build failure). We tell
+  # the two cases apart via engine_importable:
+  #   importable + never alive  → real bundling bug → FAIL
+  #   not importable            → no wheel, HTTP-only → PASS with a warning
+  echo "Testing /manage/bt-status (in-process libtorrent must actually start)..."
+  BT_OK=""
+  for i in $(seq 1 45); do
+    body=$(curl -sf -H "Sec-Fetch-Site: same-origin" "$BASE/manage/bt-status")
+    if echo "$body" | grep -q '"sidecar_running": *true'; then
+      BT_OK=1; break
+    fi
+    sleep 1
+  done
+  if [ -n "$BT_OK" ]; then
+    echo "  OK: libtorrent engine is alive and listening on the BT port"
+  elif echo "$body" | grep -q '"engine_importable": *false'; then
+    echo "  WARN: libtorrent not importable in this bundle — HTTP-only build (accepted degraded mode)"
+  else
+    echo "FAIL: libtorrent is importable but the engine never came up (status below). Engine stderr is in the server log above."
+    curl -s -H "Sec-Fetch-Site: same-origin" "$BASE/manage/bt-status"
+    echo
+    cat "$LOG"
+    exit 1
+  fi
+fi
+
+echo "All smoke tests passed!"

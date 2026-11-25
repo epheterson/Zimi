@@ -906,11 +906,11 @@ def test_the_portable_spec_ships_the_helper_script_as_a_file():
     spec puts on disk: <bundle>/_internal/zimi/ is where the package's data files go."""
     root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
     spec = open(
-        os.path.join(root, "desktop", "zimi_portable.spec"), encoding="utf-8"
+        os.path.join(root, "packaging", "desktop", "zimi_portable.spec"), encoding="utf-8"
     ).read()
     assert "zimi/voicehelper.py'), 'zimi')" in spec
     assert os.path.isfile(os.path.join(root, "zimi", voices.HELPER_SCRIPT))
-    smoke = open(os.path.join(root, "ci", "smoke_portable.sh"), encoding="utf-8").read()
+    smoke = open(os.path.join(root, ".github", "ci", "smoke_portable.sh"), encoding="utf-8").read()
     assert "_internal/zimi/voicehelper.py" in smoke
 
 
@@ -2243,3 +2243,45 @@ def test_every_region_a_language_offers_can_be_chosen_and_is_said(data, monkeypa
 def test_the_cache_cap_is_decimal_megabytes():
     """A 64 MB cap is 64,000,000 bytes, as Settings' other sizes: not 67 MB (it read 66.9 MB beside the label)."""
     assert voices.BYTES_PER_MB == 1000 * 1000
+
+
+def test_the_prolonged_sound_mark_stays_in_japanese():
+    from zimi import voices
+
+    assert voices.speakable("コーヒー", "ja") == "コーヒー"
+    assert voices.script_ok("コーヒー", "ja")
+    assert voices.speakable("コーヒー", "en") is None
+
+
+def test_turning_the_cache_off_mid_synthesis_leaves_nothing_on_disk(piper, monkeypatch, tmp_path):
+    install("en-US")
+    monkeypatch.delenv(voices.CACHE_DIR_ENV, raising=False)
+    monkeypatch.setattr(voices, "_ram_cache_root", lambda: str(tmp_path / "ram"))
+    real = voices._synthesize
+
+    def off_meanwhile(engine, voice, text, out):
+        done = real(engine, voice, text, out)
+        monkeypatch.setattr(voices, "_cache_mb", 0)  # the setting changes after the word was made, before it is filed
+        return done
+
+    monkeypatch.setattr(voices, "_synthesize", off_meanwhile)
+    body = voices.speak("water", "en")
+    assert body and body[:4] == b"RIFF", "the word is still said"
+    assert not os.path.exists(voices._dir("cache")), "and the disk cache folder was not recreated"
+
+
+def test_cache_off_clears_the_override_root_and_keeps_nothing_without_a_ram_disk(data, monkeypatch, tmp_path):
+    ram = str(tmp_path / "ram")
+    monkeypatch.setenv(voices.CACHE_DIR_ENV, ram)
+    folder = voices._cache_dir("piper", "x")
+    os.makedirs(folder)
+    with open(os.path.join(folder, "a.wav"), "wb") as f:
+        f.write(b"x" * 10)
+    assert voices.set_cache_mb(0)
+    assert voices.cache_info()["count"] == 0, "what the override root held is gone"
+    monkeypatch.delenv(voices.CACHE_DIR_ENV)
+    monkeypatch.setattr(voices, "_has_ram_disk", lambda: False)
+    path = os.path.join(voices._cache_dir("piper", "x"), "b.wav")
+    assert voices._kept(path) is False, "off, and the temp folder is the disk: not kept"
+    voices.set_cache_mb(16)
+    assert voices._kept(os.path.join(voices._cache_dir("piper", "x"), "b.wav")) is True

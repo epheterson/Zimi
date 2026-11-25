@@ -1883,12 +1883,17 @@ class PerfTestSearch(unittest.TestCase):
     Run with: python3 tests.py --perf [--perf-host HOST]
     """
 
-    host = "http://localhost:8899"
+    host = os.environ.get("ZIMI_PERF_HOST", "http://localhost:8899")
+    #: Opt-in only (--perf, --perf-host or ZIMI_PERF_HOST): a plain pytest run must never pick up whatever real
+    #: instance happens to answer on the default port.
+    opted_in = bool(os.environ.get("ZIMI_PERF_HOST"))
 
     @classmethod
     def setUpClass(cls):
         import urllib.request
 
+        if not cls.opted_in:
+            raise unittest.SkipTest("performance tests run only with --perf, --perf-host or ZIMI_PERF_HOST")
         try:
             urllib.request.urlopen(f"{cls.host}/health", timeout=5)
         except Exception:
@@ -2017,6 +2022,7 @@ class PerfTestSearch(unittest.TestCase):
 
 def run_perf_tests(host):
     PerfTestSearch.host = host
+    PerfTestSearch.opted_in = True
     suite = unittest.TestLoader().loadTestsFromTestCase(PerfTestSearch)
     runner = unittest.TextTestRunner(verbosity=2)
     return runner.run(suite)

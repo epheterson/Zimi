@@ -693,6 +693,7 @@ def test_flown_on_low_the_ground_is_built_again_under_the_craft_with_its_hills_w
         seam = page.wait_for_function(
             """() => { const s = _ae.ship, g = s.gnd, drop = _aeRigLift(s, s.near.body);
               if (drop < -1) s.pos = _aeAdd(s.pos, _aeScale(g.fr.u, (drop + 0.5) / 6378137));   // (kept low over the hills it crosses: level flight does not follow the ground down)
+              if (g.next) _afThrottleSet(s, 0.15);   // the new ground is built round where the craft was: creep (the slowest the throttle goes) while it is, so how long a runner takes to build it cannot decide how far the craft is from its middle
               const before = -_aeRigLift(s, s.near.body), was = g.st; _afAdvance(0.5);
               if (g.st === was) return null;
               return { before: before, after: -_aeRigLift(s, s.near.body), off: Math.hypot(..._aeRigLocal(g.fr, s.pos).slice(0, 2)), lat: g.lat, lon: g.lon, lift: g.liftM, next: !!g.next, live: g.live }; }""",

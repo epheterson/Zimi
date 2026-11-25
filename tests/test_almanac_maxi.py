@@ -50,7 +50,7 @@ def built(tmp_path_factory):
 
 
 def test_it_is_named_the_way_kiwix_names_a_flavour(built):
-    assert os.path.basename(built["flavour"]) == "zimi_almanac_maxi_2026-11.zim"
+    assert os.path.basename(built["flavour"]) == "zimi_almanac_hd_2026-11.zim"
 
 
 def test_same_name_different_flavour(built):
@@ -58,7 +58,7 @@ def test_same_name_different_flavour(built):
     name = std.get_metadata("Name")
     assert name and name == hd.get_metadata("Name")
     assert "Flavour" not in std.metadata_keys
-    assert hd.get_metadata("Flavour") == b"maxi"
+    assert "Flavour" not in hd.metadata_keys   # HD is the catalog's unflavoured edition
     assert hd.get_metadata("Title") == std.get_metadata("Title")
 
 
@@ -146,7 +146,7 @@ def test_the_release_step_writes_the_manifest_zimi_reads(built, tmp_path, monkey
     # --month: the name the release job works out from what releases shipped (gh); given here, so no network.
     maxi.main(["--tiles", built["tiles"], "--out", str(tmp_path), "--tag", "v1.15.4", "--month", "2026-11c", "--no-craft"])
     path = tmp_path / (maxi.FILE_FMT % "2026-11c")
-    raw = (tmp_path / "zimi_almanac_maxi.json").read_text(encoding="utf-8")
+    raw = (tmp_path / "zimi_almanac_hd.json").read_text(encoding="utf-8")
     man = json.loads(raw)
     assert set(man) == {"file", "size", "sha256", "tag"}
     assert (
@@ -195,7 +195,7 @@ def _release_workflow():
 def test_the_release_builds_and_attaches_the_flavour_and_its_manifest():
     wf = _release_workflow()
     assert "scripts/build_almanac_maxi.py" in wf and "--tag" in wf
-    assert "zimi_almanac_maxi" in wf  # copied onto the release with the other files
+    assert "zimi_almanac_hd" in wf  # copied onto the release with the other files
     assert re.search(
         r"needs:\s*\[[^\]]*almanac-maxi", wf
     ), "the release waits for the flavour"
@@ -250,3 +250,51 @@ def test_the_craft_archive_is_reproducible_and_refuses_paths(tmp_path, monkeypat
     monkeypatch.setattr(maxi, "_download", lambda url, path, want: str(bad))
     with pytest.raises(SystemExit):
         maxi.fetch_craft(str(tmp_path / "cache"), str(pin))
+
+
+def _metadata(path):
+    a = Archive(path)
+    return a, {k: bytes(a.get_metadata(k)).decode("utf-8") for k in a.metadata_keys if not k.startswith("Illustration")}
+
+
+def test_the_catalog_hd_is_the_base_title_in_ten_languages_with_no_flavour(built, tmp_path):
+    import build_almanac_kiwix as kiwix
+
+    assert maxi.main(["--tiles", built["tiles"], "--out", str(tmp_path), "--month", "2026-11", "--no-craft", "--catalog"]) == 0
+    (made,) = os.listdir(tmp_path)
+    assert made == "%s_2026-11.zim" % kiwix.DEFAULT_NAME
+    a, meta = _metadata(str(tmp_path / made))
+    assert meta["Name"] == kiwix.DEFAULT_NAME == "zimi_mul_almanac"
+    assert meta["Title"] == kiwix.DEFAULT_TITLE
+    assert meta["Language"] == kiwix.LANGUAGES
+    assert "Flavour" not in meta
+    assert "high-resolution maps" in meta["Description"] and len(meta["Description"]) <= 80
+    assert "high-resolution maps of the Earth, Moon and planets" in meta["LongDescription"]
+    assert "standard edition" not in meta["LongDescription"] and "mini edition" in meta["LongDescription"]
+    # the community edition (the Almanac for openZIM) with the tiles inside
+    assert json.loads(_read(a, "hd/hd.json"))["layers"]
+    assert b"_almPickLang" in _read(a, "index.html")
+
+
+def test_the_catalog_small_maps_are_the_mini_flavour(tmp_path):
+    import build_almanac_kiwix as kiwix
+
+    path = kiwix.build(str(tmp_path), month="2026-11")
+    assert os.path.basename(path) == "zimi_mul_almanac_mini_2026-11.zim"
+    _, meta = _metadata(path)
+    assert meta["Flavour"] == "mini" and meta["Name"] == "zimi_mul_almanac" and meta["Language"] == kiwix.LANGUAGES
+    assert "high-resolution" not in meta["Description"] and len(meta["Description"]) <= 80
+    assert "mini edition" in meta["LongDescription"] and ownzims.STANDARD_EDITION not in meta["LongDescription"]
+
+
+def test_the_catalog_maximum_is_one_file_with_the_maxi_flavour_and_every_level(built, tmp_path):
+    import build_almanac_kiwix as kiwix
+
+    assert maxi.main(["--tiles", built["tiles"], "--out", str(tmp_path), "--month", "2026-11", "--no-craft", "--catalog", "maximum"]) == 0
+    (made,) = os.listdir(tmp_path)
+    assert made == "zimi_mul_almanac_maxi_2026-11.zim"
+    a, meta = _metadata(str(tmp_path / made))
+    assert meta["Flavour"] == "maxi" and meta["Name"] == "zimi_mul_almanac" and meta["Language"] == kiwix.LANGUAGES
+    assert "full resolution" in meta["Description"] and len(meta["Description"]) <= 80
+    assert "every tile at its source's full resolution" in meta["LongDescription"]
+    assert json.loads(_read(a, "hd/hd.json"))["layers"]

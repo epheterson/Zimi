@@ -15,7 +15,7 @@ without saying where it is can be given its region and country offline
 3 km (Douglas-Peucker, then rounded to 0.01 degree) and are for telling
 "Springfield, Illinois" from "Springfield, Missouri", not for surveying.
 
-Natural Earth is in the public domain (see THIRD_PARTY_NOTICES.md). Without a
+Natural Earth is in the public domain (see docs/THIRD_PARTY_NOTICES.md). Without a
 file argument the 10 m admin-1 file is downloaded from Natural Earth's
 vector mirror. Run rarely: borders change slowly.
 

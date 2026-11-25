@@ -145,7 +145,7 @@ def test_check_refuses_a_version_the_changelog_has_no_section_for():
     assert done.returncode == 1 and "no such section" in done.stderr
 
 
-HIGHLIGHT_BULLETS_MAX = 8
+HIGHLIGHT_BULLETS_MAX = 9   # 1.16.0: four for Zimi, one for Games, four for the Almanac
 
 
 def test_every_highlights_block_in_the_real_changelog_is_short():

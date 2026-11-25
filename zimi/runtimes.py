@@ -231,7 +231,7 @@ _FEATURES = (
     ),
 )
 
-# The portable headless Linux build (desktop/zimi_portable.spec): the server, libzim and PDF pages in one
+# The portable headless Linux build (packaging/desktop/zimi_portable.spec): the server, libzim and PDF pages in one
 # folder, no Python on the machine. What it leaves out is left out for size and because it needs a Python
 # or a browser beside it; every row says where to get that.
 _PORTABLE_WAYS = {

@@ -536,15 +536,13 @@ def test_go_to_the_station_flies_straight_in_with_the_station_in_the_picture(
             last = max(i for i, r in enumerate(rows) if r["fly"])
             after = rows[last + 1 :]
             assert after[0]["dist"] < 0.001, after[0]
-            # Held still: at real time to a pixel or two. At an hour a second the camera comes in half a kilometre from the station and
-            # follows it round by one step of 460 km a frame, and what it follows with (32-bit floats in the scene) leaves the station
-            # a few pixels off its place at some points of the orbit (a few metres, 1.3 m a pixel): about a tenth of
-            # the station's length, seen at a point of the orbit that follows the instant (step), so the bound there is a wider one.
+            # Held still to a pixel or two at either rate: at an hour a second the camera follows the station round by 460 km a
+            # frame from half a kilometre away, and the station must not wander on the screen (1.3 m a pixel there).
             worst = max(
                 abs(r["sx"] - after[0]["sx"]) + abs(r["sy"] - after[0]["sy"])
                 for r in after
             )
-            assert worst < (2 if rate == 1 else 10), (worst, after[-1])
+            assert worst < 2, (worst, after[-1])
             assert not errors, errors
             ctx.close()
         finally:

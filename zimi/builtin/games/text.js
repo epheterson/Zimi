@@ -4301,6 +4301,7 @@
  "lastline.readyKeys": "Press any key to start",
  "lastline.readyTouch": "Tap to start. Move and fire",
  "lastline.wave": "Wave {n}",
+ "learn.article": "Read about {word}",
  "learn.dictionary": "Look up {word} in the Dictionary",
  "learn.map": "Open {place} on the map",
  "letters.air": {

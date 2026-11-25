@@ -4,6 +4,17 @@
 :root[data-theme="dark"] { --ld-ground: #2b2a27; --ld-cell: #d9d4c4; --ld-line: #0c0b0a; --ld-yard-in: #d9d4c4; --ld-star: #5a4308; --ld-die: #e8e4d6; }
 /* Red (games.css): this file's colours as red-on-black, by luminance. */
 :root.gs.night-red { --ld-ground: #2a0503; --ld-cell: #d41b0d; --ld-line: #0b0101; --ld-yard-in: #d41b0d; --ld-star: #430804; --ld-die: #e41d0e; }
+/* In Red the four colours differ by too little (luminance 95 to 166 of 255): each player gets its own step of red, from dim to bright,
+   on its yard, its lane and its tokens, and its tokens a ring of their own (none, dashed, light, heavy) so no two read alike. */
+:root.gs.night-red :is(.ld-yard, .ld-center, .ld-disc)[fill="#c13d3b"], :root.gs.night-red .ld-cell[style*="193, 61, 59"] { fill: #6a1008 !important; }
+:root.gs.night-red :is(.ld-yard, .ld-center, .ld-disc)[fill="#3d9555"], :root.gs.night-red .ld-cell[style*="61, 149, 85"] { fill: #98200f !important; }
+:root.gs.night-red :is(.ld-yard, .ld-center, .ld-disc)[fill="#d9a42d"], :root.gs.night-red .ld-cell[style*="217, 164, 45"] { fill: #cc3220 !important; }
+:root.gs.night-red :is(.ld-yard, .ld-center, .ld-disc)[fill="#3066b6"], :root.gs.night-red .ld-cell[style*="48, 102, 182"] { fill: #ff5a42 !important; }
+:root.gs.night-red .ld-disc.c1 { stroke: #000; stroke-width: 0.1px; stroke-dasharray: 0.16 0.1; }
+:root.gs.night-red .ld-disc.c2 { stroke: #ffb0a0; stroke-width: 0.1px; }
+:root.gs.night-red .ld-disc.c3 { stroke: #000; stroke-width: 0.17px; }
+:root.gs.night-red .ld-num.c2, :root.gs.night-red .ld-num.c3 { fill: #1e0402; stroke: none; }
+:root.gs.night-red .ld-num.c0, :root.gs.night-red .ld-num.c1 { fill: #ffd2c8; }
 
 .ld-svg { --lw: min(100vw - 16px, 100svh - 280px, 580px); width: var(--lw); height: var(--lw); display: block; touch-action: manipulation; user-select: none; -webkit-user-select: none; filter: drop-shadow(0 6px 14px rgba(0, 0, 0, 0.22)); }
 .ld-ground { fill: var(--ld-ground); stroke: var(--ld-line); stroke-width: 0.06px; }

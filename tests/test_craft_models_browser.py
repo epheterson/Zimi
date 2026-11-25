@@ -23,7 +23,7 @@ from browser_slots import WEBGL_ARGS
 GL_ARGS = WEBGL_ARGS
 PLACE = '{"lat":37.77,"lon":-122.42,"name":"San Francisco"}'
 READY_MS = 240_000
-STOCK = ["iss", "voyager", "pioneer", "juno", "parker", "webb", "galileo", "cassini", "kepler", "newhorizons", "clipper", "osirisrex", "psyche", "lucy", "hubble", "chandra"]
+STOCK = ["iss", "voyager", "pioneer", "juno", "parker", "webb", "galileo", "cassini", "kepler", "newhorizons", "clipper", "osirisrex", "psyche", "lucy", "hubble", "chandra", "gaia"]
 HD_PATH = "/w/zimi_almanac_hd/craft/"
 
 # Build every craft, draw once, and report the GL error, every program's diagnostics, and what the craft is made of.
